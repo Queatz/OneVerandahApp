@@ -1,0 +1,11 @@
+{
+  "name": "One Verandah App",
+  "version": "1.0.0",
+  "private": true,
+  "workspaces": [
+    "app/sharedLogic/build/dist/js/developmentLibrary"
+  ],
+  "scripts": {
+    "build:shared": "./gradlew :app:sharedLogic:jsBrowserDevelopmentLibraryDistribution"
+  }
+}
