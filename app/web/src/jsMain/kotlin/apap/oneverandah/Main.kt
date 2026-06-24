@@ -2,57 +2,63 @@ package apap.oneverandah
 
 import androidx.compose.runtime.Composable
 import app.softwork.routingcompose.BrowserRouter
-import org.jetbrains.compose.web.css.Style
-import org.jetbrains.compose.web.dom.*
+import app.softwork.routingcompose.Router
+import apap.oneverandah.data.Catalog
+import apap.oneverandah.screens.HomeScreen
+import apap.oneverandah.screens.OfferScreen
+import apap.oneverandah.screens.ServicesScreen
 import org.jetbrains.compose.web.renderComposable
 
 fun main() {
+    Styles.install()
     renderComposable(rootElementId = "root") {
         App()
     }
 }
 
+/**
+ * Root of the app. Implements the Category -> Services -> Offer flow with
+ * client-side routing:
+ *  - `/`                  -> categories (home)
+ *  - `/category/{id}`     -> services in a category
+ *  - `/service/{id}`      -> offer / booking details
+ */
 @Composable
 fun App() {
-    Style(Styles)
-
-    Text("Hello from Compose!")
-
     BrowserRouter("/") {
-        Div(attrs = { classes(Styles.container) }) {
-            Nav(attrs = { classes(Styles.nav) }) {
-                A(href = "/", attrs = { classes(Styles.navLink) }) { Text("Home") }
-                A(href = "/about", attrs = { classes(Styles.navLink) }) { Text("About") }
-            }
+        val router = Router.current
 
-            route("/") {
-                HomePage()
-            }
-            route("/about") {
-                AboutPage()
-            }
-            noMatch {
-                redirect("/", hide = true)
+        route("category") {
+            string { categoryId ->
+                ServicesScreen(
+                    categoryId = categoryId,
+                    onBack = { router.navigate("/") },
+                    onHome = { router.navigate("/") },
+                    onServiceSelected = { serviceId -> router.navigate("/service/$serviceId") },
+                )
             }
         }
-    }
-}
 
-@Composable
-fun HomePage() {
-    Div(attrs = { classes(Styles.content) }) {
-        val greeting = Greeting()
-        H1 { Text("One Verandah App") }
-        P { Text(greeting.greet()) }
-        P { Text("Welcome to the home page. This is built with Compose HTML!") }
-    }
-}
+        route("service") {
+            string { serviceId ->
+                OfferScreen(
+                    serviceId = serviceId,
+                    onBack = {
+                        val categoryId = Catalog.serviceById(serviceId)?.categoryId
+                        if (categoryId != null) router.navigate("/category/$categoryId") else router.navigate("/")
+                    },
+                    onHome = { router.navigate("/") },
+                    onDone = { router.navigate("/") },
+                )
+            }
+        }
 
-@Composable
-fun AboutPage() {
-    Div(attrs = { classes(Styles.content) }) {
-        H1 { Text("About") }
-        P { Text("This is a sample second page using routing-compose.") }
-        P { Text("Navigation between Home and About works via client-side routing.") }
+        route("/") {
+            HomeScreen(onCategorySelected = { categoryId -> router.navigate("/category/$categoryId") })
+        }
+
+        noMatch {
+            HomeScreen(onCategorySelected = { categoryId -> router.navigate("/category/$categoryId") })
+        }
     }
 }

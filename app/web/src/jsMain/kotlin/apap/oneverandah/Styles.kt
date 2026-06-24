@@ -1,46 +1,750 @@
 package apap.oneverandah
 
-import org.jetbrains.compose.web.css.*
+import kotlinx.browser.document
+import org.w3c.dom.HTMLStyleElement
 
-object Styles : StyleSheet() {
-    val container by style {
-        fontFamily("system-ui, -apple-system, BlinkMacSystemFont, 'Segoe UI', Roboto, sans-serif")
-        display(DisplayStyle.Flex)
-        flexDirection(FlexDirection.Column)
-        alignItems(AlignItems.Center)
-        justifyContent(JustifyContent.Start)
-        minHeight(100.vh)
-        margin(0.px)
-        paddingTop(50.px)
-        backgroundColor(Color("#f5f5f5"))
+/**
+ * Centralised styling for the app.
+ *
+ * Rather than fight the typed Compose HTML [org.jetbrains.compose.web.css.StyleSheet]
+ * DSL (which makes CSS custom properties, `@media (prefers-color-scheme)`,
+ * keyframes and `@import` awkward), we keep one authoritative stylesheet here as
+ * raw CSS and inject it once into the document `<head>`.
+ *
+ * Class names are exposed as constants so the Composable code references them in
+ * a type-safe-ish way ([Styles.card], [Styles.btnPrimary], ...).
+ */
+object Styles {
+    // App chrome
+    const val appShell = "app-shell"
+    const val appFrame = "app-frame"
+    const val appBar = "app-bar"
+    const val appBarIcon = "app-bar-icon"
+    const val appBarTitle = "app-bar-title"
+    const val appBarSpacer = "app-bar-spacer"
+    const val langToggle = "lang-toggle"
+
+    // Banner
+    const val banner = "banner"
+
+    // Content
+    const val content = "content"
+    const val homePrompt = "home-prompt"
+
+    // Home grid
+    const val grid = "grid"
+    const val card = "card"
+    const val cardLabel = "card-label"
+
+    // Services list
+    const val listCard = "list-card"
+    const val listIcon = "list-icon"
+    const val listDetails = "list-details"
+
+    // Offer / booking details
+    const val providerHeader = "provider-header"
+    const val avatar = "avatar"
+    const val rating = "rating"
+    const val sectionTitle = "section-title"
+    const val chipGroup = "chip-group"
+    const val chip = "chip"
+    const val chipActive = "active"
+    const val bodyMap = "body-map"
+    const val figure = "figure"
+    const val hotspot = "hotspot"
+    const val bodyMapLabel = "body-map-label"
+    const val textField = "text-field"
+    const val textArea = "text-area"
+    const val textLabel = "text-label"
+
+    // Footer / primary button
+    const val footer = "footer"
+    const val btnPrimary = "btn-primary"
+
+    // Material icon helper
+    const val materialIcons = "material-icons"
+
+    // Success animation
+    const val successOverlay = "success-overlay"
+    const val successVisible = "visible"
+    const val successCircle = "success-circle"
+    const val successCheck = "success-check"
+    const val successTitle = "success-title"
+    const val successMessage = "success-message"
+
+    // Language flag
+    const val langFlag = "lang-flag"
+
+    // Navigation drawer
+    const val scrim = "scrim"
+    const val scrimVisible = "visible"
+    const val drawer = "drawer"
+    const val drawerOpen = "open"
+    const val drawerHeader = "drawer-header"
+    const val drawerTitle = "drawer-title"
+    const val drawerItem = "drawer-item"
+    const val drawerItemActive = "active"
+    const val drawerSection = "drawer-section"
+    const val drawerNote = "drawer-note"
+    const val langOption = "lang-option"
+    const val langOptionActive = "active"
+
+    // Service list "from" price
+    const val listPrice = "list-price"
+
+    // Counter / stepper
+    const val counter = "counter"
+    const val counterBtn = "counter-btn"
+    const val counterValue = "counter-value"
+    const val counterUnit = "counter-unit"
+
+    // Option price hint
+    const val chipPrice = "chip-price"
+
+    // SVG body map
+    const val bodyMapSvg = "body-map-svg"
+    const val bodyRegion = "body-region"
+    const val bodyRegionActive = "active"
+    const val bodyMapHint = "body-map-hint"
+    const val bodyMapLegend = "body-map-legend"
+
+    // Reviews
+    const val reviewList = "review-list"
+    const val reviewCard = "review-card"
+    const val reviewHead = "review-head"
+    const val reviewAuthor = "review-author"
+    const val reviewStars = "review-stars"
+    const val reviewBody = "review-body"
+
+    // Price summary
+    const val priceSummary = "price-summary"
+    const val priceLine = "price-line"
+    const val priceLineAmount = "price-line-amount"
+    const val priceTotal = "price-total"
+
+    /**
+     * Injects [css] into the document head exactly once. Safe to call from
+     * `main()` on every load (guarded by an id).
+     */
+    fun install() {
+        if (document.getElementById("app-styles") != null) return
+        val style = document.createElement("style") as HTMLStyleElement
+        style.id = "app-styles"
+        style.textContent = css
+        document.head?.appendChild(style)
     }
 
-    val nav by style {
-        display(DisplayStyle.Flex)
-        gap(20.px)
-        marginBottom(30.px)
-    }
+    private val css = """
+        @import url('https://fonts.googleapis.com/css2?family=Puritan:ital,wght@0,400;0,700;1,400;1,700&display=swap');
+        @import url('https://fonts.googleapis.com/icon?family=Material+Icons');
 
-    val navLink by style {
-        color(Color("#0066cc"))
-        textDecoration("none")
-        padding(8.px, 16.px)
-        borderRadius(4.px)
-
-        hover {
-            backgroundColor(Color("#e0e0e0"))
+        :root {
+            --md-sys-color-primary: #6750A4;
+            --md-sys-color-primary-dark: #563f93;
+            --md-sys-color-on-primary: #FFFFFF;
+            --md-sys-color-primary-container: #EADDFF;
+            --md-sys-color-on-primary-container: #21005D;
+            --md-sys-color-surface: #FEF7FF;
+            --md-sys-color-on-surface: #1D1B20;
+            --md-sys-color-on-surface-variant: #49454F;
+            --md-sys-color-surface-variant: #E7E0EC;
+            --md-sys-color-outline: #79747E;
+            --md-sys-color-error: #B3261E;
+            --md-app-background: #f4f4f4;
+            --md-banner-fade: #FEF7FF;
+            --md-shadow: rgba(0, 0, 0, 0.15);
         }
-    }
 
-    val activeLink by style {
-        color(Color("#003366"))
-        fontWeight("bold")
-    }
+        @media (prefers-color-scheme: dark) {
+            :root {
+                --md-sys-color-primary: #D0BCFF;
+                --md-sys-color-primary-dark: #b69df8;
+                --md-sys-color-on-primary: #381E72;
+                --md-sys-color-primary-container: #4F378B;
+                --md-sys-color-on-primary-container: #EADDFF;
+                --md-sys-color-surface: #141218;
+                --md-sys-color-on-surface: #E6E0E9;
+                --md-sys-color-on-surface-variant: #CAC4D0;
+                --md-sys-color-surface-variant: #2B2930;
+                --md-sys-color-outline: #938F99;
+                --md-sys-color-error: #F2B8B5;
+                --md-app-background: #000000;
+                --md-banner-fade: #141218;
+                --md-shadow: rgba(0, 0, 0, 0.6);
+            }
+        }
 
-    val content by style {
-        padding(20.px)
-        backgroundColor(Color.white)
-        borderRadius(8.px)
-        property("box-shadow", "0 2px 4px rgba(0,0,0,0.1)")
-    }
+        * { box-sizing: border-box; }
+
+        html, body {
+            margin: 0;
+            padding: 0;
+            height: 100%;
+        }
+
+        body {
+            font-family: 'Puritan', system-ui, -apple-system, BlinkMacSystemFont, 'Segoe UI', sans-serif;
+            background-color: var(--md-app-background);
+            color: var(--md-sys-color-on-surface);
+        }
+
+        #root { height: 100%; }
+
+        .${appShell} {
+            display: flex;
+            justify-content: center;
+            align-items: stretch;
+            min-height: 100vh;
+            width: 100%;
+        }
+
+        /* Phone-like frame on desktop, full-bleed on small screens. */
+        .${appFrame} {
+            position: relative;
+            display: flex;
+            flex-direction: column;
+            width: 100%;
+            max-width: 480px;
+            min-height: 100vh;
+            background-color: var(--md-sys-color-surface);
+            color: var(--md-sys-color-on-surface);
+            overflow: hidden;
+        }
+
+        @media (min-width: 600px) {
+            .${appShell} { align-items: center; padding: 32px 16px; }
+            .${appFrame} {
+                min-height: 0;
+                height: 760px;
+                max-height: calc(100vh - 64px);
+                border-radius: 28px;
+                box-shadow: 0 10px 30px var(--md-shadow);
+            }
+        }
+
+        /* App bar */
+        .${appBar} {
+            flex: 0 0 auto;
+            height: 64px;
+            display: flex;
+            align-items: center;
+            padding: 0 8px 0 16px;
+            position: relative;
+            z-index: 10;
+        }
+        .${appBarIcon} {
+            margin-right: 8px;
+            cursor: pointer;
+            color: var(--md-sys-color-on-surface);
+            border-radius: 50%;
+            padding: 8px;
+            user-select: none;
+            transition: background-color 0.2s;
+        }
+        .${appBarIcon}:hover { background-color: var(--md-sys-color-surface-variant); }
+        .${appBarTitle} {
+            font-size: 22px;
+            font-weight: 400;
+            margin: 0 8px;
+        }
+        .${appBarSpacer} { flex: 1 1 auto; }
+        .${langToggle} {
+            border: 1px solid var(--md-sys-color-outline);
+            background: transparent;
+            color: var(--md-sys-color-on-surface);
+            font-family: inherit;
+            font-size: 13px;
+            font-weight: 700;
+            padding: 6px 12px;
+            border-radius: 100px;
+            cursor: pointer;
+            transition: background-color 0.2s;
+        }
+        .${langToggle}:hover { background-color: var(--md-sys-color-surface-variant); }
+
+        /* Banner image area that fades to the surface colour at the top */
+        .${banner} {
+            flex: 0 0 auto;
+            height: 160px;
+            margin: 0 0 8px 0;
+            background-color: var(--md-sys-color-primary-container);
+            background-size: cover;
+            background-position: center;
+            position: relative;
+        }
+        .${banner}::after {
+            content: "";
+            position: absolute;
+            inset: 0;
+            /* Fades from the surface colour (white in light mode) at the top
+               down into the image so the banner blends into the app bar. */
+            background: linear-gradient(to top, transparent 55%, var(--md-banner-fade) 100%);
+        }
+
+        /* Scrollable content region */
+        .${content} {
+            flex: 1 1 auto;
+            overflow-y: auto;
+            padding: 8px 16px 16px 16px;
+            -ms-overflow-style: none;
+            scrollbar-width: none;
+        }
+        .${content}::-webkit-scrollbar { display: none; }
+
+        .${homePrompt} {
+            margin: 8px 0 4px 0;
+            color: var(--md-sys-color-on-surface-variant);
+        }
+
+        /* Home grid */
+        .${grid} {
+            display: grid;
+            grid-template-columns: 1fr 1fr;
+            gap: 16px;
+            margin-top: 8px;
+        }
+        @media (min-width: 420px) {
+            .${grid} { grid-template-columns: repeat(3, 1fr); }
+        }
+        .${card} {
+            background-color: var(--md-sys-color-surface-variant);
+            border-radius: 16px;
+            padding: 20px 12px;
+            display: flex;
+            flex-direction: column;
+            align-items: center;
+            justify-content: center;
+            text-align: center;
+            cursor: pointer;
+            border: none;
+            color: var(--md-sys-color-on-surface);
+            font-family: inherit;
+            transition: background-color 0.2s, transform 0.1s;
+        }
+        .${card}:hover { background-color: var(--md-sys-color-primary-container); }
+        .${card}:active { transform: scale(0.97); }
+        .${card} .${materialIcons} {
+            font-size: 32px;
+            color: var(--md-sys-color-primary);
+            margin-bottom: 8px;
+        }
+        .${cardLabel} { font-size: 14px; font-weight: 700; }
+
+        /* Services list */
+        .${listCard} {
+            background-color: var(--md-sys-color-surface-variant);
+            border-radius: 16px;
+            padding: 16px;
+            margin-bottom: 12px;
+            display: flex;
+            align-items: center;
+            cursor: pointer;
+            transition: background-color 0.2s, transform 0.1s;
+        }
+        .${listCard}:hover { background-color: var(--md-sys-color-primary-container); }
+        .${listCard}:active { transform: scale(0.99); }
+        .${listIcon} {
+            font-size: 40px;
+            color: var(--md-sys-color-primary);
+            margin-right: 16px;
+        }
+        .${listDetails} h2 { font-size: 16px; margin: 0 0 4px 0; font-weight: 700; }
+        .${listDetails} p { font-size: 14px; margin: 0; color: var(--md-sys-color-on-surface-variant); }
+
+        /* Provider header */
+        .${providerHeader} { text-align: center; margin-bottom: 24px; }
+        .${avatar} {
+            width: 80px;
+            height: 80px;
+            background-color: var(--md-sys-color-primary-container);
+            border-radius: 50%;
+            display: inline-flex;
+            align-items: center;
+            justify-content: center;
+            font-size: 36px;
+            color: var(--md-sys-color-primary);
+            margin-bottom: 12px;
+        }
+        .${avatar} .${materialIcons} { font-size: 36px; }
+        .${providerHeader} h2 { margin: 0 0 4px 0; font-size: 24px; font-weight: 400; }
+        .${rating} { margin: 0; font-size: 14px; color: var(--md-sys-color-primary); font-weight: 700; }
+
+        .${sectionTitle} { font-size: 16px; font-weight: 700; margin: 24px 0 12px 0; }
+
+        /* Chips */
+        .${chipGroup} { display: flex; gap: 8px; flex-wrap: wrap; }
+        .${chip} {
+            padding: 8px 16px;
+            border-radius: 8px;
+            border: 1px solid var(--md-sys-color-outline);
+            font-size: 14px;
+            font-weight: 700;
+            cursor: pointer;
+            background: transparent;
+            color: var(--md-sys-color-on-surface);
+            font-family: inherit;
+            transition: background-color 0.2s, border-color 0.2s;
+        }
+        .${chip}.${chipActive} {
+            background-color: var(--md-sys-color-primary-container);
+            border-color: transparent;
+            color: var(--md-sys-color-on-primary-container);
+        }
+
+        /* Body map */
+        .${bodyMap} {
+            background-color: var(--md-sys-color-surface-variant);
+            border-radius: 16px;
+            padding: 16px;
+            text-align: center;
+            position: relative;
+            margin-bottom: 16px;
+        }
+        .${figure} {
+            width: 100px;
+            height: 180px;
+            background: var(--md-sys-color-outline);
+            margin: 0 auto;
+            border-radius: 50px;
+            position: relative;
+            opacity: 0.6;
+        }
+        .${hotspot} {
+            position: absolute;
+            width: 24px;
+            height: 24px;
+            background-color: var(--md-sys-color-error);
+            border-radius: 50%;
+            top: 40%;
+            left: 50%;
+            transform: translate(-50%, -50%);
+            border: 3px solid var(--md-sys-color-surface);
+            box-shadow: 0 2px 4px var(--md-shadow);
+        }
+        .${bodyMapLabel} { margin: 12px 0 0 0; font-size: 14px; font-weight: 700; color: var(--md-sys-color-error); }
+
+        /* Text field */
+        .${textField} { position: relative; margin-bottom: 24px; margin-top: 8px; }
+        .${textArea} {
+            width: 100%;
+            box-sizing: border-box;
+            padding: 16px;
+            border: 1px solid var(--md-sys-color-outline);
+            border-radius: 8px;
+            background: transparent;
+            font-family: inherit;
+            font-size: 16px;
+            resize: none;
+            min-height: 100px;
+            color: var(--md-sys-color-on-surface);
+        }
+        .${textArea}:focus { outline: 2px solid var(--md-sys-color-primary); border-color: transparent; }
+        .${textLabel} {
+            position: absolute;
+            top: -8px;
+            left: 12px;
+            background: var(--md-sys-color-surface);
+            padding: 0 4px;
+            font-size: 12px;
+            color: var(--md-sys-color-primary);
+        }
+
+        /* Footer + primary button */
+        .${footer} {
+            flex: 0 0 auto;
+            padding: 12px 16px 16px 16px;
+            background: linear-gradient(to top, var(--md-sys-color-surface) 70%, transparent);
+        }
+        .${btnPrimary} {
+            /* Slight gradient on the button */
+            background: linear-gradient(135deg, var(--md-sys-color-primary), var(--md-sys-color-primary-dark));
+            color: var(--md-sys-color-on-primary);
+            border: none;
+            border-radius: 100px;
+            padding: 16px 24px;
+            font-size: 16px;
+            font-weight: 700;
+            font-family: inherit;
+            width: 100%;
+            cursor: pointer;
+            box-shadow: 0 4px 12px var(--md-shadow);
+            display: flex;
+            align-items: center;
+            justify-content: center;
+            gap: 8px;
+            transition: filter 0.2s, transform 0.1s;
+        }
+        .${btnPrimary}:hover { filter: brightness(1.07); }
+        .${btnPrimary}:active { transform: scale(0.98); }
+        .${btnPrimary}:disabled { filter: grayscale(0.3) brightness(0.9); cursor: default; }
+
+        /* Success animation overlay */
+        .${successOverlay} {
+            position: absolute;
+            inset: 0;
+            background-color: var(--md-sys-color-surface);
+            display: flex;
+            flex-direction: column;
+            align-items: center;
+            justify-content: center;
+            text-align: center;
+            padding: 32px;
+            gap: 12px;
+            opacity: 0;
+            pointer-events: none;
+            transition: opacity 0.25s ease;
+            z-index: 20;
+        }
+        .${successOverlay}.${successVisible} { opacity: 1; pointer-events: auto; }
+
+        .${successCircle} {
+            width: 96px;
+            height: 96px;
+            border-radius: 50%;
+            background: linear-gradient(135deg, var(--md-sys-color-primary), var(--md-sys-color-primary-dark));
+            display: flex;
+            align-items: center;
+            justify-content: center;
+            transform: scale(0);
+            animation: pop 0.4s cubic-bezier(0.18, 0.89, 0.32, 1.28) forwards;
+        }
+        .${successOverlay}.${successVisible} .${successCircle} { animation: pop 0.4s cubic-bezier(0.18, 0.89, 0.32, 1.28) forwards; }
+        .${successCheck} {
+            color: var(--md-sys-color-on-primary);
+            font-size: 56px;
+            opacity: 0;
+            animation: fadeInUp 0.3s ease 0.3s forwards;
+        }
+        .${successTitle} {
+            font-size: 22px;
+            font-weight: 700;
+            margin: 8px 0 0 0;
+            opacity: 0;
+            animation: fadeInUp 0.3s ease 0.4s forwards;
+        }
+        .${successMessage} {
+            font-size: 15px;
+            color: var(--md-sys-color-on-surface-variant);
+            margin: 0;
+            max-width: 280px;
+            opacity: 0;
+            animation: fadeInUp 0.3s ease 0.5s forwards;
+        }
+
+        @keyframes pop {
+            0% { transform: scale(0); }
+            100% { transform: scale(1); }
+        }
+        @keyframes fadeInUp {
+            0% { opacity: 0; transform: translateY(8px); }
+            100% { opacity: 1; transform: translateY(0); }
+        }
+
+        /* Language flag in the app-bar toggle */
+        .${langToggle} { display: inline-flex; align-items: center; gap: 6px; }
+        .${langFlag} { font-size: 16px; line-height: 1; }
+
+        /* Navigation drawer */
+        .${scrim} {
+            position: absolute;
+            inset: 0;
+            background: rgba(0, 0, 0, 0.4);
+            opacity: 0;
+            pointer-events: none;
+            transition: opacity 0.25s ease;
+            z-index: 30;
+        }
+        .${scrim}.${scrimVisible} { opacity: 1; pointer-events: auto; }
+        .${drawer} {
+            position: absolute;
+            top: 0;
+            left: 0;
+            bottom: 0;
+            width: 78%;
+            max-width: 300px;
+            background-color: var(--md-sys-color-surface);
+            color: var(--md-sys-color-on-surface);
+            box-shadow: 2px 0 16px var(--md-shadow);
+            transform: translateX(-105%);
+            transition: transform 0.28s cubic-bezier(0.2, 0, 0, 1);
+            z-index: 31;
+            display: flex;
+            flex-direction: column;
+            padding: 12px;
+            overflow-y: auto;
+        }
+        .${drawer}.${drawerOpen} { transform: translateX(0); }
+        .${drawerHeader} {
+            display: flex;
+            align-items: center;
+            justify-content: space-between;
+            padding: 8px 8px 16px 8px;
+        }
+        .${drawerTitle} { font-size: 18px; font-weight: 700; margin: 0; }
+        .${drawerItem} {
+            display: flex;
+            align-items: center;
+            gap: 16px;
+            padding: 12px;
+            border-radius: 100px;
+            cursor: pointer;
+            border: none;
+            background: transparent;
+            color: var(--md-sys-color-on-surface);
+            font-family: inherit;
+            font-size: 15px;
+            font-weight: 700;
+            width: 100%;
+            text-align: left;
+            transition: background-color 0.2s;
+        }
+        .${drawerItem}:hover { background-color: var(--md-sys-color-surface-variant); }
+        .${drawerItem}.${drawerItemActive} { background-color: var(--md-sys-color-primary-container); color: var(--md-sys-color-on-primary-container); }
+        .${drawerItem} .${materialIcons} { color: var(--md-sys-color-primary); font-size: 22px; }
+        .${drawerSection} {
+            font-size: 12px;
+            font-weight: 700;
+            text-transform: uppercase;
+            letter-spacing: 0.5px;
+            color: var(--md-sys-color-on-surface-variant);
+            margin: 16px 12px 4px 12px;
+        }
+        .${drawerNote} {
+            font-size: 12px;
+            color: var(--md-sys-color-on-surface-variant);
+            margin: 12px;
+        }
+        .${langOption} {
+            display: flex;
+            align-items: center;
+            gap: 12px;
+            padding: 10px 12px;
+            border-radius: 12px;
+            cursor: pointer;
+            border: none;
+            background: transparent;
+            color: var(--md-sys-color-on-surface);
+            font-family: inherit;
+            font-size: 15px;
+            font-weight: 700;
+            width: 100%;
+            text-align: left;
+            transition: background-color 0.2s;
+        }
+        .${langOption}:hover { background-color: var(--md-sys-color-surface-variant); }
+        .${langOption}.${langOptionActive} { background-color: var(--md-sys-color-primary-container); color: var(--md-sys-color-on-primary-container); }
+        .${langOption} .${langFlag} { font-size: 22px; }
+
+        /* "from" price in service list */
+        .${listPrice} {
+            margin-left: auto;
+            padding-left: 12px;
+            text-align: right;
+            font-size: 13px;
+            color: var(--md-sys-color-on-surface-variant);
+            white-space: nowrap;
+        }
+        .${listPrice} strong { display: block; font-size: 15px; color: var(--md-sys-color-primary); }
+
+        /* Counter / stepper */
+        .${counter} {
+            display: flex;
+            align-items: center;
+            gap: 16px;
+            background-color: var(--md-sys-color-surface-variant);
+            border-radius: 16px;
+            padding: 10px 16px;
+        }
+        .${counterBtn} {
+            width: 40px;
+            height: 40px;
+            border-radius: 50%;
+            border: 1px solid var(--md-sys-color-outline);
+            background: transparent;
+            color: var(--md-sys-color-on-surface);
+            font-size: 22px;
+            cursor: pointer;
+            display: flex;
+            align-items: center;
+            justify-content: center;
+            transition: background-color 0.2s;
+        }
+        .${counterBtn}:hover:not(:disabled) { background-color: var(--md-sys-color-primary-container); }
+        .${counterBtn}:disabled { opacity: 0.4; cursor: default; }
+        .${counterValue} { font-size: 20px; font-weight: 700; min-width: 28px; text-align: center; }
+        .${counterUnit} { font-size: 14px; color: var(--md-sys-color-on-surface-variant); margin-left: auto; }
+
+        /* price hint inside chips */
+        .${chipPrice} { font-weight: 400; opacity: 0.85; margin-left: 4px; font-size: 12px; }
+
+        /* SVG body map */
+        .${bodyMapSvg} {
+            display: block;
+            margin: 0 auto;
+            width: 130px;
+            height: auto;
+            max-height: 230px;
+        }
+        .${bodyRegion} {
+            fill: var(--md-sys-color-outline);
+            opacity: 0.45;
+            cursor: pointer;
+            transition: fill 0.15s, opacity 0.15s;
+        }
+        .${bodyRegion}:hover { opacity: 0.7; }
+        .${bodyRegion}.${bodyRegionActive} { fill: var(--md-sys-color-primary); opacity: 1; }
+        .${bodyMapHint} {
+            margin: 12px 0 0 0;
+            font-size: 13px;
+            text-align: center;
+            color: var(--md-sys-color-on-surface-variant);
+        }
+        .${bodyMapLegend} {
+            display: flex;
+            flex-wrap: wrap;
+            gap: 6px;
+            justify-content: center;
+            margin-top: 8px;
+        }
+
+        /* Reviews */
+        .${reviewList} { display: flex; flex-direction: column; gap: 12px; }
+        .${reviewCard} {
+            background-color: var(--md-sys-color-surface-variant);
+            border-radius: 16px;
+            padding: 12px 16px;
+        }
+        .${reviewHead} { display: flex; align-items: center; justify-content: space-between; margin-bottom: 4px; }
+        .${reviewAuthor} { font-weight: 700; font-size: 14px; }
+        .${reviewStars} { font-size: 13px; color: #f5a623; letter-spacing: 1px; }
+        .${reviewBody} { margin: 0; font-size: 14px; color: var(--md-sys-color-on-surface-variant); }
+
+        /* Price summary */
+        .${priceSummary} {
+            background-color: var(--md-sys-color-surface-variant);
+            border-radius: 16px;
+            padding: 12px 16px;
+            margin-top: 8px;
+        }
+        .${priceLine} {
+            display: flex;
+            justify-content: space-between;
+            gap: 12px;
+            font-size: 14px;
+            color: var(--md-sys-color-on-surface-variant);
+            padding: 3px 0;
+        }
+        .${priceLineAmount} { white-space: nowrap; }
+        .${priceTotal} {
+            display: flex;
+            justify-content: space-between;
+            gap: 12px;
+            font-size: 17px;
+            font-weight: 700;
+            color: var(--md-sys-color-on-surface);
+            margin-top: 8px;
+            padding-top: 8px;
+            border-top: 1px solid var(--md-sys-color-outline);
+        }
+    """.trimIndent()
 }
