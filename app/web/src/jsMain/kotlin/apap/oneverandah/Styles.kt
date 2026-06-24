@@ -228,7 +228,7 @@ object Styles {
             height: 64px;
             display: flex;
             align-items: center;
-            padding: 0 8px 0 16px;
+            padding: 0 16px;
             position: relative;
             z-index: 10;
         }

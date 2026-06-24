@@ -47,6 +47,7 @@ fun ServicesScreen(
                 }
                 Div(attrs = { classes(Styles.listPrice) }) {
                     Text(strings.from)
+                    Span { Text(" ") }
                     Span { Text(service.basePrice.format(language)) }
                 }
             }
