@@ -1,0 +1,31 @@
+#! /bin/bash
+
+./gradlew :kotlinUpgradeYarnLock
+./gradlew :app:web:jsBrowserProductionWebpack
+
+shopt -s nullglob
+files=(
+  app/web/build/kotlin-webpack/js/productionExecutable/*
+  app/web/build/processedResources/js/main/*
+)
+
+CONTROL_PATH="/tmp/ssh-%r@%h:%p"
+HOST="root@oneverandah.app"
+
+# 1. Establish the master connection.
+# This ensures you only enter the password once and avoids race conditions.
+echo "Opening connection to $HOST..."
+ssh -o ControlMaster=auto -o ControlPath="$CONTROL_PATH" -o ControlPersist=600 "$HOST" exit || exit 1
+
+# 2. Run parallel uploads using the established connection.
+for i in {0..2}; do
+  (
+    for ((j=i; j<${#files[@]}; j+=3)); do
+      echo "put \"${files[j]}\""
+    done | sftp -o ControlPath="$CONTROL_PATH" "$HOST":/root/ui
+  ) &
+done
+wait
+
+# 3. Close the master connection.
+ssh -o ControlPath="$CONTROL_PATH" -O exit "$HOST"

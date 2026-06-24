@@ -125,8 +125,6 @@ fun NavigationDrawer(
                 Text(stringsFor(lang).languageName)
             }
         }
-
-        Div(attrs = { classes(Styles.drawerNote) }) { Text(strings.menuTheme) }
     }
 }
 
@@ -154,6 +152,7 @@ fun Scaffold(
     bannerImageUrl: String? = null,
     footer: (ContentBuilder<HTMLElement>)? = null,
     overlay: (@Composable () -> Unit)? = null,
+    lockScroll: Boolean = false,
     content: ContentBuilder<HTMLDivElement>,
 ) {
     var drawerOpen by remember { mutableStateOf(false) }
@@ -168,7 +167,10 @@ fun Scaffold(
                     }
                 })
             }
-            Div(attrs = { classes(Styles.content) }, content = content)
+            Div(attrs = {
+                classes(Styles.content)
+                if (lockScroll) classes(Styles.contentLocked)
+            }, content = content)
             if (footer != null) {
                 Div(attrs = { classes(Styles.footer) }, content = footer)
             }

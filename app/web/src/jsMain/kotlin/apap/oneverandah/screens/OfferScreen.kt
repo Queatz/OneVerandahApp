@@ -76,6 +76,7 @@ fun OfferScreen(
         onBack = onBack,
         onHome = onHome,
         showBanner = true,
+        lockScroll = showBookingDialog || phase == BookingPhase.SUCCESS,
         footer = {
             PrimaryButton(
                 label = if (phase == BookingPhase.SUBMITTING) strings.booking else strings.bookThisService,
@@ -86,6 +87,31 @@ fun OfferScreen(
             }
         },
         overlay = {
+            BookingDialog(
+                visible = showBookingDialog,
+                serviceTitle = service.title.resolve(language),
+                breakdown = breakdown,
+                totalLabel = strings.total,
+                language = language,
+                strings = strings,
+                initialZalo = dialogZalo ?: selection.zalo,
+                initialMessage = dialogMessage ?: selection.comment,
+                onZaloChange = { dialogZalo = it.ifBlank { null } },
+                onMessageChange = { dialogMessage = it.ifBlank { null } },
+                onDismiss = { showBookingDialog = false },
+                onConfirm = { zalo, message ->
+                    selection = selection.copy(zalo = zalo, comment = message ?: selection.comment)
+                    showBookingDialog = false
+                    @Suppress("UNUSED_VARIABLE")
+                    val request = BookingRequest(
+                        serviceId = service.id,
+                        selection = selection,
+                        totalVnd = breakdown.total.amountVnd,
+                    )
+                    phase = BookingPhase.SUBMITTING
+                    window.setTimeout({ phase = BookingPhase.SUCCESS }, 800)
+                },
+            )
             SuccessOverlay(
                 visible = phase == BookingPhase.SUCCESS,
                 title = strings.bookingSuccessTitle,
@@ -233,32 +259,5 @@ fun OfferScreen(
         // Live price summary
         SectionTitle(strings.priceSummary)
         PriceSummaryView(breakdown = breakdown, totalLabel = strings.total, language = language)
-
-        // Booking dialog
-        BookingDialog(
-            visible = showBookingDialog,
-            serviceTitle = service.title.resolve(language),
-            breakdown = breakdown,
-            totalLabel = strings.total,
-            language = language,
-            strings = strings,
-            initialZalo = dialogZalo ?: selection.zalo,
-            initialMessage = dialogMessage ?: selection.comment,
-            onZaloChange = { dialogZalo = it.ifBlank { null } },
-            onMessageChange = { dialogMessage = it.ifBlank { null } },
-            onDismiss = { showBookingDialog = false },
-            onConfirm = { zalo, message ->
-                selection = selection.copy(zalo = zalo, comment = message ?: selection.comment)
-                showBookingDialog = false
-                @Suppress("UNUSED_VARIABLE")
-                val request = BookingRequest(
-                    serviceId = service.id,
-                    selection = selection,
-                    totalVnd = breakdown.total.amountVnd,
-                )
-                phase = BookingPhase.SUBMITTING
-                window.setTimeout({ phase = BookingPhase.SUCCESS }, 800)
-            },
-        )
     }
 }

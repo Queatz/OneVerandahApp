@@ -1,6 +1,11 @@
 package apap.oneverandah.components
 
 import androidx.compose.runtime.Composable
+import androidx.compose.runtime.LaunchedEffect
+import androidx.compose.runtime.getValue
+import androidx.compose.runtime.mutableStateOf
+import androidx.compose.runtime.remember
+import androidx.compose.runtime.setValue
 import apap.oneverandah.Styles
 import apap.oneverandah.model.CounterOption
 import apap.oneverandah.model.Language
@@ -15,7 +20,9 @@ import org.jetbrains.compose.web.dom.P
 import org.jetbrains.compose.web.dom.Span
 import org.jetbrains.compose.web.dom.Text
 import org.jetbrains.compose.web.dom.TextArea
+import org.jetbrains.compose.web.attributes.InputType
 import org.jetbrains.compose.web.attributes.placeholder
+import org.jetbrains.compose.web.attributes.value
 
 /** Formats a price delta as a signed hint, e.g. `+40.000 ₫`. Blank when zero. */
 fun priceHint(amount: Money, language: Language): String {
@@ -120,8 +127,13 @@ fun PriceSummaryView(
 }
 
 /**
- * Modal dialog shown when pressing "Book This Service".
- * Displays service name (bold), price summary, message field and required Zalo field.
+ * Modal bottom-sheet dialog shown when pressing "Book This Service".
+ *
+ * Follows the app's Material-3 design language: a dimmed scrim, a rounded
+ * bottom sheet with a drag handle, the service name in bold, the same price
+ * summary as the offer screen, an optional message field and a required
+ * Zalo-enabled phone number. Always rendered so the open/close transition
+ * animates via the [visible] toggle.
  */
 @Composable
 fun BookingDialog(
@@ -138,59 +150,142 @@ fun BookingDialog(
     onDismiss: () -> Unit,
     onConfirm: (zalo: String, message: String?) -> Unit,
 ) {
-    if (!visible) return
+    val zalo = initialZalo.orEmpty()
+    val message = initialMessage.orEmpty()
 
-    Div {
-        // Simple overlay container - styles can be added later
-        Div(attrs = { classes(Styles.textField) }) {
-            P { Text(strings.bookingDialogTitle) }
-            // Service name bold
-            P { 
-                // bold via style or assume
-                Text(serviceTitle)
+    // Drag-to-dismiss state for the bottom sheet handle.
+    // `dragStart` is the pointer Y where the gesture began (null when idle),
+    // `dragY` is how far the sheet is currently pulled down (>= 0).
+    var dragStart by remember { mutableStateOf<Double?>(null) }
+    var dragY by remember { mutableStateOf(0.0) }
+    // Distance the sheet must be pulled down before it dismisses on release.
+    val dismissThreshold = 120.0
+
+    // Whenever the sheet closes, fully release any in-progress drag so it
+    // doesn't reopen stuck in the "grabbing" state (e.g. when the pointer was
+    // released outside the sheet and never fired mouseup/touchend here).
+    LaunchedEffect(visible) {
+        if (!visible) {
+            dragStart = null
+            dragY = 0.0
+        }
+    }
+
+    // Scrim covers the frame; clicking it dismisses the sheet.
+    Div(attrs = {
+        classes(Styles.dialogScrim)
+        if (visible) classes(Styles.dialogScrimVisible)
+        attr("role", "presentation")
+        onClick { onDismiss() }
+    }) {
+        Div(attrs = {
+            classes(Styles.dialogSheet)
+            attr("role", "dialog")
+            attr("aria-modal", "true")
+            // While dragging, follow the pointer and suppress the open
+            // transition so the sheet tracks the finger 1:1.
+            if (dragStart != null) {
+                style {
+                    property("transform", "translateY(${dragY}px)")
+                    property("transition", "none")
+                }
+            }
+            // Keep clicks inside the sheet from bubbling to the scrim.
+            onClick { it.stopPropagation() }
+            // Track the drag on the sheet itself: as it translates down, the
+            // grip stays under the pointer, so move/up keep firing here.
+            onMouseMove { e ->
+                if (dragStart != null) dragY = (e.clientY - dragStart!!).coerceAtLeast(0.0)
+            }
+            onTouchMove { e ->
+                val start = dragStart ?: return@onTouchMove
+                val touch = e.touches.item(0) ?: return@onTouchMove
+                dragY = (touch.clientY - start).coerceAtLeast(0.0)
+            }
+            onMouseUp {
+                if (dragStart != null) {
+                    if (dragY > dismissThreshold) onDismiss()
+                    dragStart = null
+                    dragY = 0.0
+                }
+            }
+            onTouchEnd {
+                if (dragStart != null) {
+                    if (dragY > dismissThreshold) onDismiss()
+                    dragStart = null
+                    dragY = 0.0
+                }
+            }
+        }) {
+            // Grab handle: start a drag gesture from here.
+            Div(attrs = {
+                classes(Styles.dialogGrip)
+                attr("role", "button")
+                attr("aria-label", strings.close)
+                onMouseDown { e ->
+                    dragStart = e.clientY.toDouble()
+                    dragY = 0.0
+                }
+                onTouchStart { e ->
+                    val touch = e.touches.item(0)
+                    if (touch != null) {
+                        dragStart = touch.clientY.toDouble()
+                        dragY = 0.0
+                    }
+                }
+            }) {
+                Div(attrs = { classes(Styles.dialogHandle) })
             }
 
-            // Price summary
+            Div(attrs = { classes(Styles.dialogHeader) }) {
+                P(attrs = { classes(Styles.dialogTitle) }) { Text(strings.bookingDialogTitle) }
+                P(attrs = { classes(Styles.dialogService) }) { Text(serviceTitle) }
+            }
+
+            // Same price summary as the offer screen.
             PriceSummaryView(breakdown = breakdown, totalLabel = totalLabel, language = language)
 
-            // Message field
-            Div(attrs = { classes(Styles.textField) }) {
-                Label(attrs = { classes(Styles.textLabel) }) {
-                    Text(strings.messageLabel)
+            Div(attrs = { classes(Styles.dialogBody) }) {
+                // Optional message field.
+                Div(attrs = { classes(Styles.textField) }) {
+                    Label(attrs = { classes(Styles.textLabel) }) {
+                        Text(strings.messageLabel)
+                    }
+                    TextArea(value = message) {
+                        classes(Styles.textArea)
+                        placeholder(strings.messagePlaceholder)
+                        onInput { onMessageChange(it.value) }
+                    }
                 }
-                TextArea(value = initialMessage ?: "") {
-                    classes(Styles.textArea)
-                    placeholder(strings.messagePlaceholder)
-                    onInput { onMessageChange(it.value.ifBlank { "" }) }
+
+                // Required Zalo-enabled phone number.
+                Div(attrs = { classes(Styles.textField) }) {
+                    Label(attrs = { classes(Styles.textLabel) }) {
+                        Text(strings.zaloLabel)
+                    }
+                    Input(type = InputType.Tel) {
+                        classes(Styles.textInput)
+                        value(zalo)
+                        placeholder(strings.zaloPlaceholder)
+                        attr("required", "")
+                        onInput { onZaloChange(it.value) }
+                    }
                 }
             }
 
-            // Zalo field (required)
-            Div(attrs = { classes(Styles.textField) }) {
-                Label(attrs = { classes(Styles.textLabel) }) {
-                    Text(strings.zaloLabel)
-                }
-                TextArea(value = initialZalo ?: "") {
-                    classes(Styles.textArea)
-                    placeholder(strings.zaloPlaceholder)
-                    onInput { onZaloChange(it.value.ifBlank { "" }) }
-                }
-            }
-
-            // Actions
-            Div {
+            Div(attrs = { classes(Styles.dialogActions) }) {
                 Button(attrs = {
+                    classes(Styles.btnText)
                     onClick { onDismiss() }
                 }) { Text(strings.close) }
 
-                Button(attrs = {
-                    onClick {
-                        val zalo = initialZalo?.trim() ?: ""
-                        if (zalo.isNotEmpty()) {
-                            onConfirm(zalo, initialMessage)
-                        }
-                    }
-                }) { Text(strings.confirmBooking) }
+                PrimaryButton(
+                    label = strings.confirmBooking,
+                    icon = "check_circle",
+                    enabled = zalo.isNotBlank(),
+                ) {
+                    if (zalo.isNotBlank()) onConfirm(zalo.trim(), message.ifBlank { null })
+                }
             }
         }
     }

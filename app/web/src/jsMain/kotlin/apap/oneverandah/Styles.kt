@@ -122,6 +122,22 @@ object Styles {
     const val priceLineAmount = "price-line-amount"
     const val priceTotal = "price-total"
 
+    // Booking dialog (modal bottom sheet)
+    const val dialogScrim = "dialog-scrim"
+    const val dialogScrimVisible = "visible"
+    const val dialogSheet = "dialog-sheet"
+    const val dialogSheetVisible = "visible"
+    const val dialogGrip = "dialog-grip"
+    const val dialogHandle = "dialog-handle"
+    const val dialogHeader = "dialog-header"
+    const val dialogTitle = "dialog-title"
+    const val dialogService = "dialog-service"
+    const val dialogBody = "dialog-body"
+    const val dialogActions = "dialog-actions"
+    const val textInput = "text-input"
+    const val btnText = "btn-text"
+    const val contentLocked = "content-locked"
+
     /**
      * Injects [css] into the document head exactly once. Safe to call from
      * `main()` on every load (guarded by an id).
@@ -205,7 +221,12 @@ object Styles {
             flex-direction: column;
             width: 100%;
             max-width: 480px;
-            min-height: 100vh;
+            /* Lock the frame to the viewport height so .content is the only
+               scroll container. This keeps overlays (scrim/bottom sheet)
+               covering exactly the visible surface and lets us lock page
+               scrolling while a modal is open. */
+            height: 100vh;
+            height: 100dvh;
             background-color: var(--md-sys-color-surface);
             color: var(--md-sys-color-on-surface);
             overflow: hidden;
@@ -290,6 +311,7 @@ object Styles {
             scrollbar-width: none;
         }
         .${content}::-webkit-scrollbar { display: none; }
+        .${content}.${contentLocked} { overflow: hidden; }
 
         .${homePrompt} {
             margin: 8px 0;
@@ -746,5 +768,100 @@ object Styles {
             padding-top: 8px;
             border-top: 1px solid var(--md-sys-color-outline);
         }
+
+        /* Booking dialog (modal bottom sheet) */
+        .${dialogScrim} {
+            position: absolute;
+            inset: 0;
+            background: rgba(0, 0, 0, 0.4);
+            display: flex;
+            align-items: flex-end;
+            justify-content: center;
+            opacity: 0;
+            pointer-events: none;
+            transition: opacity 0.25s ease;
+            z-index: 40;
+        }
+        .${dialogScrim}.${dialogScrimVisible} { opacity: 1; pointer-events: auto; }
+        .${dialogSheet} {
+            width: 100%;
+            background-color: var(--md-sys-color-surface);
+            color: var(--md-sys-color-on-surface);
+            border-radius: 28px 28px 0 0;
+            box-shadow: 0 -8px 24px var(--md-shadow);
+            padding: 12px 24px 24px 24px;
+            max-height: 90%;
+            overflow-y: auto;
+            transform: translateY(100%);
+            transition: transform 0.3s cubic-bezier(0.2, 0, 0, 1);
+        }
+        .${dialogScrim}.${dialogScrimVisible} .${dialogSheet} { transform: translateY(0); }
+        /* Grab area around the handle: large hit target, no native gestures. */
+        .${dialogGrip} {
+            display: flex;
+            justify-content: center;
+            align-items: center;
+            padding: 8px 0 16px 0;
+            margin: -12px -24px 0 -24px;
+            cursor: grab;
+            touch-action: none;
+            user-select: none;
+        }
+        .${dialogGrip}:active { cursor: grabbing; }
+        .${dialogHandle} {
+            width: 36px;
+            height: 4px;
+            border-radius: 100px;
+            background-color: var(--md-sys-color-outline);
+            opacity: 0.4;
+        }
+        .${dialogHeader} { margin-bottom: 8px; }
+        .${dialogTitle} {
+            font-size: 14px;
+            font-weight: 700;
+            text-transform: uppercase;
+            letter-spacing: 0.5px;
+            color: var(--md-sys-color-on-surface-variant);
+            margin: 0 0 4px 0;
+        }
+        .${dialogService} {
+            font-size: 22px;
+            font-weight: 700;
+            color: var(--md-sys-color-on-surface);
+            margin: 0;
+        }
+        .${dialogBody} { margin-top: 16px; }
+        .${textInput} {
+            width: 100%;
+            box-sizing: border-box;
+            padding: 16px;
+            border: 1px solid var(--md-sys-color-outline);
+            border-radius: 8px;
+            background: transparent;
+            font-family: inherit;
+            font-size: 16px;
+            color: var(--md-sys-color-on-surface);
+        }
+        .${textInput}:focus { outline: 2px solid var(--md-sys-color-primary); border-color: transparent; }
+        .${dialogActions} {
+            display: flex;
+            align-items: center;
+            gap: 8px;
+            margin-top: 24px;
+        }
+        .${btnText} {
+            background: transparent;
+            border: none;
+            color: var(--md-sys-color-primary);
+            font-family: inherit;
+            font-size: 15px;
+            font-weight: 700;
+            padding: 14px 20px;
+            border-radius: 100px;
+            cursor: pointer;
+            transition: background-color 0.2s;
+        }
+        .${btnText}:hover { background-color: var(--md-sys-color-surface-variant); }
+        .${dialogActions} .${btnPrimary} { width: auto; flex: 1 1 auto; }
     """.trimIndent()
 }
