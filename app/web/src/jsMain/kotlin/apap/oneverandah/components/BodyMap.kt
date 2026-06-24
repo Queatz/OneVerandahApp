@@ -97,7 +97,7 @@ fun BodyMapSelector(
                 }
                 attr("title", if (side == Side.FRONT) strings.viewBack else strings.viewFront)
             }) {
-                MaterialIcon("cached")
+                MaterialSymbol("cached")
             }
         }
 

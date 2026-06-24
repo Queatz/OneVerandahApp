@@ -2,7 +2,7 @@ package apap.oneverandah.screens
 
 import androidx.compose.runtime.Composable
 import apap.oneverandah.Styles
-import apap.oneverandah.components.MaterialIcon
+import apap.oneverandah.components.MaterialSymbol
 import apap.oneverandah.components.Scaffold
 import apap.oneverandah.data.Catalog
 import apap.oneverandah.i18n.Localization
@@ -28,7 +28,7 @@ fun HomeScreen(onCategorySelected: (String) -> Unit) {
                     attr("role", "button")
                     onClick { onCategorySelected(category.id) }
                 }) {
-                    MaterialIcon(category.icon)
+                    MaterialSymbol(category.icon)
                     Span(attrs = { classes(Styles.cardLabel) }) {
                         Text(category.title.resolve(language))
                     }

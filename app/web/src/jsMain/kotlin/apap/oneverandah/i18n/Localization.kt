@@ -54,10 +54,15 @@ data class UiStrings(
     val aboutText: String,
     val helpFeedback: String,
     val helpReportProblem: String,
+    val helpSubmit: String,
+    val helpPlaceholder: String,
+    val helpErrorRequired: String,
+    val helpSuccessTitle: String,
+    val helpSuccessMessage: String,
 )
 
 private val English = UiStrings(
-    appTitle = "One Verandah App",
+    appTitle = "One Verandah",
     homePrompt = "What are you looking for today?",
     reviews = { count -> "($count reviews)" },
     sectionBookingType = "Booking Type",
@@ -98,6 +103,11 @@ private val English = UiStrings(
     aboutText = "Made by One Verandah residents, for One Verandah residents.",
     helpFeedback = "Send us feedback",
     helpReportProblem = "Report a problem",
+    helpSubmit = "Submit",
+    helpPlaceholder = "Type your message here...",
+    helpErrorRequired = "Message is required",
+    helpSuccessTitle = "Thank you!",
+    helpSuccessMessage = "Your submission has been received. We appreciate your feedback!",
 )
 
 private val Vietnamese = UiStrings(
@@ -142,6 +152,11 @@ private val Vietnamese = UiStrings(
     aboutText = "Được thực hiện bởi cư dân One Verandah, dành cho cư dân One Verandah.",
     helpFeedback = "Gửi phản hồi cho chúng tôi",
     helpReportProblem = "Báo cáo sự cố",
+    helpSubmit = "Gửi",
+    helpPlaceholder = "Nhập tin nhắn của bạn tại đây...",
+    helpErrorRequired = "Vui lòng nhập tin nhắn",
+    helpSuccessTitle = "Cảm ơn bạn!",
+    helpSuccessMessage = "Ý kiến của bạn đã được ghi nhận. Chúng tôi rất trân trọng phản hồi của bạn!",
 )
 
 private val Chinese = UiStrings(
@@ -186,6 +201,11 @@ private val Chinese = UiStrings(
     aboutText = "由 One Verandah 居民制作，服务于 One Verandah 居民。",
     helpFeedback = "向我们发送反馈",
     helpReportProblem = "报告问题",
+    helpSubmit = "提交",
+    helpPlaceholder = "在此输入您的留言...",
+    helpErrorRequired = "内容不能为空",
+    helpSuccessTitle = "谢谢您！",
+    helpSuccessMessage = "我们已收到您的提交。感谢您的反馈！",
 )
 
 fun stringsFor(language: Language): UiStrings = when (language) {

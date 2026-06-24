@@ -2,7 +2,7 @@ package apap.oneverandah.screens
 
 import androidx.compose.runtime.Composable
 import apap.oneverandah.Styles
-import apap.oneverandah.components.MaterialIcon
+import apap.oneverandah.components.MaterialSymbol
 import apap.oneverandah.components.Scaffold
 import apap.oneverandah.data.Catalog
 import apap.oneverandah.i18n.Localization
@@ -40,7 +40,7 @@ fun ServicesScreen(
                 attr("role", "button")
                 onClick { onServiceSelected(service.id) }
             }) {
-                MaterialIcon(service.icon, extraClass = Styles.listIcon)
+                MaterialSymbol(service.icon, extraClass = Styles.listIcon)
                 Div(attrs = { classes(Styles.listDetails) }) {
                     H2 { Text(service.title.resolve(language)) }
                     P { Text(service.description.resolve(language)) }

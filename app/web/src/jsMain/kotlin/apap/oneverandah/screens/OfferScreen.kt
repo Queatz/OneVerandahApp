@@ -5,10 +5,13 @@ import androidx.compose.runtime.getValue
 import androidx.compose.runtime.mutableStateOf
 import androidx.compose.runtime.remember
 import androidx.compose.runtime.setValue
+import androidx.compose.runtime.rememberCoroutineScope
+import kotlinx.coroutines.launch
+import apap.oneverandah.api.sendContactMessage
 import apap.oneverandah.Styles
 import apap.oneverandah.components.BodyMapSelector
 import apap.oneverandah.components.Counter
-import apap.oneverandah.components.MaterialIcon
+import apap.oneverandah.components.MaterialSymbol
 import apap.oneverandah.components.OptionChip
 import apap.oneverandah.components.BookingDialog
 import apap.oneverandah.components.PriceSummaryView
@@ -69,6 +72,7 @@ fun OfferScreen(
     var showBookingDialog by remember(serviceId) { mutableStateOf(false) }
     var dialogZalo by remember(serviceId) { mutableStateOf<String?>(null) }
     var dialogMessage by remember(serviceId) { mutableStateOf<String?>(null) }
+    val scope = rememberCoroutineScope()
 
     val breakdown = PricingCalculator.breakdown(service, selection)
 
@@ -99,8 +103,8 @@ fun OfferScreen(
                 onZaloChange = { dialogZalo = it.ifBlank { null } },
                 onMessageChange = { dialogMessage = it.ifBlank { null } },
                 onDismiss = { showBookingDialog = false },
-                onConfirm = { zalo, message ->
-                    selection = selection.copy(zalo = zalo, comment = message ?: selection.comment)
+                onConfirm = { zalo, msg ->
+                    selection = selection.copy(zalo = zalo, comment = msg ?: selection.comment)
                     showBookingDialog = false
                     @Suppress("UNUSED_VARIABLE")
                     val request = BookingRequest(
@@ -109,7 +113,34 @@ fun OfferScreen(
                         totalVnd = breakdown.total.amountVnd,
                     )
                     phase = BookingPhase.SUBMITTING
-                    window.setTimeout({ phase = BookingPhase.SUCCESS }, 800)
+                    val messageDetails = buildString {
+                        appendLine("Booking Details:")
+                        breakdown.lines.forEach { line ->
+                            appendLine("- ${line.label.resolve(language)}: ${line.amount.format(language)}")
+                            appendLine()
+                        }
+                        appendLine("Total: ${breakdown.total.format(language)}")
+                        if (!msg.isNullOrBlank()) {
+                            appendLine()
+                            appendLine("User Comment:")
+                            appendLine()
+                            appendLine(msg)
+                        }
+                    }
+                    scope.launch {
+                        try {
+                            sendContactMessage(
+                                name = zalo,
+                                email = "zalo@oneverandah.app",
+                                service = service.title.resolve(language),
+                                message = messageDetails
+                            )
+                        } catch (t: Throwable) {
+                            console.log("Failed to book service: $t")
+                        } finally {
+                            phase = BookingPhase.SUCCESS
+                        }
+                    }
                 },
             )
             SuccessOverlay(
@@ -124,7 +155,7 @@ fun OfferScreen(
         // Provider header
         Div(attrs = { classes(Styles.providerHeader) }) {
             Div(attrs = { classes(Styles.avatar) }) {
-                MaterialIcon(service.icon)
+                MaterialSymbol(service.icon)
             }
             H2 { Text(service.title.resolve(language)) }
             P(attrs = { classes(Styles.rating) }) {

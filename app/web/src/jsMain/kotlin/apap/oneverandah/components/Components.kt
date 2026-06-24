@@ -1,6 +1,7 @@
 package apap.oneverandah.components
 
 import androidx.compose.runtime.Composable
+import androidx.compose.runtime.LaunchedEffect
 import androidx.compose.runtime.getValue
 import androidx.compose.runtime.mutableStateOf
 import androidx.compose.runtime.remember
@@ -11,6 +12,7 @@ import apap.oneverandah.i18n.flagFor
 import apap.oneverandah.i18n.stringsFor
 import apap.oneverandah.model.Language
 import app.softwork.routingcompose.Router
+import kotlinx.coroutines.delay
 import org.jetbrains.compose.web.dom.Button
 import org.jetbrains.compose.web.dom.ContentBuilder
 import org.jetbrains.compose.web.dom.Div
@@ -22,11 +24,11 @@ import org.w3c.dom.HTMLDivElement
 import org.w3c.dom.HTMLElement
 import org.w3c.dom.events.Event
 
-/** Renders a Material Icons ligature, e.g. `MaterialIcon("spa")`. */
+/** Renders a Material Symbols ligature, e.g. `MaterialSymbol("spa")`. */
 @Composable
-fun MaterialIcon(name: String, extraClass: String? = null) {
+fun MaterialSymbol(name: String, extraClass: String? = null) {
     Span(attrs = {
-        classes(Styles.materialIcons)
+        classes(Styles.materialSymbols)
         if (extraClass != null) classes(extraClass)
     }) { Text(name) }
 }
@@ -47,14 +49,14 @@ fun AppBar(
     Div(attrs = { classes(Styles.appBar) }) {
         if (onBack != null) {
             Span(attrs = {
-                classes(Styles.materialIcons, Styles.appBarIcon)
+                classes(Styles.materialSymbols, Styles.appBarIcon)
                 attr("role", "button")
                 attr("aria-label", strings.back)
                 onClick { onBack() }
             }) { Text("arrow_back") }
         } else {
             Span(attrs = {
-                classes(Styles.materialIcons, Styles.appBarIcon)
+                classes(Styles.materialSymbols, Styles.appBarIcon)
                 attr("role", "button")
                 attr("aria-label", strings.menu)
                 onClick { onMenu?.invoke() }
@@ -103,7 +105,7 @@ fun NavigationDrawer(
         Div(attrs = { classes(Styles.drawerHeader) }) {
             H1(attrs = { classes(Styles.drawerTitle) }) { Text(strings.menuTitle) }
             Span(attrs = {
-                classes(Styles.materialIcons, Styles.appBarIcon)
+                classes(Styles.materialSymbols, Styles.appBarIcon)
                 attr("role", "button")
                 attr("aria-label", strings.close)
                 onClick { onClose() }
@@ -143,7 +145,7 @@ private fun DrawerItem(icon: String, label: String, onClick: () -> Unit) {
         classes(Styles.drawerItem)
         onClick { onClick() }
     }) {
-        MaterialIcon(icon)
+        MaterialSymbol(icon)
         Text(label)
     }
 }
@@ -234,7 +236,7 @@ fun PrimaryButton(
         if (!enabled) attr("disabled", "")
         onClick { if (enabled) onClick() }
     }) {
-        MaterialIcon(icon)
+        MaterialSymbol(icon)
         Text(label)
     }
 }
@@ -251,13 +253,20 @@ fun SuccessOverlay(
     doneLabel: String? = null,
     onDone: (() -> Unit)? = null,
 ) {
+    LaunchedEffect(visible) {
+        if (visible) {
+            delay(2_000)
+            onDone?.invoke()
+        }
+    }
+
     Div(attrs = {
         classes(Styles.successOverlay)
         if (visible) classes(Styles.successVisible)
         attr("role", "status")
     }) {
         Div(attrs = { classes(Styles.successCircle) }) {
-            MaterialIcon("check", extraClass = Styles.successCheck)
+            MaterialSymbol("check", extraClass = Styles.successCheck)
         }
         H1(attrs = { classes(Styles.successTitle) }) { Text(title) }
         P(attrs = { classes(Styles.successMessage) }) { Text(message) }

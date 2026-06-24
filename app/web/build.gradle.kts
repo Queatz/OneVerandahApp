@@ -20,6 +20,7 @@ kotlin {
             implementation(libs.compose.html.core)
             implementation(libs.compose.html.svg)
             implementation(libs.routing.compose)
+            implementation("io.ktor:ktor-client-core:3.5.0")
             // Lets webpack regenerate index.html and auto-inject <script> tags for
             // EVERY emitted chunk (runtime, vendors, main). Without it, Kotlin/JS just
             // copies the static index.html verbatim and new chunks (e.g. from

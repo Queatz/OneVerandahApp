@@ -52,7 +52,7 @@ data class LocalizedText(
 data class Category(
     val id: String,
     val title: LocalizedText,
-    /** Material Icons ligature name, e.g. `"spa"`. */
+    /** Material Symbols ligature name, e.g. `"spa"`. */
     val icon: String,
 )
 
@@ -62,7 +62,7 @@ data class Category(
 data class Service(
     val id: String,
     val categoryId: String,
-    /** Material Icons ligature name. */
+    /** Material Symbols ligature name. */
     val icon: String,
     val title: LocalizedText,
     val description: LocalizedText,

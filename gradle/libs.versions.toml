@@ -16,6 +16,7 @@ ktor-serverCore = { module = "io.ktor:ktor-server-core-jvm", version.ref = "ktor
 ktor-serverNetty = { module = "io.ktor:ktor-server-netty-jvm", version.ref = "ktor" }
 ktor-serverTestHost = { module = "io.ktor:ktor-server-test-host-jvm", version.ref = "ktor" }
 wrappers-browser = { module = "org.jetbrains.kotlin-wrappers:kotlin-browser", version.ref = "kotlin-wrappers" }
+ktor-clientCore = { module = "io.ktor:ktor-client-core", version.ref = "ktor" }
 compose-html-core = { module = "org.jetbrains.compose.html:html-core", version.ref = "compose" }
 compose-html-svg = { module = "org.jetbrains.compose.html:html-svg", version.ref = "compose" }
 routing-compose = { module = "app.softwork:routing-compose", version.ref = "routing-compose" }

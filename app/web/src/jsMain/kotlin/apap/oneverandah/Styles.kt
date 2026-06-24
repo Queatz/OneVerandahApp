@@ -63,7 +63,7 @@ object Styles {
     const val btnPrimary = "btn-primary"
 
     // Material icon helper
-    const val materialIcons = "material-icons"
+    const val materialSymbols = "material-symbols-outlined"
 
     // Success animation
     const val successOverlay = "success-overlay"
@@ -160,7 +160,7 @@ object Styles {
 
     private val css = """
         @import url('https://fonts.googleapis.com/css2?family=Quicksand:ital,wght@0,400;0,700;1,400;1,700&display=swap');
-        @import url('https://fonts.googleapis.com/icon?family=Material+Icons');
+        @import url('https://fonts.googleapis.com/css2?family=Material+Symbols+Outlined');
 
         :root {
             --md-sys-color-primary: #6750A4;
@@ -244,7 +244,6 @@ object Styles {
             .${appShell} { align-items: center; padding: 32px 16px; }
             .${appFrame} {
                 min-height: 0;
-                height: 760px;
                 max-height: calc(100vh - 64px);
                 border-radius: 28px;
                 box-shadow: 0 10px 30px var(--md-shadow);
@@ -306,7 +305,7 @@ object Styles {
             background-color: var(--md-sys-color-primary-container);
             background-image: url(/banner.jpg);
             background-size: cover;
-            background-position: center;
+            background-position: 50% 100%;
         }
         .${banner}::after {
             content: "";
@@ -357,7 +356,7 @@ object Styles {
         }
 
         .${homePrompt} {
-            margin: 8px 0;
+            margin: 1rem 0;
             color: var(--md-sys-color-on-surface-variant);
         }
 
@@ -388,7 +387,7 @@ object Styles {
         }
         .${card}:hover { background-color: var(--md-sys-color-primary-container); }
         .${card}:active { transform: scale(0.97); }
-        .${card} .${materialIcons} {
+        .${card} .${materialSymbols} {
             font-size: 32px;
             color: var(--md-sys-color-primary);
             margin-bottom: 8px;
@@ -430,7 +429,7 @@ object Styles {
             color: var(--md-sys-color-primary);
             margin-bottom: 12px;
         }
-        .${avatar} .${materialIcons} { font-size: 36px; }
+        .${avatar} .${materialSymbols} { font-size: 36px; }
         .${providerHeader} h2 { margin: 0 0 4px 0; font-size: 24px; font-weight: 400; }
         .${rating} { margin: 0; font-size: 14px; color: var(--md-sys-color-primary); font-weight: 700; }
 
@@ -671,7 +670,7 @@ object Styles {
         }
         .${drawerItem}:hover { background-color: var(--md-sys-color-surface-variant); }
         .${drawerItem}.${drawerItemActive} { background-color: var(--md-sys-color-primary-container); color: var(--md-sys-color-on-primary-container); }
-        .${drawerItem} .${materialIcons} { color: var(--md-sys-color-primary); font-size: 22px; }
+        .${drawerItem} .${materialSymbols} { color: var(--md-sys-color-primary); font-size: 22px; }
         .${drawerSection} {
             font-size: 12px;
             font-weight: 700;
