@@ -19,6 +19,7 @@ import org.jetbrains.compose.web.dom.Span
 import org.jetbrains.compose.web.dom.Text
 import org.w3c.dom.HTMLDivElement
 import org.w3c.dom.HTMLElement
+import org.w3c.dom.events.Event
 
 /** Renders a Material Icons ligature, e.g. `MaterialIcon("spa")`. */
 @Composable
@@ -169,6 +170,26 @@ fun Scaffold(
             }
             Div(attrs = {
                 classes(Styles.content)
+                if (showBanner) {
+                    classes(Styles.contentHasBanner)
+                    // Drive the banner dimming veil from the scroll position:
+                    // 0 at rest, ramping to 1 once the content has scrolled up
+                    // to the top bar (~168px, the banner's perceived height).
+                    ref { element ->
+                        val frame = element.parentElement as? HTMLElement
+                        val apply = {
+                            val fraction = (element.scrollTop / 168.0).coerceIn(0.0, 1.0)
+                            frame?.style?.setProperty("--banner-scroll", fraction.toString())
+                        }
+                        apply()
+                        val listener: (Event) -> Unit = { apply() }
+                        element.addEventListener("scroll", listener)
+                        onDispose {
+                            element.removeEventListener("scroll", listener)
+                            frame?.style?.removeProperty("--banner-scroll")
+                        }
+                    }
+                }
                 if (lockScroll) classes(Styles.contentLocked)
             }, content = content)
             if (footer != null) {

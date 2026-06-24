@@ -29,6 +29,7 @@ object Styles {
 
     // Content
     const val content = "content"
+    const val contentHasBanner = "content-has-banner"
     const val homePrompt = "home-prompt"
 
     // Home grid
@@ -283,15 +284,21 @@ object Styles {
         }
         .${langToggle}:hover { background-color: var(--md-sys-color-surface-variant); }
 
-        /* Banner image area that fades to the surface colour at the top */
+        /* Banner image area that fades to the surface colour at the top.
+           It is positioned absolutely directly beneath the 64px app bar and
+           sits behind .content, so that scrolling the content slides the
+           opaque content surface up over the banner (covering it up to the
+           perceived top-bar height). */
         .${banner} {
-            flex: 0 0 auto;
+            position: absolute;
+            top: 64px;
+            left: 0;
+            right: 0;
             height: 160px;
-            margin: 0 0 8px 0;
+            z-index: 0;
             background-color: var(--md-sys-color-primary-container);
             background-size: cover;
             background-position: center;
-            position: relative;
         }
         .${banner}::after {
             content: "";
@@ -299,7 +306,23 @@ object Styles {
             inset: 0;
             /* Fades from the surface colour (white in light mode) at the top
                down into the image so the banner blends into the app bar. */
-            background: linear-gradient(to top, transparent 55%, var(--md-banner-fade) 100%);
+            background: linear-gradient(to bottom, transparent 55%, var(--md-banner-fade) 100%);
+        }
+        /* Dimming veil over the banner. Its opacity is driven by the
+           --banner-scroll custom property (0 at rest, 1 once the content has
+           scrolled up to the top bar), which is updated from a scroll listener
+           on .content. The veil uses the surface colour (not pure black) so
+           the banner dims dramatically toward the content background as it
+           gets covered, rather than going darker than the background. */
+        .${banner}::before {
+            content: "";
+            position: absolute;
+            inset: 0;
+            z-index: 1;
+            background-color: var(--md-sys-color-surface);
+            opacity: calc(var(--banner-scroll, 0) * 0.92);
+            pointer-events: none;
+            transition: opacity 0.08s linear;
         }
 
         /* Scrollable content region */
@@ -312,6 +335,18 @@ object Styles {
         }
         .${content}::-webkit-scrollbar { display: none; }
         .${content}.${contentLocked} { overflow: hidden; }
+        /* When a banner is shown, the content scrolls over it. The content
+           sits above the banner and is pushed down so the banner is visible
+           at rest; its opaque surface background (clipped to the content box,
+           so the top padding stays transparent and reveals the banner)
+           covers the banner as the user scrolls up to the top bar. */
+        .${content}.${contentHasBanner} {
+            position: relative;
+            z-index: 1;
+            padding-top: 168px;
+            background-color: var(--md-sys-color-surface);
+            background-clip: content-box;
+        }
 
         .${homePrompt} {
             margin: 8px 0;
