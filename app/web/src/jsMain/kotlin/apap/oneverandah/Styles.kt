@@ -108,6 +108,12 @@ object Styles {
     const val bodyRegionActive = "active"
     const val bodyMapHint = "body-map-hint"
     const val bodyMapLegend = "body-map-legend"
+    const val bodySilhouette = "body-silhouette"
+    const val bodySilhouetteDetail = "body-silhouette-detail"
+    const val bodyControlLeft = "body-control-left"
+    const val bodyControlRight = "body-control-right"
+    const val bodyControlBtn = "body-control-btn"
+    const val bodyControlBtnActive = "body-control-btn-active"
 
     // Reviews
     const val reviewList = "review-list"
@@ -152,7 +158,7 @@ object Styles {
     }
 
     private val css = """
-        @import url('https://fonts.googleapis.com/css2?family=Puritan:ital,wght@0,400;0,700;1,400;1,700&display=swap');
+        @import url('https://fonts.googleapis.com/css2?family=Quicksand:ital,wght@0,400;0,700;1,400;1,700&display=swap');
         @import url('https://fonts.googleapis.com/icon?family=Material+Icons');
 
         :root {
@@ -200,7 +206,7 @@ object Styles {
         }
 
         body {
-            font-family: 'Puritan', system-ui, -apple-system, BlinkMacSystemFont, 'Segoe UI', sans-serif;
+            font-family: 'Quicksand', sans-serif;
             background-color: var(--md-app-background);
             color: var(--md-sys-color-on-surface);
         }
@@ -743,7 +749,7 @@ object Styles {
             max-height: 230px;
         }
         .${bodyRegion} {
-            fill: var(--md-sys-color-outline);
+            fill: var(--md-sys-color-primary-dark);
             opacity: 0.45;
             cursor: pointer;
             transition: fill 0.15s, opacity 0.15s;
@@ -762,6 +768,68 @@ object Styles {
             gap: 6px;
             justify-content: center;
             margin-top: 8px;
+        }
+
+        /* Silhouette and Controls */
+        .${bodySilhouette} {
+            fill: var(--md-sys-color-surface);
+            stroke: var(--md-sys-color-outline);
+            stroke-width: 2.5px;
+            opacity: 0.85;
+        }
+        .${bodySilhouetteDetail} {
+            stroke: var(--md-sys-color-outline);
+            stroke-width: 1.5px;
+            fill: none;
+            opacity: 0.45;
+        }
+        .${bodyControlLeft} {
+            position: absolute;
+            top: 12px;
+            left: 12px;
+            display: flex;
+            background-color: var(--md-sys-color-surface);
+            border: 1px solid var(--md-sys-color-outline);
+            border-radius: 20px;
+            overflow: hidden;
+            box-shadow: 0 1px 3px var(--md-shadow);
+        }
+        .${bodyControlRight} {
+            position: absolute;
+            top: 12px;
+            right: 12px;
+            display: flex;
+            background-color: var(--md-sys-color-surface);
+            border: 1px solid var(--md-sys-color-outline);
+            border-radius: 50%;
+            overflow: hidden;
+            box-shadow: 0 1px 3px var(--md-shadow);
+        }
+        .${bodyControlBtn} {
+            border: none;
+            background: transparent;
+            padding: 6px 12px;
+            font-size: 13px;
+            font-weight: 700;
+            color: var(--md-sys-color-on-surface-variant);
+            cursor: pointer;
+            transition: background-color 0.2s, color 0.2s;
+            display: flex;
+            align-items: center;
+            justify-content: center;
+        }
+        .${bodyControlBtn}:hover {
+            background-color: var(--md-sys-color-surface-variant);
+        }
+        .${bodyControlBtn}.${bodyControlBtnActive} {
+            background-color: var(--md-sys-color-primary);
+            color: var(--md-sys-color-on-primary);
+        }
+        .${bodyControlRight} .${bodyControlBtn} {
+            padding: 8px;
+            border-radius: 50%;
+            width: 34px;
+            height: 34px;
         }
 
         /* Reviews */

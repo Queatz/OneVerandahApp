@@ -97,12 +97,15 @@ internal object CatalogServices {
                     parts = listOf(
                         BodyPart("head", lt("Head & neck", "Đầu & cổ"), vnd(40)),
                         BodyPart("shoulders", lt("Shoulders", "Vai"), vnd(50)),
-                        BodyPart("back", lt("Back", "Lưng"), vnd(60)),
+                        BodyPart("chest", lt("Chest", "Ngực"), vnd(60)),
+                        BodyPart("belly", lt("Belly", "Bụng"), vnd(60)),
+                        BodyPart("upper-back", lt("Upper back", "Lưng trên"), vnd(60)),
+                        BodyPart("lower-back", lt("Lower back", "Lưng dưới"), vnd(60)),
                         BodyPart("arms", lt("Arms", "Tay"), vnd(40)),
                         BodyPart("legs", lt("Legs", "Chân"), vnd(50)),
                         BodyPart("feet", lt("Feet", "Bàn chân"), vnd(40)),
                     ),
-                    defaultSelectedIds = setOf("back"),
+                    defaultSelectedIds = setOf("upper-back", "lower-back"),
                 ),
                 SingleSelectOption(
                     id = "oil",

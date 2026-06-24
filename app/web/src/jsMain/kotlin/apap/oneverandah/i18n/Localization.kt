@@ -46,6 +46,10 @@ data class UiStrings(
     val messageLabel: String,
     val messagePlaceholder: String,
     val confirmBooking: String,
+    val male: String,
+    val female: String,
+    val viewFront: String,
+    val viewBack: String,
 )
 
 private val English = UiStrings(
@@ -79,9 +83,13 @@ private val English = UiStrings(
     bookingDialogTitle = "Confirm your booking",
     zaloLabel = "Zalo number",
     zaloPlaceholder = "Your Zalo-enabled phone number",
-    messageLabel = "Any extra comments?",
+    messageLabel = "Additional comments",
     messagePlaceholder = "Optional message for the provider",
     confirmBooking = "Confirm Booking",
+    male = "M",
+    female = "F",
+    viewFront = "Front",
+    viewBack = "Back",
 )
 
 private val Vietnamese = UiStrings(
@@ -115,9 +123,13 @@ private val Vietnamese = UiStrings(
     bookingDialogTitle = "Xác nhận đặt lịch",
     zaloLabel = "Số Zalo",
     zaloPlaceholder = "Số điện thoại hỗ trợ Zalo",
-    messageLabel = "Bình luận thêm?",
+    messageLabel = "Bình luận thêm",
     messagePlaceholder = "Tin nhắn tùy chọn cho nhà cung cấp",
     confirmBooking = "Xác nhận đặt lịch",
+    male = "Nam",
+    female = "Nữ",
+    viewFront = "Trước",
+    viewBack = "Sau",
 )
 
 private val Chinese = UiStrings(
@@ -151,9 +163,13 @@ private val Chinese = UiStrings(
     bookingDialogTitle = "确认您的预订",
     zaloLabel = "Zalo 号码",
     zaloPlaceholder = "您的 Zalo 手机号码",
-    messageLabel = "有其他备注吗？",
+    messageLabel = "备注",
     messagePlaceholder = "给服务提供商的可选留言",
     confirmBooking = "确认预订",
+    male = "男",
+    female = "女",
+    viewFront = "正面",
+    viewBack = "背面",
 )
 
 fun stringsFor(language: Language): UiStrings = when (language) {

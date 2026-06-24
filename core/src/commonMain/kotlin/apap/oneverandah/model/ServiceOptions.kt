@@ -26,7 +26,7 @@ data class Choice(
  * A clickable region of the [BodyMapOption] SVG body diagram.
  *
  * [id] must match one of the known region ids the renderer knows how to draw
- * (e.g. `head`, `shoulders`, `back`, `arms`, `legs`).
+ * (e.g. `head`, `shoulders`, `upper-back`, `lower-back`, `arms`, `legs`, `feet`).
  */
 data class BodyPart(
     val id: String,
