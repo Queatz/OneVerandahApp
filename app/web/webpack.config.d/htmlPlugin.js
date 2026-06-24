@@ -23,5 +23,6 @@ config.plugins.push(new HtmlWebpackPlugin({
     // entry" error). Webpack generates the final "index.html" from this template.
     template: require('path').resolve(__dirname, 'kotlin/index.template.html'),
     filename: 'index.html',
+    publicPath: '/',
     inject: 'body',
 }));

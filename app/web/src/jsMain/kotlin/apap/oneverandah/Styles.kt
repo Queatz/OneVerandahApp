@@ -292,7 +292,7 @@ object Styles {
         .${content}::-webkit-scrollbar { display: none; }
 
         .${homePrompt} {
-            margin: 8px 0 4px 0;
+            margin: 8px 0;
             color: var(--md-sys-color-on-surface-variant);
         }
 
