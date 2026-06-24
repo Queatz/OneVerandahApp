@@ -62,7 +62,7 @@ data class UiStrings(
 )
 
 private val English = UiStrings(
-    appTitle = "One Verandah",
+    appTitle = "One Verandah App",
     homePrompt = "What are you looking for today?",
     reviews = { count -> "($count reviews)" },
     sectionBookingType = "Booking Type",

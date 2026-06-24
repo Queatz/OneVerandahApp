@@ -159,9 +159,6 @@ object Styles {
     }
 
     private val css = """
-        @import url('https://fonts.googleapis.com/css2?family=Quicksand:ital,wght@0,400;0,700;1,400;1,700&display=swap');
-        @import url('https://fonts.googleapis.com/css2?family=Material+Symbols+Outlined');
-
         :root {
             --md-sys-color-primary: #6750A4;
             --md-sys-color-primary-dark: #563f93;
@@ -271,7 +268,7 @@ object Styles {
         }
         .${appBarIcon}:hover { background-color: var(--md-sys-color-surface-variant); }
         .${appBarTitle} {
-            font-size: 22px;
+            font-size: 20px;
             font-weight: 400;
             margin: 0 8px;
         }
@@ -297,10 +294,10 @@ object Styles {
            perceived top-bar height). */
         .${banner} {
             position: absolute;
-            top: 64px;
+            top: 0;
             left: 0;
             right: 0;
-            height: 160px;
+            height: 240px;
             z-index: 0;
             background-color: var(--md-sys-color-primary-container);
             background-image: url(/banner.jpg);
@@ -946,7 +943,7 @@ object Styles {
             box-sizing: border-box;
             padding: 16px;
             border: 1px solid var(--md-sys-color-outline);
-            border-radius: 8px;
+            border-radius: 16px;
             background: transparent;
             font-family: inherit;
             font-size: 16px;
