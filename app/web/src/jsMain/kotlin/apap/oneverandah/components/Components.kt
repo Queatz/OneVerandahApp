@@ -10,6 +10,7 @@ import apap.oneverandah.i18n.Localization
 import apap.oneverandah.i18n.flagFor
 import apap.oneverandah.i18n.stringsFor
 import apap.oneverandah.model.Language
+import app.softwork.routingcompose.Router
 import org.jetbrains.compose.web.dom.Button
 import org.jetbrains.compose.web.dom.ContentBuilder
 import org.jetbrains.compose.web.dom.Div
@@ -85,6 +86,7 @@ fun NavigationDrawer(
     onHome: (() -> Unit)? = null,
 ) {
     val strings = Localization.strings
+    val router = Router.current
 
     // Scrim behind the drawer; clicking it closes the drawer.
     Div(attrs = {
@@ -110,10 +112,16 @@ fun NavigationDrawer(
 
         DrawerItem("home", strings.menuHome) {
             onClose()
-            onHome?.invoke()
+            if (onHome != null) onHome() else router.navigate("/")
         }
-        DrawerItem("info", strings.menuAbout) { onClose() }
-        DrawerItem("help_outline", strings.menuHelp) { onClose() }
+        DrawerItem("info", strings.menuAbout) {
+            onClose()
+            router.navigate("/about")
+        }
+        DrawerItem("help_outline", strings.menuHelp) {
+            onClose()
+            router.navigate("/help")
+        }
 
         Div(attrs = { classes(Styles.drawerSection) }) { Text(strings.menuLanguage) }
         Language.entries.forEach { lang ->

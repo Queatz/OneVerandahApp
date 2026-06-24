@@ -7,6 +7,8 @@ import apap.oneverandah.data.Catalog
 import apap.oneverandah.screens.HomeScreen
 import apap.oneverandah.screens.OfferScreen
 import apap.oneverandah.screens.ServicesScreen
+import apap.oneverandah.screens.AboutScreen
+import apap.oneverandah.screens.HelpScreen
 import org.jetbrains.compose.web.renderComposable
 
 fun main() {
@@ -50,6 +52,18 @@ fun App() {
                     onHome = { router.navigate("/") },
                     onDone = { router.navigate("/") },
                 )
+            }
+        }
+
+        route("about") {
+            noMatch {
+                AboutScreen(onBack = { router.navigate("/") })
+            }
+        }
+
+        route("help") {
+            noMatch {
+                HelpScreen(onBack = { router.navigate("/") })
             }
         }
 

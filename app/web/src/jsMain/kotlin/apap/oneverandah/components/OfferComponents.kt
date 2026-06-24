@@ -153,6 +153,8 @@ fun BookingDialog(
     val zalo = initialZalo.orEmpty()
     val message = initialMessage.orEmpty()
 
+    var showError by remember { mutableStateOf(false) }
+
     // Drag-to-dismiss state for the bottom sheet handle.
     // `dragStart` is the pointer Y where the gesture began (null when idle),
     // `dragY` is how far the sheet is currently pulled down (>= 0).
@@ -168,6 +170,7 @@ fun BookingDialog(
         if (!visible) {
             dragStart = null
             dragY = 0.0
+            showError = false
         }
     }
 
@@ -268,7 +271,15 @@ fun BookingDialog(
                         value(zalo)
                         placeholder(strings.zaloPlaceholder)
                         attr("required", "")
-                        onInput { onZaloChange(it.value) }
+                        onInput {
+                            onZaloChange(it.value)
+                            showError = false
+                        }
+                    }
+                    if (showError && zalo.isBlank()) {
+                        Span(attrs = { classes(Styles.textError) }) {
+                            Text(strings.zaloError)
+                        }
                     }
                 }
             }
@@ -282,9 +293,13 @@ fun BookingDialog(
                 PrimaryButton(
                     label = strings.confirmBooking,
                     icon = "check_circle",
-                    enabled = zalo.isNotBlank(),
+                    enabled = true,
                 ) {
-                    if (zalo.isNotBlank()) onConfirm(zalo.trim(), message.ifBlank { null })
+                    if (zalo.isNotBlank()) {
+                        onConfirm(zalo.trim(), message.ifBlank { null })
+                    } else {
+                        showError = true
+                    }
                 }
             }
         }

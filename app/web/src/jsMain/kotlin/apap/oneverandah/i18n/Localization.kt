@@ -43,6 +43,7 @@ data class UiStrings(
     val bookingDialogTitle: String,
     val zaloLabel: String,
     val zaloPlaceholder: String,
+    val zaloError: String,
     val messageLabel: String,
     val messagePlaceholder: String,
     val confirmBooking: String,
@@ -50,6 +51,9 @@ data class UiStrings(
     val female: String,
     val viewFront: String,
     val viewBack: String,
+    val aboutText: String,
+    val helpFeedback: String,
+    val helpReportProblem: String,
 )
 
 private val English = UiStrings(
@@ -83,6 +87,7 @@ private val English = UiStrings(
     bookingDialogTitle = "Confirm your booking",
     zaloLabel = "Zalo number",
     zaloPlaceholder = "Your Zalo-enabled phone number",
+    zaloError = "Zalo number is required",
     messageLabel = "Additional comments",
     messagePlaceholder = "Optional message for the provider",
     confirmBooking = "Confirm Booking",
@@ -90,6 +95,9 @@ private val English = UiStrings(
     female = "F",
     viewFront = "Front",
     viewBack = "Back",
+    aboutText = "Made by One Verandah residents, for One Verandah residents.",
+    helpFeedback = "Send us feedback",
+    helpReportProblem = "Report a problem",
 )
 
 private val Vietnamese = UiStrings(
@@ -123,6 +131,7 @@ private val Vietnamese = UiStrings(
     bookingDialogTitle = "Xác nhận đặt lịch",
     zaloLabel = "Số Zalo",
     zaloPlaceholder = "Số điện thoại hỗ trợ Zalo",
+    zaloError = "Vui lòng nhập số Zalo",
     messageLabel = "Bình luận thêm",
     messagePlaceholder = "Tin nhắn tùy chọn cho nhà cung cấp",
     confirmBooking = "Xác nhận đặt lịch",
@@ -130,6 +139,9 @@ private val Vietnamese = UiStrings(
     female = "Nữ",
     viewFront = "Trước",
     viewBack = "Sau",
+    aboutText = "Được thực hiện bởi cư dân One Verandah, dành cho cư dân One Verandah.",
+    helpFeedback = "Gửi phản hồi cho chúng tôi",
+    helpReportProblem = "Báo cáo sự cố",
 )
 
 private val Chinese = UiStrings(
@@ -163,6 +175,7 @@ private val Chinese = UiStrings(
     bookingDialogTitle = "确认您的预订",
     zaloLabel = "Zalo 号码",
     zaloPlaceholder = "您的 Zalo 手机号码",
+    zaloError = "请输入您的 Zalo 号码",
     messageLabel = "备注",
     messagePlaceholder = "给服务提供商的可选留言",
     confirmBooking = "确认预订",
@@ -170,6 +183,9 @@ private val Chinese = UiStrings(
     female = "女",
     viewFront = "正面",
     viewBack = "背面",
+    aboutText = "由 One Verandah 居民制作，服务于 One Verandah 居民。",
+    helpFeedback = "向我们发送反馈",
+    helpReportProblem = "报告问题",
 )
 
 fun stringsFor(language: Language): UiStrings = when (language) {

@@ -142,6 +142,7 @@ object Styles {
     const val dialogBody = "dialog-body"
     const val dialogActions = "dialog-actions"
     const val textInput = "text-input"
+    const val textError = "text-error"
     const val btnText = "btn-text"
     const val contentLocked = "content-locked"
 
@@ -303,6 +304,7 @@ object Styles {
             height: 160px;
             z-index: 0;
             background-color: var(--md-sys-color-primary-container);
+            background-image: url(/banner.jpg);
             background-size: cover;
             background-position: center;
         }
@@ -510,6 +512,12 @@ object Styles {
             padding: 0 4px;
             font-size: 12px;
             color: var(--md-sys-color-primary);
+        }
+        .${textError} {
+            color: var(--md-sys-color-error);
+            font-size: 12px;
+            margin-top: 4px;
+            display: block;
         }
 
         /* Footer + primary button */
