@@ -10,6 +10,7 @@ import apap.oneverandah.components.BodyMapSelector
 import apap.oneverandah.components.Counter
 import apap.oneverandah.components.MaterialIcon
 import apap.oneverandah.components.OptionChip
+import apap.oneverandah.components.BookingDialog
 import apap.oneverandah.components.PriceSummaryView
 import apap.oneverandah.components.PrimaryButton
 import apap.oneverandah.components.ReviewList
@@ -65,6 +66,9 @@ fun OfferScreen(
 
     var selection by remember(serviceId) { mutableStateOf(service.defaultSelection()) }
     var phase by remember(serviceId) { mutableStateOf(BookingPhase.IDLE) }
+    var showBookingDialog by remember(serviceId) { mutableStateOf(false) }
+    var dialogZalo by remember(serviceId) { mutableStateOf<String?>(null) }
+    var dialogMessage by remember(serviceId) { mutableStateOf<String?>(null) }
 
     val breakdown = PricingCalculator.breakdown(service, selection)
 
@@ -78,14 +82,7 @@ fun OfferScreen(
                 icon = "calendar_today",
                 enabled = phase == BookingPhase.IDLE,
             ) {
-                @Suppress("UNUSED_VARIABLE")
-                val request = BookingRequest(
-                    serviceId = service.id,
-                    selection = selection,
-                    totalVnd = breakdown.total.amountVnd,
-                )
-                phase = BookingPhase.SUBMITTING
-                window.setTimeout({ phase = BookingPhase.SUCCESS }, 800)
+                showBookingDialog = true
             }
         },
         overlay = {
@@ -236,5 +233,32 @@ fun OfferScreen(
         // Live price summary
         SectionTitle(strings.priceSummary)
         PriceSummaryView(breakdown = breakdown, totalLabel = strings.total, language = language)
+
+        // Booking dialog
+        BookingDialog(
+            visible = showBookingDialog,
+            serviceTitle = service.title.resolve(language),
+            breakdown = breakdown,
+            totalLabel = strings.total,
+            language = language,
+            strings = strings,
+            initialZalo = dialogZalo ?: selection.zalo,
+            initialMessage = dialogMessage ?: selection.comment,
+            onZaloChange = { dialogZalo = it.ifBlank { null } },
+            onMessageChange = { dialogMessage = it.ifBlank { null } },
+            onDismiss = { showBookingDialog = false },
+            onConfirm = { zalo, message ->
+                selection = selection.copy(zalo = zalo, comment = message ?: selection.comment)
+                showBookingDialog = false
+                @Suppress("UNUSED_VARIABLE")
+                val request = BookingRequest(
+                    serviceId = service.id,
+                    selection = selection,
+                    totalVnd = breakdown.total.amountVnd,
+                )
+                phase = BookingPhase.SUBMITTING
+                window.setTimeout({ phase = BookingPhase.SUCCESS }, 800)
+            },
+        )
     }
 }

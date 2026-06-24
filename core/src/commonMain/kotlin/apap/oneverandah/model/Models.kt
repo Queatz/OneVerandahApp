@@ -8,7 +8,8 @@ package apap.oneverandah.model
  */
 enum class Language(val tag: String) {
     ENGLISH("en"),
-    VIETNAMESE("vi");
+    VIETNAMESE("vi"),
+    CHINESE("zh");
 
     companion object {
         /** The language used when nothing else matches. */
@@ -36,10 +37,12 @@ enum class Language(val tag: String) {
 data class LocalizedText(
     val en: String,
     val vi: String,
+    val zh: String = en,
 ) {
     fun resolve(language: Language): String = when (language) {
         Language.ENGLISH -> en
         Language.VIETNAMESE -> vi
+        Language.CHINESE -> zh
     }
 }
 

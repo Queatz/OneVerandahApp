@@ -99,4 +99,5 @@ data class BookingSelection(
     /** optionId -> selected body-part ids. */
     val bodyParts: Map<String, Set<String>> = emptyMap(),
     val comment: String? = null,
+    val zalo: String? = null,
 )

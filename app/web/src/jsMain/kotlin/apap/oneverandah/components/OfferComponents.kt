@@ -9,9 +9,13 @@ import apap.oneverandah.model.PriceBreakdown
 import apap.oneverandah.model.Review
 import org.jetbrains.compose.web.dom.Button
 import org.jetbrains.compose.web.dom.Div
+import org.jetbrains.compose.web.dom.Input
+import org.jetbrains.compose.web.dom.Label
 import org.jetbrains.compose.web.dom.P
 import org.jetbrains.compose.web.dom.Span
 import org.jetbrains.compose.web.dom.Text
+import org.jetbrains.compose.web.dom.TextArea
+import org.jetbrains.compose.web.attributes.placeholder
 
 /** Formats a price delta as a signed hint, e.g. `+40.000 ₫`. Blank when zero. */
 fun priceHint(amount: Money, language: Language): String {
@@ -111,6 +115,83 @@ fun PriceSummaryView(
         Div(attrs = { classes(Styles.priceTotal) }) {
             Span { Text(totalLabel) }
             Span { Text(breakdown.total.format(language)) }
+        }
+    }
+}
+
+/**
+ * Modal dialog shown when pressing "Book This Service".
+ * Displays service name (bold), price summary, message field and required Zalo field.
+ */
+@Composable
+fun BookingDialog(
+    visible: Boolean,
+    serviceTitle: String,
+    breakdown: PriceBreakdown,
+    totalLabel: String,
+    language: Language,
+    strings: apap.oneverandah.i18n.UiStrings,
+    initialZalo: String?,
+    initialMessage: String?,
+    onZaloChange: (String) -> Unit,
+    onMessageChange: (String) -> Unit,
+    onDismiss: () -> Unit,
+    onConfirm: (zalo: String, message: String?) -> Unit,
+) {
+    if (!visible) return
+
+    Div {
+        // Simple overlay container - styles can be added later
+        Div(attrs = { classes(Styles.textField) }) {
+            P { Text(strings.bookingDialogTitle) }
+            // Service name bold
+            P { 
+                // bold via style or assume
+                Text(serviceTitle)
+            }
+
+            // Price summary
+            PriceSummaryView(breakdown = breakdown, totalLabel = totalLabel, language = language)
+
+            // Message field
+            Div(attrs = { classes(Styles.textField) }) {
+                Label(attrs = { classes(Styles.textLabel) }) {
+                    Text(strings.messageLabel)
+                }
+                TextArea(value = initialMessage ?: "") {
+                    classes(Styles.textArea)
+                    placeholder(strings.messagePlaceholder)
+                    onInput { onMessageChange(it.value.ifBlank { "" }) }
+                }
+            }
+
+            // Zalo field (required)
+            Div(attrs = { classes(Styles.textField) }) {
+                Label(attrs = { classes(Styles.textLabel) }) {
+                    Text(strings.zaloLabel)
+                }
+                TextArea(value = initialZalo ?: "") {
+                    classes(Styles.textArea)
+                    placeholder(strings.zaloPlaceholder)
+                    onInput { onZaloChange(it.value.ifBlank { "" }) }
+                }
+            }
+
+            // Actions
+            Div {
+                Button(attrs = {
+                    onClick { onDismiss() }
+                }) { Text(strings.close) }
+
+                Button(attrs = {
+                    onClick {
+                        val zalo = initialZalo?.trim() ?: ""
+                        if (zalo.isNotEmpty()) {
+                            onConfirm(zalo, initialMessage)
+                        }
+                    }
+                }) { Text(strings.confirmBooking) }
+            }
         }
     }
 }

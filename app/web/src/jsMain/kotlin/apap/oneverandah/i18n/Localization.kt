@@ -41,6 +41,12 @@ data class UiStrings(
     val menuHelp: String,
     val menuTheme: String,
     val close: String,
+    val bookingDialogTitle: String,
+    val zaloLabel: String,
+    val zaloPlaceholder: String,
+    val messageLabel: String,
+    val messagePlaceholder: String,
+    val confirmBooking: String,
 )
 
 private val English = UiStrings(
@@ -72,6 +78,12 @@ private val English = UiStrings(
     menuHelp = "Help & support",
     menuTheme = "Appearance follows your system",
     close = "Close",
+    bookingDialogTitle = "Confirm your booking",
+    zaloLabel = "Zalo number",
+    zaloPlaceholder = "Your Zalo-enabled phone number",
+    messageLabel = "Any extra comments?",
+    messagePlaceholder = "Optional message for the provider",
+    confirmBooking = "Confirm Booking",
 )
 
 private val Vietnamese = UiStrings(
@@ -103,17 +115,62 @@ private val Vietnamese = UiStrings(
     menuHelp = "Trợ giúp & hỗ trợ",
     menuTheme = "Giao diện theo hệ thống của bạn",
     close = "Đóng",
+    bookingDialogTitle = "Xác nhận đặt lịch",
+    zaloLabel = "Số Zalo",
+    zaloPlaceholder = "Số điện thoại hỗ trợ Zalo",
+    messageLabel = "Bình luận thêm?",
+    messagePlaceholder = "Tin nhắn tùy chọn cho nhà cung cấp",
+    confirmBooking = "Xác nhận đặt lịch",
+)
+
+private val Chinese = UiStrings(
+    appTitle = "One Verandah 应用",
+    homePrompt = "今天您在寻找什么？",
+    reviews = { count -> "（$count 条评论）" },
+    sectionBookingType = "预订类型",
+    sectionDuration = "时长",
+    sectionTargetArea = "目标区域",
+    sectionComments = "备注",
+    sectionReviews = "评论",
+    minutes = { minutes -> "$minutes 分钟" },
+    from = "起",
+    total = "总计",
+    priceSummary = "价格摘要",
+    tapToSelect = "点击身体选择区域",
+    bookThisService = "预订此服务",
+    booking = "预订中...",
+    bookingSuccessTitle = "预订已确认！",
+    bookingSuccessMessage = "我们已将详情发送给服务提供商。期待与您见面！",
+    done = "完成",
+    back = "返回",
+    menu = "菜单",
+    languageName = "中文",
+    menuTitle = "One Verandah 应用",
+    menuHome = "首页",
+    menuAbout = "关于",
+    menuLanguage = "语言",
+    menuHelp = "帮助与支持",
+    menuTheme = "外观跟随系统",
+    close = "关闭",
+    bookingDialogTitle = "确认您的预订",
+    zaloLabel = "Zalo 号码",
+    zaloPlaceholder = "您的 Zalo 手机号码",
+    messageLabel = "有其他备注吗？",
+    messagePlaceholder = "给服务提供商的可选留言",
+    confirmBooking = "确认预订",
 )
 
 fun stringsFor(language: Language): UiStrings = when (language) {
     Language.ENGLISH -> English
     Language.VIETNAMESE -> Vietnamese
+    Language.CHINESE -> Chinese
 }
 
 /** Returns the flag emoji used to represent [language] in the UI. */
 fun flagFor(language: Language): String = when (language) {
     Language.ENGLISH -> "\uD83C\uDDEC\uD83C\uDDE7" // 🇬🇧
     Language.VIETNAMESE -> "\uD83C\uDDFB\uD83C\uDDF3" // 🇻🇳
+    Language.CHINESE -> "\uD83C\uDDE8\uD83C\uDDF3" // 🇨🇳
 }
 
 /**
@@ -135,13 +192,17 @@ object Localization {
 
     /** Cycles between the supported languages (used by the header toggle). */
     fun toggleLanguage() {
-        language = if (language == Language.VIETNAMESE) Language.ENGLISH else Language.VIETNAMESE
+        language = when (language) {
+            Language.ENGLISH -> Language.VIETNAMESE
+            Language.VIETNAMESE -> Language.CHINESE
+            Language.CHINESE -> Language.ENGLISH
+        }
     }
 }
 
 /**
- * Inspects the browser's preferred languages and returns Vietnamese when the
- * user prefers it, otherwise English.
+ * Inspects the browser's preferred languages and returns the matching language
+ * (Vietnamese or Chinese) when the user prefers it, otherwise English.
  *
  * `navigator.languages` is checked first (ordered by user preference), then we
  * fall back to the single `navigator.language` value.
@@ -153,7 +214,8 @@ private fun detectBrowserLanguage(): Language {
         navigator.language.let { if (it.isNotBlank()) add(it) }
     }
     for (tag in candidates) {
-        if (Language.fromTag(tag) == Language.VIETNAMESE) return Language.VIETNAMESE
+        val lang = Language.fromTag(tag)
+        if (lang != Language.DEFAULT) return lang
     }
     return Language.DEFAULT
 }
