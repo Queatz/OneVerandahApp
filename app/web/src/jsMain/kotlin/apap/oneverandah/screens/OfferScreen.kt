@@ -63,7 +63,7 @@ fun OfferScreen(
     val service = Catalog.serviceById(serviceId)
 
     if (service == null) {
-        Scaffold(title = strings.offerDetails, onBack = onBack, onHome = onHome) {
+        Scaffold(title = strings.serviceDetails, onBack = onBack, onHome = onHome) {
             P { Text(strings.appTitle) }
         }
         return
@@ -80,7 +80,7 @@ fun OfferScreen(
     val breakdown = PricingCalculator.breakdown(service, selection)
 
     Scaffold(
-        title = strings.offerDetails,
+        title = strings.serviceDetails,
         onBack = onBack,
         onHome = onHome,
         showBanner = true,

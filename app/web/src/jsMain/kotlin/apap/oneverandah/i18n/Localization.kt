@@ -13,7 +13,7 @@ import kotlinx.browser.window
  */
 data class UiStrings(
     val appTitle: String,
-    val offerDetails: String,
+    val serviceDetails: String,
     val homePrompt: String,
     val reviews: (count: Int) -> String,
     val sectionBookingType: String,
@@ -83,7 +83,7 @@ data class UiStrings(
 
 private val English = UiStrings(
     appTitle = "One Verandah App",
-    offerDetails = "Offer details",
+    serviceDetails = "Offer details",
     homePrompt = "What are you looking for today?",
     reviews = { count -> "($count reviews)" },
     sectionBookingType = "Booking Type",
@@ -152,7 +152,7 @@ private val English = UiStrings(
 
 private val Vietnamese = UiStrings(
     appTitle = "Ứng dụng One Verandah",
-    offerDetails = "Chi tiết ưu đãi",
+    serviceDetails = "Chi tiết dịch vụ",
     homePrompt = "Hôm nay bạn đang tìm kiếm điều gì?",
     reviews = { count -> "($count đánh giá)" },
     sectionBookingType = "Loại đặt lịch",
@@ -221,7 +221,7 @@ private val Vietnamese = UiStrings(
 
 private val Chinese = UiStrings(
     appTitle = "One Verandah 应用",
-    offerDetails = "优惠详情",
+    serviceDetails = "服务详情",
     homePrompt = "今天您在寻找什么？",
     reviews = { count -> "（$count 条评论）" },
     sectionBookingType = "预订类型",

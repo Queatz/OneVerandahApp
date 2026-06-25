@@ -65,7 +65,6 @@ fun AppBar(
         if (title != null) {
             H1(attrs = { classes(Styles.appBarTitle) }) { Text(title) }
         }
-        Div(attrs = { classes(Styles.appBarSpacer) })
         Button(attrs = {
             classes(Styles.langToggle)
             attr("aria-label", strings.menuLanguage)
@@ -182,20 +181,28 @@ fun Scaffold(
                 classes(Styles.content)
                 if (showBanner) {
                     classes(Styles.contentHasBanner)
-                    // Drive the banner dimming veil from the scroll position:
-                    // 0 at rest, ramping to 1 once the content has scrolled up
-                    // to the top bar (~168px, the banner's perceived height).
-                    ref { element ->
-                        val frame = element.parentElement as? HTMLElement
-                        val apply = {
+                }
+                ref { element ->
+                    val frame = element.parentElement as? HTMLElement
+                    val apply = {
+                        val scrolled = element.scrollTop > 0
+                        if (scrolled) {
+                            frame?.style?.setProperty("--appbar-radius", "16px")
+                        } else {
+                            frame?.style?.setProperty("--appbar-radius", "28px")
+                        }
+                        if (showBanner) {
                             val fraction = (element.scrollTop / 168.0).coerceIn(0.0, 1.0)
                             frame?.style?.setProperty("--banner-scroll", fraction.toString())
                         }
-                        apply()
-                        val listener: (Event) -> Unit = { apply() }
-                        element.addEventListener("scroll", listener)
-                        onDispose {
-                            element.removeEventListener("scroll", listener)
+                    }
+                    apply()
+                    val listener: (Event) -> Unit = { apply() }
+                    element.addEventListener("scroll", listener)
+                    onDispose {
+                        element.removeEventListener("scroll", listener)
+                        frame?.style?.removeProperty("--appbar-radius")
+                        if (showBanner) {
                             frame?.style?.removeProperty("--banner-scroll")
                         }
                     }

@@ -10,7 +10,7 @@ files=(
 )
 
 CONTROL_PATH="/tmp/ssh-%r@%h:%p"
-HOST="root@oneverandah.app"
+HOST="root@130.94.6.233" # oneverandah.app
 
 # 1. Establish the master connection.
 # This ensures you only enter the password once and avoids race conditions.

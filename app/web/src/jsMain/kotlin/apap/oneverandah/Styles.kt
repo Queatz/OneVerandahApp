@@ -21,7 +21,6 @@ object Styles {
     const val appBar = "app-bar"
     const val appBarIcon = "app-bar-icon"
     const val appBarTitle = "app-bar-title"
-    const val appBarSpacer = "app-bar-spacer"
     const val langToggle = "lang-toggle"
 
     // Banner
@@ -257,8 +256,11 @@ object Styles {
             position: relative;
             z-index: 10;
             background-color: color-mix(in srgb, var(--md-sys-color-surface-variant) 85%, transparent);
+            background-image: linear-gradient(to top, transparent 55%, #ffffff16);
             border-bottom: 1px solid #ffffff54;
             backdrop-filter: blur(3px);
+            border-radius: 0 0 var(--appbar-radius, 28px) var(--appbar-radius, 28px);
+            transition: border-radius 0.8s ease-out;
         }
         .${appBarIcon} {
             margin-right: 8px;
@@ -274,11 +276,12 @@ object Styles {
             font-size: 20px;
             font-weight: 400;
             margin: 0 8px;
+            width: 0;
+            flex: 1 1 auto;
             overflow: hidden;
             text-overflow: ellipsis;
             white-space: nowrap;
         }
-        .${appBarSpacer} { flex: 1 1 auto; }
         .${langToggle} {
             border: 1px solid var(--md-sys-color-outline);
             background: transparent;
@@ -497,7 +500,7 @@ object Styles {
             box-sizing: border-box;
             padding: 16px;
             border: 1px solid var(--md-sys-color-outline);
-            border-radius: 8px;
+            border-radius: 16px;
             background: transparent;
             font-family: inherit;
             font-size: 16px;
