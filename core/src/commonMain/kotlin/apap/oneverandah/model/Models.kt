@@ -47,10 +47,19 @@ data class LocalizedText(
 }
 
 /**
+ * A grouping of [Category] objects (e.g. "Relax", "Train").
+ */
+data class SuperCategory(
+    val id: String,
+    val title: LocalizedText,
+)
+
+/**
  * A top level grouping shown on the home screen (e.g. "Massages").
  */
 data class Category(
     val id: String,
+    val superCategoryId: String,
     val title: LocalizedText,
     /** Material Symbols ligature name, e.g. `"spa"`. */
     val icon: String,

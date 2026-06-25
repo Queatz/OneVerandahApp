@@ -56,7 +56,45 @@ internal object CatalogServices {
     private val nam = ServiceProvider("Nam", Sex.MALE, "Block C - C.15.06", "+84 906 678 901", "face_6")
     private val an = ServiceProvider("An", Sex.FEMALE, "Block D - D.02.03", "+84 907 789 012", "face_3")
 
+    private val appDesignJacob = Service(
+        id = "app-design-jacob",
+        categoryId = "app_design",
+        icon = "terminal",
+        title = lt("Personal App Design & Development by Jacob", "Thiết kế & Phát triển ứng dụng cá nhân bởi Jacob"),
+        description = lt("Custom mobile and web applications tailored to your needs.", "Ứng dụng di động và web tùy chỉnh theo nhu cầu của bạn."),
+        rating = 5.0,
+        reviewCount = 12,
+        basePrice = vnd(2000),
+        bookingTypes = trialAndFollowup,
+        durations = listOf(
+            DurationOption("60", minutes = 60, price = vnd(2000)),
+        ),
+        provider = jacob,
+        commentPrompt = CommentPrompt(
+            label = lt("Tell me about your app idea", "Hãy kể cho tôi nghe về ý tưởng ứng dụng của bạn"),
+            placeholder = lt("e.g. A fitness tracker, a personal blog, a small shop...", "vd. Ứng dụng theo dõi sức khỏe, blog cá nhân, cửa hàng nhỏ..."),
+        ),
+    )
+
+    private val lifeCoachingJacob = Service(
+        id = "life-coaching-jacob",
+        categoryId = "life_coaching",
+        icon = "psychology",
+        title = lt("Personal Life Coaching by Jacob", "Khai vấn đời sống cá nhân bởi Jacob"),
+        description = lt("Unlock your potential and achieve your personal goals.", "Khai phá tiềm năng và đạt được các mục tiêu cá nhân của bạn."),
+        rating = 4.9,
+        reviewCount = 25,
+        basePrice = vnd(1000),
+        bookingTypes = trialAndFollowup,
+        durations = listOf(
+            DurationOption("60", minutes = 60, price = vnd(1000)),
+        ),
+        provider = jacob,
+    )
+
     val all: List<Service> = listOf(
+        appDesignJacob,
+        lifeCoachingJacob,
         // ===================== MASSAGES =====================
         Service(
             id = "word-massages-jacob",

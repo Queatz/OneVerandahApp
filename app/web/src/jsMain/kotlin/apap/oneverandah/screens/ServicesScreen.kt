@@ -33,6 +33,7 @@ fun ServicesScreen(
         onBack = onBack,
         onHome = onHome,
         showBanner = true,
+        scrollKey = "category/$categoryId",
     ) {
         services.forEach { service ->
             Div(attrs = {

@@ -31,7 +31,7 @@ fun HomeScreen(
     val language = Localization.language
     var searchQuery by remember { mutableStateOf("") }
 
-    Scaffold(title = strings.appTitle, showBanner = true) {
+    Scaffold(title = strings.appTitle, showBanner = true, scrollKey = "home") {
         P(attrs = { classes(Styles.homePrompt) }) { Text(strings.homePrompt) }
         Div(attrs = { classes(Styles.textField) }) {
             Input(type = InputType.Text) {
@@ -43,16 +43,24 @@ fun HomeScreen(
         }
 
         if (searchQuery.isBlank()) {
-            Div(attrs = { classes(Styles.grid) }) {
-                Catalog.categories.forEach { category ->
-                    Div(attrs = {
-                        classes(Styles.card)
-                        attr("role", "button")
-                        onClick { onCategorySelected(category.id) }
-                    }) {
-                        MaterialSymbol(category.icon)
-                        Span(attrs = { classes(Styles.cardLabel) }) {
-                            Text(category.title.resolve(language))
+            Catalog.superCategories.forEach { superCategory ->
+                val categoriesInSuper = Catalog.categories.filter { it.superCategoryId == superCategory.id }
+                if (categoriesInSuper.isNotEmpty()) {
+                    H2(attrs = { classes(Styles.superCategoryTitle) }) {
+                        Text(superCategory.title.resolve(language))
+                    }
+                    Div(attrs = { classes(Styles.grid) }) {
+                        categoriesInSuper.forEach { category ->
+                            Div(attrs = {
+                                classes(Styles.card)
+                                attr("role", "button")
+                                onClick { onCategorySelected(category.id) }
+                            }) {
+                                MaterialSymbol(category.icon)
+                                Span(attrs = { classes(Styles.cardLabel) }) {
+                                    Text(category.title.resolve(language))
+                                }
+                            }
                         }
                     }
                 }

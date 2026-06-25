@@ -46,6 +46,7 @@ object Styles {
     const val avatar = "avatar"
     const val rating = "rating"
     const val sectionTitle = "section-title"
+    const val superCategoryTitle = "super-category-title"
     const val chipGroup = "chip-group"
     const val chip = "chip"
     const val chipActive = "active"
@@ -444,6 +445,26 @@ object Styles {
         .${rating} { margin: 0; font-size: 14px; color: var(--md-sys-color-primary); font-weight: 700; }
 
         .${sectionTitle} { font-size: 16px; font-weight: 700; margin: 24px 0 12px 0; }
+        /* Super category header rendered as a centered label flanked by
+           horizontal rules on either side. */
+        .${superCategoryTitle} {
+            display: flex;
+            align-items: center;
+            gap: 12px;
+            font-size: 16px;
+            font-weight: 700;
+            text-align: center;
+            margin: 28px 0 12px 0;
+            color: var(--md-sys-color-on-surface);
+        }
+        .${superCategoryTitle}::before,
+        .${superCategoryTitle}::after {
+            content: "";
+            flex: 1 1 auto;
+            height: 2px;
+            border-radius: 2px;
+            background-color: color-mix(in srgb, var(--md-sys-color-outline) 20%, transparent);
+        }
 
         /* Chips */
         .${chipGroup} { display: flex; gap: 8px; flex-wrap: wrap; }

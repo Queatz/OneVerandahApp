@@ -24,6 +24,9 @@ import org.w3c.dom.HTMLDivElement
 import org.w3c.dom.HTMLElement
 import org.w3c.dom.events.Event
 
+/** Per-screen scroll positions, keyed by [Scaffold]'s `scrollKey`. */
+private val scrollPositions = mutableMapOf<String, Double>()
+
 /** Renders a Material Symbols ligature, e.g. `MaterialSymbol("spa")`. */
 @Composable
 fun MaterialSymbol(name: String, extraClass: String? = null) {
@@ -163,6 +166,7 @@ fun Scaffold(
     footer: (ContentBuilder<HTMLElement>)? = null,
     overlay: (@Composable () -> Unit)? = null,
     lockScroll: Boolean = false,
+    scrollKey: String? = null,
     content: ContentBuilder<HTMLDivElement>,
 ) {
     var drawerOpen by remember { mutableStateOf(false) }
@@ -195,6 +199,10 @@ fun Scaffold(
                             val fraction = (element.scrollTop / 168.0).coerceIn(0.0, 1.0)
                             frame?.style?.setProperty("--banner-scroll", fraction.toString())
                         }
+                        if (scrollKey != null) scrollPositions[scrollKey] = element.scrollTop
+                    }
+                    if (scrollKey != null) {
+                        element.scrollTop = scrollPositions[scrollKey] ?: 0.0
                     }
                     apply()
                     val listener: (Event) -> Unit = { apply() }
