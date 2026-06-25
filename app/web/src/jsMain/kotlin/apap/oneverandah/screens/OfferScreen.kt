@@ -208,16 +208,7 @@ fun OfferScreen(
                 }
                 // Small photo/avatar of the provider
                 Div(attrs = {
-                    style {
-                        property("width", "28px")
-                        property("height", "28px")
-                        property("border-radius", "50%")
-                        property("background-color", "var(--md-sys-color-primary-container)")
-                        property("display", "inline-flex")
-                        property("align-items", "center")
-                        property("justify-content", "center")
-                        property("color", "var(--md-sys-color-primary)")
-                    }
+                    classes(Styles.avatarSmall)
                 }) {
                     Span(attrs = {
                         classes(Styles.materialSymbols)

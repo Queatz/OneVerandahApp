@@ -223,7 +223,10 @@ fun BottomDialog(
                 Div(attrs = { classes(Styles.dialogHandle) })
             }
 
-            content()
+            // Scrollable content region; the grip handle above stays fixed.
+            Div(attrs = { classes(Styles.dialogContent) }) {
+                content()
+            }
         }
     }
 }

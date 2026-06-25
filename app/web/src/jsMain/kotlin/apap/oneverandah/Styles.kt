@@ -44,6 +44,7 @@ object Styles {
     // Offer / booking details
     const val providerHeader = "provider-header"
     const val avatar = "avatar"
+    const val avatarSmall = "avatar-small"
     const val rating = "rating"
     const val sectionTitle = "section-title"
     const val superCategoryTitle = "super-category-title"
@@ -136,6 +137,7 @@ object Styles {
     const val dialogSheetVisible = "visible"
     const val dialogGrip = "dialog-grip"
     const val dialogHandle = "dialog-handle"
+    const val dialogContent = "dialog-content"
     const val dialogHeader = "dialog-header"
     const val dialogTitle = "dialog-title"
     const val dialogService = "dialog-service"
@@ -157,7 +159,6 @@ object Styles {
         style.textContent = css
         document.head?.appendChild(style)
     }
-
     private val css = """
         :root {
             --md-sys-color-primary: #6750A4;
@@ -174,6 +175,7 @@ object Styles {
             --md-app-background: #f4f4f4;
             --md-banner-fade: #FEF7FF;
             --md-shadow: rgba(0, 0, 0, 0.15);
+            --md-shadow-light: rgba(255, 255, 255, 0.6);
         }
 
         @media (prefers-color-scheme: dark) {
@@ -192,6 +194,7 @@ object Styles {
                 --md-app-background: #000000;
                 --md-banner-fade: #141218;
                 --md-shadow: rgba(0, 0, 0, 0.6);
+                --md-shadow-light: rgba(255, 255, 255, 0.6);
             }
         }
 
@@ -276,6 +279,7 @@ object Styles {
         .${appBarIcon}:hover {
             background-color: var(--md-sys-color-surface-variant);
             border: 1px solid #ffffff16;
+            box-shadow: 0 -4px 8px -8px var(--md-shadow-light) inset;
          }
         .${appBarTitle} {
             font-size: 20px;
@@ -391,7 +395,8 @@ object Styles {
             justify-content: center;
             text-align: center;
             cursor: pointer;
-            border: none;
+            box-shadow: 0 4px 8px -8px var(--md-shadow-light) inset;
+            border: 1px solid #ffffff16;
             color: var(--md-sys-color-on-surface);
             font-family: inherit;
             transition: background-color 0.2s, transform 0.1s;
@@ -414,6 +419,8 @@ object Styles {
             display: flex;
             align-items: center;
             cursor: pointer;
+            border: 1px solid #ffffff16;
+            box-shadow: 0 4px 8px -8px var(--md-shadow-light) inset;
             transition: background-color 0.2s, transform 0.1s;
         }
         .${listCard}:hover { background-color: var(--md-sys-color-primary-container); }
@@ -439,6 +446,20 @@ object Styles {
             font-size: 36px;
             color: var(--md-sys-color-primary);
             margin-bottom: 12px;
+            box-shadow: 0 4px 8px -8px var(--md-shadow-light) inset;
+            border: 1px solid #ffffff16;
+        }
+        .${avatarSmall} {
+            width: 28px;
+            height: 28px;
+            background-color: var(--md-sys-color-primary-container);
+            border-radius: 50%;
+            display: inline-flex;
+            align-items: center;
+            justify-content: center;
+            color: var(--md-sys-color-primary);
+            box-shadow: 0 4px 8px -8px var(--md-shadow-light) inset;
+            border: 1px solid #ffffff16;
         }
         .${avatar} .${materialSymbols} { font-size: 36px; }
         .${providerHeader} h2 { margin: 0 0 4px 0; font-size: 24px; font-weight: 400; }
@@ -478,6 +499,8 @@ object Styles {
             background: transparent;
             color: var(--md-sys-color-on-surface);
             font-family: inherit;
+            box-shadow: 0 4px 8px -8px var(--md-shadow-light) inset;
+            border: 1px solid #ffffff16;
             transition: background-color 0.2s, border-color 0.2s;
         }
         .${chip}.${chipActive} {
@@ -569,11 +592,12 @@ object Styles {
             font-family: inherit;
             width: 100%;
             cursor: pointer;
-            box-shadow: 0 4px 12px var(--md-shadow);
+            box-shadow: 0 4px 12px var(--md-shadow), 0 4px 8px -8px var(--md-shadow-light) inset;
             display: flex;
             align-items: center;
             justify-content: center;
             gap: 8px;
+            border: 1px solid #ffffff16;
             transition: filter 0.2s, transform 0.1s;
         }
         .${btnPrimary}:hover { filter: brightness(1.07); }
@@ -856,6 +880,8 @@ object Styles {
             display: flex;
             align-items: center;
             justify-content: center;
+            box-shadow: 0 4px 8px -8px var(--md-shadow-light) inset;
+            border: 1px solid #ffffff16;
         }
         .${bodyControlBtn}:hover {
             background-color: var(--md-sys-color-surface-variant);
@@ -931,20 +957,27 @@ object Styles {
             color: var(--md-sys-color-on-surface);
             border-radius: 28px 28px 0 0;
             box-shadow: 0 -8px 24px var(--md-shadow);
-            padding: 12px 24px 24px 24px;
             max-height: 90%;
-            overflow-y: auto;
+            display: flex;
+            flex-direction: column;
+            overflow: hidden;
             transform: translateY(100%);
             transition: transform 0.3s cubic-bezier(0.2, 0, 0, 1);
         }
         .${dialogScrim}.${dialogScrimVisible} .${dialogSheet} { transform: translateY(0); }
+        /* Scrollable content region; the grip handle above it stays fixed. */
+        .${dialogContent} {
+            overflow-y: auto;
+            padding: 0 24px 24px 24px;
+            flex: 1 1 auto;
+        }
         /* Grab area around the handle: large hit target, no native gestures. */
         .${dialogGrip} {
             display: flex;
             justify-content: center;
             align-items: center;
-            padding: 8px 0 16px 0;
-            margin: -12px -24px 0 -24px;
+            padding: 12px 0 16px 0;
+            flex: 0 0 auto;
             cursor: grab;
             touch-action: none;
             user-select: none;
@@ -1006,4 +1039,5 @@ object Styles {
         .${btnText}:hover { background-color: var(--md-sys-color-surface-variant); }
         .${dialogActions} .${btnPrimary} { width: auto; flex: 1 1 auto; }
     """.trimIndent()
+
 }
