@@ -161,6 +161,9 @@ fun OfferScreen(
             P(attrs = { classes(Styles.rating) }) {
                 Text("⭐ ${service.rating} ${strings.reviews(service.reviewCount)}")
             }
+            P {
+                Text(service.description.resolve(language))
+            }
         }
 
         // Booking type

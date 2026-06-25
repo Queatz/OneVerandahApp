@@ -68,11 +68,17 @@ fun App() {
         }
 
         route("/") {
-            HomeScreen(onCategorySelected = { categoryId -> router.navigate("/category/$categoryId") })
+            HomeScreen(
+                onCategorySelected = { categoryId -> router.navigate("/category/$categoryId") },
+                onServiceSelected = { serviceId -> router.navigate("/service/$serviceId") },
+            )
         }
 
         noMatch {
-            HomeScreen(onCategorySelected = { categoryId -> router.navigate("/category/$categoryId") })
+            HomeScreen(
+                onCategorySelected = { categoryId -> router.navigate("/category/$categoryId") },
+                onServiceSelected = { serviceId -> router.navigate("/service/$serviceId") },
+            )
         }
     }
 }

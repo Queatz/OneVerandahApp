@@ -59,6 +59,18 @@ data class UiStrings(
     val helpErrorRequired: String,
     val helpSuccessTitle: String,
     val helpSuccessMessage: String,
+    val helpListService: String,
+    val listServiceDialogTitle: String,
+    val serviceDescriptionLabel: String,
+    val serviceDescriptionPlaceholder: String,
+    val serviceDescriptionError: String,
+    val yourNameLabel: String,
+    val yourNamePlaceholder: String,
+    val yourNameError: String,
+    val listServiceSuccessTitle: String,
+    val listServiceSuccessMessage: String,
+    val searchPlaceholder: String,
+    val noResults: String,
 )
 
 private val English = UiStrings(
@@ -108,6 +120,18 @@ private val English = UiStrings(
     helpErrorRequired = "Message is required",
     helpSuccessTitle = "Thank you!",
     helpSuccessMessage = "Your submission has been received. We appreciate your feedback!",
+    helpListService = "List a service",
+    listServiceDialogTitle = "List a service",
+    serviceDescriptionLabel = "Describe the service",
+    serviceDescriptionPlaceholder = "What services do you provide?",
+    serviceDescriptionError = "Service description is required",
+    yourNameLabel = "Your name",
+    yourNamePlaceholder = "Enter your name",
+    yourNameError = "Your name is required",
+    listServiceSuccessTitle = "Service listing submitted!",
+    listServiceSuccessMessage = "Your service listing details have been sent. The host will review and add it manually soon!",
+    searchPlaceholder = "Search for services...",
+    noResults = "No services found",
 )
 
 private val Vietnamese = UiStrings(
@@ -157,6 +181,18 @@ private val Vietnamese = UiStrings(
     helpErrorRequired = "Vui lòng nhập tin nhắn",
     helpSuccessTitle = "Cảm ơn bạn!",
     helpSuccessMessage = "Ý kiến của bạn đã được ghi nhận. Chúng tôi rất trân trọng phản hồi của bạn!",
+    helpListService = "Đăng ký dịch vụ",
+    listServiceDialogTitle = "Đăng ký dịch vụ",
+    serviceDescriptionLabel = "Mô tả dịch vụ",
+    serviceDescriptionPlaceholder = "Bạn cung cấp những dịch vụ gì?",
+    serviceDescriptionError = "Vui lòng nhập mô tả dịch vụ",
+    yourNameLabel = "Tên của bạn",
+    yourNamePlaceholder = "Nhập tên của bạn",
+    yourNameError = "Vui lòng nhập tên",
+    listServiceSuccessTitle = "Đã gửi thông tin dịch vụ!",
+    listServiceSuccessMessage = "Thông tin dịch vụ của bạn đã được gửi. Người quản trị sẽ xem xét và tự tay thêm vào ứng dụng sớm!",
+    searchPlaceholder = "Tìm kiếm dịch vụ...",
+    noResults = "Không tìm thấy dịch vụ",
 )
 
 private val Chinese = UiStrings(
@@ -206,6 +242,18 @@ private val Chinese = UiStrings(
     helpErrorRequired = "内容不能为空",
     helpSuccessTitle = "谢谢您！",
     helpSuccessMessage = "我们已收到您的提交。感谢您的反馈！",
+    helpListService = "发布服务",
+    listServiceDialogTitle = "发布服务",
+    serviceDescriptionLabel = "描述服务",
+    serviceDescriptionPlaceholder = "您提供什么服务？",
+    serviceDescriptionError = "请输入服务描述",
+    yourNameLabel = "您的姓名",
+    yourNamePlaceholder = "请输入您的姓名",
+    yourNameError = "请输入姓名",
+    listServiceSuccessTitle = "服务申请已提交！",
+    listServiceSuccessMessage = "您的服务上市详情已发送。平台管理员将很快进行审核并手动添加！",
+    searchPlaceholder = "搜索服务...",
+    noResults = "未找到服务",
 )
 
 fun stringsFor(language: Language): UiStrings = when (language) {
