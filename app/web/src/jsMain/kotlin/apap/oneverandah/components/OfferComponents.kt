@@ -13,6 +13,7 @@ import apap.oneverandah.model.Money
 import apap.oneverandah.model.PriceBreakdown
 import apap.oneverandah.model.Review
 import apap.oneverandah.model.ServiceProvider
+import org.jetbrains.compose.web.dom.A
 import org.jetbrains.compose.web.dom.Button
 import org.jetbrains.compose.web.dom.Div
 import org.jetbrains.compose.web.dom.Input
@@ -128,34 +129,16 @@ fun PriceSummaryView(
 }
 
 /**
- * Modal bottom-sheet dialog shown when pressing "Book This Service".
- *
- * Follows the app's Material-3 design language: a dimmed scrim, a rounded
- * bottom sheet with a drag handle, the service name in bold, the same price
- * summary as the offer screen, an optional message field and a required
- * Zalo-enabled phone number. Always rendered so the open/close transition
- * animates via the [visible] toggle.
+ * Modal bottom-sheet dialog template.
+ * Handles the dimmed scrim, drag-to-dismiss behavior, and drag handle.
  */
 @Composable
-fun BookingDialog(
+fun BottomDialog(
     visible: Boolean,
-    serviceTitle: String,
-    breakdown: PriceBreakdown,
-    totalLabel: String,
-    language: Language,
-    strings: apap.oneverandah.i18n.UiStrings,
-    initialZalo: String?,
-    initialMessage: String?,
-    onZaloChange: (String) -> Unit,
-    onMessageChange: (String) -> Unit,
+    closeLabel: String,
     onDismiss: () -> Unit,
-    onConfirm: (zalo: String, message: String?) -> Unit,
+    content: @Composable () -> Unit,
 ) {
-    val zalo = initialZalo.orEmpty()
-    val message = initialMessage.orEmpty()
-
-    var showError by remember { mutableStateOf(false) }
-
     // Drag-to-dismiss state for the bottom sheet handle.
     // `dragStart` is the pointer Y where the gesture began (null when idle),
     // `dragY` is how far the sheet is currently pulled down (>= 0).
@@ -171,7 +154,6 @@ fun BookingDialog(
         if (!visible) {
             dragStart = null
             dragY = 0.0
-            showError = false
         }
     }
 
@@ -225,7 +207,7 @@ fun BookingDialog(
             Div(attrs = {
                 classes(Styles.dialogGrip)
                 attr("role", "button")
-                attr("aria-label", strings.close)
+                attr("aria-label", closeLabel)
                 onMouseDown { e ->
                     dragStart = e.clientY.toDouble()
                     dragY = 0.0
@@ -241,66 +223,111 @@ fun BookingDialog(
                 Div(attrs = { classes(Styles.dialogHandle) })
             }
 
-            Div(attrs = { classes(Styles.dialogHeader) }) {
-                P(attrs = { classes(Styles.dialogTitle) }) { Text(strings.bookingDialogTitle) }
-                P(attrs = { classes(Styles.dialogService) }) { Text(serviceTitle) }
+            content()
+        }
+    }
+}
+
+/**
+ * Modal bottom-sheet dialog shown when pressing "Book This Service".
+ *
+ * Follows the app's Material-3 design language: a dimmed scrim, a rounded
+ * bottom sheet with a drag handle, the service name in bold, the same price
+ * summary as the offer screen, an optional message field and a required
+ * Zalo-enabled phone number. Always rendered so the open/close transition
+ * animates via the [visible] toggle.
+ */
+@Composable
+fun BookingDialog(
+    visible: Boolean,
+    serviceTitle: String,
+    breakdown: PriceBreakdown,
+    totalLabel: String,
+    language: Language,
+    strings: apap.oneverandah.i18n.UiStrings,
+    initialZalo: String?,
+    initialMessage: String?,
+    onZaloChange: (String) -> Unit,
+    onMessageChange: (String) -> Unit,
+    onDismiss: () -> Unit,
+    onConfirm: (zalo: String, message: String?) -> Unit,
+) {
+    val zalo = initialZalo.orEmpty()
+    val message = initialMessage.orEmpty()
+
+    var showError by remember { mutableStateOf(false) }
+
+    // Whenever the sheet closes, reset showError
+    LaunchedEffect(visible) {
+        if (!visible) {
+            showError = false
+        }
+    }
+
+    BottomDialog(
+        visible = visible,
+        closeLabel = strings.close,
+        onDismiss = onDismiss
+    ) {
+        Div(attrs = { classes(Styles.dialogHeader) }) {
+            P(attrs = { classes(Styles.dialogTitle) }) { Text(strings.bookingDialogTitle) }
+            P(attrs = { classes(Styles.dialogService) }) { Text(serviceTitle) }
+        }
+
+        // Same price summary as the offer screen.
+        PriceSummaryView(breakdown = breakdown, totalLabel = totalLabel, language = language)
+
+        Div(attrs = { classes(Styles.dialogBody) }) {
+            // Optional message field.
+            Div(attrs = { classes(Styles.textField) }) {
+                Label(attrs = { classes(Styles.textLabel) }) {
+                    Text(strings.messageLabel)
+                }
+                TextArea(value = message) {
+                    classes(Styles.textArea)
+                    placeholder(strings.messagePlaceholder)
+                    onInput { onMessageChange(it.value) }
+                }
             }
 
-            // Same price summary as the offer screen.
-            PriceSummaryView(breakdown = breakdown, totalLabel = totalLabel, language = language)
-
-            Div(attrs = { classes(Styles.dialogBody) }) {
-                // Optional message field.
-                Div(attrs = { classes(Styles.textField) }) {
-                    Label(attrs = { classes(Styles.textLabel) }) {
-                        Text(strings.messageLabel)
-                    }
-                    TextArea(value = message) {
-                        classes(Styles.textArea)
-                        placeholder(strings.messagePlaceholder)
-                        onInput { onMessageChange(it.value) }
+            // Required Zalo-enabled phone number.
+            Div(attrs = { classes(Styles.textField) }) {
+                Label(attrs = { classes(Styles.textLabel) }) {
+                    Text(strings.zaloLabel)
+                }
+                Input(type = InputType.Tel) {
+                    classes(Styles.textInput)
+                    value(zalo)
+                    placeholder(strings.zaloPlaceholder)
+                    attr("required", "")
+                    onInput {
+                        onZaloChange(it.value)
+                        showError = false
                     }
                 }
-
-                // Required Zalo-enabled phone number.
-                Div(attrs = { classes(Styles.textField) }) {
-                    Label(attrs = { classes(Styles.textLabel) }) {
-                        Text(strings.zaloLabel)
-                    }
-                    Input(type = InputType.Tel) {
-                        classes(Styles.textInput)
-                        value(zalo)
-                        placeholder(strings.zaloPlaceholder)
-                        attr("required", "")
-                        onInput {
-                            onZaloChange(it.value)
-                            showError = false
-                        }
-                    }
-                    if (showError && zalo.isBlank()) {
-                        Span(attrs = { classes(Styles.textError) }) {
-                            Text(strings.zaloError)
-                        }
+                if (showError && zalo.isBlank()) {
+                    Span(attrs = { classes(Styles.textError) }) {
+                        Text(strings.zaloError)
                     }
                 }
             }
+        }
 
-            Div(attrs = { classes(Styles.dialogActions) }) {
-                Button(attrs = {
-                    classes(Styles.btnText)
-                    onClick { onDismiss() }
-                }) { Text(strings.close) }
+        Div(attrs = { classes(Styles.dialogActions) }) {
+            Button(attrs = {
+                classes(Styles.btnText)
+                onClick { onDismiss() }
+            }) { Text(strings.close) }
 
-                PrimaryButton(
-                    label = strings.confirmBooking,
-                    icon = "check_circle",
-                    enabled = true,
-                ) {
-                    if (zalo.isNotBlank()) {
-                        onConfirm(zalo.trim(), message.ifBlank { null })
-                    } else {
-                        showError = true
-                    }
+            PrimaryButton(
+                label = strings.confirmBooking,
+                icon = "check_circle",
+                enabled = true,
+            ) {
+                if (zalo.isNotBlank()) {
+                    onConfirm(zalo.trim(), message.ifBlank { null })
+                } else {
+                    showError = true
                 }
             }
         }
@@ -319,195 +346,132 @@ fun ProviderDetailsDialog(
     strings: apap.oneverandah.i18n.UiStrings,
     onDismiss: () -> Unit,
 ) {
-    // Drag-to-dismiss state for the bottom sheet handle.
-    var dragStart by remember { mutableStateOf<Double?>(null) }
-    var dragY by remember { mutableStateOf(0.0) }
-    val dismissThreshold = 120.0
-
-    LaunchedEffect(visible) {
-        if (!visible) {
-            dragStart = null
-            dragY = 0.0
-        }
-    }
-
-    Div(attrs = {
-        classes(Styles.dialogScrim)
-        if (visible) classes(Styles.dialogScrimVisible)
-        attr("role", "presentation")
-        onClick { onDismiss() }
-    }) {
+    BottomDialog(
+        visible = visible,
+        closeLabel = strings.close,
+        onDismiss = onDismiss
+    ) {
+        // Provider Avatar / Photo inside the header
         Div(attrs = {
-            classes(Styles.dialogSheet)
-            attr("role", "dialog")
-            attr("aria-modal", "true")
-            if (dragStart != null) {
-                style {
-                    property("transform", "translateY(${dragY}px)")
-                    property("transition", "none")
-                }
-            }
-            onClick { it.stopPropagation() }
-            onMouseMove { e ->
-                if (dragStart != null) dragY = (e.clientY - dragStart!!).coerceAtLeast(0.0)
-            }
-            onTouchMove { e ->
-                val start = dragStart ?: return@onTouchMove
-                val touch = e.touches.item(0) ?: return@onTouchMove
-                dragY = (touch.clientY - start).coerceAtLeast(0.0)
-            }
-            onMouseUp {
-                if (dragStart != null) {
-                    if (dragY > dismissThreshold) onDismiss()
-                    dragStart = null
-                    dragY = 0.0
-                }
-            }
-            onTouchEnd {
-                if (dragStart != null) {
-                    if (dragY > dismissThreshold) onDismiss()
-                    dragStart = null
-                    dragY = 0.0
-                }
+            style {
+                property("display", "flex")
+                property("flex-direction", "column")
+                property("align-items", "center")
+                property("margin-bottom", "24px")
             }
         }) {
-            // Drag handle
-            Div(attrs = {
-                classes(Styles.dialogGrip)
-                attr("role", "button")
-                attr("aria-label", strings.close)
-                onMouseDown { e ->
-                    dragStart = e.clientY.toDouble()
-                    dragY = 0.0
-                }
-                onTouchStart { e ->
-                    val touch = e.touches.item(0)
-                    if (touch != null) {
-                        dragStart = touch.clientY.toDouble()
-                        dragY = 0.0
-                    }
+            Div(attrs = { classes(Styles.avatar) }) {
+                MaterialSymbol(provider.photo)
+            }
+            P(attrs = {
+                style {
+                    property("font-size", "22px")
+                    property("font-weight", "bold")
+                    property("margin", "8px 0 0 0")
                 }
             }) {
-                Div(attrs = { classes(Styles.dialogHandle) })
+                Text(provider.name)
             }
+        }
 
-            // Provider Avatar / Photo inside the header
+        // Body of the details
+        Div(attrs = { classes(Styles.dialogBody) }) {
+            // Sex
             Div(attrs = {
                 style {
+                    property("margin-bottom", "16px")
                     property("display", "flex")
                     property("flex-direction", "column")
-                    property("align-items", "center")
-                    property("margin-bottom", "24px")
                 }
             }) {
-                Div(attrs = { classes(Styles.avatar) }) {
-                    MaterialSymbol(provider.photo)
-                }
-                P(attrs = {
+                Span(attrs = {
                     style {
-                        property("font-size", "22px")
-                        property("font-weight", "bold")
-                        property("margin", "8px 0 0 0")
+                        property("font-size", "12px")
+                        property("color", "var(--md-sys-color-on-surface-variant)")
+                        property("font-weight", "700")
+                        property("text-transform", "uppercase")
                     }
                 }) {
-                    Text(provider.name)
+                    Text(strings.providerSexLabel)
+                }
+                Span(attrs = {
+                    style {
+                        property("font-size", "16px")
+                        property("margin-top", "4px")
+                    }
+                }) {
+                    Text(if (provider.sex == apap.oneverandah.model.Sex.MALE) strings.male else strings.female)
                 }
             }
 
-            // Body of the details
-            Div(attrs = { classes(Styles.dialogBody) }) {
-                // Sex
-                Div(attrs = {
-                    style {
-                        property("margin-bottom", "16px")
-                        property("display", "flex")
-                        property("flex-direction", "column")
-                    }
-                }) {
-                    Span(attrs = {
-                        style {
-                            property("font-size", "12px")
-                            property("color", "var(--md-sys-color-on-surface-variant)")
-                            property("font-weight", "700")
-                            property("text-transform", "uppercase")
-                        }
-                    }) {
-                        Text(strings.providerSexLabel)
-                    }
-                    Span(attrs = {
-                        style {
-                            property("font-size", "16px")
-                            property("margin-top", "4px")
-                        }
-                    }) {
-                        Text(if (provider.sex == apap.oneverandah.model.Sex.MALE) strings.male else strings.female)
-                    }
+            // Block/Address
+            Div(attrs = {
+                style {
+                    property("margin-bottom", "16px")
+                    property("display", "flex")
+                    property("flex-direction", "column")
                 }
-
-                // Block/Address
-                Div(attrs = {
+            }) {
+                Span(attrs = {
                     style {
-                        property("margin-bottom", "16px")
-                        property("display", "flex")
-                        property("flex-direction", "column")
+                        property("font-size", "12px")
+                        property("color", "var(--md-sys-color-on-surface-variant)")
+                        property("font-weight", "700")
+                        property("text-transform", "uppercase")
                     }
                 }) {
-                    Span(attrs = {
-                        style {
-                            property("font-size", "12px")
-                            property("color", "var(--md-sys-color-on-surface-variant)")
-                            property("font-weight", "700")
-                            property("text-transform", "uppercase")
-                        }
-                    }) {
-                        Text(strings.providerBlockLabel)
-                    }
-                    Span(attrs = {
-                        style {
-                            property("font-size", "16px")
-                            property("margin-top", "4px")
-                        }
-                    }) {
-                        Text(provider.blockAddress)
-                    }
+                    Text(strings.providerBlockLabel)
                 }
-
-                // Phone/Zalo
-                Div(attrs = {
+                Span(attrs = {
                     style {
-                        property("margin-bottom", "16px")
-                        property("display", "flex")
-                        property("flex-direction", "column")
+                        property("font-size", "16px")
+                        property("margin-top", "4px")
                     }
                 }) {
-                    Span(attrs = {
-                        style {
-                            property("font-size", "12px")
-                            property("color", "var(--md-sys-color-on-surface-variant)")
-                            property("font-weight", "700")
-                            property("text-transform", "uppercase")
-                        }
-                    }) {
-                        Text(strings.providerPhoneLabel)
-                    }
-                    Span(attrs = {
-                        style {
-                            property("font-size", "16px")
-                            property("margin-top", "4px")
-                        }
-                    }) {
-                        Text(provider.phone)
-                    }
+                    Text(provider.blockAddress)
                 }
             }
 
-            // Close actions
-            Div(attrs = { classes(Styles.dialogActions) }) {
-                Button(attrs = {
-                    classes(Styles.btnText)
-                    onClick { onDismiss() }
-                }) { Text(strings.close) }
+            // Phone/Zalo
+            Div(attrs = {
+                style {
+                    property("margin-bottom", "16px")
+                    property("display", "flex")
+                    property("flex-direction", "column")
+                }
+            }) {
+                Span(attrs = {
+                    style {
+                        property("font-size", "12px")
+                        property("color", "var(--md-sys-color-on-surface-variant)")
+                        property("font-weight", "700")
+                        property("text-transform", "uppercase")
+                    }
+                }) {
+                    Text(strings.providerPhoneLabel)
+                }
+                A(
+                    href = "tel:${provider.phone}",
+                    attrs = {
+                        style {
+                            property("font-size", "16px")
+                            property("margin-top", "4px")
+                            property("color", "var(--md-sys-color-primary)")
+                            property("text-decoration", "underline")
+                        }
+                    }
+                ) {
+                    Text(provider.phone)
+                }
             }
+        }
+
+        // Close actions
+        Div(attrs = { classes(Styles.dialogActions) }) {
+            Button(attrs = {
+                classes(Styles.btnText)
+                onClick { onDismiss() }
+            }) { Text(strings.close) }
         }
     }
 }

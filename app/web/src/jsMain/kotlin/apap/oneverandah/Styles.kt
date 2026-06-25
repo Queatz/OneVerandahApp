@@ -339,7 +339,7 @@ object Styles {
         .${content} {
             flex: 1 1 auto;
             overflow-y: auto;
-            padding: 8px 16px 16px 16px;
+            padding: 16px;
             -ms-overflow-style: none;
             scrollbar-width: none;
         }
@@ -359,7 +359,7 @@ object Styles {
         }
 
         .${homePrompt} {
-            margin: 1rem 0;
+            margin: 16px 0;
             color: var(--md-sys-color-on-surface-variant);
         }
 

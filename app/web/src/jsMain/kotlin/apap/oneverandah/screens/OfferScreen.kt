@@ -188,7 +188,13 @@ fun OfferScreen(
                     showProviderDetails = true
                 }
             }) {
-                Text("${strings.providedBy} ")
+                Span(attrs = {
+                    style {
+                        property("font-weight", "bold")
+                    }
+                }) {
+                    Text("${strings.providedBy} ")
+                }
                 // Small photo/avatar of the provider
                 Div(attrs = {
                     style {

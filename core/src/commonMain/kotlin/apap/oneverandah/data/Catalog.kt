@@ -24,7 +24,7 @@ object Catalog {
         Category("babysitting", LocalizedText(en = "Babysitting", vi = "Giữ trẻ"), icon = "crib"),
         Category("petsitting", LocalizedText(en = "Petsitting", vi = "Trông giữ thú chưng"), icon = "pets"),
         Category("photography", LocalizedText(en = "Photography", vi = "Nhiếp ảnh"), icon = "photo_camera"),
-        Category("petcare", LocalizedText(en = "Pet Care", vi = "Chăm sóc thú cưng"), icon = "pets"),
+        Category("petcare", LocalizedText(en = "Pet Care", vi = "Chăm sóc thú cưng"), icon = "self_care"),
         Category("gardening", LocalizedText(en = "Gardening & Plant Care", vi = "Làm vườn & Chăm sóc cây"), icon = "yard"),
         Category("rentals", LocalizedText(en = "Tool Rentals & Charger", vi = "Cho thuê dụng cụ & Sạc pin"), icon = "power"),
         Category("furniture", LocalizedText(en = "Furniture & Moving", vi = "Lắp ráp đồ gỗ & Vận chuyển"), icon = "local_shipping"),

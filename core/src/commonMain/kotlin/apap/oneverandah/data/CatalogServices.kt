@@ -806,7 +806,7 @@ internal object CatalogServices {
         Service(
             id = "pet-training-mark",
             categoryId = "petcare",
-            icon = "sports_dog",
+            icon = "sound_detection_dog_barking",
             title = lt("Pet Training by Mark", "Huấn luyện thú cưng bởi Mark"),
             description = lt("Basic obedience and behavior training.", "Huấn luyện vâng lời và hành vi cơ bản."),
             rating = 4.9,
