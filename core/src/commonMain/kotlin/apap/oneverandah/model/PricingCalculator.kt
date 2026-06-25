@@ -20,11 +20,27 @@ object PricingCalculator {
 
         val duration = service.durations.firstOrNull { it.id == selection.durationId }
             ?: service.durations.first()
-        lines += PriceLine(
-            label = LocalizedText(
+        val durationLabel = if (duration.minutes > 90) {
+            val hoursValue = duration.minutes / 60.0
+            val hoursText = if (hoursValue % 1.0 == 0.0) {
+                hoursValue.toInt().toString()
+            } else {
+                hoursValue.toString()
+            }
+            LocalizedText(
+                en = "$hoursText hours",
+                vi = "$hoursText giờ",
+                zh = "$hoursText 小时",
+            )
+        } else {
+            LocalizedText(
                 en = "${duration.minutes} minutes",
                 vi = "${duration.minutes} phút",
-            ),
+                zh = "${duration.minutes} 分钟",
+            )
+        }
+        lines += PriceLine(
+            label = durationLabel,
             amount = duration.price,
         )
 

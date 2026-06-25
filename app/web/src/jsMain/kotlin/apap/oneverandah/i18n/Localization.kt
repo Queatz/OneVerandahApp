@@ -13,6 +13,7 @@ import kotlinx.browser.window
  */
 data class UiStrings(
     val appTitle: String,
+    val offerDetails: String,
     val homePrompt: String,
     val reviews: (count: Int) -> String,
     val sectionBookingType: String,
@@ -21,6 +22,7 @@ data class UiStrings(
     val sectionComments: String,
     val sectionReviews: String,
     val minutes: (minutes: Int) -> String,
+    val hours: (hours: String) -> String,
     val from: String,
     val total: String,
     val priceSummary: String,
@@ -81,6 +83,7 @@ data class UiStrings(
 
 private val English = UiStrings(
     appTitle = "One Verandah App",
+    offerDetails = "Offer details",
     homePrompt = "What are you looking for today?",
     reviews = { count -> "($count reviews)" },
     sectionBookingType = "Booking Type",
@@ -89,6 +92,7 @@ private val English = UiStrings(
     sectionComments = "Comments",
     sectionReviews = "Reviews",
     minutes = { minutes -> "$minutes minutes" },
+    hours = { hours -> "$hours hours" },
     from = "from",
     total = "Total",
     priceSummary = "Price summary",
@@ -148,6 +152,7 @@ private val English = UiStrings(
 
 private val Vietnamese = UiStrings(
     appTitle = "Ứng dụng One Verandah",
+    offerDetails = "Chi tiết ưu đãi",
     homePrompt = "Hôm nay bạn đang tìm kiếm điều gì?",
     reviews = { count -> "($count đánh giá)" },
     sectionBookingType = "Loại đặt lịch",
@@ -156,6 +161,7 @@ private val Vietnamese = UiStrings(
     sectionComments = "Ghi chú",
     sectionReviews = "Đánh giá",
     minutes = { minutes -> "$minutes phút" },
+    hours = { hours -> "$hours giờ" },
     from = "từ",
     total = "Tổng cộng",
     priceSummary = "Tóm tắt giá",
@@ -215,6 +221,7 @@ private val Vietnamese = UiStrings(
 
 private val Chinese = UiStrings(
     appTitle = "One Verandah 应用",
+    offerDetails = "优惠详情",
     homePrompt = "今天您在寻找什么？",
     reviews = { count -> "（$count 条评论）" },
     sectionBookingType = "预订类型",
@@ -223,6 +230,7 @@ private val Chinese = UiStrings(
     sectionComments = "备注",
     sectionReviews = "评论",
     minutes = { minutes -> "$minutes 分钟" },
+    hours = { hours -> "$hours 小时" },
     from = "起",
     total = "总计",
     priceSummary = "价格摘要",

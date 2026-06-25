@@ -63,7 +63,7 @@ fun OfferScreen(
     val service = Catalog.serviceById(serviceId)
 
     if (service == null) {
-        Scaffold(onBack = onBack, onHome = onHome) {
+        Scaffold(title = strings.offerDetails, onBack = onBack, onHome = onHome) {
             P { Text(strings.appTitle) }
         }
         return
@@ -80,6 +80,7 @@ fun OfferScreen(
     val breakdown = PricingCalculator.breakdown(service, selection)
 
     Scaffold(
+        title = strings.offerDetails,
         onBack = onBack,
         onHome = onHome,
         showBanner = true,
@@ -254,8 +255,19 @@ fun OfferScreen(
         SectionTitle(strings.sectionDuration)
         Div(attrs = { classes(Styles.chipGroup) }) {
             service.durations.forEach { option ->
+                val durationLabel = if (option.minutes > 90) {
+                    val hoursValue = option.minutes / 60.0
+                    val hoursText = if (hoursValue % 1.0 == 0.0) {
+                        hoursValue.toInt().toString()
+                    } else {
+                        hoursValue.toString()
+                    }
+                    strings.hours(hoursText)
+                } else {
+                    strings.minutes(option.minutes)
+                }
                 OptionChip(
-                    label = strings.minutes(option.minutes),
+                    label = durationLabel,
                     priceHint = option.price.format(language),
                     active = selection.durationId == option.id,
                     onClick = { selection = selection.copy(durationId = option.id) },
