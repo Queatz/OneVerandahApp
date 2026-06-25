@@ -7,6 +7,7 @@ import androidx.compose.runtime.mutableStateOf
 import androidx.compose.runtime.remember
 import androidx.compose.runtime.setValue
 import apap.oneverandah.Styles
+import apap.oneverandah.i18n.Localization
 import apap.oneverandah.model.CounterOption
 import apap.oneverandah.model.Language
 import apap.oneverandah.model.Money
@@ -57,12 +58,19 @@ fun OptionChip(
     }
 }
 
-/** A quantity stepper for a [CounterOption]. */
+/**
+ * A quantity stepper for a [CounterOption].
+ *
+ * The center number is tappable and invokes [onEditRequest] so the hosting
+ * screen can open a [CounterDialog] (a bottom sheet anchored to the screen,
+ * not to this inline control) for typing/nudging the value.
+ */
 @Composable
 fun Counter(
     option: CounterOption,
     value: Int,
     language: Language,
+    onEditRequest: () -> Unit,
     onChange: (Int) -> Unit,
 ) {
     Div(attrs = { classes(Styles.counter) }) {
@@ -72,7 +80,12 @@ fun Counter(
             attr("aria-label", "-")
             onClick { if (value > option.min) onChange(value - 1) }
         }) { Text("-") }
-        Span(attrs = { classes(Styles.counterValue) }) { Text(value.toString()) }
+        Span(attrs = {
+            classes(Styles.counterValue)
+            attr("role", "button")
+            attr("tabindex", "0")
+            onClick { onEditRequest() }
+        }) { Text(value.toString()) }
         Button(attrs = {
             classes(Styles.counterBtn)
             if (value >= option.max) attr("disabled", "")
@@ -81,6 +94,85 @@ fun Counter(
         }) { Text("+") }
         Span(attrs = { classes(Styles.counterUnit) }) {
             Text("${option.unitLabel.resolve(language)} · ${option.unitPrice.format(language)}")
+        }
+    }
+}
+
+/**
+ * Modal bottom sheet for editing a [CounterOption]'s quantity.
+ *
+ * Rendered at the screen level (e.g. via the scaffold overlay slot) so it
+ * sticks to the bottom of the screen rather than the inline [Counter]. It edits
+ * a local draft and only commits to [onConfirm] when the user confirms. The
+ * sheet is shown whenever [option] is non-null.
+ */
+@Composable
+fun CounterDialog(
+    option: CounterOption?,
+    value: Int,
+    language: Language,
+    onDismiss: () -> Unit,
+    onConfirm: (Int) -> Unit,
+) {
+    val strings = Localization.strings
+    // Draft value edited inside the dialog; reset whenever a new option opens.
+    var draft by remember(option, value) { mutableStateOf(value) }
+
+    BottomDialog(
+        visible = option != null,
+        closeLabel = strings.close,
+        onDismiss = onDismiss,
+    ) {
+        if (option == null) return@BottomDialog
+
+        Div(attrs = { classes(Styles.dialogHeader) }) {
+            P(attrs = { classes(Styles.dialogTitle) }) { Text(option.title.resolve(language)) }
+            P(attrs = { classes(Styles.dialogService) }) {
+                Text("${option.unitLabel.resolve(language)} · ${option.unitPrice.format(language)}")
+            }
+        }
+
+        Div(attrs = { classes(Styles.dialogBody) }) {
+            Div(attrs = { classes(Styles.counter) }) {
+                Button(attrs = {
+                    classes(Styles.counterBtn)
+                    if (draft <= option.min) attr("disabled", "")
+                    attr("aria-label", "-")
+                    onClick { if (draft > option.min) draft -= 1 }
+                }) { Text("-") }
+                Input(type = InputType.Number) {
+                    classes(Styles.counterInput)
+                    value(draft.toString())
+                    attr("min", option.min.toString())
+                    attr("max", option.max.toString())
+                    attr("inputmode", "numeric")
+                    onInput {
+                        val typed = it.value?.toInt()
+                        if (typed != null) draft = typed.coerceIn(option.min, option.max)
+                    }
+                }
+                Button(attrs = {
+                    classes(Styles.counterBtn)
+                    if (draft >= option.max) attr("disabled", "")
+                    attr("aria-label", "+")
+                    onClick { if (draft < option.max) draft += 1 }
+                }) { Text("+") }
+            }
+        }
+
+        Div(attrs = { classes(Styles.dialogActions) }) {
+            Button(attrs = {
+                classes(Styles.btnText)
+                onClick { onDismiss() }
+            }) { Text(strings.close) }
+
+            PrimaryButton(
+                label = strings.confirm,
+                icon = "check_circle",
+                enabled = true,
+            ) {
+                onConfirm(draft.coerceIn(option.min, option.max))
+            }
         }
     }
 }

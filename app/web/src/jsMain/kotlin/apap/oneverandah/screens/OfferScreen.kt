@@ -11,6 +11,7 @@ import apap.oneverandah.api.sendContactMessage
 import apap.oneverandah.Styles
 import apap.oneverandah.components.BodyMapSelector
 import apap.oneverandah.components.Counter
+import apap.oneverandah.components.CounterDialog
 import apap.oneverandah.components.MaterialSymbol
 import apap.oneverandah.components.OptionChip
 import apap.oneverandah.components.BookingDialog
@@ -73,6 +74,7 @@ fun OfferScreen(
     var phase by remember(serviceId) { mutableStateOf(BookingPhase.IDLE) }
     var showBookingDialog by remember(serviceId) { mutableStateOf(false) }
     var showProviderDetails by remember(serviceId) { mutableStateOf(false) }
+    var editingCounter by remember(serviceId) { mutableStateOf<CounterOption?>(null) }
     var dialogZalo by remember(serviceId) { mutableStateOf<String?>(window.localStorage.getItem("zalo")) }
     var dialogMessage by remember(serviceId) { mutableStateOf<String?>(null) }
     val scope = rememberCoroutineScope()
@@ -84,7 +86,7 @@ fun OfferScreen(
         onBack = onBack,
         onHome = onHome,
         showBanner = true,
-        lockScroll = showBookingDialog || showProviderDetails || phase == BookingPhase.SUCCESS,
+        lockScroll = showBookingDialog || showProviderDetails || editingCounter != null || phase == BookingPhase.SUCCESS,
         footer = {
             PrimaryButton(
                 label = if (phase == BookingPhase.SUBMITTING) strings.booking else strings.bookThisService,
@@ -170,6 +172,20 @@ fun OfferScreen(
                 language = language,
                 strings = strings,
                 onDismiss = { showProviderDetails = false }
+            )
+            CounterDialog(
+                option = editingCounter,
+                value = editingCounter?.let { selection.counters[it.id] ?: it.default } ?: 0,
+                language = language,
+                onDismiss = { editingCounter = null },
+                onConfirm = { value ->
+                    editingCounter?.let { option ->
+                        selection = selection.copy(
+                            counters = selection.counters + (option.id to value),
+                        )
+                    }
+                    editingCounter = null
+                },
             )
         },
     ) {
@@ -314,6 +330,7 @@ fun OfferScreen(
                         option = option,
                         value = selection.counters[option.id] ?: option.default,
                         language = language,
+                        onEditRequest = { editingCounter = option },
                         onChange = { value ->
                             selection = selection.copy(
                                 counters = selection.counters + (option.id to value),

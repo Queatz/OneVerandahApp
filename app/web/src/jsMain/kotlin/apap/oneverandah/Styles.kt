@@ -99,6 +99,7 @@ object Styles {
     const val counterBtn = "counter-btn"
     const val counterValue = "counter-value"
     const val counterUnit = "counter-unit"
+    const val counterInput = "counter-input"
 
     // Option price hint
     const val chipPrice = "chip-price"
@@ -780,6 +781,8 @@ object Styles {
             background-color: var(--md-sys-color-surface-variant);
             border-radius: 16px;
             padding: 10px 16px;
+            border: 1px solid #ffffff16;
+            box-shadow: 0 4px 8px -8px var(--md-shadow-light) inset;
         }
         .${counterBtn} {
             width: 40px;
@@ -794,11 +797,28 @@ object Styles {
             align-items: center;
             justify-content: center;
             transition: background-color 0.2s;
+            box-shadow: 0 4px 8px -8px var(--md-shadow-light) inset;
+            border: 1px solid #ffffff16;
         }
         .${counterBtn}:hover:not(:disabled) { background-color: var(--md-sys-color-primary-container); }
         .${counterBtn}:disabled { opacity: 0.4; cursor: default; }
-        .${counterValue} { font-size: 20px; font-weight: 700; min-width: 28px; text-align: center; }
+        .${counterValue} { font-size: 20px; font-weight: 700; min-width: 28px; text-align: center; cursor: pointer; }
+        .${counterValue}[role="button"]:hover { color: var(--md-sys-color-primary); }
         .${counterUnit} { font-size: 14px; color: var(--md-sys-color-on-surface-variant); margin-left: auto; }
+        .${counterInput} {
+            flex: 1;
+            min-width: 0;
+            font-size: 24px;
+            font-weight: 700;
+            text-align: center;
+            border: none;
+            background: transparent;
+            color: var(--md-sys-color-on-surface);
+            -moz-appearance: textfield;
+        }
+        .${counterInput}::-webkit-outer-spin-button,
+        .${counterInput}::-webkit-inner-spin-button { -webkit-appearance: none; margin: 0; }
+        .${counterInput}:focus { outline: none; }
 
         /* price hint inside chips */
         .${chipPrice} { font-weight: 400; opacity: 0.85; margin-left: 4px; font-size: 12px; }
