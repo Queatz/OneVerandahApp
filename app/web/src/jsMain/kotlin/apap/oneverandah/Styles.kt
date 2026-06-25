@@ -125,6 +125,12 @@ object Styles {
     const val reviewStars = "review-stars"
     const val reviewBody = "review-body"
 
+    // Info cards (non-clickable)
+    const val infoList = "info-list"
+    const val infoCard = "info-card"
+    const val infoIcon = "info-icon"
+    const val infoText = "info-text"
+
     // Price summary
     const val priceSummary = "price-summary"
     const val priceLine = "price-line"
@@ -214,6 +220,10 @@ object Styles {
         }
 
         #root { height: 100%; }
+        
+        button {
+            user-select: none;
+        }
 
         .${appShell} {
             display: flex;
@@ -266,6 +276,7 @@ object Styles {
             backdrop-filter: blur(3px);
             border-radius: 0 0 var(--appbar-radius, 28px) var(--appbar-radius, 28px);
             transition: border-radius 0.8s ease-out;
+            user-select: none;
         }
         .${appBarIcon} {
             margin-right: 8px;
@@ -374,6 +385,7 @@ object Styles {
         .${homePrompt} {
             margin: 16px 0;
             color: var(--md-sys-color-on-surface-variant);
+            font-weight: bold;
         }
 
         /* Home grid */
@@ -401,6 +413,7 @@ object Styles {
             color: var(--md-sys-color-on-surface);
             font-family: inherit;
             transition: background-color 0.2s, transform 0.1s;
+            user-select: none;
         }
         .${card}:hover { background-color: var(--md-sys-color-primary-container); }
         .${card}:active { transform: scale(0.97); }
@@ -423,6 +436,7 @@ object Styles {
             border: 1px solid #ffffff16;
             box-shadow: 0 4px 8px -8px var(--md-shadow-light) inset;
             transition: background-color 0.2s, transform 0.1s;
+            user-select: none;
         }
         .${listCard}:hover { background-color: var(--md-sys-color-primary-container); }
         .${listCard}:active { transform: scale(0.99); }
@@ -449,6 +463,7 @@ object Styles {
             margin-bottom: 12px;
             box-shadow: 0 4px 8px -8px var(--md-shadow-light) inset;
             border: 1px solid #ffffff16;
+            user-select: none;
         }
         .${avatarSmall} {
             width: 28px;
@@ -461,6 +476,7 @@ object Styles {
             color: var(--md-sys-color-primary);
             box-shadow: 0 4px 8px -8px var(--md-shadow-light) inset;
             border: 1px solid #ffffff16;
+            user-select: none;
         }
         .${avatar} .${materialSymbols} { font-size: 36px; }
         .${providerHeader} h2 { margin: 0 0 4px 0; font-size: 24px; font-weight: 400; }
@@ -478,6 +494,7 @@ object Styles {
             text-align: center;
             margin: 28px 0 12px 0;
             color: var(--md-sys-color-on-surface);
+            user-select: none;
         }
         .${superCategoryTitle}::before,
         .${superCategoryTitle}::after {
@@ -503,6 +520,7 @@ object Styles {
             box-shadow: 0 4px 8px -8px var(--md-shadow-light) inset;
             border: 1px solid #ffffff16;
             transition: background-color 0.2s, border-color 0.2s;
+            user-select: none;
         }
         .${chip}.${chipActive} {
             background-color: var(--md-sys-color-primary-container);
@@ -567,6 +585,7 @@ object Styles {
             font-size: 12px;
             color: var(--md-sys-color-primary);
             border-radius: 4px;
+            user-select: none;
         }
         .${textError} {
             color: var(--md-sys-color-error);
@@ -783,6 +802,7 @@ object Styles {
             padding: 10px 16px;
             border: 1px solid #ffffff16;
             box-shadow: 0 4px 8px -8px var(--md-shadow-light) inset;
+            user-select: none;
         }
         .${counterBtn} {
             width: 40px;
@@ -799,6 +819,7 @@ object Styles {
             transition: background-color 0.2s;
             box-shadow: 0 4px 8px -8px var(--md-shadow-light) inset;
             border: 1px solid #ffffff16;
+            user-select: none;
         }
         .${counterBtn}:hover:not(:disabled) { background-color: var(--md-sys-color-primary-container); }
         .${counterBtn}:disabled { opacity: 0.4; cursor: default; }
@@ -848,7 +869,7 @@ object Styles {
         .${bodyMapLegend} {
             display: flex;
             flex-wrap: wrap;
-            gap: 6px;
+            gap: 8px;
             justify-content: center;
             margin-top: 8px;
         }
@@ -902,6 +923,7 @@ object Styles {
             justify-content: center;
             box-shadow: 0 4px 8px -8px var(--md-shadow-light) inset;
             border: 1px solid #ffffff16;
+            user-select: none;
         }
         .${bodyControlBtn}:hover {
             background-color: var(--md-sys-color-surface-variant);
@@ -928,6 +950,19 @@ object Styles {
         .${reviewAuthor} { font-weight: 700; font-size: 14px; }
         .${reviewStars} { font-size: 13px; color: #f5a623; letter-spacing: 1px; }
         .${reviewBody} { margin: 0; font-size: 14px; color: var(--md-sys-color-on-surface-variant); }
+
+        /* Info cards (non-clickable) */
+        .${infoList} { display: flex; flex-direction: column; gap: 16px; }
+        .${infoCard} {
+            background-color: var(--md-sys-color-surface-variant);
+            border-radius: 28px;
+            padding: 24px;
+            display: flex;
+            align-items: center;
+            gap: 16px;
+        }
+        .${infoIcon} { font-size: 24px; color: var(--md-sys-color-primary); flex: 0 0 auto; }
+        .${infoText} { margin: 0; font-size: 14px; color: var(--md-sys-color-on-surface-variant); }
 
         /* Price summary */
         .${priceSummary} {

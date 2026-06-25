@@ -197,6 +197,33 @@ fun ReviewList(reviews: List<Review>, language: Language) {
     }
 }
 
+/**
+ * A single non-clickable info card carrying an [icon] (a Material Symbols
+ * ligature name) on the left and a line of [text]. Mirrors the look of
+ * [ReviewList]'s cards (surface-variant background, rounded corners) but
+ * conveys static information rather than a tappable action.
+ */
+@Composable
+fun InfoCard(icon: String, text: String) {
+    Div(attrs = { classes(Styles.infoCard) }) {
+        MaterialSymbol(icon, Styles.infoIcon)
+        P(attrs = { classes(Styles.infoText) }) { Text(text) }
+    }
+}
+
+/**
+ * Renders a vertical list of non-clickable [InfoCard]s from [items], each a
+ * pair of a Material Symbols icon name and its text.
+ */
+@Composable
+fun InfoList(items: List<Pair<String, String>>) {
+    Div(attrs = { classes(Styles.infoList) }) {
+        items.forEach { (icon, text) ->
+            InfoCard(icon, text)
+        }
+    }
+}
+
 /** Itemised price summary with a bold total. */
 @Composable
 fun PriceSummaryView(
