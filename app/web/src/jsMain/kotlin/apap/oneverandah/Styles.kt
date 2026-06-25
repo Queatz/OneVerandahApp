@@ -316,7 +316,7 @@ object Styles {
             inset: 0;
             /* Fades from the surface colour (white in light mode) at the top
                down into the image so the banner blends into the app bar. */
-            background: linear-gradient(to bottom, transparent 50%, var(--md-banner-fade) 100%);
+            background: linear-gradient(to bottom, transparent 55%, var(--md-banner-fade) 100%);
         }
         /* Dimming veil over the banner. Its opacity is driven by the
            --banner-scroll custom property (0 at rest, 1 once the content has
@@ -514,6 +514,7 @@ object Styles {
             padding: 0 4px;
             font-size: 12px;
             color: var(--md-sys-color-primary);
+            border-radius: 4px;
         }
         .${textError} {
             color: var(--md-sys-color-error);

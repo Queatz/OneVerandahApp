@@ -73,7 +73,7 @@ fun OfferScreen(
     var phase by remember(serviceId) { mutableStateOf(BookingPhase.IDLE) }
     var showBookingDialog by remember(serviceId) { mutableStateOf(false) }
     var showProviderDetails by remember(serviceId) { mutableStateOf(false) }
-    var dialogZalo by remember(serviceId) { mutableStateOf<String?>(null) }
+    var dialogZalo by remember(serviceId) { mutableStateOf<String?>(window.localStorage.getItem("zalo")) }
     var dialogMessage by remember(serviceId) { mutableStateOf<String?>(null) }
     val scope = rememberCoroutineScope()
 
@@ -101,13 +101,21 @@ fun OfferScreen(
                 totalLabel = strings.total,
                 language = language,
                 strings = strings,
-                initialZalo = dialogZalo ?: selection.zalo,
+                initialZalo = dialogZalo ?: selection.zalo ?: window.localStorage.getItem("zalo"),
                 initialMessage = dialogMessage ?: selection.comment,
-                onZaloChange = { dialogZalo = it.ifBlank { null } },
+                onZaloChange = {
+                    dialogZalo = it.ifBlank { null }
+                    if (it.isNotBlank()) {
+                        window.localStorage.setItem("zalo", it)
+                    } else {
+                        window.localStorage.removeItem("zalo")
+                    }
+                },
                 onMessageChange = { dialogMessage = it.ifBlank { null } },
                 onDismiss = { showBookingDialog = false },
                 onConfirm = { zalo, msg ->
                     selection = selection.copy(zalo = zalo, comment = msg ?: selection.comment)
+                    window.localStorage.setItem("zalo", zalo)
                     showBookingDialog = false
                     @Suppress("UNUSED_VARIABLE")
                     val request = BookingRequest(
