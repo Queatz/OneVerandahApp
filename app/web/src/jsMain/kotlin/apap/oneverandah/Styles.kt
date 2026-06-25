@@ -257,7 +257,7 @@ object Styles {
             z-index: 10;
             background-color: color-mix(in srgb, var(--md-sys-color-surface-variant) 85%, transparent);
             background-image: linear-gradient(to top, transparent 55%, #ffffff16);
-            border-bottom: 1px solid #ffffff54;
+            border-bottom: 1px solid #ffffff36;
             backdrop-filter: blur(3px);
             border-radius: 0 0 var(--appbar-radius, 28px) var(--appbar-radius, 28px);
             transition: border-radius 0.8s ease-out;
@@ -269,9 +269,13 @@ object Styles {
             border-radius: 50%;
             padding: 8px;
             user-select: none;
-            transition: background-color 0.2s;
+            transition: background-color 0.2s, border-color 0.2s;
+            border: 1px solid transparent;
         }
-        .${appBarIcon}:hover { background-color: var(--md-sys-color-surface-variant); }
+        .${appBarIcon}:hover {
+            background-color: var(--md-sys-color-surface-variant);
+            border: 1px solid #ffffff16;
+         }
         .${appBarTitle} {
             font-size: 20px;
             font-weight: 400;
@@ -378,7 +382,7 @@ object Styles {
         }
         .${card} {
             background-color: var(--md-sys-color-surface-variant);
-            border-radius: 16px;
+            border-radius: 28px;
             padding: 20px 12px;
             display: flex;
             flex-direction: column;

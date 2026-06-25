@@ -25,13 +25,13 @@ internal object CatalogServices {
 
     // --- small local helpers to keep the data terse ----------------------
 
-    private fun lt(en: String, vi: String) = LocalizedText(en, vi)
+    private fun lt(en: String, vi: String, zh: String = en) = LocalizedText(en, vi, zh)
     private fun vnd(thousands: Long) = Money.thousands(thousands)
 
     private val trialAndFollowup = listOf(
         BookingTypeOption(
-            "initial",
-            lt("Initial trial booking", "Đặt lịch dùng thử lần đầu"),
+            id = "initial",
+            label = lt("Initial trial booking", "Đặt lịch dùng thử lần đầu"),
             priceDelta = vnd(-50),
         ),
         BookingTypeOption("followup", lt("Follow-up booking", "Đặt lịch tiếp theo")),
