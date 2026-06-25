@@ -23,6 +23,17 @@ object Catalog {
         Category("workshops", LocalizedText(en = "Workshops", vi = "Hội thảo"), icon = "palette"),
         Category("babysitting", LocalizedText(en = "Babysitting", vi = "Giữ trẻ"), icon = "crib"),
         Category("petsitting", LocalizedText(en = "Petsitting", vi = "Trông giữ thú chưng"), icon = "pets"),
+        Category("photography", LocalizedText(en = "Photography", vi = "Nhiếp ảnh"), icon = "photo_camera"),
+        Category("petcare", LocalizedText(en = "Pet Care", vi = "Chăm sóc thú cưng"), icon = "pets"),
+        Category("gardening", LocalizedText(en = "Gardening & Plant Care", vi = "Làm vườn & Chăm sóc cây"), icon = "yard"),
+        Category("rentals", LocalizedText(en = "Tool Rentals & Charger", vi = "Cho thuê dụng cụ & Sạc pin"), icon = "power"),
+        Category("furniture", LocalizedText(en = "Furniture & Moving", vi = "Lắp ráp đồ gỗ & Vận chuyển"), icon = "local_shipping"),
+        Category("housesitting", LocalizedText(en = "House Sitting", vi = "Trông coi nhà cửa"), icon = "home"),
+        Category("ridesharing", LocalizedText(en = "Ride Sharing", vi = "Đi chung xe"), icon = "directions_car"),
+        Category("ithelp", LocalizedText(en = "IT Help", vi = "Hỗ trợ công nghệ"), icon = "computer"),
+        Category("tutoring", LocalizedText(en = "Homework Help & Tutoring", vi = "Gia sư & Hỗ trợ bài tập"), icon = "school"),
+        Category("grocery", LocalizedText(en = "Grocery Run", vi = "Đi chợ hộ"), icon = "shopping_cart"),
+        Category("coffeetea", LocalizedText(en = "Coffee & Tea", vi = "Cà phê & Trà"), icon = "local_cafe"),
     )
 
     val services: List<Service> = CatalogServices.all

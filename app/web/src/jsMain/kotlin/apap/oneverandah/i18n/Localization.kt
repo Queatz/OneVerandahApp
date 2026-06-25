@@ -71,6 +71,10 @@ data class UiStrings(
     val listServiceSuccessMessage: String,
     val searchPlaceholder: String,
     val noResults: String,
+    val providedBy: String,
+    val providerBlockLabel: String,
+    val providerPhoneLabel: String,
+    val providerSexLabel: String,
 )
 
 private val English = UiStrings(
@@ -132,6 +136,10 @@ private val English = UiStrings(
     listServiceSuccessMessage = "Your service listing details have been sent. The host will review and add it manually soon!",
     searchPlaceholder = "Search for services...",
     noResults = "No services found",
+    providedBy = "Provided by",
+    providerBlockLabel = "Block/Address",
+    providerPhoneLabel = "Zalo Phone",
+    providerSexLabel = "Sex",
 )
 
 private val Vietnamese = UiStrings(
@@ -193,6 +201,10 @@ private val Vietnamese = UiStrings(
     listServiceSuccessMessage = "Thông tin dịch vụ của bạn đã được gửi. Người quản trị sẽ xem xét và tự tay thêm vào ứng dụng sớm!",
     searchPlaceholder = "Tìm kiếm dịch vụ...",
     noResults = "Không tìm thấy dịch vụ",
+    providedBy = "Được cung cấp bởi",
+    providerBlockLabel = "Căn hộ/Tòa",
+    providerPhoneLabel = "Số điện thoại Zalo",
+    providerSexLabel = "Giới tính",
 )
 
 private val Chinese = UiStrings(
@@ -251,9 +263,13 @@ private val Chinese = UiStrings(
     yourNamePlaceholder = "请输入您的姓名",
     yourNameError = "请输入姓名",
     listServiceSuccessTitle = "服务申请已提交！",
-    listServiceSuccessMessage = "您的服务上市详情已发送。平台管理员将很快进行审核并手动添加！",
+    listServiceSuccessMessage = "您的 service 上市详情已发送。平台管理员将很快进行审核并手动添加！",
     searchPlaceholder = "搜索服务...",
     noResults = "未找到服务",
+    providedBy = "服务提供者",
+    providerBlockLabel = "楼栋/地址",
+    providerPhoneLabel = "Zalo 电话",
+    providerSexLabel = "性别",
 )
 
 fun stringsFor(language: Language): UiStrings = when (language) {

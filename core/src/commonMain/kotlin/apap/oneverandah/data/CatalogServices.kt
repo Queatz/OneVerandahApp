@@ -13,6 +13,8 @@ import apap.oneverandah.model.MultiSelectOption
 import apap.oneverandah.model.Review
 import apap.oneverandah.model.Service
 import apap.oneverandah.model.SingleSelectOption
+import apap.oneverandah.model.ServiceProvider
+import apap.oneverandah.model.Sex
 
 /**
  * Concrete [Service] definitions: two per category, each combining a different
@@ -37,6 +39,23 @@ internal object CatalogServices {
 
     // ---------------------------------------------------------------------
 
+    private val jacob = ServiceProvider("Jacob", Sex.MALE, "Block A - A.12.03", "+84 901 234 567", "face_6")
+    private val luke = ServiceProvider("Luke", Sex.MALE, "Block B - B.08.15", "+84 902 345 678", "face")
+    private val linh = ServiceProvider("Linh", Sex.FEMALE, "Block C - C.20.05", "+84 903 456 789", "face_3")
+    private val mark = ServiceProvider("Mark", Sex.MALE, "Block A - A.15.11", "+84 904 567 890", "person")
+    private val duc = ServiceProvider("Duc", Sex.MALE, "Block D - D.05.02", "+84 905 678 901", "face_6")
+    private val thuy = ServiceProvider("Thuy", Sex.FEMALE, "Block B - B.11.04", "+84 906 789 012", "face_3")
+    private val ha = ServiceProvider("Ha", Sex.FEMALE, "Block C - C.03.12", "+84 907 890 123", "face_3")
+    private val vy = ServiceProvider("Vy", Sex.MALE, "Block D - D.18.01", "+84 908 901 234", "face_6")
+    private val my = ServiceProvider("My", Sex.FEMALE, "Block A - A.10.08", "+84 909 012 345", "face_3")
+    private val huy = ServiceProvider("Huy", Sex.MALE, "Block B - B.14.02", "+84 901 123 456", "face_6")
+    private val lan = ServiceProvider("Lan", Sex.FEMALE, "Block C - C.07.09", "+84 902 234 567", "face_3")
+    private val vy2 = ServiceProvider("Vy", Sex.FEMALE, "Block D - D.12.11", "+84 903 345 678", "face_3")
+    private val chi = ServiceProvider("Chi", Sex.FEMALE, "Block A - A.09.04", "+84 904 456 789", "face_3")
+    private val thom = ServiceProvider("Thom", Sex.FEMALE, "Block B - B.04.07", "+84 905 567 890", "face_3")
+    private val nam = ServiceProvider("Nam", Sex.MALE, "Block C - C.15.06", "+84 906 678 901", "face_6")
+    private val an = ServiceProvider("An", Sex.FEMALE, "Block D - D.02.03", "+84 907 789 012", "face_3")
+
     val all: List<Service> = listOf(
         // ===================== MASSAGES =====================
         Service(
@@ -53,6 +72,7 @@ internal object CatalogServices {
                 DurationOption("60", minutes = 60, price = vnd(300)),
                 DurationOption("90", minutes = 90, price = vnd(420)),
             ),
+            provider = jacob,
             options = listOf(
                 SingleSelectOption(
                     id = "tone",
@@ -90,6 +110,7 @@ internal object CatalogServices {
                 DurationOption("60", minutes = 60, price = vnd(450)),
                 DurationOption("90", minutes = 90, price = vnd(650)),
             ),
+            provider = luke,
             options = listOf(
                 BodyMapOption(
                     id = "target-area",
@@ -138,6 +159,7 @@ internal object CatalogServices {
                 DurationOption("45", minutes = 45, price = vnd(200)),
                 DurationOption("60", minutes = 60, price = vnd(260)),
             ),
+            provider = linh,
             options = listOf(
                 CounterOption(
                     id = "children",
@@ -175,6 +197,7 @@ internal object CatalogServices {
                 DurationOption("60", minutes = 60, price = vnd(500)),
                 DurationOption("90", minutes = 90, price = vnd(700)),
             ),
+            provider = mark,
             options = listOf(
                 SingleSelectOption(
                     id = "focus",
@@ -215,6 +238,7 @@ internal object CatalogServices {
                 DurationOption("120", minutes = 120, price = vnd(900)),
                 DurationOption("180", minutes = 180, price = vnd(1200)),
             ),
+            provider = duc,
             options = listOf(
                 CounterOption(
                     id = "guests",
@@ -262,6 +286,7 @@ internal object CatalogServices {
                 DurationOption("90", minutes = 90, price = vnd(400)),
                 DurationOption("150", minutes = 150, price = vnd(600)),
             ),
+            provider = thuy,
             options = listOf(
                 CounterOption(
                     id = "participants",
@@ -302,6 +327,7 @@ internal object CatalogServices {
                 DurationOption("120", minutes = 120, price = vnd(250)),
                 DurationOption("180", minutes = 180, price = vnd(350)),
             ),
+            provider = ha,
             options = listOf(
                 CounterOption(
                     id = "rooms",
@@ -341,6 +367,7 @@ internal object CatalogServices {
                 DurationOption("240", minutes = 240, price = vnd(500)),
                 DurationOption("300", minutes = 300, price = vnd(650)),
             ),
+            provider = vy,
             options = listOf(
                 CounterOption(
                     id = "bedrooms",
@@ -381,6 +408,7 @@ internal object CatalogServices {
                 DurationOption("45", minutes = 45, price = vnd(350)),
                 DurationOption("60", minutes = 60, price = vnd(450)),
             ),
+            provider = my,
             options = listOf(
                 SingleSelectOption(
                     id = "level",
@@ -419,6 +447,7 @@ internal object CatalogServices {
                 DurationOption("45", minutes = 45, price = vnd(300)),
                 DurationOption("60", minutes = 60, price = vnd(400)),
             ),
+            provider = huy,
             options = listOf(
                 SingleSelectOption(
                     id = "style",
@@ -458,6 +487,7 @@ internal object CatalogServices {
                 DurationOption("120", minutes = 120, price = vnd(400)),
                 DurationOption("180", minutes = 180, price = vnd(550)),
             ),
+            provider = lan,
             options = listOf(
                 CounterOption(
                     id = "seats",
@@ -496,6 +526,7 @@ internal object CatalogServices {
                 DurationOption("90", minutes = 90, price = vnd(300)),
                 DurationOption("120", minutes = 120, price = vnd(400)),
             ),
+            provider = vy2,
             options = listOf(
                 CounterOption(
                     id = "seats",
@@ -536,6 +567,7 @@ internal object CatalogServices {
                 DurationOption("180", minutes = 180, price = vnd(200)),
                 DurationOption("240", minutes = 240, price = vnd(260)),
             ),
+            provider = chi,
             options = listOf(
                 CounterOption(
                     id = "children",
@@ -574,6 +606,7 @@ internal object CatalogServices {
                 DurationOption("240", minutes = 240, price = vnd(350)),
                 DurationOption("480", minutes = 480, price = vnd(620)),
             ),
+            provider = thom,
             options = listOf(
                 CounterOption(
                     id = "children",
@@ -614,6 +647,7 @@ internal object CatalogServices {
                 DurationOption("30", minutes = 30, price = vnd(120)),
                 DurationOption("60", minutes = 60, price = vnd(180)),
             ),
+            provider = nam,
             options = listOf(
                 CounterOption(
                     id = "dogs",
@@ -653,6 +687,7 @@ internal object CatalogServices {
                 DurationOption("60", minutes = 60, price = vnd(300)),
                 DurationOption("120", minutes = 120, price = vnd(420)),
             ),
+            provider = an,
             options = listOf(
                 CounterOption(
                     id = "pets",
@@ -675,6 +710,620 @@ internal object CatalogServices {
             ),
             reviews = listOf(
                 Review("r1", "Lan", 5, lt("My cats were calm and well fed.", "Mèo của tôi rất bình tĩnh và được cho ăn đầy đủ.")),
+            ),
+        ),
+        // ===================== PHOTOGRAPHY =====================
+        Service(
+            id = "portrait-photography-jacob",
+            categoryId = "photography",
+            icon = "photo_camera",
+            title = lt("Portrait Photography by Jacob", "Chụp ảnh chân dung bởi Jacob"),
+            description = lt("Professional portraits and headshots.", "Ảnh chân dung và ảnh thẻ chuyên nghiệp."),
+            rating = 4.8,
+            reviewCount = 37,
+            basePrice = vnd(400),
+            bookingTypes = trialAndFollowup,
+            durations = listOf(
+                DurationOption("30", minutes = 30, price = vnd(400)),
+                DurationOption("60", minutes = 60, price = vnd(700)),
+            ),
+            provider = jacob,
+            options = listOf(
+                SingleSelectOption(
+                    id = "style",
+                    title = lt("Photo Style", "Phong cách chụp"),
+                    choices = listOf(
+                        Choice("business", lt("Business / Formal", "Công sở / Trang trọng")),
+                        Choice("casual", lt("Casual / Outdoor", "Tự nhiên / Ngoài trời"), vnd(50)),
+                    ),
+                ),
+            ),
+            reviews = listOf(
+                Review("r1", "Oanh", 5, lt("Great headshots for my LinkedIn!", "Ảnh chân dung tuyệt vời cho LinkedIn!")),
+            ),
+        ),
+        Service(
+            id = "event-photography-luke",
+            categoryId = "photography",
+            icon = "camera_roll",
+            title = lt("Event Photography by Luke", "Chụp ảnh sự kiện bởi Luke"),
+            description = lt("Capture high-quality memories of your parties.", "Lưu giữ những kỷ niệm chất lượng cao cho bữa tiệc."),
+            rating = 4.9,
+            reviewCount = 52,
+            basePrice = vnd(1000),
+            bookingTypes = trialAndFollowup,
+            durations = listOf(
+                DurationOption("120", minutes = 120, price = vnd(1000)),
+                DurationOption("240", minutes = 240, price = vnd(1800)),
+            ),
+            provider = luke,
+            options = listOf(
+                CounterOption(
+                    id = "photographers",
+                    title = lt("Number of Photographers", "Số lượng thợ chụp"),
+                    unitLabel = lt("Photographer", "Thợ"),
+                    unitPrice = vnd(400),
+                    min = 1,
+                    max = 3,
+                    default = 1,
+                ),
+            ),
+            reviews = listOf(
+                Review("r1", "Cuong", 5, lt("Incredible party photos!", "Hình ảnh bữa tiệc vô cùng tuyệt vời!")),
+            ),
+        ),
+
+        // ===================== PET CARE =====================
+        Service(
+            id = "pet-grooming-linh",
+            categoryId = "petcare",
+            icon = "content_cut",
+            title = lt("Pet Grooming by Linh", "Tỉa lông thú cưng bởi Linh"),
+            description = lt("Wash, trim, and style for your pets.", "Tắm rửa, cắt tỉa và tạo kiểu cho thú cưng."),
+            rating = 4.7,
+            reviewCount = 43,
+            basePrice = vnd(250),
+            bookingTypes = trialAndFollowup,
+            durations = listOf(
+                DurationOption("60", minutes = 60, price = vnd(250)),
+                DurationOption("90", minutes = 90, price = vnd(350)),
+            ),
+            provider = linh,
+            options = listOf(
+                SingleSelectOption(
+                    id = "serviceType",
+                    title = lt("Grooming type", "Loại dịch vụ"),
+                    choices = listOf(
+                        Choice("basic", lt("Basic Wash & Brush", "Tắm & Chải cơ bản")),
+                        Choice("full", lt("Full Trim & Styling", "Cắt tỉa & Tạo kiểu toàn diện"), vnd(100)),
+                    ),
+                ),
+            ),
+            reviews = listOf(
+                Review("r1", "Thao", 5, lt("My poodle looks gorgeous!", "Chú poodle của tôi trông cực kỳ đáng yêu!")),
+            ),
+        ),
+        Service(
+            id = "pet-training-mark",
+            categoryId = "petcare",
+            icon = "sports_dog",
+            title = lt("Pet Training by Mark", "Huấn luyện thú cưng bởi Mark"),
+            description = lt("Basic obedience and behavior training.", "Huấn luyện vâng lời và hành vi cơ bản."),
+            rating = 4.9,
+            reviewCount = 28,
+            basePrice = vnd(500),
+            bookingTypes = trialAndFollowup,
+            durations = listOf(
+                DurationOption("60", minutes = 60, price = vnd(500)),
+                DurationOption("120", minutes = 120, price = vnd(900)),
+            ),
+            provider = mark,
+            options = listOf(
+                MultiSelectOption(
+                    id = "focusAreas",
+                    title = lt("Focus Training", "Trọng tâm huấn luyện"),
+                    choices = listOf(
+                        Choice("leash", lt("Leash walking", "Đi dây dắt"), vnd(50)),
+                        Choice("barking", lt("Barking control", "Kiểm soát sủa"), vnd(80)),
+                    ),
+                ),
+            ),
+            reviews = listOf(
+                Review("r1", "Phuong", 5, lt("Very patient trainer.", "Huấn luyện viên rất kiên nhẫn.")),
+            ),
+        ),
+
+        // ===================== GARDENING =====================
+        Service(
+            id = "lawn-mowing-duc",
+            categoryId = "gardening",
+            icon = "grass",
+            title = lt("Lawn Mowing & Weeding", "Cắt cỏ & Nhổ cỏ"),
+            description = lt("Keep your balcony garden or yard clean.", "Giữ cho sân vườn hoặc ban công luôn sạch đẹp."),
+            rating = 4.6,
+            reviewCount = 19,
+            basePrice = vnd(150),
+            bookingTypes = trialAndFollowup,
+            durations = listOf(
+                DurationOption("45", minutes = 45, price = vnd(150)),
+                DurationOption("90", minutes = 90, price = vnd(280)),
+            ),
+            provider = duc,
+            options = listOf(
+                CounterOption(
+                    id = "pots",
+                    title = lt("Number of planters/pots", "Số lượng chậu cây"),
+                    unitLabel = lt("Pot", "Chậu"),
+                    unitPrice = vnd(20),
+                    min = 0,
+                    max = 20,
+                    default = 2,
+                ),
+            ),
+            reviews = listOf(
+                Review("r1", "Binh", 4, lt("Quick and efficient work.", "Làm việc nhanh chóng và hiệu quả.")),
+            ),
+        ),
+        Service(
+            id = "plant-care-thuy",
+            categoryId = "gardening",
+            icon = "yard",
+            title = lt("Plant Care Consultation", "Tư vấn chăm sóc cây"),
+            description = lt("Expert advice on sick plants and soil health.", "Lời khuyên chuyên gia cho cây bị bệnh và đất."),
+            rating = 4.9,
+            reviewCount = 31,
+            basePrice = vnd(300),
+            bookingTypes = trialAndFollowup,
+            durations = listOf(
+                DurationOption("60", minutes = 60, price = vnd(300)),
+            ),
+            provider = thuy,
+            options = listOf(
+                SingleSelectOption(
+                    id = "plantType",
+                    title = lt("Plant Type", "Loại cây"),
+                    choices = listOf(
+                        Choice("indoor", lt("Indoor Foliage", "Cây cảnh trong nhà")),
+                        Choice("succulents", lt("Succulents & Cacti", "Sen đá & Xương rồng"), vnd(30)),
+                    ),
+                ),
+            ),
+            reviews = listOf(
+                Review("r1", "Giang", 5, lt("My monstera is finally thriving!", "Cây trầu bà Nam Mỹ của tôi cuối cùng đã phát triển tươi tốt!")),
+            ),
+        ),
+
+        // ===================== TOOL RENTALS =====================
+        Service(
+            id = "power-tool-rental-ha",
+            categoryId = "rentals",
+            icon = "construction",
+            title = lt("Power Tool Rental", "Thuê dụng cụ điện"),
+            description = lt("Rent drills, saws, and basic hand tools.", "Thuê máy khoan, máy cưa và dụng cụ cầm tay."),
+            rating = 4.8,
+            reviewCount = 61,
+            basePrice = vnd(100),
+            bookingTypes = trialAndFollowup,
+            durations = listOf(
+                DurationOption("120", minutes = 120, price = vnd(100)),
+                DurationOption("480", minutes = 480, price = vnd(300)),
+            ),
+            provider = ha,
+            options = listOf(
+                SingleSelectOption(
+                    id = "toolType",
+                    title = lt("Choose Tool", "Chọn dụng cụ"),
+                    choices = listOf(
+                        Choice("drill", lt("Power Drill", "Máy khoan điện")),
+                        Choice("saw", lt("Electric Jigsaw", "Máy cưa lọng điện"), vnd(50)),
+                    ),
+                ),
+            ),
+            reviews = listOf(
+                Review("r1", "Duy", 5, lt("Very convenient for weekend DIY.", "Rất tiện lợi cho việc tự sửa nhà cuối tuần.")),
+            ),
+        ),
+        Service(
+            id = "phone-charger-rental-vy",
+            categoryId = "rentals",
+            icon = "battery_charging_full",
+            title = lt("Phone Charger & Powerbank", "Sạc điện thoại & Sạc dự phòng"),
+            description = lt("Rent portable chargers for any device.", "Thuê sạc dự phòng di động cho mọi thiết bị."),
+            rating = 4.5,
+            reviewCount = 88,
+            basePrice = vnd(20),
+            bookingTypes = trialAndFollowup,
+            durations = listOf(
+                DurationOption("60", minutes = 60, price = vnd(20)),
+                DurationOption("180", minutes = 180, price = vnd(50)),
+            ),
+            provider = vy,
+            options = listOf(
+                SingleSelectOption(
+                    id = "cableType",
+                    title = lt("Cable Type", "Loại cáp sạc"),
+                    choices = listOf(
+                        Choice("usbc", lt("USB-C", "Cổng USB-C")),
+                        Choice("lightning", lt("Lightning", "Cổng Lightning")),
+                    ),
+                ),
+            ),
+        ),
+
+        // ===================== FURNITURE ASSEMBLY =====================
+        Service(
+            id = "furniture-assembly-my",
+            categoryId = "furniture",
+            icon = "build",
+            title = lt("Furniture Assembly", "Lắp ráp đồ nội thất"),
+            description = lt("Flatpack assembly for bed frames, desks, tables.", "Lắp ráp giường, bàn, tủ từ hộp phẳng."),
+            rating = 4.9,
+            reviewCount = 74,
+            basePrice = vnd(300),
+            bookingTypes = trialAndFollowup,
+            durations = listOf(
+                DurationOption("60", minutes = 60, price = vnd(300)),
+                DurationOption("120", minutes = 120, price = vnd(550)),
+            ),
+            provider = my,
+            options = listOf(
+                CounterOption(
+                    id = "items",
+                    title = lt("Number of items", "Số lượng vật dụng"),
+                    unitLabel = lt("Item", "Vật dụng"),
+                    unitPrice = vnd(100),
+                    min = 1,
+                    max = 10,
+                    default = 1,
+                ),
+            ),
+            reviews = listOf(
+                Review("r1", "Vinh", 5, lt("Assembled my complex wardrobe perfectly.", "Lắp ráp chiếc tủ quần áo phức tạp của tôi thật hoàn hảo.")),
+            ),
+        ),
+        Service(
+            id = "moving-help-huy",
+            categoryId = "furniture",
+            icon = "local_shipping",
+            title = lt("Moving Help", "Hỗ trợ vận chuyển"),
+            description = lt("Lifting, loading, and transporting boxes.", "Khênh vác, xếp đồ và vận chuyển thùng hàng."),
+            rating = 4.7,
+            reviewCount = 45,
+            basePrice = vnd(500),
+            bookingTypes = trialAndFollowup,
+            durations = listOf(
+                DurationOption("120", minutes = 120, price = vnd(500)),
+                DurationOption("240", minutes = 240, price = vnd(900)),
+            ),
+            provider = huy,
+            options = listOf(
+                SingleSelectOption(
+                    id = "truckNeeded",
+                    title = lt("Need Transport Truck?", "Cần xe tải chở đồ?"),
+                    choices = listOf(
+                        Choice("no", lt("Just lifting help", "Chỉ cần nâng vác")),
+                        Choice("yes", lt("Lifting + Truck", "Nâng vác + Xe tải"), vnd(400)),
+                    ),
+                ),
+            ),
+        ),
+
+        // ===================== HOUSE SITTING =====================
+        Service(
+            id = "vacation-housesitting-lan",
+            categoryId = "housesitting",
+            icon = "lock",
+            title = lt("Vacation House Sitting", "Trông coi nhà ngày nghỉ"),
+            description = lt("Keep your home secure and safe while you travel.", "Giữ nhà an toàn và an ninh khi bạn đi du lịch."),
+            rating = 4.9,
+            reviewCount = 29,
+            basePrice = vnd(400),
+            bookingTypes = trialAndFollowup,
+            durations = listOf(
+                DurationOption("1440", minutes = 1440, price = vnd(400)),
+            ),
+            provider = lan,
+            options = listOf(
+                MultiSelectOption(
+                    id = "tasks",
+                    title = lt("Extra daily tasks", "Nhiệm vụ hàng ngày thêm"),
+                    choices = listOf(
+                        Choice("mail", lt("Collect Mail", "Nhận thư từ"), vnd(20)),
+                        Choice("trash", lt("Take out trash", "Đổ rác"), vnd(10)),
+                    ),
+                ),
+            ),
+        ),
+        Service(
+            id = "overnight-housesitting-vy2",
+            categoryId = "housesitting",
+            icon = "home",
+            title = lt("Overnight House Sitting", "Trông nhà qua đêm"),
+            description = lt("In-house overnight stay with fish & cat feeding.", "Ở lại qua đêm và cho cá & mèo ăn."),
+            rating = 4.8,
+            reviewCount = 34,
+            basePrice = vnd(600),
+            bookingTypes = trialAndFollowup,
+            durations = listOf(
+                DurationOption("1440", minutes = 1440, price = vnd(600)),
+            ),
+            provider = vy2,
+            options = listOf(
+                CounterOption(
+                    id = "pets",
+                    title = lt("Number of pets to feed", "Số lượng thú cưng cần cho ăn"),
+                    unitLabel = lt("Pet", "Thú cưng"),
+                    unitPrice = vnd(40),
+                    min = 1,
+                    max = 5,
+                    default = 1,
+                ),
+            ),
+        ),
+
+        // ===================== RIDE SHARING =====================
+        Service(
+            id = "commute-rideshare-chi",
+            categoryId = "ridesharing",
+            icon = "commute",
+            title = lt("Daily Commute Ride Share", "Đi chung xe đi làm"),
+            description = lt("Share rides to popular office districts.", "Chia sẻ chuyến xe đến các quận văn phòng phổ biến."),
+            rating = 4.8,
+            reviewCount = 95,
+            basePrice = vnd(50),
+            bookingTypes = trialAndFollowup,
+            durations = listOf(
+                DurationOption("30", minutes = 30, price = vnd(50)),
+                DurationOption("60", minutes = 60, price = vnd(80)),
+            ),
+            provider = chi,
+            options = listOf(
+                SingleSelectOption(
+                    id = "destination",
+                    title = lt("Destination District", "Quận đến"),
+                    choices = listOf(
+                        Choice("q1", lt("District 1", "Quận 1")),
+                        Choice("q7", lt("District 7", "Quận 7"), vnd(20)),
+                    ),
+                ),
+            ),
+        ),
+        Service(
+            id = "airport-rideshare-thom",
+            categoryId = "ridesharing",
+            icon = "local_taxi",
+            title = lt("Airport Ride Share", "Đi chung xe ra sân bay"),
+            description = lt("Reliable airport drop-off and pickup sharing.", "Đón tiễn sân bay đáng tin cậy."),
+            rating = 4.9,
+            reviewCount = 112,
+            basePrice = vnd(200),
+            bookingTypes = trialAndFollowup,
+            durations = listOf(
+                DurationOption("45", minutes = 45, price = vnd(200)),
+            ),
+            provider = thom,
+            options = listOf(
+                CounterOption(
+                    id = "luggage",
+                    title = lt("Number of luggage pieces", "Số lượng hành lý"),
+                    unitLabel = lt("Bag", "Kiện"),
+                    unitPrice = vnd(20),
+                    min = 0,
+                    max = 4,
+                    default = 1,
+                ),
+            ),
+        ),
+
+        // ===================== IT HELP =====================
+        Service(
+            id = "wifi-setup-nam",
+            categoryId = "ithelp",
+            icon = "router",
+            title = lt("Wi-Fi Setup & Troubleshooting", "Cài đặt & Sửa lỗi Wi-Fi"),
+            description = lt("Optimize your home network and eliminate dead spots.", "Tối ưu hóa mạng gia đình và xóa điểm chết Wi-Fi."),
+            rating = 4.7,
+            reviewCount = 41,
+            basePrice = vnd(300),
+            bookingTypes = trialAndFollowup,
+            durations = listOf(
+                DurationOption("60", minutes = 60, price = vnd(300)),
+            ),
+            provider = nam,
+            options = listOf(
+                SingleSelectOption(
+                    id = "routerNeeded",
+                    title = lt("Need New Router?", "Cần Router mới không?"),
+                    choices = listOf(
+                        Choice("no", lt("Use existing router", "Dùng router hiện có")),
+                        Choice("yes", lt("Buy high-speed router", "Mua router tốc độ cao"), vnd(800)),
+                    ),
+                ),
+            ),
+        ),
+        Service(
+            id = "pc-reinstall-an",
+            categoryId = "ithelp",
+            icon = "computer",
+            title = lt("Laptop & PC OS Reinstall", "Cài đặt lại hệ điều hành PC"),
+            description = lt("Clean install of Windows or macOS with drivers.", "Cài đặt sạch Windows hoặc macOS đầy đủ driver."),
+            rating = 4.9,
+            reviewCount = 38,
+            basePrice = vnd(400),
+            bookingTypes = trialAndFollowup,
+            durations = listOf(
+                DurationOption("90", minutes = 90, price = vnd(400)),
+            ),
+            provider = an,
+            options = listOf(
+                MultiSelectOption(
+                    id = "software",
+                    title = lt("Additional Software", "Phần mềm bổ sung"),
+                    choices = listOf(
+                        Choice("office", lt("Office Suite", "Bộ ứng dụng văn phòng"), vnd(150)),
+                        Choice("backup", lt("Full Data Backup", "Sao lưu toàn bộ dữ liệu"), vnd(100)),
+                    ),
+                ),
+            ),
+        ),
+
+        // ===================== TUTORING =====================
+        Service(
+            id = "math-tutoring-jacob",
+            categoryId = "tutoring",
+            icon = "calculate",
+            title = lt("Math Tutoring by Jacob", "Gia sư toán bởi Jacob"),
+            description = lt("Elementary and high school mathematics help.", "Gia sư toán cấp 1, cấp 2 và cấp 3."),
+            rating = 4.8,
+            reviewCount = 22,
+            basePrice = vnd(250),
+            bookingTypes = trialAndFollowup,
+            durations = listOf(
+                DurationOption("60", minutes = 60, price = vnd(250)),
+                DurationOption("90", minutes = 90, price = vnd(350)),
+            ),
+            provider = jacob,
+            options = listOf(
+                SingleSelectOption(
+                    id = "level",
+                    title = lt("Grade Level", "Cấp học"),
+                    choices = listOf(
+                        Choice("primary", lt("Primary School", "Cấp 1")),
+                        Choice("secondary", lt("Secondary School", "Cấp 2"), vnd(50)),
+                        Choice("high", lt("High School", "Cấp 3"), vnd(100)),
+                    ),
+                ),
+            ),
+        ),
+        Service(
+            id = "science-tutoring-luke",
+            categoryId = "tutoring",
+            icon = "science",
+            title = lt("Science Project Tutoring", "Gia sư dự án khoa học"),
+            description = lt("Guidance for physics, chemistry, biology.", "Hướng dẫn vật lý, hóa học, sinh học."),
+            rating = 4.9,
+            reviewCount = 18,
+            basePrice = vnd(300),
+            bookingTypes = trialAndFollowup,
+            durations = listOf(
+                DurationOption("60", minutes = 60, price = vnd(300)),
+            ),
+            provider = luke,
+            options = listOf(
+                MultiSelectOption(
+                    id = "supplies",
+                    title = lt("Materials & Kits", "Học cụ & Bộ thí nghiệm"),
+                    choices = listOf(
+                        Choice("kit", lt("Science Lab Kit", "Bộ dụng cụ thí nghiệm"), vnd(120)),
+                    ),
+                ),
+            ),
+        ),
+
+        // ===================== GROCERY RUN =====================
+        Service(
+            id = "supermarket-grocery-linh",
+            categoryId = "grocery",
+            icon = "shopping_basket",
+            title = lt("Supermarket Grocery Run", "Đi siêu thị hộ"),
+            description = lt("Grocery shopping from major supermarkets.", "Mua hộ hàng hóa từ các siêu thị lớn."),
+            rating = 4.7,
+            reviewCount = 89,
+            basePrice = vnd(100),
+            bookingTypes = trialAndFollowup,
+            durations = listOf(
+                DurationOption("60", minutes = 60, price = vnd(100)),
+            ),
+            provider = linh,
+            options = listOf(
+                CounterOption(
+                    id = "itemsCount",
+                    title = lt("Est. items to buy", "Số lượng vật phẩm ước tính"),
+                    unitLabel = lt("Item", "Vật phẩm"),
+                    unitPrice = vnd(10),
+                    min = 1,
+                    max = 30,
+                    default = 5,
+                ),
+            ),
+        ),
+        Service(
+            id = "local-market-grocery-mark",
+            categoryId = "grocery",
+            icon = "storefront",
+            title = lt("Local Market Fresh Run", "Đi chợ truyền thống"),
+            description = lt("Fresh ingredients from wet markets.", "Nguyên liệu tươi sống từ chợ truyền thống."),
+            rating = 4.9,
+            reviewCount = 67,
+            basePrice = vnd(120),
+            bookingTypes = trialAndFollowup,
+            durations = listOf(
+                DurationOption("60", minutes = 60, price = vnd(120)),
+            ),
+            provider = mark,
+            options = listOf(
+                SingleSelectOption(
+                    id = "marketType",
+                    title = lt("Choose Market", "Chọn chợ"),
+                    choices = listOf(
+                        Choice("cho_chieu", lt("Afternoon Wet Market", "Chợ chiều")),
+                        Choice("cho_sang", lt("Early Morning Wet Market", "Chợ sáng"), vnd(30)),
+                    ),
+                ),
+            ),
+        ),
+
+        // ===================== COFFEE & TEA =====================
+        Service(
+            id = "coffee-tea-delivery-duc",
+            categoryId = "coffeetea",
+            icon = "local_cafe",
+            title = lt("Coffee & Tea Delivery", "Giao cà phê & Trà"),
+            description = lt("Fresh hot drinks delivered to your door.", "Giao thức uống nóng thơm ngon tận cửa."),
+            rating = 4.8,
+            reviewCount = 145,
+            basePrice = vnd(40),
+            bookingTypes = trialAndFollowup,
+            durations = listOf(
+                DurationOption("20", minutes = 20, price = vnd(40)),
+            ),
+            provider = duc,
+            options = listOf(
+                SingleSelectOption(
+                    id = "drinkType",
+                    title = lt("Select Beverage", "Chọn đồ uống"),
+                    choices = listOf(
+                        Choice("black_coffee", lt("Black Coffee", "Cà phê đen")),
+                        Choice("milk_coffee", lt("Milk Coffee", "Cà phê sữa"), vnd(10)),
+                        Choice("peach_tea", lt("Peach Tea", "Trà đào"), vnd(15)),
+                    ),
+                ),
+            ),
+        ),
+        Service(
+            id = "tea-brewing-workshop-thuy",
+            categoryId = "coffeetea",
+            icon = "emoji_food_beverage",
+            title = lt("Artisan Tea Workshop", "Hội thảo trà nghệ thuật"),
+            description = lt("Learn artisan tea brewing and tasting.", "Học cách pha và thưởng thức trà nghệ thuật."),
+            rating = 4.9,
+            reviewCount = 36,
+            basePrice = vnd(350),
+            bookingTypes = trialAndFollowup,
+            durations = listOf(
+                DurationOption("90", minutes = 90, price = vnd(350)),
+            ),
+            provider = thuy,
+            options = listOf(
+                CounterOption(
+                    id = "attendees",
+                    title = lt("Attendees count", "Số lượng người học"),
+                    unitLabel = lt("Attendee", "Học viên"),
+                    unitPrice = vnd(150),
+                    min = 1,
+                    max = 6,
+                    default = 1,
+                ),
             ),
         ),
     )

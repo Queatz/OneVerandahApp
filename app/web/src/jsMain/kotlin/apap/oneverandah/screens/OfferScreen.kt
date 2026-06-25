@@ -14,6 +14,8 @@ import apap.oneverandah.components.Counter
 import apap.oneverandah.components.MaterialSymbol
 import apap.oneverandah.components.OptionChip
 import apap.oneverandah.components.BookingDialog
+import apap.oneverandah.components.ProviderDetailsDialog
+import org.jetbrains.compose.web.dom.Span
 import apap.oneverandah.components.PriceSummaryView
 import apap.oneverandah.components.PrimaryButton
 import apap.oneverandah.components.ReviewList
@@ -70,6 +72,7 @@ fun OfferScreen(
     var selection by remember(serviceId) { mutableStateOf(service.defaultSelection()) }
     var phase by remember(serviceId) { mutableStateOf(BookingPhase.IDLE) }
     var showBookingDialog by remember(serviceId) { mutableStateOf(false) }
+    var showProviderDetails by remember(serviceId) { mutableStateOf(false) }
     var dialogZalo by remember(serviceId) { mutableStateOf<String?>(null) }
     var dialogMessage by remember(serviceId) { mutableStateOf<String?>(null) }
     val scope = rememberCoroutineScope()
@@ -80,7 +83,7 @@ fun OfferScreen(
         onBack = onBack,
         onHome = onHome,
         showBanner = true,
-        lockScroll = showBookingDialog || phase == BookingPhase.SUCCESS,
+        lockScroll = showBookingDialog || showProviderDetails || phase == BookingPhase.SUCCESS,
         footer = {
             PrimaryButton(
                 label = if (phase == BookingPhase.SUBMITTING) strings.booking else strings.bookThisService,
@@ -150,6 +153,13 @@ fun OfferScreen(
                 doneLabel = strings.done,
                 onDone = onDone,
             )
+            ProviderDetailsDialog(
+                visible = showProviderDetails,
+                provider = service.provider,
+                language = language,
+                strings = strings,
+                onDismiss = { showProviderDetails = false }
+            )
         },
     ) {
         // Provider header
@@ -163,6 +173,53 @@ fun OfferScreen(
             }
             P {
                 Text(service.description.resolve(language))
+            }
+            // Provided by (photo) Name of Provider
+            Div(attrs = {
+                style {
+                    property("display", "inline-flex")
+                    property("align-items", "center")
+                    property("justify-content", "center")
+                    property("gap", "8px")
+                    property("margin-top", "12px")
+                    property("cursor", "pointer")
+                }
+                onClick {
+                    showProviderDetails = true
+                }
+            }) {
+                Text("${strings.providedBy} ")
+                // Small photo/avatar of the provider
+                Div(attrs = {
+                    style {
+                        property("width", "28px")
+                        property("height", "28px")
+                        property("border-radius", "50%")
+                        property("background-color", "var(--md-sys-color-primary-container)")
+                        property("display", "inline-flex")
+                        property("align-items", "center")
+                        property("justify-content", "center")
+                        property("color", "var(--md-sys-color-primary)")
+                    }
+                }) {
+                    Span(attrs = {
+                        classes(Styles.materialSymbols)
+                        style {
+                            property("font-size", "18px")
+                        }
+                    }) {
+                        Text(service.provider.photo)
+                    }
+                }
+                Span(attrs = {
+                    style {
+                        property("font-weight", "bold")
+                        property("text-decoration", "underline")
+                        property("color", "var(--md-sys-color-primary)")
+                    }
+                }) {
+                    Text(service.provider.name)
+                }
             }
         }
 

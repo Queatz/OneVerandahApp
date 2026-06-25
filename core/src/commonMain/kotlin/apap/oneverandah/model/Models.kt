@@ -56,6 +56,21 @@ data class Category(
     val icon: String,
 )
 
+enum class Sex {
+    MALE, FEMALE
+}
+
+/**
+ * A service provider who performs a [Service].
+ */
+data class ServiceProvider(
+    val name: String,
+    val sex: Sex,
+    val blockAddress: String,
+    val phone: String,
+    val photo: String, // Material symbol or image path/URL
+)
+
 /**
  * A bookable offering inside a [Category] (e.g. "Word Massages by Jacob").
  */
@@ -72,6 +87,7 @@ data class Service(
     val basePrice: Money,
     val bookingTypes: List<BookingTypeOption>,
     val durations: List<DurationOption>,
+    val provider: ServiceProvider,
     /** Per-service customisation options that drive the unique booking UI. */
     val options: List<ServiceOption> = emptyList(),
     /** Customer reviews shown on the offer screen. */
