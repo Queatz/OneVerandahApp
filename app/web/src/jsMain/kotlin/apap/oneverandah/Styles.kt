@@ -407,7 +407,7 @@ object Styles {
         /* Services list */
         .${listCard} {
             background-color: var(--md-sys-color-surface-variant);
-            border-radius: 16px;
+            border-radius: 28px;
             padding: 16px;
             margin-bottom: 12px;
             display: flex;
@@ -449,7 +449,7 @@ object Styles {
         .${chipGroup} { display: flex; gap: 8px; flex-wrap: wrap; }
         .${chip} {
             padding: 8px 16px;
-            border-radius: 8px;
+            border-radius: 16px;
             border: 1px solid var(--md-sys-color-outline);
             font-size: 14px;
             font-weight: 700;

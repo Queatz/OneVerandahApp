@@ -393,6 +393,319 @@ internal object CatalogServices {
             ),
         ),
 
+        // ===================== HOME ORGANIZING =====================
+        Service(
+            id = "closet-organization-lan",
+            categoryId = "home_organizing",
+            icon = "checkroom",
+            title = lt("Closet Organization by Lan", "Sắp xếp tủ quần áo bởi Lan"),
+            description = lt("De-clutter and organize your wardrobe.", "Sắp xếp và tối giản tủ đồ của bạn."),
+            rating = 4.8,
+            reviewCount = 42,
+            basePrice = vnd(300),
+            bookingTypes = trialAndFollowup,
+            durations = listOf(
+                DurationOption("120", minutes = 120, price = vnd(300)),
+                DurationOption("180", minutes = 180, price = vnd(420)),
+            ),
+            provider = lan,
+            options = listOf(
+                CounterOption(
+                    id = "wardrobes",
+                    title = lt("Number of wardrobes", "Số lượng tủ quần áo"),
+                    unitLabel = lt("Wardrobe", "Tủ"),
+                    unitPrice = vnd(80),
+                    min = 1,
+                    max = 5,
+                    default = 1,
+                ),
+                SingleSelectOption(
+                    id = "foldingStyle",
+                    title = lt("Folding style", "Kiểu gấp đồ"),
+                    choices = listOf(
+                        Choice("standard", lt("Standard", "Tiêu chuẩn")),
+                        Choice("konmari", lt("KonMari style", "Phương pháp KonMari"), vnd(50)),
+                    ),
+                ),
+            ),
+            reviews = listOf(
+                Review("r1", "Hanh", 5, lt("Lan made my messy closet look like a boutique!", "Lan làm chiếc tủ lộn xộn của tôi trông như cửa hiệu thời trang!")),
+            ),
+        ),
+        Service(
+            id = "kitchen-organization-an",
+            categoryId = "home_organizing",
+            icon = "kitchen",
+            title = lt("Kitchen & Pantry Organization", "Sắp xếp nhà bếp & Phòng ăn"),
+            description = lt("Systematize your kitchen, pantry, and fridge.", "Sắp xếp hệ thống nhà bếp, tủ đồ ăn và tủ lạnh."),
+            rating = 4.9,
+            reviewCount = 29,
+            basePrice = vnd(400),
+            bookingTypes = trialAndFollowup,
+            durations = listOf(
+                DurationOption("120", minutes = 120, price = vnd(400)),
+                DurationOption("240", minutes = 240, price = vnd(750)),
+            ),
+            provider = an,
+            options = listOf(
+                MultiSelectOption(
+                    id = "focusAreas",
+                    title = lt("Focus areas", "Khu vực trọng tâm"),
+                    choices = listOf(
+                        Choice("pantry", lt("Pantry & Cabinets", "Tủ thực phẩm & Tủ bếp"), vnd(100)),
+                        Choice("fridge", lt("Refrigerator organizing", "Sắp xếp tủ lạnh"), vnd(80)),
+                    ),
+                ),
+            ),
+            reviews = listOf(
+                Review("r1", "Cuong", 5, lt("Everything is so easy to find now.", "Bây giờ mọi thứ thật dễ tìm.")),
+            ),
+        ),
+
+        // ===================== PERSONAL TRAINERS =====================
+        Service(
+            id = "strength-conditioning-duc",
+            categoryId = "personal_trainers",
+            icon = "fitness_center",
+            title = lt("Strength & Conditioning by Duc", "Sức bền & Thể lực bởi Đức"),
+            description = lt("Customized workouts to build strength, power, and lean muscle.", "Các bài tập được thiết kế riêng giúp xây dựng sức mạnh, thể lực và cơ bắp."),
+            rating = 4.9,
+            reviewCount = 56,
+            basePrice = vnd(350),
+            bookingTypes = trialAndFollowup,
+            durations = listOf(
+                DurationOption("60", minutes = 60, price = vnd(350)),
+                DurationOption("90", minutes = 90, price = vnd(500)),
+            ),
+            provider = duc,
+            options = listOf(
+                MultiSelectOption(
+                    id = "goals",
+                    title = lt("Focus Goals", "Mục tiêu tập luyện"),
+                    choices = listOf(
+                        Choice("weight_loss", lt("Weight Loss", "Giảm cân")),
+                        Choice("muscle_gain", lt("Muscle Gain", "Tăng cơ")),
+                        Choice("endurance", lt("Endurance", "Sức bền")),
+                    ),
+                ),
+            ),
+            reviews = listOf(
+                Review("r1", "Long", 5, lt("Duc is highly professional and motivating.", "Đức rất chuyên nghiệp và đầy động lực.")),
+            ),
+        ),
+        Service(
+            id = "hiit-cardio-vy",
+            categoryId = "personal_trainers",
+            icon = "directions_run",
+            title = lt("Fat Loss & HIIT with Vy", "Giảm mỡ & HIIT cùng Vy"),
+            description = lt("High intensity interval training sessions for efficient calorie burning.", "Các buổi tập cường độ cao ngắt quãng giúp đốt cháy calo hiệu quả."),
+            rating = 4.8,
+            reviewCount = 38,
+            basePrice = vnd(300),
+            bookingTypes = trialAndFollowup,
+            durations = listOf(
+                DurationOption("45", minutes = 45, price = vnd(300)),
+                DurationOption("60", minutes = 60, price = vnd(400)),
+            ),
+            provider = vy,
+            options = listOf(
+                SingleSelectOption(
+                    id = "fitnessLevel",
+                    title = lt("Fitness Level", "Trình độ thể chất"),
+                    choices = listOf(
+                        Choice("beginner", lt("Beginner", "Mới bắt đầu")),
+                        Choice("advanced", lt("Advanced", "Nâng cao"), vnd(50)),
+                    ),
+                ),
+            ),
+            reviews = listOf(
+                Review("r1", "Hanh", 5, lt("Sweaty but extremely fun and energetic!", "Đầy mồ hôi nhưng cực kỳ vui vẻ và năng động!")),
+            ),
+        ),
+
+        // ===================== YOGA =====================
+        Service(
+            id = "vinyasa-yoga-linh",
+            categoryId = "yoga",
+            icon = "self_improvement",
+            title = lt("Vinyasa Flow Yoga with Linh", "Yoga Vinyasa Flow cùng Linh"),
+            description = lt("Connect breath with movement in an energizing flow.", "Kết nối hơi thở với chuyển động trong một dòng chảy tràn đầy năng lượng."),
+            rating = 4.9,
+            reviewCount = 74,
+            basePrice = vnd(280),
+            bookingTypes = trialAndFollowup,
+            durations = listOf(
+                DurationOption("60", minutes = 60, price = vnd(280)),
+                DurationOption("90", minutes = 90, price = vnd(400)),
+            ),
+            provider = linh,
+            options = listOf(
+                SingleSelectOption(
+                    id = "classType",
+                    title = lt("Class Type", "Loại lớp học"),
+                    choices = listOf(
+                        Choice("private", lt("Private 1-on-1", "Riêng tư 1 kèm 1")),
+                        Choice("small_group", lt("Small Group (up to 3)", "Nhóm nhỏ (tối đa 3 người)"), vnd(100)),
+                    ),
+                ),
+            ),
+            reviews = listOf(
+                Review("r1", "Thao", 5, lt("Linh has amazing energy. Perfect instruction.", "Linh có nguồn năng lượng tuyệt vời. Hướng dẫn rất hoàn hảo.")),
+            ),
+        ),
+        Service(
+            id = "yin-yoga-ha",
+            categoryId = "yoga",
+            icon = "spa",
+            title = lt("Yin & Relaxation Yoga by Ha", "Yoga Yin & Thư giãn bởi Hà"),
+            description = lt("Slow-paced style of yoga with postures held for longer periods.", "Phong cách yoga chậm rãi với các tư thế được giữ trong thời gian dài hơn."),
+            rating = 4.7,
+            reviewCount = 41,
+            basePrice = vnd(250),
+            bookingTypes = trialAndFollowup,
+            durations = listOf(
+                DurationOption("60", minutes = 60, price = vnd(250)),
+                DurationOption("90", minutes = 90, price = vnd(350)),
+            ),
+            provider = ha,
+            options = listOf(
+                MultiSelectOption(
+                    id = "props",
+                    title = lt("Props Needed", "Dụng cụ hỗ trợ"),
+                    choices = listOf(
+                        Choice("mat", lt("Bring own mat", "Tự mang thảm")),
+                        Choice("blocks_straps", lt("Request blocks & straps", "Yêu cầu gạch & dây hỗ trợ"), vnd(20)),
+                    ),
+                ),
+            ),
+            reviews = listOf(
+                Review("r1", "Minh", 5, lt("Deeply relaxing session, slept so well after.", "Buổi tập thư giãn sâu, sau đó ngủ rất ngon.")),
+            ),
+        ),
+
+        // ===================== PARTY PLANNING =====================
+        Service(
+            id = "birthday-anniversary-planning-chi",
+            categoryId = "party_planning",
+            icon = "celebration",
+            title = lt("Birthday & Anniversary Planning by Chi", "Lên kế hoạch sinh nhật & kỷ niệm bởi Chi"),
+            description = lt("Create unforgettable celebrations with custom decor and themes.", "Tạo nên những lễ kỷ niệm khó quên với thiết kế và chủ đề tùy chỉnh."),
+            rating = 4.9,
+            reviewCount = 45,
+            basePrice = vnd(800),
+            bookingTypes = trialAndFollowup,
+            durations = listOf(
+                DurationOption("60", minutes = 60, price = vnd(800)),
+                DurationOption("120", minutes = 120, price = vnd(1500)),
+            ),
+            provider = chi,
+            options = listOf(
+                SingleSelectOption(
+                    id = "theme",
+                    title = lt("Party Theme", "Chủ đề bữa tiệc"),
+                    choices = listOf(
+                        Choice("classic", lt("Classic", "Cổ điển")),
+                        Choice("themed", lt("Premium Themed", "Chủ đề đặc biệt"), vnd(200)),
+                    ),
+                ),
+            ),
+            reviews = listOf(
+                Review("r1", "Huy", 5, lt("Chi made our daughter's birthday absolutely magical!", "Chi đã làm cho ngày sinh nhật của con gái chúng tôi thực sự kỳ diệu!")),
+            ),
+        ),
+        Service(
+            id = "corporate-events-huy",
+            categoryId = "party_planning",
+            icon = "business_center",
+            title = lt("Corporate & Large Events by Huy", "Sự kiện doanh nghiệp & Sự kiện lớn bởi Huy"),
+            description = lt("Professional planning for corporate milestones, networking, and large parties.", "Lập kế hoạch chuyên nghiệp cho các mốc kỷ niệm doanh nghiệp, kết nối và tiệc lớn."),
+            rating = 4.8,
+            reviewCount = 32,
+            basePrice = vnd(1500),
+            bookingTypes = trialAndFollowup,
+            durations = listOf(
+                DurationOption("120", minutes = 120, price = vnd(1500)),
+                DurationOption("240", minutes = 240, price = vnd(2800)),
+            ),
+            provider = huy,
+            options = listOf(
+                CounterOption(
+                    id = "attendees",
+                    title = lt("Estimated Guest Count", "Số lượng khách ước tính"),
+                    unitLabel = lt("Guests", "Khách"),
+                    unitPrice = vnd(10),
+                    min = 10,
+                    max = 200,
+                    default = 50,
+                ),
+            ),
+            reviews = listOf(
+                Review("r1", "An", 5, lt("Highly professional coordination. Everything ran smoothly.", "Phối hợp cực kỳ chuyên nghiệp. Mọi thứ diễn ra rất suôn sẻ.")),
+            ),
+        ),
+
+        // ===================== VACATION PLANNING =====================
+        Service(
+            id = "custom-itinerary-luke",
+            categoryId = "vacation_planning",
+            icon = "explore",
+            title = lt("Custom Itinerary Planning by Luke", "Lên lịch trình tùy chỉnh bởi Luke"),
+            description = lt("Personalized travel plans, bookings, and hidden gem recommendations.", "Kế hoạch du lịch cá nhân hóa, đặt phòng và đề xuất các điểm đến ẩn giấu."),
+            rating = 4.9,
+            reviewCount = 61,
+            basePrice = vnd(500),
+            bookingTypes = trialAndFollowup,
+            durations = listOf(
+                DurationOption("60", minutes = 60, price = vnd(500)),
+                DurationOption("120", minutes = 120, price = vnd(900)),
+            ),
+            provider = luke,
+            options = listOf(
+                MultiSelectOption(
+                    id = "interests",
+                    title = lt("Travel Interests", "Sở thích du lịch"),
+                    choices = listOf(
+                        Choice("nature", lt("Nature & Adventure", "Thiên nhiên & Phiêu lưu")),
+                        Choice("food", lt("Food & Culture", "Ẩm thực & Văn hóa")),
+                        Choice("luxury", lt("Luxury & Relaxation", "Sang trọng & Thư giãn"), vnd(150)),
+                    ),
+                ),
+            ),
+            reviews = listOf(
+                Review("r1", "Linh", 5, lt("Luke planned the perfect family trip to Phu Quoc!", "Luke đã lên kế hoạch cho chuyến đi gia đình hoàn hảo đến Phú Quốc!")),
+            ),
+        ),
+        Service(
+            id = "weekend-getaway-lan",
+            categoryId = "vacation_planning",
+            icon = "wb_sunny",
+            title = lt("Weekend Getaway Planner by Lan", "Lập kế hoạch nghỉ dưỡng cuối tuần bởi Lan"),
+            description = lt("Quick, stress-free weekend trips and staycations near the city.", "Chuyến đi cuối tuần nhanh chóng, không lo nghĩ và nghỉ dưỡng tại chỗ gần thành phố."),
+            rating = 4.7,
+            reviewCount = 28,
+            basePrice = vnd(350),
+            bookingTypes = trialAndFollowup,
+            durations = listOf(
+                DurationOption("45", minutes = 45, price = vnd(350)),
+                DurationOption("90", minutes = 90, price = vnd(600)),
+            ),
+            provider = lan,
+            options = listOf(
+                SingleSelectOption(
+                    id = "destinationType",
+                    title = lt("Destination Preference", "Sở thích điểm đến"),
+                    choices = listOf(
+                        Choice("beach", lt("Beachside", "Bờ biển")),
+                        Choice("mountain", lt("Mountain/Forest", "Núi/Rừng")),
+                        Choice("resort", lt("Luxury Resort Stay", "Nghỉ dưỡng resort sang trọng"), vnd(100)),
+                    ),
+                ),
+            ),
+            reviews = listOf(
+                Review("r1", "Duc", 5, lt("Exactly what we needed for a quick refresh.", "Chính xác là những gì chúng tôi cần để làm mới bản thân nhanh chóng.")),
+            ),
+        ),
+
         // ===================== MUSIC LESSONS =====================
         Service(
             id = "piano-lessons",

@@ -45,6 +45,93 @@ class ApplicationTest {
     }
 
     @Test
+    fun testHomeOrganizingServices() {
+        val category = apap.oneverandah.data.Catalog.categoryById("home_organizing")
+        assertNotNull(category, "Home Organizing category should exist")
+        
+        val services = apap.oneverandah.data.Catalog.servicesByCategory("home_organizing")
+        assertEquals(2, services.size, "Should find exactly 2 services for Home Organizing")
+        
+        val closetService = services.firstOrNull { it.id == "closet-organization-lan" }
+        assertNotNull(closetService, "Closet Organization service should be present")
+        assertEquals("Closet Organization by Lan", closetService.title.en)
+        
+        val kitchenService = services.firstOrNull { it.id == "kitchen-organization-an" }
+        assertNotNull(kitchenService, "Kitchen & Pantry Organization service should be present")
+        assertEquals("Kitchen & Pantry Organization", kitchenService.title.en)
+    }
+
+    @Test
+    fun testPersonalTrainersAndYogaServices() {
+        val ptCategory = apap.oneverandah.data.Catalog.categoryById("personal_trainers")
+        assertNotNull(ptCategory, "Personal Trainers category should exist")
+        assertEquals("Personal Trainers", ptCategory.title.en)
+        assertEquals("Huấn luyện viên cá nhân", ptCategory.title.vi)
+
+        val ptServices = apap.oneverandah.data.Catalog.servicesByCategory("personal_trainers")
+        assertEquals(2, ptServices.size, "Should find exactly 2 services for Personal Trainers")
+
+        val strengthService = ptServices.firstOrNull { it.id == "strength-conditioning-duc" }
+        assertNotNull(strengthService)
+        assertEquals("Strength & Conditioning by Duc", strengthService.title.en)
+
+        val hiitService = ptServices.firstOrNull { it.id == "hiit-cardio-vy" }
+        assertNotNull(hiitService)
+        assertEquals("Fat Loss & HIIT with Vy", hiitService.title.en)
+
+        val yogaCategory = apap.oneverandah.data.Catalog.categoryById("yoga")
+        assertNotNull(yogaCategory, "Yoga category should exist")
+        assertEquals("Yoga", yogaCategory.title.en)
+        assertEquals("Yoga", yogaCategory.title.vi)
+
+        val yogaServices = apap.oneverandah.data.Catalog.servicesByCategory("yoga")
+        assertEquals(2, yogaServices.size, "Should find exactly 2 services for Yoga")
+
+        val vinyasaService = yogaServices.firstOrNull { it.id == "vinyasa-yoga-linh" }
+        assertNotNull(vinyasaService)
+        assertEquals("Vinyasa Flow Yoga with Linh", vinyasaService.title.en)
+
+        val yinService = yogaServices.firstOrNull { it.id == "yin-yoga-ha" }
+        assertNotNull(yinService)
+        assertEquals("Yin & Relaxation Yoga by Ha", yinService.title.en)
+    }
+
+    @Test
+    fun testPartyPlanningAndVacationPlanningServices() {
+        val partyCategory = apap.oneverandah.data.Catalog.categoryById("party_planning")
+        assertNotNull(partyCategory, "Party Planning category should exist")
+        assertEquals("Party Planning", partyCategory.title.en)
+        assertEquals("Lên kế hoạch tiệc tùng", partyCategory.title.vi)
+
+        val partyServices = apap.oneverandah.data.Catalog.servicesByCategory("party_planning")
+        assertEquals(2, partyServices.size, "Should find exactly 2 services for Party Planning")
+
+        val birthdayService = partyServices.firstOrNull { it.id == "birthday-anniversary-planning-chi" }
+        assertNotNull(birthdayService)
+        assertEquals("Birthday & Anniversary Planning by Chi", birthdayService.title.en)
+
+        val corporateService = partyServices.firstOrNull { it.id == "corporate-events-huy" }
+        assertNotNull(corporateService)
+        assertEquals("Corporate & Large Events by Huy", corporateService.title.en)
+
+        val vacationCategory = apap.oneverandah.data.Catalog.categoryById("vacation_planning")
+        assertNotNull(vacationCategory, "Vacation Planning category should exist")
+        assertEquals("Vacation Planning", vacationCategory.title.en)
+        assertEquals("Lên kế hoạch kỳ nghỉ", vacationCategory.title.vi)
+
+        val vacationServices = apap.oneverandah.data.Catalog.servicesByCategory("vacation_planning")
+        assertEquals(2, vacationServices.size, "Should find exactly 2 services for Vacation Planning")
+
+        val customItineraryService = vacationServices.firstOrNull { it.id == "custom-itinerary-luke" }
+        assertNotNull(customItineraryService)
+        assertEquals("Custom Itinerary Planning by Luke", customItineraryService.title.en)
+
+        val weekendService = vacationServices.firstOrNull { it.id == "weekend-getaway-lan" }
+        assertNotNull(weekendService)
+        assertEquals("Weekend Getaway Planner by Lan", weekendService.title.en)
+    }
+
+    @Test
     fun testPricingCalculatorDurationFormatting() {
         val service60 = apap.oneverandah.model.Service(
             id = "test-service-60",
