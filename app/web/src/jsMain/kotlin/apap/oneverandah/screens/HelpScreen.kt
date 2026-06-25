@@ -148,6 +148,7 @@ fun HelpScreen(onBack: () -> Unit) {
             MaterialSymbol("add_business", extraClass = Styles.listIcon)
             Div(attrs = { classes(Styles.listDetails) }) {
                 H2 { Text(strings.helpListService) }
+                P { Text(strings.helpListServiceSubtitle) }
             }
         }
 
@@ -159,6 +160,7 @@ fun HelpScreen(onBack: () -> Unit) {
             MaterialSymbol("feedback", extraClass = Styles.listIcon)
             Div(attrs = { classes(Styles.listDetails) }) {
                 H2 { Text(strings.helpFeedback) }
+                P { Text(strings.helpFeedbackSubtitle) }
             }
         }
 
@@ -170,6 +172,7 @@ fun HelpScreen(onBack: () -> Unit) {
             MaterialSymbol("report_problem", extraClass = Styles.listIcon)
             Div(attrs = { classes(Styles.listDetails) }) {
                 H2 { Text(strings.helpReportProblem) }
+                P { Text(strings.helpReportProblemSubtitle) }
             }
         }
     }

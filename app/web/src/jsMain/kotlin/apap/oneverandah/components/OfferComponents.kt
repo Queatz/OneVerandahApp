@@ -250,17 +250,27 @@ fun BookingDialog(
     onZaloChange: (String) -> Unit,
     onMessageChange: (String) -> Unit,
     onDismiss: () -> Unit,
-    onConfirm: (zalo: String, message: String?) -> Unit,
+    onConfirm: (zalo: String, message: String?, whenOption: String) -> Unit,
 ) {
     val zalo = initialZalo.orEmpty()
     val message = initialMessage.orEmpty()
 
     var showError by remember { mutableStateOf(false) }
 
-    // Whenever the sheet closes, reset showError
+    // "When" options offered to the user. The first entry is the default.
+    val whenOptions = listOf(
+        strings.whenNow,
+        strings.whenToday,
+        strings.whenTomorrow,
+        strings.whenLater,
+    )
+    var selectedWhen by remember { mutableStateOf(whenOptions.first()) }
+
+    // Whenever the sheet closes, reset showError and the "When" selection.
     LaunchedEffect(visible) {
         if (!visible) {
             showError = false
+            selectedWhen = whenOptions.first()
         }
     }
 
@@ -278,6 +288,23 @@ fun BookingDialog(
         PriceSummaryView(breakdown = breakdown, totalLabel = totalLabel, language = language)
 
         Div(attrs = { classes(Styles.dialogBody) }) {
+            // "When" the service is wanted.
+            Div(attrs = { classes(Styles.textField) }) {
+                Label(attrs = { classes(Styles.textLabel) }) {
+                    Text(strings.whenLabel)
+                }
+                Div(attrs = { classes(Styles.chipGroup) }) {
+                    whenOptions.forEach { option ->
+                        OptionChip(
+                            label = option,
+                            priceHint = "",
+                            active = selectedWhen == option,
+                            onClick = { selectedWhen = option },
+                        )
+                    }
+                }
+            }
+
             // Optional message field.
             Div(attrs = { classes(Styles.textField) }) {
                 Label(attrs = { classes(Styles.textLabel) }) {
@@ -325,7 +352,7 @@ fun BookingDialog(
                 enabled = true,
             ) {
                 if (zalo.isNotBlank()) {
-                    onConfirm(zalo.trim(), message.ifBlank { null })
+                    onConfirm(zalo.trim(), message.ifBlank { null }, selectedWhen)
                 } else {
                     showError = true
                 }

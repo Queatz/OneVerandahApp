@@ -114,7 +114,7 @@ fun OfferScreen(
                 },
                 onMessageChange = { dialogMessage = it.ifBlank { null } },
                 onDismiss = { showBookingDialog = false },
-                onConfirm = { zalo, msg ->
+                onConfirm = { zalo, msg, whenOption ->
                     selection = selection.copy(zalo = zalo, comment = msg ?: selection.comment)
                     window.localStorage.setItem("zalo", zalo)
                     showBookingDialog = false
@@ -127,6 +127,8 @@ fun OfferScreen(
                     phase = BookingPhase.SUBMITTING
                     val messageDetails = buildString {
                         appendLine("Booking Details:")
+                        appendLine("- ${strings.whenLabel}: $whenOption")
+                        appendLine()
                         breakdown.lines.forEach { line ->
                             appendLine("- ${line.label.resolve(language)}: ${line.amount.format(language)}")
                             appendLine()

@@ -822,6 +822,85 @@ internal object CatalogServices {
                 Review("r1", "Long", 5, lt("Learned my first song in a week.", "Học được bài hát đầu tiên trong một tuần.")),
             ),
         ),
+        Service(
+            id = "flute-lessons",
+            categoryId = "music",
+            icon = "music_note",
+            title = lt("Flute Lessons", "Lớp học sáo"),
+            description = lt("Classical and modern flute for all levels.", "Sáo cổ điển và hiện đại cho mọi trình độ."),
+            rating = 4.8,
+            reviewCount = 38,
+            basePrice = vnd(320),
+            bookingTypes = trialAndFollowup,
+            durations = listOf(
+                DurationOption("45", minutes = 45, price = vnd(320)),
+                DurationOption("60", minutes = 60, price = vnd(420)),
+            ),
+            provider = linh,
+            options = listOf(
+                SingleSelectOption(
+                    id = "level",
+                    title = lt("Level", "Trình độ"),
+                    choices = listOf(
+                        Choice("beginner", lt("Beginner", "Mới bắt đầu")),
+                        Choice("intermediate", lt("Intermediate", "Trung cấp"), vnd(50)),
+                        Choice("advanced", lt("Advanced", "Nâng cao"), vnd(100)),
+                    ),
+                ),
+                SingleSelectOption(
+                    id = "location",
+                    title = lt("Location", "Địa điểm"),
+                    choices = listOf(
+                        Choice("studio", lt("At the studio", "Tại phòng học")),
+                        Choice("home", lt("At your home", "Tại nhà bạn"), vnd(80)),
+                    ),
+                ),
+            ),
+            reviews = listOf(
+                Review("r1", "My", 5, lt("Beautiful tone in just a few lessons.", "Âm thanh tuyệt đẹp chỉ sau vài buổi học.")),
+            ),
+        ),
+
+        // ===================== LANGUAGE LEARNING =====================
+        Service(
+            id = "chinese-language-learning",
+            categoryId = "languages",
+            icon = "translate",
+            title = lt("Chinese Language Learning", "Học tiếng Trung"),
+            description = lt("Mandarin lessons from greetings to fluency.", "Học tiếng Quan Thoại từ chào hỏi đến thành thạo."),
+            rating = 4.9,
+            reviewCount = 41,
+            basePrice = vnd(300),
+            bookingTypes = trialAndFollowup,
+            durations = listOf(
+                DurationOption("60", minutes = 60, price = vnd(300)),
+                DurationOption("90", minutes = 90, price = vnd(420)),
+            ),
+            provider = vy2,
+            options = listOf(
+                SingleSelectOption(
+                    id = "level",
+                    title = lt("Level", "Trình độ"),
+                    choices = listOf(
+                        Choice("beginner", lt("Beginner (HSK 1-2)", "Mới bắt đầu (HSK 1-2)")),
+                        Choice("intermediate", lt("Intermediate (HSK 3-4)", "Trung cấp (HSK 3-4)"), vnd(50)),
+                        Choice("advanced", lt("Advanced (HSK 5-6)", "Nâng cao (HSK 5-6)"), vnd(100)),
+                    ),
+                ),
+                SingleSelectOption(
+                    id = "focus",
+                    title = lt("Focus", "Trọng tâm"),
+                    choices = listOf(
+                        Choice("conversation", lt("Conversation", "Giao tiếp")),
+                        Choice("business", lt("Business Chinese", "Tiếng Trung thương mại"), vnd(60)),
+                        Choice("characters", lt("Reading & Writing", "Đọc & Viết"), vnd(40)),
+                    ),
+                ),
+            ),
+            reviews = listOf(
+                Review("r1", "Hoa", 5, lt("Made tones finally click for me.", "Giúp tôi cuối cùng cũng nắm được thanh điệu.")),
+            ),
+        ),
 
         // ===================== WORKSHOPS =====================
         Service(
@@ -1063,6 +1142,48 @@ internal object CatalogServices {
                 Review("r1", "Lan", 5, lt("My cats were calm and well fed.", "Mèo của tôi rất bình tĩnh và được cho ăn đầy đủ.")),
             ),
         ),
+
+        // ===================== PLANTSITTING =====================
+        Service(
+            id = "plantsitting",
+            categoryId = "plantsitting",
+            icon = "local_florist",
+            title = lt("Plantsitting", "Trông cây hộ"),
+            description = lt("Watering and care for your plants while you're away.", "Tưới nước và chăm sóc cây của bạn khi bạn vắng nhà."),
+            rating = 4.9,
+            reviewCount = 33,
+            basePrice = vnd(150),
+            bookingTypes = trialAndFollowup,
+            durations = listOf(
+                DurationOption("30", minutes = 30, price = vnd(150)),
+                DurationOption("60", minutes = 60, price = vnd(220)),
+            ),
+            provider = thom,
+            options = listOf(
+                CounterOption(
+                    id = "plants",
+                    title = lt("Number of plants", "Số lượng cây"),
+                    unitLabel = lt("Plant", "Cây"),
+                    unitPrice = vnd(20),
+                    min = 1,
+                    max = 20,
+                    default = 3,
+                ),
+                MultiSelectOption(
+                    id = "care",
+                    title = lt("Care tasks", "Công việc chăm sóc"),
+                    choices = listOf(
+                        Choice("watering", lt("Watering", "Tưới nước")),
+                        Choice("fertilizing", lt("Fertilizing", "Bón phân"), vnd(40)),
+                        Choice("pruning", lt("Pruning & cleaning", "Cắt tỉa & lau lá"), vnd(50)),
+                    ),
+                ),
+            ),
+            reviews = listOf(
+                Review("r1", "Emma", 5, lt("Came home to thriving plants!", "Về nhà thấy cây cối xanh tốt!")),
+            ),
+        ),
+
         // ===================== PHOTOGRAPHY =====================
         Service(
             id = "portrait-photography-jacob",
@@ -1675,6 +1796,86 @@ internal object CatalogServices {
                     max = 6,
                     default = 1,
                 ),
+            ),
+        ),
+
+        // ===================== VEGAN NUTRITION PLANNING =====================
+        Service(
+            id = "vegan-nutrition-planning",
+            categoryId = "nutrition",
+            icon = "eco",
+            title = lt("Vegan Nutrition Planning", "Lên kế hoạch dinh dưỡng thuần chay"),
+            description = lt("Personalized plant-based meal plans and guidance.", "Thực đơn thuần thực vật và tư vấn cá nhân hóa."),
+            rating = 4.9,
+            reviewCount = 28,
+            basePrice = vnd(400),
+            bookingTypes = trialAndFollowup,
+            durations = listOf(
+                DurationOption("60", minutes = 60, price = vnd(400)),
+                DurationOption("90", minutes = 90, price = vnd(550)),
+            ),
+            provider = ha,
+            options = listOf(
+                SingleSelectOption(
+                    id = "goal",
+                    title = lt("Goal", "Mục tiêu"),
+                    choices = listOf(
+                        Choice("balanced", lt("Balanced everyday eating", "Ăn uống cân bằng hằng ngày")),
+                        Choice("weight", lt("Weight management", "Kiểm soát cân nặng"), vnd(60)),
+                        Choice("athletic", lt("Athletic performance", "Hiệu suất thể thao"), vnd(80)),
+                    ),
+                ),
+                MultiSelectOption(
+                    id = "extras",
+                    title = lt("Add-ons", "Tùy chọn thêm"),
+                    choices = listOf(
+                        Choice("groceryList", lt("Weekly grocery list", "Danh sách đi chợ hằng tuần"), vnd(40)),
+                        Choice("recipes", lt("Custom recipe pack", "Bộ công thức nấu ăn riêng"), vnd(70)),
+                    ),
+                ),
+            ),
+            commentPrompt = CommentPrompt(
+                label = lt("Tell me about your dietary needs", "Hãy cho tôi biết về nhu cầu ăn uống của bạn"),
+                placeholder = lt("e.g. allergies, dislikes, daily routine...", "vd. dị ứng, món không thích, thói quen hằng ngày..."),
+            ),
+            reviews = listOf(
+                Review("r1", "Mai", 5, lt("I finally feel energized on a vegan diet.", "Tôi cuối cùng cũng thấy tràn đầy năng lượng với chế độ thuần chay.")),
+            ),
+        ),
+
+        // ===================== LIFE COACHING =====================
+        Service(
+            id = "life-coaching-linh",
+            categoryId = "life_coaching",
+            icon = "psychology",
+            title = lt("Career & Life Coaching by Linh", "Khai vấn sự nghiệp & đời sống bởi Linh"),
+            description = lt("Find clarity and direction for work and life.", "Tìm sự rõ ràng và định hướng cho công việc và cuộc sống."),
+            rating = 4.8,
+            reviewCount = 19,
+            basePrice = vnd(900),
+            bookingTypes = trialAndFollowup,
+            durations = listOf(
+                DurationOption("60", minutes = 60, price = vnd(900)),
+                DurationOption("90", minutes = 90, price = vnd(1200)),
+            ),
+            provider = linh,
+            options = listOf(
+                SingleSelectOption(
+                    id = "focus",
+                    title = lt("Focus area", "Lĩnh vực trọng tâm"),
+                    choices = listOf(
+                        Choice("career", lt("Career transition", "Chuyển đổi sự nghiệp")),
+                        Choice("balance", lt("Work-life balance", "Cân bằng công việc - cuộc sống")),
+                        Choice("confidence", lt("Confidence & mindset", "Sự tự tin & tư duy"), vnd(100)),
+                    ),
+                ),
+            ),
+            commentPrompt = CommentPrompt(
+                label = lt("What would you like to work on?", "Bạn muốn cải thiện điều gì?"),
+                placeholder = lt("e.g. changing jobs, managing stress...", "vd. đổi việc, kiểm soát căng thẳng..."),
+            ),
+            reviews = listOf(
+                Review("r1", "Tâm", 5, lt("Helped me make a big career decision.", "Giúp tôi đưa ra một quyết định lớn về sự nghiệp.")),
             ),
         ),
     )
