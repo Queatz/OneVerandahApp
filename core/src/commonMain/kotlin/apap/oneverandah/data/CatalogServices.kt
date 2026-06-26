@@ -40,22 +40,22 @@ internal object CatalogServices {
 
     // ---------------------------------------------------------------------
 
-    private val jacob = ServiceProvider("Jacob", Sex.MALE, "Block A - A.12.03", "+84 901 234 567", "face_6")
-    private val luke = ServiceProvider("Luke", Sex.MALE, "Block B - B.08.15", "+84 902 345 678", "face")
-    private val linh = ServiceProvider("Linh", Sex.FEMALE, "Block C - C.20.05", "+84 903 456 789", "face_3")
-    private val mark = ServiceProvider("Mark", Sex.MALE, "Block A - A.15.11", "+84 904 567 890", "person")
-    private val duc = ServiceProvider("Duc", Sex.MALE, "Block D - D.05.02", "+84 905 678 901", "face_6")
-    private val thuy = ServiceProvider("Thuy", Sex.FEMALE, "Block B - B.11.04", "+84 906 789 012", "face_3")
-    private val ha = ServiceProvider("Ha", Sex.FEMALE, "Block C - C.03.12", "+84 907 890 123", "face_3")
-    private val vy = ServiceProvider("Vy", Sex.MALE, "Block D - D.18.01", "+84 908 901 234", "face_6")
-    private val my = ServiceProvider("My", Sex.FEMALE, "Block A - A.10.08", "+84 909 012 345", "face_3")
-    private val huy = ServiceProvider("Huy", Sex.MALE, "Block B - B.14.02", "+84 901 123 456", "face_6")
-    private val lan = ServiceProvider("Lan", Sex.FEMALE, "Block C - C.07.09", "+84 902 234 567", "face_3")
-    private val vy2 = ServiceProvider("Vy", Sex.FEMALE, "Block D - D.12.11", "+84 903 345 678", "face_3")
-    private val chi = ServiceProvider("Chi", Sex.FEMALE, "Block A - A.09.04", "+84 904 456 789", "face_3")
-    private val thom = ServiceProvider("Thom", Sex.FEMALE, "Block B - B.04.07", "+84 905 567 890", "face_3")
-    private val nam = ServiceProvider("Nam", Sex.MALE, "Block C - C.15.06", "+84 906 678 901", "face_6")
-    private val an = ServiceProvider("An", Sex.FEMALE, "Block D - D.02.03", "+84 907 789 012", "face_3")
+    private val jacob = ServiceProvider("Jacob", Sex.MALE, "Block A - A.12.03", "+84 901 234 567", "face_6", lt("Builder, coach and resident who loves turning ideas into apps.", "Lập trình viên, người khai vấn và cư dân, yêu thích biến ý tưởng thành ứng dụng."))
+    private val luke = ServiceProvider("Luke", Sex.MALE, "Block B - B.08.15", "+84 902 345 678", "face", lt("Friendly neighbour always happy to lend a hand.", "Người hàng xóm thân thiện luôn sẵn lòng giúp đỡ."))
+    private val linh = ServiceProvider("Linh", Sex.FEMALE, "Block C - C.20.05", "+84 903 456 789", "face_3", lt("Caring therapist with a gentle, professional touch.", "Chuyên viên trị liệu tận tâm với đôi tay nhẹ nhàng, chuyên nghiệp."))
+    private val mark = ServiceProvider("Mark", Sex.MALE, "Block A - A.15.11", "+84 904 567 890", "person", lt("Energetic and detail-oriented, here to make your day easier.", "Năng động và tỉ mỉ, ở đây để giúp ngày của bạn dễ dàng hơn."))
+    private val duc = ServiceProvider("Duc", Sex.MALE, "Block B - B.05.02", "+84 905 678 901", "face_6", lt("Reliable local provider who takes pride in quality work.", "Nhà cung cấp địa phương đáng tin cậy, tự hào về chất lượng công việc."))
+    private val thuy = ServiceProvider("Thuy", Sex.FEMALE, "Block B - B.11.04", "+84 906 789 012", "face_3", lt("Warm and attentive, dedicated to your comfort.", "Ấm áp và chu đáo, tận tâm vì sự thoải mái của bạn."))
+    private val ha = ServiceProvider("Ha", Sex.FEMALE, "Block C - C.03.12", "+84 907 890 123", "face_3", lt("Patient and skilled, with years of hands-on experience.", "Kiên nhẫn và lành nghề, với nhiều năm kinh nghiệm thực tế."))
+    private val vy = ServiceProvider("Vy", Sex.MALE, "Block B - B.18.01", "+84 908 901 234", "face_6", lt("Calm, focused and always on time.", "Điềm tĩnh, tập trung và luôn đúng giờ."))
+    private val my = ServiceProvider("My", Sex.FEMALE, "Block A - A.10.08", "+84 909 012 345", "face_3", lt("Cheerful helper who treats every client like family.", "Người trợ giúp vui vẻ, xem mỗi khách hàng như người thân."))
+    private val huy = ServiceProvider("Huy", Sex.MALE, "Block B - B.14.02", "+84 901 123 456", "face_6", lt("Hard-working and honest, committed to great results.", "Chăm chỉ và trung thực, cam kết mang lại kết quả tốt."))
+    private val lan = ServiceProvider("Lan", Sex.FEMALE, "Block C - C.07.09", "+84 902 234 567", "face_3", lt("Gentle and thorough, with an eye for the little details.", "Nhẹ nhàng và kỹ lưỡng, chú ý đến từng chi tiết nhỏ."))
+    private val vy2 = ServiceProvider("Vy", Sex.FEMALE, "Block B - B.12.11", "+84 903 345 678", "face_3", lt("Bubbly and professional, here to brighten your day.", "Vui tươi và chuyên nghiệp, ở đây để làm ngày của bạn tươi sáng hơn."))
+    private val chi = ServiceProvider("Chi", Sex.FEMALE, "Block A - A.09.04", "+84 904 456 789", "face_3", lt("Experienced and caring, your comfort comes first.", "Giàu kinh nghiệm và tận tâm, sự thoải mái của bạn là trên hết."))
+    private val thom = ServiceProvider("Thom", Sex.FEMALE, "Block B - B.04.07", "+84 905 567 890", "face_3", lt("Kind-hearted neighbour with a passion for helping others.", "Người hàng xóm tốt bụng với niềm đam mê giúp đỡ mọi người."))
+    private val nam = ServiceProvider("Nam", Sex.MALE, "Block C - C.15.06", "+84 906 678 901", "face_6", lt("Friendly, dependable and quick to respond.", "Thân thiện, đáng tin cậy và phản hồi nhanh."))
+    private val an = ServiceProvider("An", Sex.FEMALE, "Block B - B.02.03", "+84 907 789 012", "face_3", lt("Calm and considerate, dedicated to a relaxing experience.", "Điềm tĩnh và chu đáo, tận tâm mang đến trải nghiệm thư giãn."))
 
     private val appDesignJacob = Service(
         id = "app-design-jacob",

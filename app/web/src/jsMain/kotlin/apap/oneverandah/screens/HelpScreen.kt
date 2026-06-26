@@ -326,7 +326,7 @@ private fun ListServiceBottomSheet(
             // Sex Selection
             Div(attrs = { classes(Styles.textField) }) {
                 Label(attrs = { classes(Styles.textLabel) }) {
-                    Text(strings.providerSexLabel)
+                    Text(strings.yourSexLabel)
                 }
                 Div(attrs = { classes(Styles.chipGroup) }) {
                     OptionChip(

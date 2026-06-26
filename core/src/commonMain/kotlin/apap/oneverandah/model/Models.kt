@@ -96,6 +96,8 @@ data class ServiceProvider(
     val blockAddress: String,
     val phone: String,
     val photo: String, // Material symbol or image path/URL
+    /** A short introduction shown in the provider details dialog. */
+    val intro: LocalizedText = LocalizedText("", ""),
 )
 
 /**

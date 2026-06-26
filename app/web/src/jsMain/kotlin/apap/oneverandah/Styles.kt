@@ -187,6 +187,7 @@ object Styles {
         style.textContent = css
         document.head?.appendChild(style)
     }
+
     private val css = """
         :root {
             --md-sys-color-primary: #6750A4;
@@ -764,9 +765,14 @@ object Styles {
             font-weight: 700;
             width: 100%;
             text-align: left;
-            transition: background-color 0.2s;
+            border: 1px solid transparent;
+            transition: background-color 0.2s, border-color 0.2s;
         }
-        .${drawerItem}:hover { background-color: var(--md-sys-color-surface-variant); }
+        .${drawerItem}:hover {
+            background-color: var(--md-sys-color-surface-variant);
+            border: 1px solid #ffffff16;
+            box-shadow: 0 4px 8px -8px var(--md-shadow-light) inset;
+        }
         .${drawerItem}.${drawerItemActive} { background-color: var(--md-sys-color-primary-container); color: var(--md-sys-color-on-primary-container); }
         .${drawerItem} .${materialSymbols} { color: var(--md-sys-color-primary); font-size: 22px; }
         .${drawerSection} {
@@ -1121,9 +1127,14 @@ object Styles {
             padding: 14px 20px;
             border-radius: 100px;
             cursor: pointer;
-            transition: background-color 0.2s;
+            border: 1px solid transparent;
+            transition: background-color 0.2s, border 0.2s;
         }
-        .${btnText}:hover { background-color: var(--md-sys-color-surface-variant); }
+        .${btnText}:hover {
+            background-color: var(--md-sys-color-surface-variant);
+            border: 1px solid #ffffff16;
+            box-shadow: 0 4px 8px -8px var(--md-shadow-light) inset;
+        }
         .${dialogActions} .${btnPrimary} { width: auto; flex: 1 1 auto; }
 
         /* Offer toolbar (Save / Share) */
@@ -1269,5 +1280,4 @@ object Styles {
             text-align: center;
         }
     """.trimIndent()
-
 }

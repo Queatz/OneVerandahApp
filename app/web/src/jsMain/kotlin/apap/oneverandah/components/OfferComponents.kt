@@ -526,6 +526,37 @@ fun ProviderDetailsDialog(
 
         // Body of the details
         Div(attrs = { classes(Styles.dialogBody) }) {
+            // Intro / About
+            val intro = provider.intro.resolve(language)
+            if (intro.isNotBlank()) {
+                Div(attrs = {
+                    style {
+                        property("margin-bottom", "16px")
+                        property("display", "flex")
+                        property("flex-direction", "column")
+                    }
+                }) {
+                    Span(attrs = {
+                        style {
+                            property("font-size", "12px")
+                            property("color", "var(--md-sys-color-on-surface-variant)")
+                            property("font-weight", "700")
+                            property("text-transform", "uppercase")
+                        }
+                    }) {
+                        Text(strings.providerAboutLabel)
+                    }
+                    P(attrs = {
+                        style {
+                            property("font-size", "16px")
+                            property("margin", "4px 0 0 0")
+                        }
+                    }) {
+                        Text(intro)
+                    }
+                }
+            }
+
             // Sex
             Div(attrs = {
                 style {
