@@ -70,6 +70,24 @@ enum class Sex {
 }
 
 /**
+ * Operational status of a [Service], used to manually adjust its visibility
+ * and bookability without removing the service definition from the catalog.
+ */
+enum class ServiceStatus {
+    /** Normal behaviour: the service is listed and bookable. */
+    AVAILABLE,
+
+    /**
+     * The service is still listed and visible on the offer screen, but a banner
+     * is shown and the "Book This Service" button is disabled.
+     */
+    TEMPORARILY_UNAVAILABLE,
+
+    /** The service is completely hidden from listings, search and lookups. */
+    UNAVAILABLE,
+}
+
+/**
  * A service provider who performs a [Service].
  */
 data class ServiceProvider(
@@ -97,6 +115,8 @@ data class Service(
     val bookingTypes: List<BookingTypeOption>,
     val durations: List<DurationOption>,
     val provider: ServiceProvider,
+    /** Manually adjustable operational status controlling visibility/bookability. */
+    val status: ServiceStatus = ServiceStatus.AVAILABLE,
     /** Per-service customisation options that drive the unique booking UI. */
     val options: List<ServiceOption> = emptyList(),
     /** Customer reviews shown on the offer screen. */

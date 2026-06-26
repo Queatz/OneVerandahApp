@@ -14,6 +14,7 @@ import apap.oneverandah.model.Review
 import apap.oneverandah.model.Service
 import apap.oneverandah.model.SingleSelectOption
 import apap.oneverandah.model.ServiceProvider
+import apap.oneverandah.model.ServiceStatus
 import apap.oneverandah.model.Sex
 
 /**
@@ -1786,6 +1787,7 @@ internal object CatalogServices {
                 DurationOption("90", minutes = 90, price = vnd(350)),
             ),
             provider = thuy,
+            status = ServiceStatus.TEMPORARILY_UNAVAILABLE,
             options = listOf(
                 CounterOption(
                     id = "attendees",

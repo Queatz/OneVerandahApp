@@ -26,6 +26,7 @@ import org.jetbrains.compose.web.dom.TextArea
 import org.jetbrains.compose.web.attributes.InputType
 import org.jetbrains.compose.web.attributes.placeholder
 import org.jetbrains.compose.web.attributes.value
+import kotlinx.coroutines.delay
 
 /** Formats a price delta as a signed hint, e.g. `+40.000 ₫`. Blank when zero. */
 fun priceHint(amount: Money, language: Language): String {
@@ -621,6 +622,107 @@ fun ProviderDetailsDialog(
                 classes(Styles.btnText)
                 onClick { onDismiss() }
             }) { Text(strings.close) }
+        }
+    }
+}
+
+/**
+ * Horizontal toolbar shown on the offer page directly below the
+ * "Provided by [Vendor]" line.
+ *
+ * Left: a Save/Bookmark toggle whose icon is an outlined bookmark when
+ * [saved] is `false` and a filled bookmark when `true`.
+ * Right: a Share button that opens the [ShareDialog].
+ */
+@Composable
+fun OfferToolbar(
+    saved: Boolean,
+    saveLabel: String,
+    shareLabel: String,
+    onToggleSave: () -> Unit,
+    onShare: () -> Unit,
+) {
+    Div(attrs = { classes(Styles.offerToolbar) }) {
+        Button(attrs = {
+            classes(Styles.toolbarBtn)
+            if (saved) classes(Styles.toolbarBtnActive)
+            attr("type", "button")
+            attr("aria-pressed", saved.toString())
+            onClick { onToggleSave() }
+        }) {
+            Span(attrs = {
+                classes(Styles.materialSymbols)
+                if (saved) style { property("font-variation-settings", "'FILL' 1") }
+            }) { Text("bookmark") }
+            Text(saveLabel)
+        }
+        Button(attrs = {
+            classes(Styles.toolbarBtn)
+            attr("type", "button")
+            onClick { onShare() }
+        }) {
+            MaterialSymbol("ios_share")
+            Text(shareLabel)
+        }
+    }
+}
+
+/**
+ * Share bottom sheet: shows the service title, the full deep-link URL in a
+ * disabled input, and a prominent "Copy Link" CTA. After copying, the CTA text
+ * briefly changes to "Copied!".
+ */
+@Composable
+fun ShareDialog(
+    visible: Boolean,
+    serviceTitle: String,
+    link: String,
+    strings: apap.oneverandah.i18n.UiStrings,
+    onCopy: () -> Unit,
+    onDismiss: () -> Unit,
+) {
+    var copied by remember(visible) { mutableStateOf(false) }
+
+    // Briefly revert the CTA text back to "Copy Link" after a copy.
+    LaunchedEffect(copied) {
+        if (copied) {
+            delay(1500)
+            copied = false
+        }
+    }
+
+    BottomDialog(
+        visible = visible,
+        closeLabel = strings.close,
+        onDismiss = onDismiss,
+    ) {
+        Div(attrs = { classes(Styles.dialogHeader) }) {
+            P(attrs = { classes(Styles.dialogTitle) }) { Text(strings.share) }
+            P(attrs = { classes(Styles.dialogService) }) { Text(serviceTitle) }
+        }
+
+        Div(attrs = { classes(Styles.dialogBody) }) {
+            Input(type = InputType.Text) {
+                classes(Styles.textInput)
+                value(link)
+                attr("disabled", "")
+                attr("readonly", "")
+                attr("aria-label", strings.share)
+            }
+        }
+
+        Div(attrs = { classes(Styles.dialogActions) }) {
+            Button(attrs = {
+                classes(Styles.btnPrimary)
+                attr("type", "button")
+                onClick {
+                    onCopy()
+                    copied = true
+                }
+            }) {
+                MaterialSymbol(if (copied) "check" else "content_copy")
+                Text(if (copied) strings.copied else strings.copyLink)
+            }
         }
     }
 }

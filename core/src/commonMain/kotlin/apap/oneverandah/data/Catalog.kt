@@ -3,6 +3,7 @@ package apap.oneverandah.data
 import apap.oneverandah.model.Category
 import apap.oneverandah.model.LocalizedText
 import apap.oneverandah.model.Service
+import apap.oneverandah.model.ServiceStatus
 import apap.oneverandah.model.SuperCategory
 
 /**
@@ -61,6 +62,7 @@ object Catalog {
     )
 
     val services: List<Service> = CatalogServices.all
+        .filterNot { it.status == ServiceStatus.UNAVAILABLE }
 
     fun categoryById(id: String?): Category? = categories.firstOrNull { it.id == id }
 

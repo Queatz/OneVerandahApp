@@ -7,6 +7,7 @@ import androidx.compose.runtime.mutableStateOf
 import androidx.compose.runtime.remember
 import androidx.compose.runtime.setValue
 import apap.oneverandah.Styles
+import apap.oneverandah.state.Toaster
 import apap.oneverandah.i18n.Localization
 import apap.oneverandah.i18n.flagFor
 import apap.oneverandah.i18n.stringsFor
@@ -223,6 +224,7 @@ fun Scaffold(
             // Overlays (e.g. success animation) live inside the frame so they
             // cover only the phone surface, not the whole desktop viewport.
             overlay?.invoke()
+            ToastHost()
             NavigationDrawer(
                 open = drawerOpen,
                 onClose = { drawerOpen = false },
@@ -236,6 +238,33 @@ fun Scaffold(
 @Composable
 fun SectionTitle(text: String) {
     Div(attrs = { classes(Styles.sectionTitle) }) { Text(text) }
+}
+
+/**
+ * Renders the currently active global toast (see [Toaster]) at the bottom of
+ * the phone frame and auto-dismisses it after a short delay. The visibility is
+ * driven by [Toaster.message] so the CSS fade transition plays.
+ */
+@Composable
+fun ToastHost() {
+    val message = Toaster.message
+    val token = Toaster.token
+
+    LaunchedEffect(token) {
+        if (Toaster.message != null) {
+            delay(2_200)
+            Toaster.dismiss()
+        }
+    }
+
+    Div(attrs = {
+        classes(Styles.toast)
+        if (message != null) classes(Styles.toastVisible)
+        attr("role", "status")
+        attr("aria-live", "polite")
+    }) {
+        if (message != null) Text(message)
+    }
 }
 
 /** Gradient primary button with a leading material icon. */

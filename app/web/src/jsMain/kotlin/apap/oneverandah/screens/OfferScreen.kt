@@ -15,6 +15,8 @@ import apap.oneverandah.components.CounterDialog
 import apap.oneverandah.components.MaterialSymbol
 import apap.oneverandah.components.OptionChip
 import apap.oneverandah.components.BookingDialog
+import apap.oneverandah.components.OfferToolbar
+import apap.oneverandah.components.ShareDialog
 import apap.oneverandah.components.ProviderDetailsDialog
 import org.jetbrains.compose.web.dom.Span
 import apap.oneverandah.components.PriceSummaryView
@@ -26,12 +28,15 @@ import apap.oneverandah.components.SuccessOverlay
 import apap.oneverandah.components.priceHint
 import apap.oneverandah.data.Catalog
 import apap.oneverandah.i18n.Localization
+import apap.oneverandah.state.PinnedStore
+import apap.oneverandah.state.Toaster
 import apap.oneverandah.model.BodyMapOption
 import apap.oneverandah.model.BookingRequest
 import apap.oneverandah.model.BookingSelection
 import apap.oneverandah.model.CounterOption
 import apap.oneverandah.model.MultiSelectOption
 import apap.oneverandah.model.PricingCalculator
+import apap.oneverandah.model.ServiceStatus
 import apap.oneverandah.model.SingleSelectOption
 import kotlinx.browser.window
 import org.jetbrains.compose.web.attributes.placeholder
@@ -74,12 +79,16 @@ fun OfferScreen(
     var phase by remember(serviceId) { mutableStateOf(BookingPhase.IDLE) }
     var showBookingDialog by remember(serviceId) { mutableStateOf(false) }
     var showProviderDetails by remember(serviceId) { mutableStateOf(false) }
+    var showShareDialog by remember(serviceId) { mutableStateOf(false) }
     var editingCounter by remember(serviceId) { mutableStateOf<CounterOption?>(null) }
     var dialogZalo by remember(serviceId) { mutableStateOf<String?>(window.localStorage.getItem("zalo")) }
     var dialogMessage by remember(serviceId) { mutableStateOf<String?>(null) }
     val scope = rememberCoroutineScope()
 
     val breakdown = PricingCalculator.breakdown(service, selection)
+    val temporarilyUnavailable = service.status == ServiceStatus.TEMPORARILY_UNAVAILABLE
+    val saved = PinnedStore.isSaved(serviceId)
+    val deepLink = "${window.location.origin}/service/${service.id}"
 
     Scaffold(
         title = strings.serviceDetails,
@@ -91,7 +100,7 @@ fun OfferScreen(
             PrimaryButton(
                 label = if (phase == BookingPhase.SUBMITTING) strings.booking else strings.bookThisService,
                 icon = "calendar_today",
-                enabled = phase == BookingPhase.IDLE,
+                enabled = phase == BookingPhase.IDLE && !temporarilyUnavailable,
             ) {
                 showBookingDialog = true
             }
@@ -155,6 +164,13 @@ fun OfferScreen(
                             console.log("Failed to book service: $t")
                         } finally {
                             phase = BookingPhase.SUCCESS
+                            // Auto-save: a completed booking pins the service to
+                            // the Home Screen "Pinned & Recent" tray.
+                            PinnedStore.autoSaveBooking(
+                                serviceId = service.id,
+                                name = service.title.resolve(language),
+                                image = service.icon,
+                            )
                         }
                     }
                 },
@@ -173,6 +189,24 @@ fun OfferScreen(
                 strings = strings,
                 onDismiss = { showProviderDetails = false }
             )
+            ShareDialog(
+                visible = showShareDialog,
+                serviceTitle = service.title.resolve(language),
+                link = deepLink,
+                strings = strings,
+                onCopy = {
+                    val clipboard = window.navigator.asDynamic().clipboard
+                    if (clipboard != null) {
+                        try {
+                            clipboard.writeText(deepLink)
+                        } catch (t: Throwable) {
+                            console.log("Failed to copy link: $t")
+                        }
+                    }
+                    Toaster.show(strings.copiedToast)
+                },
+                onDismiss = { showShareDialog = false },
+            )
             CounterDialog(
                 option = editingCounter,
                 value = editingCounter?.let { selection.counters[it.id] ?: it.default } ?: 0,
@@ -189,6 +223,26 @@ fun OfferScreen(
             )
         },
     ) {
+        // Temporarily unavailable banner
+        if (temporarilyUnavailable) {
+            Div(attrs = {
+                style {
+                    property("display", "flex")
+                    property("align-items", "center")
+                    property("gap", "8px")
+                    property("padding", "12px 16px")
+                    property("margin-bottom", "12px")
+                    property("border-radius", "12px")
+                    property("background-color", "var(--md-sys-color-error-container)")
+                    property("color", "var(--md-sys-color-on-error-container)")
+                    property("justify-content", "center")
+                }
+            }) {
+                MaterialSymbol("info")
+                Span { Text(strings.serviceTemporarilyUnavailable) }
+            }
+        }
+
         // Provider header
         Div(attrs = { classes(Styles.providerHeader) }) {
             Div(attrs = { classes(Styles.avatar) }) {
@@ -246,6 +300,22 @@ fun OfferScreen(
                 }
             }
         }
+
+        // Toolbar: Save (bookmark) + Share, directly below "Provided by".
+        OfferToolbar(
+            saved = saved,
+            saveLabel = if (saved) strings.saved else strings.save,
+            shareLabel = strings.share,
+            onToggleSave = {
+                val nowSaved = PinnedStore.toggleSave(
+                    serviceId = service.id,
+                    name = service.title.resolve(language),
+                    image = service.icon,
+                )
+                Toaster.show(if (nowSaved) strings.savedToast else strings.removedToast)
+            },
+            onShare = { showShareDialog = true },
+        )
 
         // Booking type
         SectionTitle(strings.sectionBookingType)

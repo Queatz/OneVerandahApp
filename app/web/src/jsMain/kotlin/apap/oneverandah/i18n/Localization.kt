@@ -91,6 +91,21 @@ data class UiStrings(
     val whenToday: String,
     val whenTomorrow: String,
     val whenLater: String,
+    // Offer toolbar / share
+    val save: String,
+    val saved: String,
+    val share: String,
+    val savedToast: String,
+    val removedToast: String,
+    val copyLink: String,
+    val copied: String,
+    val copiedToast: String,
+    // Home "Pinned & Recent" section
+    val pinnedRecentTitle: String,
+    val clearAll: String,
+    val clearAllConfirm: String,
+    val pinnedEmpty: String,
+    val serviceTemporarilyUnavailable: String,
 )
 
 private val English = UiStrings(
@@ -172,6 +187,19 @@ private val English = UiStrings(
     whenToday = "Today",
     whenTomorrow = "Tomorrow",
     whenLater = "Later",
+    save = "Save",
+    saved = "Saved",
+    share = "Share",
+    savedToast = "Saved to your Saved list",
+    removedToast = "Removed from Saved",
+    copyLink = "Copy Link",
+    copied = "Copied!",
+    copiedToast = "Link copied to clipboard",
+    pinnedRecentTitle = "Saved & Recent",
+    clearAll = "Clear All",
+    clearAllConfirm = "Remove all saved services from this list?",
+    pinnedEmpty = "Save services you love, or book one to save it here!",
+    serviceTemporarilyUnavailable = "This service is temporarily unavailable",
 )
 
 private val Vietnamese = UiStrings(
@@ -253,6 +281,19 @@ private val Vietnamese = UiStrings(
     whenToday = "Hôm nay",
     whenTomorrow = "Ngày mai",
     whenLater = "Sau này",
+    save = "Lưu",
+    saved = "Đã lưu",
+    share = "Chia sẻ",
+    savedToast = "Đã lưu vào danh sách Đã lưu",
+    removedToast = "Đã xóa khỏi danh sách Đã lưu",
+    copyLink = "Sao chép liên kết",
+    copied = "Đã sao chép!",
+    copiedToast = "Đã sao chép liên kết",
+    pinnedRecentTitle = "Đã lưu & Gần đây",
+    clearAll = "Xóa tất cả",
+    clearAllConfirm = "Xóa tất cả dịch vụ đã lưu khỏi danh sách này?",
+    pinnedEmpty = "Lưu các dịch vụ bạn thích, hoặc đặt một dịch vụ để lưu vào đây!",
+    serviceTemporarilyUnavailable = "Dịch vụ này tạm thời không khả dụng",
 )
 
 private val Chinese = UiStrings(
@@ -334,6 +375,19 @@ private val Chinese = UiStrings(
     whenToday = "今天",
     whenTomorrow = "明天",
     whenLater = "稍后",
+    save = "收藏",
+    saved = "已收藏",
+    share = "分享",
+    savedToast = "已保存到您的收藏列表",
+    removedToast = "已从收藏中移除",
+    copyLink = "复制链接",
+    copied = "已复制！",
+    copiedToast = "链接已复制到剪贴板",
+    pinnedRecentTitle = "收藏与最近",
+    clearAll = "清除全部",
+    clearAllConfirm = "从此列表中移除所有已保存的服务吗？",
+    pinnedEmpty = "收藏您喜欢的服务，或预订一个将其收藏在这里！",
+    serviceTemporarilyUnavailable = "该服务暂时不可用",
 )
 
 fun stringsFor(language: Language): UiStrings = when (language) {

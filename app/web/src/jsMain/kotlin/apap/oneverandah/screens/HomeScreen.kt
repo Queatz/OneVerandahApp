@@ -6,12 +6,16 @@ import androidx.compose.runtime.mutableStateOf
 import androidx.compose.runtime.remember
 import androidx.compose.runtime.setValue
 import apap.oneverandah.Styles
+import apap.oneverandah.components.BottomDialog
 import apap.oneverandah.components.MaterialSymbol
 import apap.oneverandah.components.Scaffold
 import apap.oneverandah.data.Catalog
 import apap.oneverandah.i18n.Localization
+import apap.oneverandah.i18n.UiStrings
+import apap.oneverandah.state.PinnedStore
 import org.jetbrains.compose.web.attributes.InputType
 import org.jetbrains.compose.web.attributes.placeholder
+import org.jetbrains.compose.web.dom.Button
 import org.jetbrains.compose.web.dom.Div
 import org.jetbrains.compose.web.dom.H2
 import org.jetbrains.compose.web.dom.Input
@@ -43,6 +47,7 @@ fun HomeScreen(
         }
 
         if (searchQuery.isBlank()) {
+            PinnedRecentSection(strings = strings, language = language, onServiceSelected = onServiceSelected)
             Catalog.superCategories.forEach { superCategory ->
                 val categoriesInSuper = Catalog.categories.filter { it.superCategoryId == superCategory.id }
                 if (categoriesInSuper.isNotEmpty()) {
@@ -105,6 +110,91 @@ fun HomeScreen(
                     }
                 }
             }
+        }
+    }
+}
+
+/**
+ * The "Pinned & Recent" smart tray at the very top of the home screen.
+ *
+ * Shows manually-saved and recently-booked services (see
+ * [apap.oneverandah.state.PinnedStore]) as a horizontally scrollable row, with a
+ * "Clear All" action guarded by a confirmation bottom sheet and a friendly
+ * empty-state placeholder.
+ */
+@Composable
+private fun PinnedRecentSection(
+    strings: UiStrings,
+    language: apap.oneverandah.model.Language,
+    onServiceSelected: (String) -> Unit,
+) {
+    val items = PinnedStore.items
+    var showClearConfirm by remember { mutableStateOf(false) }
+
+    Div(attrs = { classes(Styles.pinnedSection) }) {
+        Div(attrs = { classes(Styles.pinnedHeader) }) {
+            H2(attrs = { classes(Styles.pinnedTitle) }) { Text(strings.pinnedRecentTitle) }
+            if (items.isNotEmpty()) {
+                Button(attrs = {
+                    classes(Styles.pinnedClear)
+                    attr("type", "button")
+                    onClick { showClearConfirm = true }
+                }) { Text(strings.clearAll) }
+            }
+        }
+
+        if (items.isEmpty()) {
+            P(attrs = { classes(Styles.pinnedEmpty) }) { Text(strings.pinnedEmpty) }
+        } else {
+            Div(attrs = { classes(Styles.pinnedRow) }) {
+                items.forEach { item ->
+                    val service = Catalog.serviceById(item.serviceId)
+                    val name = service?.title?.resolve(language) ?: item.name
+                    val image = service?.icon ?: item.image
+                    Div(attrs = {
+                        classes(Styles.pinnedCard)
+                        attr("role", "button")
+                        attr("title", name)
+                        onClick { onServiceSelected(item.serviceId) }
+                    }) {
+                        if (item.isManuallySaved) {
+                            Span(attrs = {
+                                classes(Styles.materialSymbols, Styles.pinnedBadge)
+                                style { property("font-variation-settings", "'FILL' 1") }
+                            }) { Text("bookmark") }
+                        }
+                        Div(attrs = { classes(Styles.pinnedCardIcon) }) {
+                            MaterialSymbol(image)
+                        }
+                        Span(attrs = { classes(Styles.pinnedCardLabel) }) { Text(name) }
+                    }
+                }
+            }
+        }
+    }
+
+    BottomDialog(
+        visible = showClearConfirm,
+        closeLabel = strings.close,
+        onDismiss = { showClearConfirm = false },
+    ) {
+        Div(attrs = { classes(Styles.dialogHeader) }) {
+            P(attrs = { classes(Styles.dialogTitle) }) { Text(strings.clearAllConfirm) }
+        }
+        Div(attrs = { classes(Styles.dialogActions) }) {
+            Button(attrs = {
+                classes(Styles.btnText)
+                attr("type", "button")
+                onClick { showClearConfirm = false }
+            }) { Text(strings.close) }
+            Button(attrs = {
+                classes(Styles.btnPrimary)
+                attr("type", "button")
+                onClick {
+                    PinnedStore.clearAll()
+                    showClearConfirm = false
+                }
+            }) { Text(strings.confirm) }
         }
     }
 }

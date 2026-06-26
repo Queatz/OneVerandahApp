@@ -155,6 +155,27 @@ object Styles {
     const val btnText = "btn-text"
     const val contentLocked = "content-locked"
 
+    // Offer toolbar (Save / Share)
+    const val offerToolbar = "offer-toolbar"
+    const val toolbarBtn = "toolbar-btn"
+    const val toolbarBtnActive = "toolbar-btn-active"
+
+    // Toast notification
+    const val toast = "toast"
+    const val toastVisible = "visible"
+
+    // Home "Pinned & Recent" section
+    const val pinnedSection = "pinned-section"
+    const val pinnedHeader = "pinned-header"
+    const val pinnedTitle = "pinned-title"
+    const val pinnedClear = "pinned-clear"
+    const val pinnedRow = "pinned-row"
+    const val pinnedCard = "pinned-card"
+    const val pinnedCardIcon = "pinned-card-icon"
+    const val pinnedCardLabel = "pinned-card-label"
+    const val pinnedBadge = "pinned-badge"
+    const val pinnedEmpty = "pinned-empty"
+
     /**
      * Injects [css] into the document head exactly once. Safe to call from
      * `main()` on every load (guarded by an id).
@@ -622,7 +643,7 @@ object Styles {
         }
         .${btnPrimary}:hover { filter: brightness(1.07); }
         .${btnPrimary}:active { transform: scale(0.98); }
-        .${btnPrimary}:disabled { filter: grayscale(0.3) brightness(0.9); cursor: default; }
+        .${btnPrimary}:disabled { filter: grayscale(0.3) brightness(0.7); cursor: default; pointer-events: none; }
 
         /* Success animation overlay */
         .${successOverlay} {
@@ -718,6 +739,7 @@ object Styles {
             flex-direction: column;
             padding: 12px;
             overflow-y: auto;
+            border-radius: 0 28px 28px 0;
         }
         .${drawer}.${drawerOpen} { transform: translateX(0); }
         .${drawerHeader} {
@@ -732,7 +754,7 @@ object Styles {
             align-items: center;
             gap: 16px;
             padding: 12px;
-            border-radius: 100px;
+            border-radius: 96px;
             cursor: pointer;
             border: none;
             background: transparent;
@@ -764,8 +786,8 @@ object Styles {
             display: flex;
             align-items: center;
             gap: 12px;
-            padding: 10px 12px;
-            border-radius: 12px;
+            padding: 12px;
+            border-radius: 96px;
             cursor: pointer;
             border: none;
             background: transparent;
@@ -775,10 +797,20 @@ object Styles {
             font-weight: 700;
             width: 100%;
             text-align: left;
-            transition: background-color 0.2s;
+            border: 1px solid transparent;
+            transition: background-color 0.2s, border 0.2s;
         }
-        .${langOption}:hover { background-color: var(--md-sys-color-surface-variant); }
-        .${langOption}.${langOptionActive} { background-color: var(--md-sys-color-primary-container); color: var(--md-sys-color-on-primary-container); }
+        .${langOption}:hover {
+            background-color: var(--md-sys-color-surface-variant);
+            border: 1px solid #ffffff16;
+            box-shadow: 0 4px 8px -8px var(--md-shadow-light) inset;
+            }
+        .${langOption}.${langOptionActive} {
+            background-color: var(--md-sys-color-primary-container);
+            color: var(--md-sys-color-on-primary-container);
+            border: 1px solid #ffffff16;
+            box-shadow: 0 4px 8px -8px var(--md-shadow-light) inset;
+         }
         .${langOption} .${langFlag} { font-size: 22px; }
 
         /* "from" price in service list */
@@ -1093,6 +1125,149 @@ object Styles {
         }
         .${btnText}:hover { background-color: var(--md-sys-color-surface-variant); }
         .${dialogActions} .${btnPrimary} { width: auto; flex: 1 1 auto; }
+
+        /* Offer toolbar (Save / Share) */
+        .${offerToolbar} {
+            display: flex;
+            align-items: center;
+            justify-content: center;
+            gap: 8px;
+            margin: 12px 0 4px 0;
+            padding: 8px 4px;
+        }
+        .${toolbarBtn} {
+            display: inline-flex;
+            align-items: center;
+            gap: 8px;
+            padding: 8px 16px;
+            border-radius: 100px;
+            border: none;
+            background: transparent;
+            color: var(--md-sys-color-on-surface);
+            font-family: inherit;
+            font-size: 14px;
+            font-weight: 700;
+            cursor: pointer;
+            transition: background-color 0.2s, color 0.2s;
+        }
+        .${toolbarBtn} .${materialSymbols} { font-size: 22px; }
+        .${toolbarBtn}:hover { background-color: var(--md-sys-color-surface-variant); }
+        .${toolbarBtn}.${toolbarBtnActive} { color: var(--md-sys-color-primary); }
+
+        /* Toast notification */
+        .${toast} {
+            position: absolute;
+            left: 50%;
+            bottom: 24px;
+            transform: translate(-50%, 16px);
+            max-width: 80%;
+            padding: 12px 20px;
+            border-radius: 100px;
+            background-color: var(--md-sys-color-on-surface);
+            color: var(--md-sys-color-surface);
+            font-size: 14px;
+            font-weight: 600;
+            text-align: center;
+            box-shadow: 0 8px 24px var(--md-shadow);
+            opacity: 0;
+            pointer-events: none;
+            transition: opacity 0.25s ease, transform 0.25s ease;
+            z-index: 60;
+        }
+        .${toast}.${toastVisible} { opacity: 1; transform: translate(-50%, 0); }
+
+        /* Home "Pinned & Recent" section */
+        .${pinnedSection} { }
+        .${pinnedHeader} {
+            display: flex;
+            align-items: center;
+            justify-content: space-between;
+            gap: 8px;
+            margin-bottom: 16px;
+        }
+        .${pinnedTitle} {
+            font-size: 16px;
+            font-weight: 700;
+            color: var(--md-sys-color-on-surface);
+            margin: 0;
+        }
+        .${pinnedClear} {
+            background: transparent;
+            border: none;
+            color: var(--md-sys-color-primary);
+            font-family: inherit;
+            font-size: 13px;
+            font-weight: 700;
+            padding: 6px 10px;
+            border-radius: 100px;
+            cursor: pointer;
+            transition: background-color 0.2s;
+        }
+        .${pinnedClear}:hover { background-color: var(--md-sys-color-surface-variant); }
+        .${pinnedRow} {
+            display: flex;
+            gap: 12px;
+            overflow-x: auto;
+            padding: 4px 2px 8px 2px;
+            scroll-snap-type: x proximity;
+            -webkit-overflow-scrolling: touch;
+        }
+        .${pinnedCard} {
+            position: relative;
+            flex: 0 0 auto;
+            width: 96px;
+            display: flex;
+            flex-direction: column;
+            align-items: center;
+            gap: 8px;
+            padding: 12px 8px;
+            border-radius: 16px;
+            background-color: var(--md-sys-color-surface);
+            border: 1px solid var(--md-sys-color-surface-variant);
+            box-shadow: 0 4px 8px -8px var(--md-shadow-light) inset;
+            cursor: pointer;
+            scroll-snap-align: start;
+            transition: background-color 0.2s, transform 0.1s;
+        }
+        .${pinnedCard}:hover { background-color: var(--md-sys-color-surface-variant); }
+        .${pinnedCard}:active { transform: scale(0.97); }
+        .${pinnedCardIcon} {
+            width: 48px;
+            height: 48px;
+            border-radius: 50%;
+            display: flex;
+            align-items: center;
+            justify-content: center;
+            background-color: var(--md-sys-color-primary-container);
+            color: var(--md-sys-color-on-primary-container);
+        }
+        .${pinnedCardIcon} .${materialSymbols} { font-size: 26px; }
+        .${pinnedCardLabel} {
+            font-size: 12px;
+            font-weight: 600;
+            text-align: center;
+            line-height: 1.3;
+            color: var(--md-sys-color-on-surface);
+            display: -webkit-box;
+            -webkit-line-clamp: 2;
+            -webkit-box-orient: vertical;
+            overflow: hidden;
+        }
+        .${pinnedBadge} {
+            position: absolute;
+            top: 6px;
+            right: 6px;
+            color: var(--md-sys-color-primary);
+            font-size: 16px;
+        }
+        .${pinnedEmpty} {
+            font-size: 14px;
+            color: var(--md-sys-color-on-surface-variant);
+            background-color: var(--md-sys-color-surface-variant);
+            border-radius: 16px;
+            padding: 16px;
+            text-align: center;
+        }
     """.trimIndent()
 
 }
