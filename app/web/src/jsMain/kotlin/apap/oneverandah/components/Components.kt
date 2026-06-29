@@ -119,6 +119,10 @@ fun NavigationDrawer(
             onClose()
             if (onHome != null) onHome() else router.navigate("/")
         }
+        DrawerItem("add_business", strings.helpListService) {
+            onClose()
+            router.navigate("/list")
+        }
         DrawerItem("info", strings.menuAbout) {
             onClose()
             router.navigate("/about")

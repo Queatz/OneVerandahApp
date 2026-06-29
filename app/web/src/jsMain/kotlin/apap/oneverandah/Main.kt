@@ -9,6 +9,7 @@ import apap.oneverandah.screens.OfferScreen
 import apap.oneverandah.screens.ServicesScreen
 import apap.oneverandah.screens.AboutScreen
 import apap.oneverandah.screens.HelpScreen
+import apap.oneverandah.screens.ListServiceScreen
 import org.jetbrains.compose.web.renderComposable
 
 fun main() {
@@ -64,6 +65,12 @@ fun App() {
         route("help") {
             noMatch {
                 HelpScreen(onBack = { router.navigate("/") })
+            }
+        }
+
+        route("list") {
+            noMatch {
+                ListServiceScreen(onBack = { router.navigate("/") })
             }
         }
 
