@@ -292,7 +292,6 @@ fun OfferScreen(
                 Span(attrs = {
                     style {
                         property("font-weight", "bold")
-                        property("text-decoration", "underline")
                         property("color", "var(--md-sys-color-primary)")
                     }
                 }) {

@@ -662,6 +662,7 @@ internal object CatalogServices {
             reviewCount = 32,
             basePrice = vnd(1500),
             bookingTypes = trialAndFollowup,
+            status = ServiceStatus.TEMPORARILY_UNAVAILABLE,
             durations = listOf(
                 DurationOption("120", minutes = 120, price = vnd(1500)),
                 DurationOption("240", minutes = 240, price = vnd(2800)),
@@ -1307,36 +1308,6 @@ internal object CatalogServices {
         ),
 
         // ===================== GARDENING =====================
-        Service(
-            id = "lawn-mowing-duc",
-            categoryId = "gardening",
-            icon = "grass",
-            title = lt("Lawn Mowing & Weeding", "Cắt cỏ & Nhổ cỏ"),
-            description = lt("Keep your balcony garden or yard clean.", "Giữ cho sân vườn hoặc ban công luôn sạch đẹp."),
-            rating = 4.6,
-            reviewCount = 19,
-            basePrice = vnd(150),
-            bookingTypes = trialAndFollowup,
-            durations = listOf(
-                DurationOption("45", minutes = 45, price = vnd(150)),
-                DurationOption("90", minutes = 90, price = vnd(280)),
-            ),
-            provider = duc,
-            options = listOf(
-                CounterOption(
-                    id = "pots",
-                    title = lt("Number of planters/pots", "Số lượng chậu cây"),
-                    unitLabel = lt("Pot", "Chậu"),
-                    unitPrice = vnd(20),
-                    min = 0,
-                    max = 20,
-                    default = 2,
-                ),
-            ),
-            reviews = listOf(
-                Review("r1", "Binh", 4, lt("Quick and efficient work.", "Làm việc nhanh chóng và hiệu quả.")),
-            ),
-        ),
         Service(
             id = "plant-care-thuy",
             categoryId = "gardening",

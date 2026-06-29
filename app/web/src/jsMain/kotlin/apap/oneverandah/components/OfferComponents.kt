@@ -27,6 +27,7 @@ import org.jetbrains.compose.web.attributes.InputType
 import org.jetbrains.compose.web.attributes.placeholder
 import org.jetbrains.compose.web.attributes.value
 import kotlinx.coroutines.delay
+import org.jetbrains.compose.web.css.fontWeight
 
 /** Formats a price delta as a signed hint, e.g. `+40.000 ₫`. Blank when zero. */
 fun priceHint(amount: Money, language: Language): String {
@@ -638,7 +639,7 @@ fun ProviderDetailsDialog(
                             property("font-size", "16px")
                             property("margin-top", "4px")
                             property("color", "var(--md-sys-color-primary)")
-                            property("text-decoration", "underline")
+                            property("text-decoration", "none")
                         }
                     }
                 ) {
