@@ -34,8 +34,25 @@ fun HomeScreen(
     val strings = Localization.strings
     val language = Localization.language
     var searchQuery by remember { mutableStateOf("") }
+    var showClearConfirm by remember { mutableStateOf(false) }
 
-    Scaffold(title = strings.appTitle, showBanner = true, scrollKey = "home") {
+    Scaffold(
+        title = strings.appTitle,
+        showBanner = true,
+        scrollKey = "home",
+        lockScroll = showClearConfirm,
+        overlay = {
+            ClearAllConfirmDialog(
+                visible = showClearConfirm,
+                strings = strings,
+                onDismiss = { showClearConfirm = false },
+                onConfirm = {
+                    PinnedStore.clearAll()
+                    showClearConfirm = false
+                },
+            )
+        },
+    ) {
         P(attrs = { classes(Styles.homePrompt) }) { Text(strings.homePrompt) }
         Div(attrs = { classes(Styles.textField) }) {
             Input(type = InputType.Text) {
@@ -47,7 +64,12 @@ fun HomeScreen(
         }
 
         if (searchQuery.isBlank()) {
-            PinnedRecentSection(strings = strings, language = language, onServiceSelected = onServiceSelected)
+            PinnedRecentSection(
+                strings = strings,
+                language = language,
+                onServiceSelected = onServiceSelected,
+                onClearAll = { showClearConfirm = true },
+            )
             Catalog.superCategories.forEach { superCategory ->
                 val categoriesInSuper = Catalog.categories.filter { it.superCategoryId == superCategory.id }
                 if (categoriesInSuper.isNotEmpty()) {
@@ -127,56 +149,98 @@ private fun PinnedRecentSection(
     strings: UiStrings,
     language: apap.oneverandah.model.Language,
     onServiceSelected: (String) -> Unit,
+    onClearAll: () -> Unit,
 ) {
     val items = PinnedStore.items
-    var showClearConfirm by remember { mutableStateOf(false) }
+    // When the user has no saved or recent services, fall back to a curated
+    // "Popular" list (if the catalog has any services to show).
+    val popular = if (items.isEmpty()) Catalog.popular else emptyList()
+    val showPopular = items.isEmpty() && popular.isNotEmpty()
 
     Div(attrs = { classes(Styles.pinnedSection) }) {
         Div(attrs = { classes(Styles.pinnedHeader) }) {
-            H2(attrs = { classes(Styles.pinnedTitle) }) { Text(strings.pinnedRecentTitle) }
+            H2(attrs = { classes(Styles.pinnedTitle) }) {
+                Text(if (showPopular) strings.popularTitle else strings.pinnedRecentTitle)
+            }
             if (items.isNotEmpty()) {
                 Button(attrs = {
                     classes(Styles.pinnedClear)
                     attr("type", "button")
-                    onClick { showClearConfirm = true }
+                    onClick { onClearAll() }
                 }) { Text(strings.clearAll) }
             }
         }
 
-        if (items.isEmpty()) {
-            P(attrs = { classes(Styles.pinnedEmpty) }) { Text(strings.pinnedEmpty) }
-        } else {
-            Div(attrs = { classes(Styles.pinnedRow) }) {
-                items.forEach { item ->
-                    val service = Catalog.serviceById(item.serviceId)
-                    val name = service?.title?.resolve(language) ?: item.name
-                    val image = service?.icon ?: item.image
-                    Div(attrs = {
-                        classes(Styles.pinnedCard)
-                        attr("role", "button")
-                        attr("title", name)
-                        onClick { onServiceSelected(item.serviceId) }
-                    }) {
-                        if (item.isManuallySaved) {
-                            Span(attrs = {
-                                classes(Styles.materialSymbols, Styles.pinnedBadge)
-                                style { property("font-variation-settings", "'FILL' 1") }
-                            }) { Text("bookmark") }
+        when {
+            items.isNotEmpty() -> {
+                Div(attrs = { classes(Styles.pinnedRow) }) {
+                    items.forEach { item ->
+                        val service = Catalog.serviceById(item.serviceId)
+                        val name = service?.title?.resolve(language) ?: item.name
+                        val image = service?.icon ?: item.image
+                        Div(attrs = {
+                            classes(Styles.pinnedCard)
+                            attr("role", "button")
+                            attr("title", name)
+                            onClick { onServiceSelected(item.serviceId) }
+                        }) {
+                            if (item.isManuallySaved) {
+                                Span(attrs = {
+                                    classes(Styles.materialSymbols, Styles.pinnedBadge)
+                                    style { property("font-variation-settings", "'FILL' 1") }
+                                }) { Text("bookmark") }
+                            }
+                            Div(attrs = { classes(Styles.pinnedCardIcon) }) {
+                                MaterialSymbol(image)
+                            }
+                            Span(attrs = { classes(Styles.pinnedCardLabel) }) { Text(name) }
                         }
-                        Div(attrs = { classes(Styles.pinnedCardIcon) }) {
-                            MaterialSymbol(image)
-                        }
-                        Span(attrs = { classes(Styles.pinnedCardLabel) }) { Text(name) }
                     }
                 }
             }
+
+            showPopular -> {
+                Div(attrs = { classes(Styles.pinnedRow) }) {
+                    popular.forEach { service ->
+                        val name = service.title.resolve(language)
+                        Div(attrs = {
+                            classes(Styles.pinnedCard)
+                            attr("role", "button")
+                            attr("title", name)
+                            onClick { onServiceSelected(service.id) }
+                        }) {
+                            Div(attrs = { classes(Styles.pinnedCardIcon) }) {
+                                MaterialSymbol(service.icon)
+                            }
+                            Span(attrs = { classes(Styles.pinnedCardLabel) }) { Text(name) }
+                        }
+                    }
+                }
+            }
+
+            else -> {
+                P(attrs = { classes(Styles.pinnedEmpty) }) { Text(strings.pinnedEmpty) }
+            }
         }
     }
+}
 
+/**
+ * Confirmation bottom sheet for the "Clear All" action. Rendered at the screen
+ * level (via the scaffold overlay slot) so it stays pinned to the bottom of the
+ * frame instead of scrolling with the page content.
+ */
+@Composable
+private fun ClearAllConfirmDialog(
+    visible: Boolean,
+    strings: UiStrings,
+    onDismiss: () -> Unit,
+    onConfirm: () -> Unit,
+) {
     BottomDialog(
-        visible = showClearConfirm,
+        visible = visible,
         closeLabel = strings.close,
-        onDismiss = { showClearConfirm = false },
+        onDismiss = onDismiss,
     ) {
         Div(attrs = { classes(Styles.dialogHeader) }) {
             P(attrs = { classes(Styles.dialogTitle) }) { Text(strings.clearAllConfirm) }
@@ -185,15 +249,12 @@ private fun PinnedRecentSection(
             Button(attrs = {
                 classes(Styles.btnText)
                 attr("type", "button")
-                onClick { showClearConfirm = false }
+                onClick { onDismiss() }
             }) { Text(strings.close) }
             Button(attrs = {
                 classes(Styles.btnPrimary)
                 attr("type", "button")
-                onClick {
-                    PinnedStore.clearAll()
-                    showClearConfirm = false
-                }
+                onClick { onConfirm() }
             }) { Text(strings.confirm) }
         }
     }

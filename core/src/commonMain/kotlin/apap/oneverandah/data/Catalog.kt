@@ -64,6 +64,20 @@ object Catalog {
     val services: List<Service> = CatalogServices.all
         .filterNot { it.status == ServiceStatus.UNAVAILABLE }
 
+    /**
+     * Curated example "Popular" services shown on the Home screen when the user
+     * has no saved or recent services yet. Falls back gracefully: unknown or
+     * unavailable ids are simply skipped.
+     */
+    val popular: List<Service> = listOf(
+        "word-massages-jacob",
+        "one-hour-massages-luke",
+        "kids-english-playgroup",
+        "business-english-coaching",
+        "app-design-jacob",
+        "life-coaching-jacob",
+    ).mapNotNull { id -> services.firstOrNull { it.id == id } }
+
     fun categoryById(id: String?): Category? = categories.firstOrNull { it.id == id }
 
     fun servicesByCategory(categoryId: String?): List<Service> =
