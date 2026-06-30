@@ -269,6 +269,13 @@ object Styles {
                scrolling while a modal is open. */
             height: 100vh;
             height: 100dvh;
+            /* A flex item's default min-height is `auto`, which lets the
+               column grow to its content's intrinsic height and overrides the
+               fixed height above. That makes the whole frame (app bar
+               included) taller than the viewport so the page itself scrolls.
+               Pinning min-height to 0 keeps the frame locked to the viewport
+               and leaves .content as the only scroll container. */
+            min-height: 0;
             background-color: var(--md-sys-color-surface);
             color: var(--md-sys-color-on-surface);
             overflow: hidden;
@@ -318,7 +325,7 @@ object Styles {
          }
         .${appBarTitle} {
             font-size: 20px;
-            font-weight: 400;
+            font-weight: bold;
             margin: 0 8px;
             width: 0;
             flex: 1 1 auto;
@@ -385,6 +392,9 @@ object Styles {
         /* Scrollable content region */
         .${content} {
             flex: 1 1 auto;
+            /* Allow this flex child to shrink below its content size so it
+               scrolls internally instead of forcing the frame to grow. */
+            min-height: 0;
             overflow-y: auto;
             padding: 16px;
             -ms-overflow-style: none;
