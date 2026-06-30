@@ -84,4 +84,11 @@ object Catalog {
         services.filter { it.categoryId == categoryId }
 
     fun serviceById(id: String?): Service? = services.firstOrNull { it.id == id }
+
+    /**
+     * All services offered by the same [provider] (matched by the provider's
+     * unique Zalo phone number).
+     */
+    fun servicesByProvider(provider: apap.oneverandah.model.ServiceProvider): List<Service> =
+        services.filter { it.provider.phone == provider.phone }
 }

@@ -7,6 +7,7 @@ import androidx.compose.runtime.mutableStateOf
 import androidx.compose.runtime.remember
 import androidx.compose.runtime.setValue
 import apap.oneverandah.Styles
+import apap.oneverandah.data.Catalog
 import apap.oneverandah.i18n.Localization
 import apap.oneverandah.model.CounterOption
 import apap.oneverandah.model.Language
@@ -28,6 +29,8 @@ import org.jetbrains.compose.web.attributes.placeholder
 import org.jetbrains.compose.web.attributes.value
 import kotlinx.coroutines.delay
 import org.jetbrains.compose.web.css.fontWeight
+import org.jetbrains.compose.web.css.marginBottom
+import org.jetbrains.compose.web.css.px
 
 /** Formats a price delta as a signed hint, e.g. `+40.000 ₫`. Blank when zero. */
 fun priceHint(amount: Money, language: Language): String {
@@ -495,7 +498,9 @@ fun ProviderDetailsDialog(
     provider: ServiceProvider,
     language: Language,
     strings: apap.oneverandah.i18n.UiStrings,
+    currentServiceId: String? = null,
     onDismiss: () -> Unit,
+    onServiceSelected: (String) -> Unit = {},
 ) {
     BottomDialog(
         visible = visible,
@@ -644,6 +649,38 @@ fun ProviderDetailsDialog(
                     }
                 ) {
                     Text(provider.phone)
+                }
+            }
+
+            // Other services offered by this provider (excluding the one being viewed)
+            val providerServices = Catalog.servicesByProvider(provider)
+                .filter { it.id != currentServiceId }
+            if (providerServices.isNotEmpty()) {
+                Span(attrs = {
+                    style {
+                        property("font-size", "12px")
+                        property("color", "var(--md-sys-color-on-surface-variant)")
+                        property("font-weight", "700")
+                        property("text-transform", "uppercase")
+                    }
+                }) {
+                    Text("${strings.providerServicesLabel} ${provider.name}")
+                }
+                Div(attrs = { classes(Styles.pinnedRow) }) {
+                    providerServices.forEach { service ->
+                        val name = service.title.resolve(language)
+                        Div(attrs = {
+                            classes(Styles.pinnedCard)
+                            attr("role", "button")
+                            attr("title", name)
+                            onClick { onServiceSelected(service.id) }
+                        }) {
+                            Div(attrs = { classes(Styles.pinnedCardIcon) }) {
+                                MaterialSymbol(service.icon)
+                            }
+                            Span(attrs = { classes(Styles.pinnedCardLabel) }) { Text(name) }
+                        }
+                    }
                 }
             }
         }

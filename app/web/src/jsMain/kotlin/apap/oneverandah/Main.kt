@@ -52,6 +52,7 @@ fun App() {
                     },
                     onHome = { router.navigate("/") },
                     onDone = { router.navigate("/") },
+                    onServiceSelected = { id -> router.navigate("/service/$id") },
                 )
             }
         }

@@ -1194,7 +1194,6 @@ object Styles {
             align-items: center;
             justify-content: space-between;
             gap: 8px;
-            margin-bottom: 16px;
         }
         .${pinnedTitle} {
             font-size: 16px;
@@ -1219,7 +1218,7 @@ object Styles {
             display: flex;
             gap: 12px;
             overflow-x: auto;
-            padding: 4px 2px 8px 2px;
+            padding: 8px 0px;
             scroll-snap-type: x proximity;
             -webkit-overflow-scrolling: touch;
         }

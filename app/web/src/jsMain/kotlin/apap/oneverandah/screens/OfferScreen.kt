@@ -63,6 +63,7 @@ fun OfferScreen(
     onBack: () -> Unit,
     onHome: () -> Unit,
     onDone: () -> Unit,
+    onServiceSelected: (String) -> Unit = {},
 ) {
     val strings = Localization.strings
     val language = Localization.language
@@ -98,7 +99,13 @@ fun OfferScreen(
         lockScroll = showBookingDialog || showProviderDetails || editingCounter != null || phase == BookingPhase.SUCCESS,
         footer = {
             PrimaryButton(
-                label = if (phase == BookingPhase.SUBMITTING) strings.booking else strings.bookThisService,
+                label = if (temporarilyUnavailable) {
+                    strings.serviceTemporarilyUnavailable
+                } else if (phase == BookingPhase.SUBMITTING) {
+                    strings.booking
+                } else {
+                    strings.bookThisService
+                },
                 icon = "calendar_today",
                 enabled = phase == BookingPhase.IDLE && !temporarilyUnavailable,
             ) {
@@ -187,7 +194,12 @@ fun OfferScreen(
                 provider = service.provider,
                 language = language,
                 strings = strings,
-                onDismiss = { showProviderDetails = false }
+                currentServiceId = service.id,
+                onDismiss = { showProviderDetails = false },
+                onServiceSelected = { id ->
+                    showProviderDetails = false
+                    onServiceSelected(id)
+                },
             )
             ShareDialog(
                 visible = showShareDialog,
