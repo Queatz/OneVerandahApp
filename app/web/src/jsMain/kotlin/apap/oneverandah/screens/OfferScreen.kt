@@ -200,6 +200,18 @@ fun OfferScreen(
                     showProviderDetails = false
                     onServiceSelected(id)
                 },
+                onCopyLink = {
+                    val providerLink = "${window.location.origin}/provider/${service.provider.id}"
+                    val clipboard = window.navigator.asDynamic().clipboard
+                    if (clipboard != null) {
+                        try {
+                            clipboard.writeText(providerLink)
+                        } catch (t: Throwable) {
+                            console.log("Failed to copy link: $t")
+                        }
+                    }
+                    Toaster.show(strings.copiedToast)
+                },
             )
             ShareDialog(
                 visible = showShareDialog,

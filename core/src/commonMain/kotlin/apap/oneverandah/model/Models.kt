@@ -98,7 +98,42 @@ data class ServiceProvider(
     val photo: String, // Material symbol or image path/URL
     /** A short introduction shown in the provider details dialog. */
     val intro: LocalizedText = LocalizedText("", ""),
-)
+    /**
+     * Optional explicit override for [id]. Used to disambiguate providers who
+     * share the same [name] (and would otherwise produce the same slug).
+     */
+    private val idOverride: String? = null,
+) {
+    /**
+     * A unique, URL- and user-friendly identifier used in deep links
+     * (e.g. `"Ha"` -> `"ha"` -> `/provider/ha`). Derived from the provider's
+     * [name] by default, or taken from [idOverride] when provided to keep ids
+     * unique across providers with the same name.
+     */
+    val id: String = idOverride ?: slugify(name)
+
+    companion object {
+        /**
+         * Converts an arbitrary display [text] into a lowercase, URL-friendly
+         * slug: ASCII letters/digits are kept, runs of anything else collapse
+         * to a single hyphen, and leading/trailing hyphens are trimmed.
+         */
+        fun slugify(text: String): String {
+            val slug = StringBuilder()
+            var pendingHyphen = false
+            for (ch in text.lowercase()) {
+                if (ch in 'a'..'z' || ch in '0'..'9') {
+                    if (pendingHyphen && slug.isNotEmpty()) slug.append('-')
+                    pendingHyphen = false
+                    slug.append(ch)
+                } else {
+                    pendingHyphen = true
+                }
+            }
+            return slug.toString()
+        }
+    }
+}
 
 /**
  * A bookable offering inside a [Category] (e.g. "Word Massages by Jacob").

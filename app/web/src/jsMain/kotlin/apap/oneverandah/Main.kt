@@ -6,6 +6,7 @@ import app.softwork.routingcompose.Router
 import apap.oneverandah.data.Catalog
 import apap.oneverandah.screens.HomeScreen
 import apap.oneverandah.screens.OfferScreen
+import apap.oneverandah.screens.ProviderScreen
 import apap.oneverandah.screens.ServicesScreen
 import apap.oneverandah.screens.AboutScreen
 import apap.oneverandah.screens.HelpScreen
@@ -52,6 +53,17 @@ fun App() {
                     },
                     onHome = { router.navigate("/") },
                     onDone = { router.navigate("/") },
+                    onServiceSelected = { id -> router.navigate("/service/$id") },
+                )
+            }
+        }
+
+        route("provider") {
+            string { providerId ->
+                ProviderScreen(
+                    providerId = providerId,
+                    onBack = { router.navigate("/") },
+                    onHome = { router.navigate("/") },
                     onServiceSelected = { id -> router.navigate("/service/$id") },
                 )
             }

@@ -170,6 +170,7 @@ object Styles {
     const val pinnedTitle = "pinned-title"
     const val pinnedClear = "pinned-clear"
     const val pinnedRow = "pinned-row"
+    const val pinnedRowWrap = "pinned-row-wrap"
     const val pinnedCard = "pinned-card"
     const val pinnedCardIcon = "pinned-card-icon"
     const val pinnedCardLabel = "pinned-card-label"
@@ -1221,6 +1222,13 @@ object Styles {
             padding: 8px 0px;
             scroll-snap-type: x proximity;
             -webkit-overflow-scrolling: touch;
+        }
+        /* Wrapping variant: lays cards out over multiple lines instead of
+           scrolling horizontally. Used for the provider services list. */
+        .${pinnedRowWrap} {
+            flex-wrap: wrap;
+            overflow-x: visible;
+            scroll-snap-type: none;
         }
         .${pinnedCard} {
             position: relative;

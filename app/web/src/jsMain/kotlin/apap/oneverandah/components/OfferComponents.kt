@@ -501,12 +501,69 @@ fun ProviderDetailsDialog(
     currentServiceId: String? = null,
     onDismiss: () -> Unit,
     onServiceSelected: (String) -> Unit = {},
+    onCopyLink: () -> Unit = {},
 ) {
     BottomDialog(
         visible = visible,
         closeLabel = strings.close,
         onDismiss = onDismiss
     ) {
+        // Copy-link action, anchored to the top-right of the sheet.
+        Div(attrs = {
+            style {
+                property("display", "flex")
+                property("justify-content", "flex-end")
+            }
+        }) {
+            Button(attrs = {
+                classes(Styles.toolbarBtn)
+                attr("type", "button")
+                attr("aria-label", strings.copyLink)
+                attr("title", strings.copyLink)
+                onClick { onCopyLink() }
+            }) {
+                MaterialSymbol("content_copy")
+                Text(strings.copyLink)
+            }
+        }
+
+        ProviderDetailsContent(
+            provider = provider,
+            language = language,
+            strings = strings,
+            servicesLabel = "${strings.providerServicesLabel} ${provider.name}",
+            excludeServiceId = currentServiceId,
+            onServiceSelected = onServiceSelected,
+        )
+
+        // Close actions
+        Div(attrs = { classes(Styles.dialogActions) }) {
+            Button(attrs = {
+                classes(Styles.btnText)
+                onClick { onDismiss() }
+            }) { Text(strings.close) }
+        }
+    }
+}
+
+/**
+ * Shared provider details body: avatar header, intro/about, sex, block/address,
+ * Zalo phone and a row of the provider's services. Reused by both the
+ * [ProviderDetailsDialog] bottom sheet and the standalone provider screen.
+ *
+ * [servicesLabel] is the heading shown above the services row; [excludeServiceId]
+ * (when non-null) drops that service from the row so the dialog can show "other"
+ * services while the screen shows them all.
+ */
+@Composable
+fun ProviderDetailsContent(
+    provider: ServiceProvider,
+    language: Language,
+    strings: apap.oneverandah.i18n.UiStrings,
+    servicesLabel: String,
+    excludeServiceId: String? = null,
+    onServiceSelected: (String) -> Unit = {},
+) {
         // Provider Avatar / Photo inside the header
         Div(attrs = {
             style {
@@ -652,9 +709,9 @@ fun ProviderDetailsDialog(
                 }
             }
 
-            // Other services offered by this provider (excluding the one being viewed)
+            // Services offered by this provider (optionally excluding one)
             val providerServices = Catalog.servicesByProvider(provider)
-                .filter { it.id != currentServiceId }
+                .filter { excludeServiceId == null || it.id != excludeServiceId }
             if (providerServices.isNotEmpty()) {
                 Span(attrs = {
                     style {
@@ -664,9 +721,9 @@ fun ProviderDetailsDialog(
                         property("text-transform", "uppercase")
                     }
                 }) {
-                    Text("${strings.providerServicesLabel} ${provider.name}")
+                    Text(servicesLabel)
                 }
-                Div(attrs = { classes(Styles.pinnedRow) }) {
+                Div(attrs = { classes(Styles.pinnedRow, Styles.pinnedRowWrap) }) {
                     providerServices.forEach { service ->
                         val name = service.title.resolve(language)
                         Div(attrs = {
@@ -684,15 +741,6 @@ fun ProviderDetailsDialog(
                 }
             }
         }
-
-        // Close actions
-        Div(attrs = { classes(Styles.dialogActions) }) {
-            Button(attrs = {
-                classes(Styles.btnText)
-                onClick { onDismiss() }
-            }) { Text(strings.close) }
-        }
-    }
 }
 
 /**

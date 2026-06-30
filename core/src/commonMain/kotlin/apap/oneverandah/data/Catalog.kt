@@ -87,8 +87,16 @@ object Catalog {
 
     /**
      * All services offered by the same [provider] (matched by the provider's
-     * unique Zalo phone number).
+     * unique [apap.oneverandah.model.ServiceProvider.id]).
      */
     fun servicesByProvider(provider: apap.oneverandah.model.ServiceProvider): List<Service> =
-        services.filter { it.provider.phone == provider.phone }
+        services.filter { it.provider.id == provider.id }
+
+    /**
+     * Looks up a [apap.oneverandah.model.ServiceProvider] by its unique,
+     * URL-friendly [apap.oneverandah.model.ServiceProvider.id] used in deep
+     * links (e.g. `/provider/ha`).
+     */
+    fun providerById(id: String?): apap.oneverandah.model.ServiceProvider? =
+        services.firstOrNull { it.provider.id == id }?.provider
 }
