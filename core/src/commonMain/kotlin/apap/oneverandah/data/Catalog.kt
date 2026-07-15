@@ -48,7 +48,7 @@ object Catalog {
         Category("cleaning", "home", LocalizedText(en = "Cleaning", vi = "Dọn dẹp nhà cửa", zh = "清洁"), icon = "cleaning_services"),
         Category("home_organizing", "home", LocalizedText(en = "Home Organizing", vi = "Sắp xếp nhà cửa", zh = "家居整理"), icon = "potted_plant"),
         Category("gardening", "home", LocalizedText(en = "Gardening & Plant Care", vi = "Làm vườn & Chăm sóc cây", zh = "园艺与植物护理"), icon = "yard"),
-        Category("rentals", "home", LocalizedText(en = "Tool Rentals & Charger", vi = "Cho thuê dụng cụ & Sạc pin", zh = "工具租赁与充电器"), icon = "power"),
+        Category("rentals", "home", LocalizedText(en = "Tool Rentals & Chargers", vi = "Cho thuê dụng cụ & Sạc pin", zh = "工具租赁与充电器"), icon = "power"),
         Category("furniture", "home", LocalizedText(en = "Furniture & Moving", vi = "Lắp ráp đồ gỗ & Vận chuyển", zh = "家具与搬运"), icon = "local_shipping"),
         Category("housesitting", "home", LocalizedText(en = "House Sitting", vi = "Trông coi nhà cửa", zh = "房屋看管"), icon = "home"),
         Category("ithelp", "home", LocalizedText(en = "IT Help", vi = "Hỗ trợ công nghệ", zh = "IT协助"), icon = "computer"),

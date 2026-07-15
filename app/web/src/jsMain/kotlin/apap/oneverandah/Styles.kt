@@ -30,6 +30,7 @@ object Styles {
     const val content = "content"
     const val contentHasBanner = "content-has-banner"
     const val homePrompt = "home-prompt"
+    const val homePromptLarge = "home-prompt-lg"
 
     // Home grid
     const val grid = "grid"
@@ -419,6 +420,9 @@ object Styles {
             margin: 16px 0;
             color: var(--md-sys-color-on-surface-variant);
             font-weight: bold;
+        }
+        .${homePrompt}.${homePromptLarge} {
+            font-size: 1.5em;
         }
 
         /* Home grid */

@@ -1,10 +1,12 @@
 package apap.oneverandah.screens
 
 import androidx.compose.runtime.Composable
+import androidx.compose.runtime.LaunchedEffect
 import androidx.compose.runtime.getValue
 import androidx.compose.runtime.mutableStateOf
 import androidx.compose.runtime.remember
 import androidx.compose.runtime.setValue
+import kotlinx.coroutines.delay
 import apap.oneverandah.Styles
 import apap.oneverandah.components.BottomDialog
 import apap.oneverandah.components.MaterialSymbol
@@ -23,6 +25,15 @@ import org.jetbrains.compose.web.dom.P
 import org.jetbrains.compose.web.dom.Span
 import org.jetbrains.compose.web.dom.Text
 
+/** Time to sit still on a fully-typed placeholder before deleting it again. */
+private const val PLACEHOLDER_HOLD_MS = 2_500L
+
+/** Per-character delay while deleting the placeholder (fast). */
+private const val PLACEHOLDER_DELETE_MS = 25L
+
+/** Per-character delay while typing the placeholder (normal speed). */
+private const val PLACEHOLDER_TYPE_MS = 90L
+
 /**
  * Category dashboard (Category step of Category -> Services -> Offer).
  */
@@ -35,6 +46,36 @@ fun HomeScreen(
     val language = Localization.language
     var searchQuery by remember { mutableStateOf("") }
     var showClearConfirm by remember { mutableStateOf(false) }
+    var animatedPlaceholder by remember(language) { mutableStateOf(strings.searchPlaceholder) }
+
+    LaunchedEffect(language) {
+        animatedPlaceholder = strings.searchPlaceholder
+        delay(PLACEHOLDER_HOLD_MS)
+        var lastName: String? = null
+        while (true) {
+            // Quickly delete whatever is currently shown, one character at a time.
+            while (animatedPlaceholder.isNotEmpty()) {
+                animatedPlaceholder = animatedPlaceholder.dropLast(1)
+                delay(PLACEHOLDER_DELETE_MS)
+            }
+
+            // Pick a random category or service name, avoiding an immediate repeat.
+            val names = Catalog.categories.map { it.title.resolve(language) } +
+                Catalog.services.map { it.title.resolve(language) }
+            val nextName = names.filter { it != lastName }.randomOrNull()
+                ?: names.randomOrNull()
+                ?: strings.searchPlaceholder
+            lastName = nextName
+
+            // Type the new name out at a normal speed.
+            for (length in 1..nextName.length) {
+                animatedPlaceholder = nextName.substring(0, length)
+                delay(PLACEHOLDER_TYPE_MS)
+            }
+
+            delay(PLACEHOLDER_HOLD_MS)
+        }
+    }
 
     Scaffold(
         title = strings.appTitle,
@@ -53,12 +94,12 @@ fun HomeScreen(
             )
         },
     ) {
-        P(attrs = { classes(Styles.homePrompt) }) { Text(strings.homePrompt) }
+        P(attrs = { classes(Styles.homePrompt, Styles.homePromptLarge) }) { Text(strings.homePrompt) }
         Div(attrs = { classes(Styles.textField) }) {
             Input(type = InputType.Text) {
                 classes(Styles.textInput)
                 value(searchQuery)
-                placeholder(strings.searchPlaceholder)
+                placeholder(animatedPlaceholder)
                 onInput { searchQuery = it.value }
             }
         }
