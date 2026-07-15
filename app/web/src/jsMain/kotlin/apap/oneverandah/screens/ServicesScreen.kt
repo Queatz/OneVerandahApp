@@ -6,6 +6,7 @@ import apap.oneverandah.components.MaterialSymbol
 import apap.oneverandah.components.Scaffold
 import apap.oneverandah.data.Catalog
 import apap.oneverandah.i18n.Localization
+import apap.oneverandah.state.ImageStore
 import org.jetbrains.compose.web.dom.Div
 import org.jetbrains.compose.web.dom.H2
 import org.jetbrains.compose.web.dom.P
@@ -33,15 +34,24 @@ fun ServicesScreen(
         onBack = onBack,
         onHome = onHome,
         showBanner = true,
+        bannerImageUrl = ImageStore.coverFor(categoryId),
         scrollKey = "category/$categoryId",
     ) {
         services.forEach { service ->
+            val cover = ImageStore.coverFor(service.id)
             Div(attrs = {
                 classes(Styles.listCard)
                 attr("role", "button")
                 onClick { onServiceSelected(service.id) }
             }) {
-                MaterialSymbol(service.icon, extraClass = Styles.listIcon)
+                if (cover != null) {
+                    Div(attrs = {
+                        classes(Styles.listCover)
+                        style { property("background-image", "url('$cover')") }
+                    })
+                } else {
+                    MaterialSymbol(service.icon, extraClass = Styles.listIcon)
+                }
                 Div(attrs = { classes(Styles.listDetails) }) {
                     H2 { Text(service.title.resolve(language)) }
                     P { Text(service.description.resolve(language)) }

@@ -1,6 +1,6 @@
 plugins {
     alias(libs.plugins.kotlinMultiplatform)
-
+    alias(libs.plugins.kotlinSerialization)
 }
 
 kotlin {
@@ -13,7 +13,9 @@ kotlin {
 
     sourceSets {
         commonMain.dependencies {
-            // put your Multiplatform dependencies here
+            // Shared, multiplatform-friendly JSON (de)serialization used by both
+            // the Ktor server and the Compose HTML web client for the image API.
+            api(libs.kotlinx.serialization.json)
         }
         commonTest.dependencies {
             implementation(libs.kotlin.test)

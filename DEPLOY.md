@@ -30,8 +30,22 @@ server {
         index index.html;
         try_files $uri $uri/ /index.html =404;
     }
+
+    # Image backend (see IMAGES.md). Proxies the API and generated images to the
+    # Ktor server running on 127.0.0.1:7071, so the frontend can use same-origin
+    # URLs in production.
+    location /api/ {
+        proxy_pass http://127.0.0.1:7071;
+    }
+    location /images/ {
+        proxy_pass http://127.0.0.1:7071;
+    }
 }
 ```
+
+For the image backend itself (server, Qwen API key, OSS bucket, and
+development/production SSL), follow [IMAGES.md](./IMAGES.md) and use the
+`deploy/init.sh` + `deploy/deploy.sh` scripts.
 
 ### Finally, configure certbot and nginx
 

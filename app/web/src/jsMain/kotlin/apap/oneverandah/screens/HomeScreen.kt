@@ -14,6 +14,7 @@ import apap.oneverandah.components.Scaffold
 import apap.oneverandah.data.Catalog
 import apap.oneverandah.i18n.Localization
 import apap.oneverandah.i18n.UiStrings
+import apap.oneverandah.state.ImageStore
 import apap.oneverandah.state.PinnedStore
 import org.jetbrains.compose.web.attributes.InputType
 import org.jetbrains.compose.web.attributes.placeholder
@@ -119,8 +120,13 @@ fun HomeScreen(
                     }
                     Div(attrs = { classes(Styles.grid) }) {
                         categoriesInSuper.forEach { category ->
+                            val cover = ImageStore.coverFor(category.id)
                             Div(attrs = {
                                 classes(Styles.card)
+                                if (cover != null) {
+                                    classes(Styles.cardCovered)
+                                    style { property("background-image", "url('$cover')") }
+                                }
                                 attr("role", "button")
                                 onClick { onCategorySelected(category.id) }
                             }) {
@@ -155,12 +161,20 @@ fun HomeScreen(
                 P { Text(strings.noResults) }
             } else {
                 matchedServices.forEach { service ->
+                    val cover = ImageStore.coverFor(service.id)
                     Div(attrs = {
                         classes(Styles.listCard)
                         attr("role", "button")
                         onClick { onServiceSelected(service.id) }
                     }) {
-                        MaterialSymbol(service.icon, extraClass = Styles.listIcon)
+                        if (cover != null) {
+                            Div(attrs = {
+                                classes(Styles.listCover)
+                                style { property("background-image", "url('$cover')") }
+                            })
+                        } else {
+                            MaterialSymbol(service.icon, extraClass = Styles.listIcon)
+                        }
                         Div(attrs = { classes(Styles.listDetails) }) {
                             H2 { Text(service.title.resolve(language)) }
                             P { Text(service.description.resolve(language)) }

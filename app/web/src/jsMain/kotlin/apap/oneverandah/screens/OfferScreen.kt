@@ -28,6 +28,7 @@ import apap.oneverandah.components.SuccessOverlay
 import apap.oneverandah.components.priceHint
 import apap.oneverandah.data.Catalog
 import apap.oneverandah.i18n.Localization
+import apap.oneverandah.state.ImageStore
 import apap.oneverandah.state.PinnedStore
 import apap.oneverandah.state.Toaster
 import apap.oneverandah.model.BodyMapOption
@@ -96,6 +97,7 @@ fun OfferScreen(
         onBack = onBack,
         onHome = onHome,
         showBanner = true,
+        bannerImageUrl = ImageStore.coverFor(service.id),
         lockScroll = showBookingDialog || showProviderDetails || editingCounter != null || phase == BookingPhase.SUCCESS,
         footer = {
             PrimaryButton(

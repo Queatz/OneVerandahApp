@@ -10,7 +10,10 @@ This is a Kotlin Multiplatform project targeting Web, Server.
   The most important subfolder is [commonMain](./core/src/commonMain/kotlin). If preferred, you
   can add code to the platform-specific folders here too.
 
-* [/server](./server/src/main/kotlin) is for the Ktor server application.
+* [/server](./server/src/main/kotlin) is for the Ktor server application. It also hosts the
+  **Dynamic Image Generation & Display System** (AI cover photos for categories/services with
+  ArangoDB/OSS/Qwen and graceful local fallbacks). See [IMAGES.md](./IMAGES.md) for setup of the
+  server, Qwen API key, OSS bucket, and development/production (SSL) environments.
 
 ### Running the apps
 

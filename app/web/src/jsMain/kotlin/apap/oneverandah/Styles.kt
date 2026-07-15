@@ -36,10 +36,13 @@ object Styles {
     const val grid = "grid"
     const val card = "card"
     const val cardLabel = "card-label"
+    // Generated cover images
+    const val cardCovered = "card-covered"
 
     // Services list
     const val listCard = "list-card"
     const val listIcon = "list-icon"
+    const val listCover = "list-cover"
     const val listDetails = "list-details"
 
     // Offer / booking details
@@ -461,6 +464,28 @@ object Styles {
         }
         .${cardLabel} { font-size: 14px; font-weight: 700; }
 
+        /* Category card with a generated cover image. The cover is applied as a
+           background so a missing/broken URL simply falls back to the base card
+           colour (no broken-image glyph). */
+        .${card}.${cardCovered} {
+            position: relative;
+            min-height: 116px;
+            padding: 0;
+            overflow: hidden;
+            background-size: cover;
+            background-position: center;
+            justify-content: flex-end;
+            align-items: stretch;
+        }
+        .${card}.${cardCovered} .${materialSymbols} { display: none; }
+        .${card}.${cardCovered} .${cardLabel} {
+            width: 100%;
+            padding: 22px 10px 10px;
+            color: #ffffff;
+            text-shadow: 0 1px 3px rgba(0, 0, 0, 0.6);
+            background: linear-gradient(to top, rgba(0, 0, 0, 0.6), rgba(0, 0, 0, 0));
+        }
+
         /* Services list */
         .${listCard} {
             background-color: var(--md-sys-color-surface-variant);
@@ -481,6 +506,19 @@ object Styles {
             font-size: 40px;
             color: var(--md-sys-color-primary);
             margin-right: 16px;
+        }
+        /* Thumbnail cover for a service row (falls back to the icon when the
+           image has not been generated yet). */
+        .${listCover} {
+            width: 56px;
+            height: 56px;
+            border-radius: 16px;
+            margin-right: 16px;
+            flex: 0 0 auto;
+            background-size: cover;
+            background-position: center;
+            background-color: var(--md-sys-color-surface-variant);
+            border: 1px solid #ffffff16;
         }
         .${listDetails} h2 { font-size: 16px; margin: 0 0 4px 0; font-weight: 700; }
         .${listDetails} p { font-size: 14px; margin: 0; color: var(--md-sys-color-on-surface-variant); }

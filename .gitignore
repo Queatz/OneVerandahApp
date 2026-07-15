@@ -17,3 +17,9 @@ captures
 !*.xcworkspace/contents.xcworkspacedata
 **/xcshareddata/WorkspaceSettings.xcsettings
 node_modules/
+
+# Image backend secrets & generated artifacts (see IMAGES.md)
+.env
+data/
+*.p12
+*.jks

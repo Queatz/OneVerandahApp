@@ -1,9 +1,12 @@
 package apap.oneverandah
 
 import androidx.compose.runtime.Composable
+import androidx.compose.runtime.LaunchedEffect
 import app.softwork.routingcompose.BrowserRouter
 import app.softwork.routingcompose.Router
 import apap.oneverandah.data.Catalog
+import apap.oneverandah.state.ImageStore
+import kotlinx.coroutines.delay
 import apap.oneverandah.screens.HomeScreen
 import apap.oneverandah.screens.OfferScreen
 import apap.oneverandah.screens.ProviderScreen
@@ -29,6 +32,15 @@ fun main() {
  */
 @Composable
 fun App() {
+    // Load generated cover images on launch and keep them fresh by polling the
+    // backend. Failures are swallowed inside ImageStore so the UI always renders.
+    LaunchedEffect(Unit) {
+        while (true) {
+            ImageStore.refresh()
+            delay(10_000)
+        }
+    }
+
     BrowserRouter("/") {
         val router = Router.current
 
