@@ -40,22 +40,7 @@ internal object CatalogServices {
 
     // ---------------------------------------------------------------------
 
-    private val jacob = ServiceProvider("Jacob", Sex.MALE, "Block A - A.12.03", "+84 901 234 567", "face_6", lt("Builder, coach and resident who loves turning ideas into apps.", "Lập trình viên, người khai vấn và cư dân, yêu thích biến ý tưởng thành ứng dụng."))
-    private val luke = ServiceProvider("Luke", Sex.MALE, "Block B - B.08.15", "+84 902 345 678", "face", lt("Friendly neighbour always happy to lend a hand.", "Người hàng xóm thân thiện luôn sẵn lòng giúp đỡ."))
-    private val linh = ServiceProvider("Linh", Sex.FEMALE, "Block C - C.20.05", "+84 903 456 789", "face_3", lt("Caring therapist with a gentle, professional touch.", "Chuyên viên trị liệu tận tâm với đôi tay nhẹ nhàng, chuyên nghiệp."))
-    private val mark = ServiceProvider("Mark", Sex.MALE, "Block A - A.15.11", "+84 904 567 890", "person", lt("Energetic and detail-oriented, here to make your day easier.", "Năng động và tỉ mỉ, ở đây để giúp ngày của bạn dễ dàng hơn."))
-    private val duc = ServiceProvider("Duc", Sex.MALE, "Block B - B.05.02", "+84 905 678 901", "face_6", lt("Reliable local provider who takes pride in quality work.", "Nhà cung cấp địa phương đáng tin cậy, tự hào về chất lượng công việc."))
-    private val thuy = ServiceProvider("Thuy", Sex.FEMALE, "Block B - B.11.04", "+84 906 789 012", "face_3", lt("Warm and attentive, dedicated to your comfort.", "Ấm áp và chu đáo, tận tâm vì sự thoải mái của bạn."))
-    private val ha = ServiceProvider("Ha", Sex.FEMALE, "Block C - C.03.12", "+84 907 890 123", "face_3", lt("Patient and skilled, with years of hands-on experience.", "Kiên nhẫn và lành nghề, với nhiều năm kinh nghiệm thực tế."))
-    private val vy = ServiceProvider("Vy", Sex.MALE, "Block B - B.18.01", "+84 908 901 234", "face_6", lt("Calm, focused and always on time.", "Điềm tĩnh, tập trung và luôn đúng giờ."))
-    private val my = ServiceProvider("My", Sex.FEMALE, "Block A - A.10.08", "+84 909 012 345", "face_3", lt("Cheerful helper who treats every client like family.", "Người trợ giúp vui vẻ, xem mỗi khách hàng như người thân."))
-    private val huy = ServiceProvider("Huy", Sex.MALE, "Block B - B.14.02", "+84 901 123 456", "face_6", lt("Hard-working and honest, committed to great results.", "Chăm chỉ và trung thực, cam kết mang lại kết quả tốt."))
-    private val lan = ServiceProvider("Lan", Sex.FEMALE, "Block C - C.07.09", "+84 902 234 567", "face_3", lt("Gentle and thorough, with an eye for the little details.", "Nhẹ nhàng và kỹ lưỡng, chú ý đến từng chi tiết nhỏ."))
-    private val vy2 = ServiceProvider("Vy", Sex.FEMALE, "Block B - B.12.11", "+84 903 345 678", "face_3", lt("Bubbly and professional, here to brighten your day.", "Vui tươi và chuyên nghiệp, ở đây để làm ngày của bạn tươi sáng hơn."), idOverride = "vy-2")
-    private val chi = ServiceProvider("Chi", Sex.FEMALE, "Block A - A.09.04", "+84 904 456 789", "face_3", lt("Experienced and caring, your comfort comes first.", "Giàu kinh nghiệm và tận tâm, sự thoải mái của bạn là trên hết."))
-    private val thom = ServiceProvider("Thom", Sex.FEMALE, "Block B - B.04.07", "+84 905 567 890", "face_3", lt("Kind-hearted neighbour with a passion for helping others.", "Người hàng xóm tốt bụng với niềm đam mê giúp đỡ mọi người."))
-    private val nam = ServiceProvider("Nam", Sex.MALE, "Block C - C.15.06", "+84 906 678 901", "face_6", lt("Friendly, dependable and quick to respond.", "Thân thiện, đáng tin cậy và phản hồi nhanh."))
-    private val an = ServiceProvider("An", Sex.FEMALE, "Block B - B.02.03", "+84 907 789 012", "face_3", lt("Calm and considerate, dedicated to a relaxing experience.", "Điềm tĩnh và chu đáo, tận tâm mang đến trải nghiệm thư giãn."))
+    private val jacob = ServiceProvider("Jacob", Sex.MALE, "Block B - B07.01", "+84 708 739 214", "face_6", lt("Builder, coach and resident who loves turning ideas into realities.", "Lập trình viên, người khai vấn và cư dân, yêu thích biến ý tưởng thành hiện thực."))
 
     private val appDesignJacob = Service(
         id = "app-design-jacob",
@@ -139,7 +124,7 @@ internal object CatalogServices {
             id = "one-hour-massages-luke",
             categoryId = "massages",
             icon = "self_improvement",
-            title = lt("1 hour massages by Luke", "Mát-xa 1 giờ bởi Luke"),
+            title = lt("1 hour massages by Jacob", "Mát-xa 1 giờ bởi Jacob"),
             description = lt("Deep tissue and relaxation.", "Mô sâu và thư giãn."),
             rating = 4.8,
             reviewCount = 89,
@@ -149,7 +134,7 @@ internal object CatalogServices {
                 DurationOption("60", minutes = 60, price = vnd(450)),
                 DurationOption("90", minutes = 90, price = vnd(650)),
             ),
-            provider = luke,
+            provider = jacob,
             options = listOf(
                 BodyMapOption(
                     id = "target-area",
@@ -198,7 +183,7 @@ internal object CatalogServices {
                 DurationOption("45", minutes = 45, price = vnd(200)),
                 DurationOption("60", minutes = 60, price = vnd(260)),
             ),
-            provider = linh,
+            provider = jacob,
             options = listOf(
                 CounterOption(
                     id = "children",
@@ -236,7 +221,7 @@ internal object CatalogServices {
                 DurationOption("60", minutes = 60, price = vnd(500)),
                 DurationOption("90", minutes = 90, price = vnd(700)),
             ),
-            provider = mark,
+            provider = jacob,
             options = listOf(
                 SingleSelectOption(
                     id = "focus",
@@ -277,7 +262,7 @@ internal object CatalogServices {
                 DurationOption("120", minutes = 120, price = vnd(900)),
                 DurationOption("180", minutes = 180, price = vnd(1200)),
             ),
-            provider = duc,
+            provider = jacob,
             options = listOf(
                 CounterOption(
                     id = "guests",
@@ -325,7 +310,7 @@ internal object CatalogServices {
                 DurationOption("90", minutes = 90, price = vnd(400)),
                 DurationOption("150", minutes = 150, price = vnd(600)),
             ),
-            provider = thuy,
+            provider = jacob,
             options = listOf(
                 CounterOption(
                     id = "participants",
@@ -366,7 +351,7 @@ internal object CatalogServices {
                 DurationOption("120", minutes = 120, price = vnd(250)),
                 DurationOption("180", minutes = 180, price = vnd(350)),
             ),
-            provider = ha,
+            provider = jacob,
             options = listOf(
                 CounterOption(
                     id = "rooms",
@@ -406,7 +391,7 @@ internal object CatalogServices {
                 DurationOption("240", minutes = 240, price = vnd(500)),
                 DurationOption("300", minutes = 300, price = vnd(650)),
             ),
-            provider = vy,
+            provider = jacob,
             options = listOf(
                 CounterOption(
                     id = "bedrooms",
@@ -437,7 +422,7 @@ internal object CatalogServices {
             id = "closet-organization-lan",
             categoryId = "home_organizing",
             icon = "checkroom",
-            title = lt("Closet Organization by Lan", "Sắp xếp tủ quần áo bởi Lan"),
+            title = lt("Closet Organization by Jacob", "Sắp xếp tủ quần áo bởi Jacob"),
             description = lt("De-clutter and organize your wardrobe.", "Sắp xếp và tối giản tủ đồ của bạn."),
             rating = 4.8,
             reviewCount = 42,
@@ -447,7 +432,7 @@ internal object CatalogServices {
                 DurationOption("120", minutes = 120, price = vnd(300)),
                 DurationOption("180", minutes = 180, price = vnd(420)),
             ),
-            provider = lan,
+            provider = jacob,
             options = listOf(
                 CounterOption(
                     id = "wardrobes",
@@ -468,7 +453,7 @@ internal object CatalogServices {
                 ),
             ),
             reviews = listOf(
-                Review("r1", "Hanh", 5, lt("Lan made my messy closet look like a boutique!", "Lan làm chiếc tủ lộn xộn của tôi trông như cửa hiệu thời trang!")),
+                Review("r1", "Hanh", 5, lt("Jacob made my messy closet look like a boutique!", "Jacob làm chiếc tủ lộn xộn của tôi trông như cửa hiệu thời trang!")),
             ),
         ),
         Service(
@@ -485,7 +470,7 @@ internal object CatalogServices {
                 DurationOption("120", minutes = 120, price = vnd(400)),
                 DurationOption("240", minutes = 240, price = vnd(750)),
             ),
-            provider = an,
+            provider = jacob,
             options = listOf(
                 MultiSelectOption(
                     id = "focusAreas",
@@ -506,7 +491,7 @@ internal object CatalogServices {
             id = "strength-conditioning-duc",
             categoryId = "personal_trainers",
             icon = "fitness_center",
-            title = lt("Strength & Conditioning by Duc", "Sức bền & Thể lực bởi Đức"),
+            title = lt("Strength & Conditioning by Jacob", "Sức bền & Thể lực bởi Jacob"),
             description = lt("Customized workouts to build strength, power, and lean muscle.", "Các bài tập được thiết kế riêng giúp xây dựng sức mạnh, thể lực và cơ bắp."),
             rating = 4.9,
             reviewCount = 56,
@@ -516,7 +501,7 @@ internal object CatalogServices {
                 DurationOption("60", minutes = 60, price = vnd(350)),
                 DurationOption("90", minutes = 90, price = vnd(500)),
             ),
-            provider = duc,
+            provider = jacob,
             options = listOf(
                 MultiSelectOption(
                     id = "goals",
@@ -529,14 +514,14 @@ internal object CatalogServices {
                 ),
             ),
             reviews = listOf(
-                Review("r1", "Long", 5, lt("Duc is highly professional and motivating.", "Đức rất chuyên nghiệp và đầy động lực.")),
+                Review("r1", "Long", 5, lt("Jacob is highly professional and motivating.", "Jacob rất chuyên nghiệp và đầy động lực.")),
             ),
         ),
         Service(
             id = "hiit-cardio-vy",
             categoryId = "personal_trainers",
             icon = "directions_run",
-            title = lt("Fat Loss & HIIT with Vy", "Giảm mỡ & HIIT cùng Vy"),
+            title = lt("Fat Loss & HIIT with Jacob", "Giảm mỡ & HIIT cùng Jacob"),
             description = lt("High intensity interval training sessions for efficient calorie burning.", "Các buổi tập cường độ cao ngắt quãng giúp đốt cháy calo hiệu quả."),
             rating = 4.8,
             reviewCount = 38,
@@ -546,7 +531,7 @@ internal object CatalogServices {
                 DurationOption("45", minutes = 45, price = vnd(300)),
                 DurationOption("60", minutes = 60, price = vnd(400)),
             ),
-            provider = vy,
+            provider = jacob,
             options = listOf(
                 SingleSelectOption(
                     id = "fitnessLevel",
@@ -567,7 +552,7 @@ internal object CatalogServices {
             id = "vinyasa-yoga-linh",
             categoryId = "yoga",
             icon = "self_improvement",
-            title = lt("Vinyasa Flow Yoga with Linh", "Yoga Vinyasa Flow cùng Linh"),
+            title = lt("Vinyasa Flow Yoga with Jacob", "Yoga Vinyasa Flow cùng Jacob"),
             description = lt("Connect breath with movement in an energizing flow.", "Kết nối hơi thở với chuyển động trong một dòng chảy tràn đầy năng lượng."),
             rating = 4.9,
             reviewCount = 74,
@@ -577,7 +562,7 @@ internal object CatalogServices {
                 DurationOption("60", minutes = 60, price = vnd(280)),
                 DurationOption("90", minutes = 90, price = vnd(400)),
             ),
-            provider = linh,
+            provider = jacob,
             options = listOf(
                 SingleSelectOption(
                     id = "classType",
@@ -589,14 +574,14 @@ internal object CatalogServices {
                 ),
             ),
             reviews = listOf(
-                Review("r1", "Thao", 5, lt("Linh has amazing energy. Perfect instruction.", "Linh có nguồn năng lượng tuyệt vời. Hướng dẫn rất hoàn hảo.")),
+                Review("r1", "Thao", 5, lt("Jacob has amazing energy. Perfect instruction.", "Jacob có nguồn năng lượng tuyệt vời. Hướng dẫn rất hoàn hảo.")),
             ),
         ),
         Service(
             id = "yin-yoga-ha",
             categoryId = "yoga",
             icon = "spa",
-            title = lt("Yin & Relaxation Yoga by Ha", "Yoga Yin & Thư giãn bởi Hà"),
+            title = lt("Yin & Relaxation Yoga by Jacob", "Yoga Yin & Thư giãn bởi Jacob"),
             description = lt("Slow-paced style of yoga with postures held for longer periods.", "Phong cách yoga chậm rãi với các tư thế được giữ trong thời gian dài hơn."),
             rating = 4.7,
             reviewCount = 41,
@@ -606,7 +591,7 @@ internal object CatalogServices {
                 DurationOption("60", minutes = 60, price = vnd(250)),
                 DurationOption("90", minutes = 90, price = vnd(350)),
             ),
-            provider = ha,
+            provider = jacob,
             options = listOf(
                 MultiSelectOption(
                     id = "props",
@@ -627,7 +612,7 @@ internal object CatalogServices {
             id = "birthday-anniversary-planning-chi",
             categoryId = "party_planning",
             icon = "celebration",
-            title = lt("Birthday & Anniversary Planning by Chi", "Lên kế hoạch sinh nhật & kỷ niệm bởi Chi"),
+            title = lt("Birthday & Anniversary Planning by Jacob", "Lên kế hoạch sinh nhật & kỷ niệm bởi Jacob"),
             description = lt("Create unforgettable celebrations with custom decor and themes.", "Tạo nên những lễ kỷ niệm khó quên với thiết kế và chủ đề tùy chỉnh."),
             rating = 4.9,
             reviewCount = 45,
@@ -637,7 +622,7 @@ internal object CatalogServices {
                 DurationOption("60", minutes = 60, price = vnd(800)),
                 DurationOption("120", minutes = 120, price = vnd(1500)),
             ),
-            provider = chi,
+            provider = jacob,
             options = listOf(
                 SingleSelectOption(
                     id = "theme",
@@ -649,14 +634,14 @@ internal object CatalogServices {
                 ),
             ),
             reviews = listOf(
-                Review("r1", "Huy", 5, lt("Chi made our daughter's birthday absolutely magical!", "Chi đã làm cho ngày sinh nhật của con gái chúng tôi thực sự kỳ diệu!")),
+                Review("r1", "Huy", 5, lt("Jacob made our daughter's birthday absolutely magical!", "Jacob đã làm cho ngày sinh nhật của con gái chúng tôi thực sự kỳ diệu!")),
             ),
         ),
         Service(
             id = "corporate-events-huy",
             categoryId = "party_planning",
             icon = "business_center",
-            title = lt("Corporate & Large Events by Huy", "Sự kiện doanh nghiệp & Sự kiện lớn bởi Huy"),
+            title = lt("Corporate & Large Events by Jacob", "Sự kiện doanh nghiệp & Sự kiện lớn bởi Jacob"),
             description = lt("Professional planning for corporate milestones, networking, and large parties.", "Lập kế hoạch chuyên nghiệp cho các mốc kỷ niệm doanh nghiệp, kết nối và tiệc lớn."),
             rating = 4.8,
             reviewCount = 32,
@@ -667,7 +652,7 @@ internal object CatalogServices {
                 DurationOption("120", minutes = 120, price = vnd(1500)),
                 DurationOption("240", minutes = 240, price = vnd(2800)),
             ),
-            provider = huy,
+            provider = jacob,
             options = listOf(
                 CounterOption(
                     id = "attendees",
@@ -689,7 +674,7 @@ internal object CatalogServices {
             id = "custom-itinerary-luke",
             categoryId = "vacation_planning",
             icon = "explore",
-            title = lt("Custom Itinerary Planning by Luke", "Lên lịch trình tùy chỉnh bởi Luke"),
+            title = lt("Custom Itinerary Planning by Jacob", "Lên lịch trình tùy chỉnh bởi Jacob"),
             description = lt("Personalized travel plans, bookings, and hidden gem recommendations.", "Kế hoạch du lịch cá nhân hóa, đặt phòng và đề xuất các điểm đến ẩn giấu."),
             rating = 4.9,
             reviewCount = 61,
@@ -699,7 +684,7 @@ internal object CatalogServices {
                 DurationOption("60", minutes = 60, price = vnd(500)),
                 DurationOption("120", minutes = 120, price = vnd(900)),
             ),
-            provider = luke,
+            provider = jacob,
             options = listOf(
                 MultiSelectOption(
                     id = "interests",
@@ -712,14 +697,14 @@ internal object CatalogServices {
                 ),
             ),
             reviews = listOf(
-                Review("r1", "Linh", 5, lt("Luke planned the perfect family trip to Phu Quoc!", "Luke đã lên kế hoạch cho chuyến đi gia đình hoàn hảo đến Phú Quốc!")),
+                Review("r1", "Linh", 5, lt("Jacob planned the perfect family trip to Phu Quoc!", "Jacob đã lên kế hoạch cho chuyến đi gia đình hoàn hảo đến Phú Quốc!")),
             ),
         ),
         Service(
             id = "weekend-getaway-lan",
             categoryId = "vacation_planning",
             icon = "wb_sunny",
-            title = lt("Weekend Getaway Planner by Lan", "Lập kế hoạch nghỉ dưỡng cuối tuần bởi Lan"),
+            title = lt("Weekend Getaway Planner by Jacob", "Lập kế hoạch nghỉ dưỡng cuối tuần bởi Jacob"),
             description = lt("Quick, stress-free weekend trips and staycations near the city.", "Chuyến đi cuối tuần nhanh chóng, không lo nghĩ và nghỉ dưỡng tại chỗ gần thành phố."),
             rating = 4.7,
             reviewCount = 28,
@@ -729,7 +714,7 @@ internal object CatalogServices {
                 DurationOption("45", minutes = 45, price = vnd(350)),
                 DurationOption("90", minutes = 90, price = vnd(600)),
             ),
-            provider = lan,
+            provider = jacob,
             options = listOf(
                 SingleSelectOption(
                     id = "destinationType",
@@ -761,7 +746,7 @@ internal object CatalogServices {
                 DurationOption("45", minutes = 45, price = vnd(350)),
                 DurationOption("60", minutes = 60, price = vnd(450)),
             ),
-            provider = my,
+            provider = jacob,
             options = listOf(
                 SingleSelectOption(
                     id = "level",
@@ -800,7 +785,7 @@ internal object CatalogServices {
                 DurationOption("45", minutes = 45, price = vnd(300)),
                 DurationOption("60", minutes = 60, price = vnd(400)),
             ),
-            provider = huy,
+            provider = jacob,
             options = listOf(
                 SingleSelectOption(
                     id = "style",
@@ -838,7 +823,7 @@ internal object CatalogServices {
                 DurationOption("45", minutes = 45, price = vnd(320)),
                 DurationOption("60", minutes = 60, price = vnd(420)),
             ),
-            provider = linh,
+            provider = jacob,
             options = listOf(
                 SingleSelectOption(
                     id = "level",
@@ -878,7 +863,7 @@ internal object CatalogServices {
                 DurationOption("60", minutes = 60, price = vnd(300)),
                 DurationOption("90", minutes = 90, price = vnd(420)),
             ),
-            provider = vy2,
+            provider = jacob,
             options = listOf(
                 SingleSelectOption(
                     id = "level",
@@ -919,7 +904,7 @@ internal object CatalogServices {
                 DurationOption("120", minutes = 120, price = vnd(400)),
                 DurationOption("180", minutes = 180, price = vnd(550)),
             ),
-            provider = lan,
+            provider = jacob,
             options = listOf(
                 CounterOption(
                     id = "seats",
@@ -958,7 +943,7 @@ internal object CatalogServices {
                 DurationOption("90", minutes = 90, price = vnd(300)),
                 DurationOption("120", minutes = 120, price = vnd(400)),
             ),
-            provider = vy2,
+            provider = jacob,
             options = listOf(
                 CounterOption(
                     id = "seats",
@@ -999,7 +984,7 @@ internal object CatalogServices {
                 DurationOption("180", minutes = 180, price = vnd(200)),
                 DurationOption("240", minutes = 240, price = vnd(260)),
             ),
-            provider = chi,
+            provider = jacob,
             options = listOf(
                 CounterOption(
                     id = "children",
@@ -1038,7 +1023,7 @@ internal object CatalogServices {
                 DurationOption("240", minutes = 240, price = vnd(350)),
                 DurationOption("480", minutes = 480, price = vnd(620)),
             ),
-            provider = thom,
+            provider = jacob,
             options = listOf(
                 CounterOption(
                     id = "children",
@@ -1079,7 +1064,7 @@ internal object CatalogServices {
                 DurationOption("30", minutes = 30, price = vnd(120)),
                 DurationOption("60", minutes = 60, price = vnd(180)),
             ),
-            provider = nam,
+            provider = jacob,
             options = listOf(
                 CounterOption(
                     id = "dogs",
@@ -1119,7 +1104,7 @@ internal object CatalogServices {
                 DurationOption("60", minutes = 60, price = vnd(300)),
                 DurationOption("120", minutes = 120, price = vnd(420)),
             ),
-            provider = an,
+            provider = jacob,
             options = listOf(
                 CounterOption(
                     id = "pets",
@@ -1160,7 +1145,7 @@ internal object CatalogServices {
                 DurationOption("30", minutes = 30, price = vnd(150)),
                 DurationOption("60", minutes = 60, price = vnd(220)),
             ),
-            provider = thom,
+            provider = jacob,
             options = listOf(
                 CounterOption(
                     id = "plants",
@@ -1220,7 +1205,7 @@ internal object CatalogServices {
             id = "event-photography-luke",
             categoryId = "photography",
             icon = "camera_roll",
-            title = lt("Event Photography by Luke", "Chụp ảnh sự kiện bởi Luke"),
+            title = lt("Event Photography by Jacob", "Chụp ảnh sự kiện bởi Jacob"),
             description = lt("Capture high-quality memories of your parties.", "Lưu giữ những kỷ niệm chất lượng cao cho bữa tiệc."),
             rating = 4.9,
             reviewCount = 52,
@@ -1230,7 +1215,7 @@ internal object CatalogServices {
                 DurationOption("120", minutes = 120, price = vnd(1000)),
                 DurationOption("240", minutes = 240, price = vnd(1800)),
             ),
-            provider = luke,
+            provider = jacob,
             options = listOf(
                 CounterOption(
                     id = "photographers",
@@ -1252,7 +1237,7 @@ internal object CatalogServices {
             id = "pet-grooming-linh",
             categoryId = "petcare",
             icon = "content_cut",
-            title = lt("Pet Grooming by Linh", "Tỉa lông thú cưng bởi Linh"),
+            title = lt("Pet Grooming by Jacob", "Tỉa lông thú cưng bởi Jacob"),
             description = lt("Wash, trim, and style for your pets.", "Tắm rửa, cắt tỉa và tạo kiểu cho thú cưng."),
             rating = 4.7,
             reviewCount = 43,
@@ -1262,7 +1247,7 @@ internal object CatalogServices {
                 DurationOption("60", minutes = 60, price = vnd(250)),
                 DurationOption("90", minutes = 90, price = vnd(350)),
             ),
-            provider = linh,
+            provider = jacob,
             options = listOf(
                 SingleSelectOption(
                     id = "serviceType",
@@ -1281,7 +1266,7 @@ internal object CatalogServices {
             id = "pet-training-mark",
             categoryId = "petcare",
             icon = "sound_detection_dog_barking",
-            title = lt("Pet Training by Mark", "Huấn luyện thú cưng bởi Mark"),
+            title = lt("Pet Training by Jacob", "Huấn luyện thú cưng bởi Jacob"),
             description = lt("Basic obedience and behavior training.", "Huấn luyện vâng lời và hành vi cơ bản."),
             rating = 4.9,
             reviewCount = 28,
@@ -1291,7 +1276,7 @@ internal object CatalogServices {
                 DurationOption("60", minutes = 60, price = vnd(500)),
                 DurationOption("120", minutes = 120, price = vnd(900)),
             ),
-            provider = mark,
+            provider = jacob,
             options = listOf(
                 MultiSelectOption(
                     id = "focusAreas",
@@ -1321,7 +1306,7 @@ internal object CatalogServices {
             durations = listOf(
                 DurationOption("60", minutes = 60, price = vnd(300)),
             ),
-            provider = thuy,
+            provider = jacob,
             options = listOf(
                 SingleSelectOption(
                     id = "plantType",
@@ -1352,7 +1337,7 @@ internal object CatalogServices {
                 DurationOption("120", minutes = 120, price = vnd(100)),
                 DurationOption("480", minutes = 480, price = vnd(300)),
             ),
-            provider = ha,
+            provider = jacob,
             options = listOf(
                 SingleSelectOption(
                     id = "toolType",
@@ -1381,7 +1366,7 @@ internal object CatalogServices {
                 DurationOption("60", minutes = 60, price = vnd(20)),
                 DurationOption("180", minutes = 180, price = vnd(50)),
             ),
-            provider = vy,
+            provider = jacob,
             options = listOf(
                 SingleSelectOption(
                     id = "cableType",
@@ -1409,7 +1394,7 @@ internal object CatalogServices {
                 DurationOption("60", minutes = 60, price = vnd(300)),
                 DurationOption("120", minutes = 120, price = vnd(550)),
             ),
-            provider = my,
+            provider = jacob,
             options = listOf(
                 CounterOption(
                     id = "items",
@@ -1439,7 +1424,7 @@ internal object CatalogServices {
                 DurationOption("120", minutes = 120, price = vnd(500)),
                 DurationOption("240", minutes = 240, price = vnd(900)),
             ),
-            provider = huy,
+            provider = jacob,
             options = listOf(
                 SingleSelectOption(
                     id = "truckNeeded",
@@ -1466,7 +1451,7 @@ internal object CatalogServices {
             durations = listOf(
                 DurationOption("1440", minutes = 1440, price = vnd(400)),
             ),
-            provider = lan,
+            provider = jacob,
             options = listOf(
                 MultiSelectOption(
                     id = "tasks",
@@ -1491,7 +1476,7 @@ internal object CatalogServices {
             durations = listOf(
                 DurationOption("1440", minutes = 1440, price = vnd(600)),
             ),
-            provider = vy2,
+            provider = jacob,
             options = listOf(
                 CounterOption(
                     id = "pets",
@@ -1520,7 +1505,7 @@ internal object CatalogServices {
                 DurationOption("30", minutes = 30, price = vnd(50)),
                 DurationOption("60", minutes = 60, price = vnd(80)),
             ),
-            provider = chi,
+            provider = jacob,
             options = listOf(
                 SingleSelectOption(
                     id = "destination",
@@ -1545,7 +1530,7 @@ internal object CatalogServices {
             durations = listOf(
                 DurationOption("45", minutes = 45, price = vnd(200)),
             ),
-            provider = thom,
+            provider = jacob,
             options = listOf(
                 CounterOption(
                     id = "luggage",
@@ -1573,7 +1558,7 @@ internal object CatalogServices {
             durations = listOf(
                 DurationOption("60", minutes = 60, price = vnd(300)),
             ),
-            provider = nam,
+            provider = jacob,
             options = listOf(
                 SingleSelectOption(
                     id = "routerNeeded",
@@ -1598,7 +1583,7 @@ internal object CatalogServices {
             durations = listOf(
                 DurationOption("90", minutes = 90, price = vnd(400)),
             ),
-            provider = an,
+            provider = jacob,
             options = listOf(
                 MultiSelectOption(
                     id = "software",
@@ -1652,7 +1637,7 @@ internal object CatalogServices {
             durations = listOf(
                 DurationOption("60", minutes = 60, price = vnd(300)),
             ),
-            provider = luke,
+            provider = jacob,
             options = listOf(
                 MultiSelectOption(
                     id = "supplies",
@@ -1678,7 +1663,7 @@ internal object CatalogServices {
             durations = listOf(
                 DurationOption("60", minutes = 60, price = vnd(100)),
             ),
-            provider = linh,
+            provider = jacob,
             options = listOf(
                 CounterOption(
                     id = "itemsCount",
@@ -1704,7 +1689,7 @@ internal object CatalogServices {
             durations = listOf(
                 DurationOption("60", minutes = 60, price = vnd(120)),
             ),
-            provider = mark,
+            provider = jacob,
             options = listOf(
                 SingleSelectOption(
                     id = "marketType",
@@ -1731,7 +1716,7 @@ internal object CatalogServices {
             durations = listOf(
                 DurationOption("20", minutes = 20, price = vnd(40)),
             ),
-            provider = duc,
+            provider = jacob,
             options = listOf(
                 SingleSelectOption(
                     id = "drinkType",
@@ -1757,7 +1742,7 @@ internal object CatalogServices {
             durations = listOf(
                 DurationOption("90", minutes = 90, price = vnd(350)),
             ),
-            provider = thuy,
+            provider = jacob,
             status = ServiceStatus.TEMPORARILY_UNAVAILABLE,
             options = listOf(
                 CounterOption(
@@ -1787,7 +1772,7 @@ internal object CatalogServices {
                 DurationOption("60", minutes = 60, price = vnd(400)),
                 DurationOption("90", minutes = 90, price = vnd(550)),
             ),
-            provider = ha,
+            provider = jacob,
             options = listOf(
                 SingleSelectOption(
                     id = "goal",
@@ -1821,7 +1806,7 @@ internal object CatalogServices {
             id = "life-coaching-linh",
             categoryId = "life_coaching",
             icon = "psychology",
-            title = lt("Career & Life Coaching by Linh", "Khai vấn sự nghiệp & đời sống bởi Linh"),
+            title = lt("Career & Life Coaching by Jacob", "Khai vấn sự nghiệp & đời sống bởi Jacob"),
             description = lt("Find clarity and direction for work and life.", "Tìm sự rõ ràng và định hướng cho công việc và cuộc sống."),
             rating = 4.8,
             reviewCount = 19,
@@ -1831,7 +1816,7 @@ internal object CatalogServices {
                 DurationOption("60", minutes = 60, price = vnd(900)),
                 DurationOption("90", minutes = 90, price = vnd(1200)),
             ),
-            provider = linh,
+            provider = jacob,
             options = listOf(
                 SingleSelectOption(
                     id = "focus",
