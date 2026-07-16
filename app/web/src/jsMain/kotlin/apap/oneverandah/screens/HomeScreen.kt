@@ -103,6 +103,11 @@ fun HomeScreen(
                 value(searchQuery)
                 placeholder(animatedPlaceholder)
                 onInput { searchQuery = it.value }
+                ref { inputRef ->
+                    inputRef.focus()
+
+                    onDispose {  }
+                }
             }
         }
 

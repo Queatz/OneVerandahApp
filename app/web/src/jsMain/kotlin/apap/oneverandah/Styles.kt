@@ -450,7 +450,7 @@ object Styles {
             padding: 20px 12px;
             display: flex;
             flex-direction: column;
-            align-items: center;
+            align-items: space-between;
             justify-content: center;
             text-align: center;
             cursor: pointer;
@@ -513,7 +513,7 @@ object Styles {
             transition: opacity 0.45s ease, filter 0.45s ease;
             pointer-events: none;
         }
-        .${card}:hover.${cardCovered} .${coverImage} { filter: brightness(1.2); }
+        .${card}:hover.${cardCovered} .${coverImage} { filter: brightness(1.6); }
         .${coverImage}.${coverImageLoaded} { opacity: 1; }
         /* Veiled variant: dims the photo with a 50% surface layer painted
            directly onto the cover image (a huge inset box-shadow), so the
@@ -566,7 +566,6 @@ object Styles {
             background-size: cover;
             background-position: center;
             background-color: var(--md-sys-color-surface-variant);
-            border: 1px solid #ffffff16;
         }
         .${listDetails} h2 { font-size: 16px; margin: 0 0 4px 0; font-weight: 700; }
         .${listDetails} p { font-size: 14px; margin: 0; color: var(--md-sys-color-on-surface-variant); }
@@ -1359,7 +1358,7 @@ object Styles {
             background-color: var(--md-sys-color-surface);
             border: none;
         }
-        .${pinnedCard}.${pinnedCardCovered}:hover .${coverImage} { filter: brightness(1.2); }
+        .${pinnedCard}.${pinnedCardCovered}:hover .${coverImage} { filter: brightness(1.6); }
         .${card}.${cardCovered} .${pinnedCardIcon},
         .${pinnedCard}.${pinnedCardCovered} .${pinnedCardIcon},
         .${pinnedCard}.${pinnedCardCovered} .${pinnedCardLabel} {
@@ -1369,6 +1368,7 @@ object Styles {
         .${pinnedCardIcon} {
             width: 48px;
             height: 48px;
+            margin-top: 16px;
             border-radius: 50%;
             display: flex;
             align-items: center;
