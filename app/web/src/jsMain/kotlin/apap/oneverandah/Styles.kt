@@ -41,6 +41,8 @@ object Styles {
     // Reusable async-preloaded, fade-in background image layer
     const val coverImage = "cover-image"
     const val coverImageLoaded = "cover-image-loaded"
+    // Cover-image variant that dims the photo with a 50% surface veil
+    const val coverImageVeiled = "cover-image-veiled"
 
     // Services list
     const val listCard = "list-card"
@@ -478,14 +480,13 @@ object Styles {
             padding: 0;
             overflow: hidden;
             justify-content: flex-end;
-            align-items: stretch;
+            align-items: center;
         }
-        .${card}.${cardCovered} .${materialSymbols} { display: none; }
         .${card}.${cardCovered} .${cardLabel} {
             position: relative;
             z-index: 1;
             width: 100%;
-            padding: 22px 10px 10px;
+            padding: 10px 10px;
             color: #ffffff;
             text-shadow: 0 1px 3px rgba(0, 0, 0, 0.6);
             background: linear-gradient(to top, rgba(0, 0, 0, 0.6), rgba(0, 0, 0, 0));
@@ -504,12 +505,33 @@ object Styles {
             background-position: center;
             background-repeat: no-repeat;
             border-radius: inherit;
+            box-shadow:
+                inset 0 0 0 1px #ffffff16,
+                inset 0 4px 8px -8px var(--md-shadow-light);
             opacity: 0;
-            transition: opacity 0.45s ease;
+            transition: opacity 0.45s ease, filter 0.45s ease;
             pointer-events: none;
         }
+        .${card}:hover.${cardCovered} .${coverImage} { filter: brightness(1.2); }
         .${coverImage}.${coverImageLoaded} { opacity: 1; }
-
+        /* Veiled variant: dims the photo with a 50% surface layer painted
+           directly onto the cover image (a huge inset box-shadow), so the
+           light border/glow — listed first — still renders on top of both the
+           image and the veil, all on the cover image itself (no extra layers). */
+        .${coverImageVeiled} {
+            position: absolute;
+            inset: 0;
+            border-radius: 28px;
+            background-color: color-mix(in srgb, var(--md-sys-color-surface) 50%, transparent);
+            pointer-events: none;
+        }
+         .${pinnedCard}.${pinnedCardCovered} .${coverImageVeiled} {
+            border-radius: 16px;
+         }
+         .${pinnedCard}.${pinnedCardCovered}:hover .${coverImageVeiled},
+         .${card}.${cardCovered}:hover .${coverImageVeiled} {
+            inset: 0px 1px 1px 1px;
+         }
         /* Services list */
         .${listCard} {
             background-color: var(--md-sys-color-surface-variant);
@@ -1317,7 +1339,7 @@ object Styles {
             padding: 12px 8px;
             border-radius: 16px;
             background-color: var(--md-sys-color-surface);
-            border: 1px solid var(--md-sys-color-surface-variant);
+            border: 1px solid #ffffff16;
             box-shadow: 0 4px 8px -8px var(--md-shadow-light) inset;
             cursor: pointer;
             scroll-snap-align: start;
@@ -1325,30 +1347,21 @@ object Styles {
         }
         .${pinnedCard}:hover { background-color: var(--md-sys-color-surface-variant); }
         .${pinnedCard}:active { transform: scale(0.97); }
-        /* Service card with a generated cover image. The cover is rendered by a
-           reusable async-preloaded, fade-in layer (see .${coverImage}) that
-           sits at the back, preserving the card's normal layout (the icon and
-           label stay visible on top). A 50%-opacity surface veil is layered
-           over the image (via ::before) so the background reads at half
-           strength; the icon/label are lifted above it. A missing/broken URL
-           simply falls back to the base card colour (no broken-image glyph). */
+        /* Service card with a generated cover image. The cover — including its
+           50% surface veil and the light border/glow — is rendered entirely by
+           the reusable fade-in layer (see .${coverImage}.${coverImageVeiled}),
+           which sits at the back; the icon/label just sit on top of it. A
+           missing/broken URL simply falls back to the base card colour (no
+           broken-image glyph). */
         .${pinnedCard}.${pinnedCardCovered} {
             background-color: var(--md-sys-color-surface);
         }
-        .${pinnedCard}.${pinnedCardCovered}::before {
-            content: "";
-            position: absolute;
-            inset: 0;
-            z-index: 1;
-            background-color: var(--md-sys-color-surface);
-            opacity: 0.5;
-            border-radius: inherit;
-            pointer-events: none;
-        }
+        .${pinnedCard}.${pinnedCardCovered}:hover .${coverImage} { filter: brightness(1.2); }
+        .${card}.${cardCovered} .${pinnedCardIcon},
         .${pinnedCard}.${pinnedCardCovered} .${pinnedCardIcon},
         .${pinnedCard}.${pinnedCardCovered} .${pinnedCardLabel} {
             position: relative;
-            z-index: 2;
+            z-index: 1;
         }
         .${pinnedCardIcon} {
             width: 48px;
@@ -1380,7 +1393,7 @@ object Styles {
             font-size: 16px;
         }
         .${pinnedCard}.${pinnedCardCovered} .${pinnedBadge} {
-            z-index: 2;
+            z-index: 1;
             color: #ffffff;
             text-shadow: 0 1px 3px rgba(0, 0, 0, 0.6);
         }

@@ -129,7 +129,9 @@ fun HomeScreen(
                                 onClick { onCategorySelected(category.id) }
                             }) {
                                 if (cover != null) CoverImage(cover)
-                                MaterialSymbol(category.icon)
+                                Div(attrs = { classes(Styles.pinnedCardIcon) }) {
+                                    MaterialSymbol(category.icon)
+                                }
                                 Span(attrs = { classes(Styles.cardLabel) }) {
                                     Text(category.title.resolve(language))
                                 }
@@ -240,7 +242,7 @@ private fun PinnedRecentSection(
                             attr("title", name)
                             onClick { onServiceSelected(item.serviceId) }
                         }) {
-                            if (cover != null) CoverImage(cover)
+                            if (cover != null) CoverImage(cover, Styles.coverImageVeiled)
                             if (item.isManuallySaved) {
                                 Span(attrs = {
                                     classes(Styles.materialSymbols, Styles.pinnedBadge)
@@ -268,7 +270,7 @@ private fun PinnedRecentSection(
                             attr("title", name)
                             onClick { onServiceSelected(service.id) }
                         }) {
-                            if (cover != null) CoverImage(cover)
+                            if (cover != null) CoverImage(cover, Styles.coverImageVeiled)
                             Div(attrs = { classes(Styles.pinnedCardIcon) }) {
                                 MaterialSymbol(service.icon)
                             }

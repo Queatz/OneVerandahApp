@@ -735,7 +735,7 @@ fun ProviderDetailsContent(
                             attr("title", name)
                             onClick { onServiceSelected(service.id) }
                         }) {
-                            if (cover != null) CoverImage(cover)
+                            if (cover != null) CoverImage(cover, Styles.coverImageVeiled)
                             Div(attrs = { classes(Styles.pinnedCardIcon) }) {
                                 MaterialSymbol(service.icon)
                             }

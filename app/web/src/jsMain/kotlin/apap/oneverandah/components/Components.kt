@@ -72,7 +72,9 @@ fun CoverImage(url: String, extraClass: String? = null) {
         if (extraClass != null) classes(extraClass)
         if (loaded) classes(Styles.coverImageLoaded)
         style { property("background-image", "url('$url')") }
-    })
+    }) {
+        Div(attrs = { classes(Styles.coverImageVeiled) })
+    }
 }
 
 /**

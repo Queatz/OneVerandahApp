@@ -210,7 +210,9 @@ if systemctl list-unit-files arangodb3.service >/dev/null 2>&1; then
         set_env_var_if_blank "ARANGO_USER" "root"
         set_env_var_if_blank "ARANGO_SSL" "false"
     else
-        echo "    WARNING: arangodb3.service exists but 127.0.0.1:8529 did not answer; /health may report in-memory."
+        echo "ERROR: arangodb3.service exists but 127.0.0.1:8529 did not answer." >&2
+        echo "       Check: sudo systemctl status arangodb3 --no-pager" >&2
+        exit 1
     fi
 fi
 sudo chown "${APP_USER}:${APP_USER}" "${ENV_FILE}"
@@ -295,10 +297,12 @@ done
 if [ "$UP" = "1" ]; then
     echo "    Local HTTPS health check OK (https://127.0.0.1/health)"
 else
-    echo "    WARNING: the app did not answer on https://127.0.0.1/health yet."
+    echo "ERROR: the app did not answer on https://127.0.0.1/health after restart." >&2
     echo "    ---- Last 40 log lines (sudo journalctl -u ${SERVICE_NAME}.service -n 40 --no-pager) ----"
     sudo journalctl -u "${SERVICE_NAME}.service" -n 40 --no-pager || true
     echo "    ------------------------------------------------------------------------------"
+    echo "       Deployment stopped because the backend did not become healthy." >&2
+    exit 1
 fi
 
 echo "==> Deployed. Recent status:"

@@ -1,6 +1,7 @@
 package apap.oneverandah
 
 import apap.oneverandah.config.AppConfig
+import apap.oneverandah.config.AppEnv
 import apap.oneverandah.config.EnvSource
 import apap.oneverandah.images.ImageEntity
 import apap.oneverandah.images.ImageGenerationService
@@ -37,6 +38,7 @@ import java.nio.file.Files
 import javax.imageio.ImageIO
 import kotlin.test.Test
 import kotlin.test.assertEquals
+import kotlin.test.assertFailsWith
 import kotlin.test.assertNotNull
 import kotlin.test.assertNull
 import kotlin.test.assertTrue
@@ -97,6 +99,20 @@ class ImageSystemTest {
         val storage = LocalStorageService(dir, config.publicBaseUrl)
         val url = runBlocking { storage.upload("category/massages.png", GeneratedImage(byteArrayOf(1, 2, 3))) }
         assertEquals("https://api.oneverandah.app/images/category/massages.png", url)
+    }
+
+    @Test
+    fun productionArangoFailureFailsStartupInsteadOfUsingInMemory() = runBlocking {
+        val config = noEnvConfig().copy(
+            env = AppEnv.PRODUCTION,
+            arango = noEnvConfig().arango.copy(host = "127.0.0.1", port = 1),
+            autoStart = false,
+        )
+
+        val error = assertFailsWith<IllegalStateException> {
+            ImageSystem.create(config)
+        }
+        assertTrue(error.message.orEmpty().contains("Production requires ArangoDB"))
     }
 
     @Test

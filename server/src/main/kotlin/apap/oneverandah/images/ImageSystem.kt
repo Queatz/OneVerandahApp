@@ -132,8 +132,12 @@ class ImageSystem private constructor(
                 expectSuccess = false
             }
 
-            val repository: ImageRepository =
-                ArangoImageRepository.connect(config.arango, httpClient) ?: InMemoryImageRepository()
+            val arangoRepository = ArangoImageRepository.connect(config.arango, httpClient)
+            if (arangoRepository == null && config.isProduction) {
+                httpClient.close()
+                error("Production requires ArangoDB, but it could not be initialized at ${config.arango.baseUrl}")
+            }
+            val repository: ImageRepository = arangoRepository ?: InMemoryImageRepository()
             val repositoryKind = if (repository is InMemoryImageRepository) "in-memory" else "arangodb"
 
             val storage: StorageService = if (config.oss.enabled) {
