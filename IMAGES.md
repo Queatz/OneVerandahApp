@@ -145,6 +145,35 @@ All four of `OSS_ENDPOINT`, `OSS_ACCESS_KEY_ID`, `OSS_ACCESS_KEY_SECRET`,
 `OSS_BUCKET_NAME` must be present to enable OSS; otherwise local disk storage is
 used and images are served by the app at `/images/`.
 
+### Mainland-China buckets: public endpoint is forbidden
+
+Since **2025-03-20** Alibaba Cloud **forbids using the default public OSS
+endpoints** (`*.aliyuncs.com`, e.g. `oss-cn-beijing.aliyuncs.com`) for data
+operations (upload/download) on buckets in **mainland-China regions**. Such
+requests are rejected with `400 PublicEndpointForbidden` ("please use CNAME
+instead"). Choose one of the following (all supported by the client):
+
+- **Custom domain / CNAME (recommended).** Bind a domain to the bucket in the
+  OSS console and add a DNS `CNAME` record pointing it at
+  `<bucket>.oss-<region>.aliyuncs.com`, then set:
+
+  ```bash
+  OSS_ENDPOINT=cdn.example.com
+  OSS_CNAME=true
+  OSS_PUBLIC_BASE_URL=https://cdn.example.com
+  ```
+
+  With `OSS_CNAME=true` the endpoint is used verbatim as the request host
+  instead of the virtual-hosted `bucket.endpoint` form.
+- **Internal endpoint** (only when the server runs on an ECS in the bucket's
+  region): `OSS_ENDPOINT=oss-<region>-internal.aliyuncs.com`, `OSS_CNAME=false`.
+  Public serving still needs a CNAME/CDN in `OSS_PUBLIC_BASE_URL`.
+- **Transfer acceleration** (enable it on the bucket first):
+  `OSS_ENDPOINT=oss-accelerate.aliyuncs.com`, `OSS_CNAME=false`.
+
+If none of these is configured for a China-region bucket, leave the OSS values
+blank and the app falls back to local disk storage served at `/images/`.
+
 ---
 
 ## 6. ArangoDB (optional persistence)

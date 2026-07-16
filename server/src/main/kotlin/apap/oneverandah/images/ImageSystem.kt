@@ -8,6 +8,7 @@ import apap.oneverandah.images.qwen.PlaceholderQwenClient
 import apap.oneverandah.images.qwen.QwenClient
 import apap.oneverandah.images.qwen.QwenErrorLog
 import apap.oneverandah.images.storage.AliyunOssStorageService
+import apap.oneverandah.images.storage.LocalImageCache
 import apap.oneverandah.images.storage.LocalStorageService
 import apap.oneverandah.images.storage.StorageService
 import io.ktor.client.HttpClient
@@ -135,20 +136,32 @@ class ImageSystem private constructor(
                 ArangoImageRepository.connect(config.arango, httpClient) ?: InMemoryImageRepository()
             val repositoryKind = if (repository is InMemoryImageRepository) "in-memory" else "arangodb"
 
-            val storage: StorageService = if (config.oss.enabled) {k
+            val storage: StorageService = if (config.oss.enabled) {
                 AliyunOssStorageService(config.oss, httpClient)
             } else {
                 LocalStorageService(File(config.localStorageDir), config.publicBaseUrl)
             }
 
+            // A single failure log shared by the whole generation pipeline. It is
+            // wired into ImageGenerationService (not the Qwen client) so that EVERY
+            // failure that ends up marking an image FAILED is recorded here -
+            // including storage/upload failures, which never touch the Qwen client.
+            val errorLog = QwenErrorLog(File(config.qwenErrorLogPath))
+
             val qwen: QwenClient = if (config.qwen.enabled) {
-                DashScopeQwenClient(config.qwen, httpClient, errorLog = QwenErrorLog(File(config.qwenErrorLogPath)))
+                DashScopeQwenClient(config.qwen, httpClient)
             } else {
                 PlaceholderQwenClient()
             }
 
+            // A local backup of every generated image. It lets the pipeline retry
+            // a failed upload (e.g. OSS outage) by re-uploading the cached bytes
+            // instead of regenerating - saving a rate-limited Qwen call.
+            val imageCache = LocalImageCache(File(config.imageCacheDir))
+
             val scope = CoroutineScope(SupervisorJob() + Dispatchers.IO)
-            val generationService = ImageGenerationService(qwen, storage, repository, config.maxRetries)
+            val generationService =
+                ImageGenerationService(qwen, storage, repository, config.maxRetries, errorLog, imageCache)
             val queue = QueueService(
                 generationService = generationService,
                 repository = repository,

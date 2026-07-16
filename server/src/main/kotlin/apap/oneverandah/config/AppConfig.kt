@@ -49,6 +49,14 @@ data class OssConfig(
     val region: String,
     /** Optional CDN / custom-domain base used to build public URLs. */
     val publicBaseUrl: String?,
+    /**
+     * When true [endpoint] is treated as a custom domain (CNAME) already bound
+     * to the bucket and is used verbatim as the request host, instead of the
+     * virtual-hosted `bucket.endpoint` form. This is required for mainland-China
+     * buckets, which since 2025-03-20 reject the default public OSS endpoints
+     * (`*.aliyuncs.com`) for data operations with `PublicEndpointForbidden`.
+     */
+    val cname: Boolean,
 ) {
     val enabled: Boolean
         get() = endpoint.isNotBlank() &&
@@ -56,10 +64,20 @@ data class OssConfig(
             accessKeySecret.isNotBlank() &&
             bucket.isNotBlank()
 
+    private val bareEndpoint: String
+        get() = endpoint.removePrefix("https://").removePrefix("http://").trimEnd('/')
+
+    /**
+     * Host used for OSS data operations. With a CNAME the custom domain is used
+     * directly; otherwise the bucket is prefixed to the region endpoint
+     * (virtual-hosted style).
+     */
+    val requestHost: String
+        get() = if (cname) bareEndpoint else "$bucket.$bareEndpoint"
+
     /** Public URL of [objectKey], honouring a CDN base when configured. */
     fun urlFor(objectKey: String): String {
-        val base = publicBaseUrl?.trimEnd('/')
-            ?: "https://$bucket.${endpoint.removePrefix("https://").removePrefix("http://")}"
+        val base = publicBaseUrl?.trimEnd('/') ?: "https://$requestHost"
         return "$base/$objectKey"
     }
 }
@@ -95,6 +113,11 @@ data class AppConfig(
     val qwen: QwenConfig,
     /** Directory that backs the local storage fallback. */
     val localStorageDir: String,
+    /**
+     * Directory holding a local backup of every generated image, used to retry
+     * a failed upload without regenerating the image.
+     */
+    val imageCacheDir: String,
     /** Local file every Qwen/DashScope generation failure is appended to. */
     val qwenErrorLogPath: String,
     val maxConcurrentGenerations: Int,
@@ -151,6 +174,7 @@ data class AppConfig(
                 bucket = source["OSS_BUCKET_NAME"] ?: "",
                 region = source["OSS_REGION"] ?: "",
                 publicBaseUrl = source["OSS_PUBLIC_BASE_URL"]?.takeIf { it.isNotBlank() },
+                cname = source.bool("OSS_CNAME", false),
             )
 
             val qwen = QwenConfig(
@@ -171,6 +195,7 @@ data class AppConfig(
                 oss = oss,
                 qwen = qwen,
                 localStorageDir = source["LOCAL_STORAGE_DIR"] ?: "data/images",
+                imageCacheDir = source["IMAGE_CACHE_DIR"] ?: "data/image-cache",
                 qwenErrorLogPath = source["QWEN_ERROR_LOG_PATH"] ?: "qwen_errors.txt",
                 maxConcurrentGenerations = source.int("MAX_CONCURRENT_GENERATIONS", 2),
                 generationDelayMs = source.long("GENERATION_DELAY_MS", 1000),

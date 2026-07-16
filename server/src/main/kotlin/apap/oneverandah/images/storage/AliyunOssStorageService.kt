@@ -35,7 +35,11 @@ class AliyunOssStorageService(
 
     override val kind: String = "oss"
 
-    private val host: String = "${config.bucket}.${config.endpoint.removePrefix("https://").removePrefix("http://")}"
+    // Host used for data-plane requests. With a CNAME custom domain this is the
+    // domain itself (required for mainland-China buckets, which reject the
+    // default public `*.aliyuncs.com` endpoint); otherwise it is the standard
+    // virtual-hosted `bucket.endpoint`.
+    private val host: String = config.requestHost
 
     override suspend fun upload(objectKey: String, image: GeneratedImage): String =
         withContext(Dispatchers.IO) {

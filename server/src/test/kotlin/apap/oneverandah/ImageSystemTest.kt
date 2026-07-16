@@ -10,8 +10,12 @@ import apap.oneverandah.images.ImageTargetType
 import apap.oneverandah.images.InMemoryImageRepository
 import apap.oneverandah.images.QueueService
 import apap.oneverandah.images.qwen.PlaceholderQwenClient
+import apap.oneverandah.images.qwen.QwenClient
 import apap.oneverandah.images.qwen.QwenErrorLog
+import apap.oneverandah.images.storage.GeneratedImage
+import apap.oneverandah.images.storage.LocalImageCache
 import apap.oneverandah.images.storage.LocalStorageService
+import apap.oneverandah.images.storage.StorageService
 import io.ktor.client.request.get
 import io.ktor.client.request.post
 import io.ktor.client.request.setBody
@@ -101,6 +105,114 @@ class ImageSystemTest {
         assertEquals("http://localhost:7071/images/service/word-massages-jacob.png", updated.imageUrl)
         val file = File(dir, "service/word-massages-jacob.png")
         assertTrue(file.exists() && file.length() > 0)
+    }
+
+    @Test
+    fun uploadFailureMarksFailedAndIsLogged() = runBlocking {
+        val repo = InMemoryImageRepository()
+        val logFile = Files.createTempFile("qwen-errors", ".txt").toFile()
+        logFile.delete()
+        // Qwen generation succeeds, but the storage upload always fails - exactly
+        // the scenario that previously produced a FAILED image with no logged
+        // error (the failure never touched the Qwen client).
+        val failingStorage = object : StorageService {
+            override val kind = "failing"
+            override suspend fun upload(objectKey: String, image: GeneratedImage): String =
+                throw RuntimeException("bucket not provisioned (404)")
+        }
+        val service = ImageGenerationService(
+            qwenClient = PlaceholderQwenClient(size = 32),
+            storage = failingStorage,
+            repository = repo,
+            maxRetries = 1,
+            errorLog = QwenErrorLog(logFile),
+        )
+        repo.save(
+            ImageEntity(
+                id = "cat_massages",
+                targetId = "massages",
+                targetType = ImageTargetType.CATEGORY,
+                name = "Massages",
+                prompt = "a prompt",
+                status = ImageStatus.PENDING,
+                createdAt = 1,
+                updatedAt = 1,
+            ),
+        )
+
+        service.generateImage("cat_massages")
+
+        assertEquals(ImageStatus.FAILED, repo.findByImageId("cat_massages")?.status)
+        // The invariant this issue is about: a FAILED image ALWAYS has a logged error.
+        val logged = logFile.readText()
+        assertTrue(logged.contains("massages"), "upload failure should be logged: <$logged>")
+        assertTrue(logged.contains("bucket not provisioned (404)"))
+    }
+
+    @Test
+    fun uploadFailureCachesImageAndRetryReusesItWithoutRegenerating() = runBlocking {
+        val repo = InMemoryImageRepository()
+        val cacheDir = Files.createTempDirectory("ov-cache").toFile()
+        val cache = LocalImageCache(cacheDir)
+
+        // A Qwen client that counts how many times it actually generates.
+        val generateCount = java.util.concurrent.atomic.AtomicInteger(0)
+        val countingQwen = object : QwenClient {
+            override val kind = "counting"
+            override suspend fun generate(prompt: String): GeneratedImage {
+                generateCount.incrementAndGet()
+                return PlaceholderQwenClient(size = 32).generate(prompt)
+            }
+        }
+
+        // Storage that fails the first time (forcing FAILED) then succeeds.
+        val uploadAttempts = java.util.concurrent.atomic.AtomicInteger(0)
+        val flakyDir = Files.createTempDirectory("ov-flaky").toFile()
+        val local = LocalStorageService(flakyDir, "http://localhost:7071")
+        val flakyStorage = object : StorageService {
+            override val kind = "flaky"
+            override suspend fun upload(objectKey: String, image: GeneratedImage): String {
+                if (uploadAttempts.getAndIncrement() == 0) throw RuntimeException("OSS down (503)")
+                return local.upload(objectKey, image)
+            }
+        }
+
+        val service = ImageGenerationService(
+            qwenClient = countingQwen,
+            storage = flakyStorage,
+            repository = repo,
+            maxRetries = 1,
+            imageCache = cache,
+        )
+        repo.save(
+            ImageEntity(
+                id = "cat_massages",
+                targetId = "massages",
+                targetType = ImageTargetType.CATEGORY,
+                name = "Massages",
+                prompt = "a prompt",
+                status = ImageStatus.PENDING,
+                createdAt = 1,
+                updatedAt = 1,
+            ),
+        )
+
+        // First pass: generation succeeds, upload fails -> FAILED, but bytes cached.
+        service.generateImage("cat_massages")
+        assertEquals(ImageStatus.FAILED, repo.findByImageId("cat_massages")?.status)
+        assertEquals(1, generateCount.get())
+        assertNotNull(cache.load(ImageTargetType.CATEGORY, "massages"), "image should be cached after generation")
+
+        // Retry: upload succeeds this time. Qwen must NOT be called again - the
+        // cached image is re-uploaded instead of regenerated.
+        repo.updateStatus("cat_massages", ImageStatus.PENDING)
+        service.generateImage("cat_massages")
+
+        val updated = repo.findByImageId("cat_massages")
+        assertEquals(ImageStatus.COMPLETED, updated?.status)
+        assertEquals(1, generateCount.get(), "cached image must be reused, not regenerated")
+        // Cache is cleared once the upload finally succeeds.
+        assertNull(cache.load(ImageTargetType.CATEGORY, "massages"))
     }
 
     @Test
