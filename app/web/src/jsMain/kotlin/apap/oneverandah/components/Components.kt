@@ -57,7 +57,7 @@ fun MaterialSymbol(name: String, extraClass: String? = null) {
  *   tweaks (e.g. sizing or border-radius overrides).
  */
 @Composable
-fun CoverImage(url: String, extraClass: String? = null) {
+fun CoverImage(url: String) {
     var loaded by remember(url) { mutableStateOf(false) }
     LaunchedEffect(url) {
         loaded = false
@@ -69,7 +69,6 @@ fun CoverImage(url: String, extraClass: String? = null) {
     }
     Div(attrs = {
         classes(Styles.coverImage)
-        if (extraClass != null) classes(extraClass)
         if (loaded) classes(Styles.coverImageLoaded)
         style { property("background-image", "url('$url')") }
     }) {

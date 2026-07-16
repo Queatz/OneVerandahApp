@@ -481,6 +481,7 @@ object Styles {
             overflow: hidden;
             justify-content: flex-end;
             align-items: center;
+            border: none;
         }
         .${card}.${cardCovered} .${cardLabel} {
             position: relative;
@@ -524,14 +525,15 @@ object Styles {
             border-radius: 28px;
             background-color: color-mix(in srgb, var(--md-sys-color-surface) 50%, transparent);
             pointer-events: none;
+            transition: inset 0.2s ease;
         }
          .${pinnedCard}.${pinnedCardCovered} .${coverImageVeiled} {
             border-radius: 16px;
          }
-         .${pinnedCard}.${pinnedCardCovered}:hover .${coverImageVeiled},
-         .${card}.${cardCovered}:hover .${coverImageVeiled} {
+        .${card}:hover .${coverImageVeiled},
+        .${pinnedCard}:hover .${coverImageVeiled} {
             inset: 0px 1px 1px 1px;
-         }
+        }
         /* Services list */
         .${listCard} {
             background-color: var(--md-sys-color-surface-variant);
@@ -1355,6 +1357,7 @@ object Styles {
            broken-image glyph). */
         .${pinnedCard}.${pinnedCardCovered} {
             background-color: var(--md-sys-color-surface);
+            border: none;
         }
         .${pinnedCard}.${pinnedCardCovered}:hover .${coverImage} { filter: brightness(1.2); }
         .${card}.${cardCovered} .${pinnedCardIcon},

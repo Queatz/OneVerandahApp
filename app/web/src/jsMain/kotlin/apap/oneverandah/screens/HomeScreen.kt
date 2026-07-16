@@ -242,7 +242,7 @@ private fun PinnedRecentSection(
                             attr("title", name)
                             onClick { onServiceSelected(item.serviceId) }
                         }) {
-                            if (cover != null) CoverImage(cover, Styles.coverImageVeiled)
+                            if (cover != null) CoverImage(cover)
                             if (item.isManuallySaved) {
                                 Span(attrs = {
                                     classes(Styles.materialSymbols, Styles.pinnedBadge)
@@ -270,7 +270,7 @@ private fun PinnedRecentSection(
                             attr("title", name)
                             onClick { onServiceSelected(service.id) }
                         }) {
-                            if (cover != null) CoverImage(cover, Styles.coverImageVeiled)
+                            if (cover != null) CoverImage(cover)
                             Div(attrs = { classes(Styles.pinnedCardIcon) }) {
                                 MaterialSymbol(service.icon)
                             }
