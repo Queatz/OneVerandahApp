@@ -450,7 +450,7 @@ object Styles {
             padding: 20px 12px;
             display: flex;
             flex-direction: column;
-            align-items: space-between;
+            align-items: center;
             justify-content: center;
             text-align: center;
             cursor: pointer;
@@ -479,7 +479,6 @@ object Styles {
             min-height: 116px;
             padding: 0;
             overflow: hidden;
-            justify-content: flex-end;
             align-items: center;
             border: none;
         }
@@ -487,10 +486,9 @@ object Styles {
             position: relative;
             z-index: 1;
             width: 100%;
-            padding: 10px 10px;
+            padding: 0 12px;
             color: #ffffff;
             text-shadow: 0 1px 3px rgba(0, 0, 0, 0.6);
-            background: linear-gradient(to top, rgba(0, 0, 0, 0.6), rgba(0, 0, 0, 0));
         }
 
         /* Reusable async-preloaded, fade-in background image layer. Drop a
@@ -1368,7 +1366,7 @@ object Styles {
         .${pinnedCardIcon} {
             width: 48px;
             height: 48px;
-            margin-top: 16px;
+            margin-bottom: 16px;
             border-radius: 50%;
             display: flex;
             align-items: center;
