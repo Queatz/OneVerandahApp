@@ -86,6 +86,10 @@ class ImageSystemTest {
         // The public base URL now uses the real domain and omits the default
         // https port instead of falling back to localhost.
         assertEquals("https://api.oneverandah.app", config.publicBaseUrl)
+        // Production also defaults to the local ArangoDB installed by init.sh,
+        // so a copied .env.example with blank ARANGO_HOST no longer disables
+        // persistence and makes /health report the in-memory repository.
+        assertEquals("127.0.0.1", config.arango.host)
 
         // A locally-served image link built from that base points at the public
         // domain, which is exactly what the frontend needs.

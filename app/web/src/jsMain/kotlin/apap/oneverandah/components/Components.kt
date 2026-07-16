@@ -21,8 +21,10 @@ import org.jetbrains.compose.web.dom.H1
 import org.jetbrains.compose.web.dom.P
 import org.jetbrains.compose.web.dom.Span
 import org.jetbrains.compose.web.dom.Text
+import kotlinx.browser.document
 import org.w3c.dom.HTMLDivElement
 import org.w3c.dom.HTMLElement
+import org.w3c.dom.HTMLImageElement
 import org.w3c.dom.events.Event
 
 /** Per-screen scroll positions, keyed by [Scaffold]'s `scrollKey`. */
@@ -35,6 +37,42 @@ fun MaterialSymbol(name: String, extraClass: String? = null) {
         classes(Styles.materialSymbols)
         if (extraClass != null) classes(extraClass)
     }) { Text(name) }
+}
+
+/**
+ * A reusable, async-preloaded background image that fades in professionally
+ * once the browser has fully decoded it.
+ *
+ * Drop it as the **first child** of any `position: relative` container (e.g. a
+ * `cardCovered` / `pinnedCardCovered` card) to render [url] as a `cover`
+ * background that sits at the very back (`z-index: 0`). The image is first
+ * loaded off-DOM via a throwaway `<img>`; only after its `load` event does the
+ * layer gain the `coverImageLoaded` class, which transitions its opacity from 0
+ * to 1. This avoids the "pop-in" of a half-decoded image and causes no layout
+ * shift. A missing/broken URL simply never fades in, leaving the container's
+ * own background as a graceful fallback.
+ *
+ * @param url the fully-resolved image URL to preload and display.
+ * @param extraClass an optional additional CSS class for container-specific
+ *   tweaks (e.g. sizing or border-radius overrides).
+ */
+@Composable
+fun CoverImage(url: String, extraClass: String? = null) {
+    var loaded by remember(url) { mutableStateOf(false) }
+    LaunchedEffect(url) {
+        loaded = false
+        val preloader = document.createElement("img") as HTMLImageElement
+        preloader.onload = { _: Event -> loaded = true }
+        preloader.src = url
+        // A cached image may already be decoded before onload is wired up.
+        if (preloader.complete) loaded = true
+    }
+    Div(attrs = {
+        classes(Styles.coverImage)
+        if (extraClass != null) classes(extraClass)
+        if (loaded) classes(Styles.coverImageLoaded)
+        style { property("background-image", "url('$url')") }
+    })
 }
 
 /**

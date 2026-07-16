@@ -18,6 +18,18 @@ INSTALL_ARANGO="${INSTALL_ARANGO:-0}"
 
 ARANGO_LIST=/etc/apt/sources.list.d/arangodb.list
 
+set_env_var_if_blank() {
+    local file="$1" key="$2" value="$3"
+    sudo touch "$file"
+    if sudo grep -q "^${key}=" "$file" 2>/dev/null; then
+        if sudo grep -q "^${key}=$" "$file" 2>/dev/null; then
+            sudo sed -i "s|^${key}=.*|${key}=${value}|" "$file"
+        fi
+    else
+        echo "${key}=${value}" | sudo tee -a "$file" >/dev/null
+    fi
+}
+
 # Self-heal a stale ArangoDB apt source. Earlier versions of this script (and
 # ArangoDB's own upstream instructions) added the repo WITHOUT `trusted=yes`.
 # Because ArangoDB's package-signing key has expired (EXPKEYSIG), such a leftover
@@ -62,8 +74,21 @@ if [ "$INSTALL_ARANGO" = "1" ]; then
     fi
     sudo systemctl enable arangodb3
     sudo systemctl start arangodb3
-    echo "    ArangoDB is running on 127.0.0.1:8529. The application creates the"
-    echo "    'image_generator' database, collection and indexes on first start."
+
+    echo "==> Waiting for ArangoDB to answer on 127.0.0.1:8529..."
+    ARANGO_READY=0
+    for _ in $(seq 1 30); do
+        if curl -sS --max-time 2 "http://127.0.0.1:8529/_api/version" >/dev/null 2>&1; then
+            ARANGO_READY=1
+            break
+        fi
+        sleep 1
+    done
+    if [ "$ARANGO_READY" != "1" ]; then
+        echo "ERROR: ArangoDB did not answer on 127.0.0.1:8529." >&2
+        echo "       Check: sudo systemctl status arangodb3 --no-pager" >&2
+        exit 1
+    fi
 else
     echo "==> Skipping ArangoDB install (set INSTALL_ARANGO=1 to enable)."
     echo "    Without ArangoDB the backend uses in-memory storage."
@@ -81,6 +106,18 @@ if [ ! -f "${APP_DIR}/.env" ]; then
         echo "    Created ${APP_DIR}/.env from .env.example — edit it with your"
         echo "    Qwen API key, OSS bucket credentials and (optionally) ArangoDB."
     fi
+fi
+
+if [ "$INSTALL_ARANGO" = "1" ]; then
+    set_env_var_if_blank "${APP_DIR}/.env" "ARANGO_HOST" "127.0.0.1"
+    set_env_var_if_blank "${APP_DIR}/.env" "ARANGO_PORT" "8529"
+    set_env_var_if_blank "${APP_DIR}/.env" "ARANGO_DB" "image_generator"
+    set_env_var_if_blank "${APP_DIR}/.env" "ARANGO_USER" "root"
+    set_env_var_if_blank "${APP_DIR}/.env" "ARANGO_PASSWORD" "${ARANGO_PASSWORD:-}"
+    set_env_var_if_blank "${APP_DIR}/.env" "ARANGO_SSL" "false"
+    sudo chown "${APP_USER}:${APP_USER}" "${APP_DIR}/.env"
+    echo "    ArangoDB is running on 127.0.0.1:8529 and ${APP_DIR}/.env enables it."
+    echo "    The application creates the 'image_generator' database, collection and indexes on first start."
 fi
 
 echo "==> init complete. Next: edit ${APP_DIR}/.env, then run deploy/deploy.sh"

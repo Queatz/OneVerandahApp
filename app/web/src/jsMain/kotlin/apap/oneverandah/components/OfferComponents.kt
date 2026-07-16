@@ -730,14 +730,12 @@ fun ProviderDetailsContent(
                         val cover = ImageStore.coverFor(service.id)
                         Div(attrs = {
                             classes(Styles.pinnedCard)
-                            if (cover != null) {
-                                classes(Styles.pinnedCardCovered)
-                                style { property("background-image", "url('$cover')") }
-                            }
+                            if (cover != null) classes(Styles.pinnedCardCovered)
                             attr("role", "button")
                             attr("title", name)
                             onClick { onServiceSelected(service.id) }
                         }) {
+                            if (cover != null) CoverImage(cover)
                             Div(attrs = { classes(Styles.pinnedCardIcon) }) {
                                 MaterialSymbol(service.icon)
                             }

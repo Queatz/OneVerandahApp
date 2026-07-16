@@ -54,7 +54,7 @@ class ApplicationTest {
         
         val closetService = services.firstOrNull { it.id == "closet-organization-lan" }
         assertNotNull(closetService, "Closet Organization service should be present")
-        assertEquals("Closet Organization by Lan", closetService.title.en)
+        assertEquals("Closet Organization by Jacob", closetService.title.en)
         
         val kitchenService = services.firstOrNull { it.id == "kitchen-organization-an" }
         assertNotNull(kitchenService, "Kitchen & Pantry Organization service should be present")
@@ -73,11 +73,11 @@ class ApplicationTest {
 
         val strengthService = ptServices.firstOrNull { it.id == "strength-conditioning-duc" }
         assertNotNull(strengthService)
-        assertEquals("Strength & Conditioning by Duc", strengthService.title.en)
+        assertEquals("Strength & Conditioning by Jacob", strengthService.title.en)
 
         val hiitService = ptServices.firstOrNull { it.id == "hiit-cardio-vy" }
         assertNotNull(hiitService)
-        assertEquals("Fat Loss & HIIT with Vy", hiitService.title.en)
+        assertEquals("Fat Loss & HIIT with Jacob", hiitService.title.en)
 
         val yogaCategory = apap.oneverandah.data.Catalog.categoryById("yoga")
         assertNotNull(yogaCategory, "Yoga category should exist")
@@ -89,11 +89,11 @@ class ApplicationTest {
 
         val vinyasaService = yogaServices.firstOrNull { it.id == "vinyasa-yoga-linh" }
         assertNotNull(vinyasaService)
-        assertEquals("Vinyasa Flow Yoga with Linh", vinyasaService.title.en)
+        assertEquals("Vinyasa Flow Yoga with Jacob", vinyasaService.title.en)
 
         val yinService = yogaServices.firstOrNull { it.id == "yin-yoga-ha" }
         assertNotNull(yinService)
-        assertEquals("Yin & Relaxation Yoga by Ha", yinService.title.en)
+        assertEquals("Yin & Relaxation Yoga by Jacob", yinService.title.en)
     }
 
     @Test
@@ -108,11 +108,11 @@ class ApplicationTest {
 
         val birthdayService = partyServices.firstOrNull { it.id == "birthday-anniversary-planning-chi" }
         assertNotNull(birthdayService)
-        assertEquals("Birthday & Anniversary Planning by Chi", birthdayService.title.en)
+        assertEquals("Birthday & Anniversary Planning by Jacob", birthdayService.title.en)
 
         val corporateService = partyServices.firstOrNull { it.id == "corporate-events-huy" }
         assertNotNull(corporateService)
-        assertEquals("Corporate & Large Events by Huy", corporateService.title.en)
+        assertEquals("Corporate & Large Events by Jacob", corporateService.title.en)
 
         val vacationCategory = apap.oneverandah.data.Catalog.categoryById("vacation_planning")
         assertNotNull(vacationCategory, "Vacation Planning category should exist")
@@ -124,11 +124,11 @@ class ApplicationTest {
 
         val customItineraryService = vacationServices.firstOrNull { it.id == "custom-itinerary-luke" }
         assertNotNull(customItineraryService)
-        assertEquals("Custom Itinerary Planning by Luke", customItineraryService.title.en)
+        assertEquals("Custom Itinerary Planning by Jacob", customItineraryService.title.en)
 
         val weekendService = vacationServices.firstOrNull { it.id == "weekend-getaway-lan" }
         assertNotNull(weekendService)
-        assertEquals("Weekend Getaway Planner by Lan", weekendService.title.en)
+        assertEquals("Weekend Getaway Planner by Jacob", weekendService.title.en)
     }
 
     @Test

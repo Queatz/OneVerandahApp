@@ -168,6 +168,18 @@ set_env_var() {
     fi
 }
 
+set_env_var_if_blank() {
+    local key="$1" value="$2"
+    if sudo grep -q "^${key}=" "${ENV_FILE}" 2>/dev/null; then
+        if sudo grep -q "^${key}=$" "${ENV_FILE}" 2>/dev/null; then
+            sudo sed -i "s|^${key}=.*|${key}=${value}|" "${ENV_FILE}"
+        fi
+    else
+        echo "${key}=${value}" | sudo tee -a "${ENV_FILE}" >/dev/null
+    fi
+}
+
+set_env_var "APP_ENV" "production"
 set_env_var "APP_PORT" "80"
 set_env_var "SSL_ENABLED" "true"
 set_env_var "SSL_PORT" "443"
@@ -185,6 +197,22 @@ set_env_var "SSL_KEY_ALIAS" "oneverandah"
 # from an old self-signed-cert setup) must be overwritten too, or the app
 # fails to unlock the key with BadPaddingException at startup.
 set_env_var "SSL_PRIVATE_KEY_PASSWORD" "${KEYSTORE_PASSWORD}"
+
+# If init.sh installed ArangoDB locally, keep a freshly-uploaded .env with blank
+# ARANGO_* values from silently disabling persistence and falling back to the
+# in-memory repository in production.
+if systemctl list-unit-files arangodb3.service >/dev/null 2>&1; then
+    sudo systemctl enable --now arangodb3 >/dev/null 2>&1 || true
+    if curl -sS --max-time 2 "http://127.0.0.1:8529/_api/version" >/dev/null 2>&1; then
+        set_env_var_if_blank "ARANGO_HOST" "127.0.0.1"
+        set_env_var_if_blank "ARANGO_PORT" "8529"
+        set_env_var_if_blank "ARANGO_DB" "image_generator"
+        set_env_var_if_blank "ARANGO_USER" "root"
+        set_env_var_if_blank "ARANGO_SSL" "false"
+    else
+        echo "    WARNING: arangodb3.service exists but 127.0.0.1:8529 did not answer; /health may report in-memory."
+    fi
+fi
 sudo chown "${APP_USER}:${APP_USER}" "${ENV_FILE}"
 
 # --- Make sure the OS firewall lets the public 80/443 ports through --------

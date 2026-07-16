@@ -9,6 +9,7 @@ import androidx.compose.runtime.setValue
 import kotlinx.coroutines.delay
 import apap.oneverandah.Styles
 import apap.oneverandah.components.BottomDialog
+import apap.oneverandah.components.CoverImage
 import apap.oneverandah.components.MaterialSymbol
 import apap.oneverandah.components.Scaffold
 import apap.oneverandah.data.Catalog
@@ -123,13 +124,11 @@ fun HomeScreen(
                             val cover = ImageStore.coverFor(category.id)
                             Div(attrs = {
                                 classes(Styles.card)
-                                if (cover != null) {
-                                    classes(Styles.cardCovered)
-                                    style { property("background-image", "url('$cover')") }
-                                }
+                                if (cover != null) classes(Styles.cardCovered)
                                 attr("role", "button")
                                 onClick { onCategorySelected(category.id) }
                             }) {
+                                if (cover != null) CoverImage(cover)
                                 MaterialSymbol(category.icon)
                                 Span(attrs = { classes(Styles.cardLabel) }) {
                                     Text(category.title.resolve(language))
@@ -236,14 +235,12 @@ private fun PinnedRecentSection(
                         val cover = ImageStore.coverFor(item.serviceId)
                         Div(attrs = {
                             classes(Styles.pinnedCard)
-                            if (cover != null) {
-                                classes(Styles.pinnedCardCovered)
-                                style { property("background-image", "url('$cover')") }
-                            }
+                            if (cover != null) classes(Styles.pinnedCardCovered)
                             attr("role", "button")
                             attr("title", name)
                             onClick { onServiceSelected(item.serviceId) }
                         }) {
+                            if (cover != null) CoverImage(cover)
                             if (item.isManuallySaved) {
                                 Span(attrs = {
                                     classes(Styles.materialSymbols, Styles.pinnedBadge)
@@ -266,14 +263,12 @@ private fun PinnedRecentSection(
                         val cover = ImageStore.coverFor(service.id)
                         Div(attrs = {
                             classes(Styles.pinnedCard)
-                            if (cover != null) {
-                                classes(Styles.pinnedCardCovered)
-                                style { property("background-image", "url('$cover')") }
-                            }
+                            if (cover != null) classes(Styles.pinnedCardCovered)
                             attr("role", "button")
                             attr("title", name)
                             onClick { onServiceSelected(service.id) }
                         }) {
+                            if (cover != null) CoverImage(cover)
                             Div(attrs = { classes(Styles.pinnedCardIcon) }) {
                                 MaterialSymbol(service.icon)
                             }

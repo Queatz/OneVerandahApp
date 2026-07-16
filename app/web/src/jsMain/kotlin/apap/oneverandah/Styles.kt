@@ -38,6 +38,9 @@ object Styles {
     const val cardLabel = "card-label"
     // Generated cover images
     const val cardCovered = "card-covered"
+    // Reusable async-preloaded, fade-in background image layer
+    const val coverImage = "cover-image"
+    const val coverImageLoaded = "cover-image-loaded"
 
     // Services list
     const val listCard = "list-card"
@@ -465,27 +468,47 @@ object Styles {
         }
         .${cardLabel} { font-size: 14px; font-weight: 700; }
 
-        /* Category card with a generated cover image. The cover is applied as a
-           background so a missing/broken URL simply falls back to the base card
-           colour (no broken-image glyph). */
+        /* Category card with a generated cover image. The cover is rendered by
+           a reusable async-preloaded, fade-in layer (see .${coverImage}) so a
+           missing/broken URL simply falls back to the base card colour (no
+           broken-image glyph). */
         .${card}.${cardCovered} {
             position: relative;
             min-height: 116px;
             padding: 0;
             overflow: hidden;
-            background-size: cover;
-            background-position: center;
             justify-content: flex-end;
             align-items: stretch;
         }
         .${card}.${cardCovered} .${materialSymbols} { display: none; }
         .${card}.${cardCovered} .${cardLabel} {
+            position: relative;
+            z-index: 1;
             width: 100%;
             padding: 22px 10px 10px;
             color: #ffffff;
             text-shadow: 0 1px 3px rgba(0, 0, 0, 0.6);
             background: linear-gradient(to top, rgba(0, 0, 0, 0.6), rgba(0, 0, 0, 0));
         }
+
+        /* Reusable async-preloaded, fade-in background image layer. Drop a
+           CoverImage(url) as the first child of any position:relative container
+           to get an image that is preloaded off-DOM and fades in only once the
+           browser has fully decoded it (no pop-in, no layout shift). It sits at
+           the very back (z-index: 0) so icons/labels/veils layer on top. */
+        .${coverImage} {
+            position: absolute;
+            inset: 0;
+            z-index: 0;
+            background-size: cover;
+            background-position: center;
+            background-repeat: no-repeat;
+            border-radius: inherit;
+            opacity: 0;
+            transition: opacity 0.45s ease;
+            pointer-events: none;
+        }
+        .${coverImage}.${coverImageLoaded} { opacity: 1; }
 
         /* Services list */
         .${listCard} {
@@ -1302,25 +1325,30 @@ object Styles {
         }
         .${pinnedCard}:hover { background-color: var(--md-sys-color-surface-variant); }
         .${pinnedCard}:active { transform: scale(0.97); }
-        /* Service card with a generated cover image. The cover is applied as a
-           background so a missing/broken URL simply falls back to the base card
-           colour (no broken-image glyph). */
+        /* Service card with a generated cover image. The cover is rendered by a
+           reusable async-preloaded, fade-in layer (see .${coverImage}) that
+           sits at the back, preserving the card's normal layout (the icon and
+           label stay visible on top). A 50%-opacity surface veil is layered
+           over the image (via ::before) so the background reads at half
+           strength; the icon/label are lifted above it. A missing/broken URL
+           simply falls back to the base card colour (no broken-image glyph). */
         .${pinnedCard}.${pinnedCardCovered} {
-            min-height: 96px;
-            padding: 0;
-            gap: 0;
-            overflow: hidden;
-            background-size: cover;
-            background-position: center;
-            justify-content: flex-end;
+            background-color: var(--md-sys-color-surface);
         }
-        .${pinnedCard}.${pinnedCardCovered} .${pinnedCardIcon} { display: none; }
+        .${pinnedCard}.${pinnedCardCovered}::before {
+            content: "";
+            position: absolute;
+            inset: 0;
+            z-index: 1;
+            background-color: var(--md-sys-color-surface);
+            opacity: 0.5;
+            border-radius: inherit;
+            pointer-events: none;
+        }
+        .${pinnedCard}.${pinnedCardCovered} .${pinnedCardIcon},
         .${pinnedCard}.${pinnedCardCovered} .${pinnedCardLabel} {
-            width: 100%;
-            padding: 22px 6px 8px;
-            color: #ffffff;
-            text-shadow: 0 1px 3px rgba(0, 0, 0, 0.6);
-            background: linear-gradient(to top, rgba(0, 0, 0, 0.6), rgba(0, 0, 0, 0));
+            position: relative;
+            z-index: 2;
         }
         .${pinnedCardIcon} {
             width: 48px;
@@ -1352,6 +1380,7 @@ object Styles {
             font-size: 16px;
         }
         .${pinnedCard}.${pinnedCardCovered} .${pinnedBadge} {
+            z-index: 2;
             color: #ffffff;
             text-shadow: 0 1px 3px rgba(0, 0, 0, 0.6);
         }

@@ -179,8 +179,10 @@ data class AppConfig(
                 ?.filter { it.isNotBlank() }
                 ?: emptyList()
 
+            val defaultArangoHost = if (env == AppEnv.PRODUCTION) "127.0.0.1" else ""
+
             val arango = ArangoConfig(
-                host = source["ARANGO_HOST"] ?: "",
+                host = source["ARANGO_HOST"]?.takeIf { it.isNotBlank() } ?: defaultArangoHost,
                 port = source.int("ARANGO_PORT", 8529),
                 database = source["ARANGO_DB"] ?: "image_generator",
                 user = source["ARANGO_USER"] ?: "root",
