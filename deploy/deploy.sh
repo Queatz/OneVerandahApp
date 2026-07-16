@@ -171,6 +171,11 @@ set_env_var() {
 set_env_var "APP_PORT" "80"
 set_env_var "SSL_ENABLED" "true"
 set_env_var "SSL_PORT" "443"
+# The public domain the server is actually reached at. Without this the app
+# would derive its public base URL from the 0.0.0.0 bind address and emit
+# broken image links like https://localhost/images/... ; SSL_DOMAIN makes it
+# build https://<SSL_DOMAIN>/images/... instead.
+set_env_var "SSL_DOMAIN" "${SSL_DOMAIN}"
 set_env_var "SSL_KEYSTORE_PATH" "${KEYSTORE_PATH}"
 set_env_var "SSL_KEYSTORE_PASSWORD" "${KEYSTORE_PASSWORD}"
 set_env_var "SSL_KEY_ALIAS" "oneverandah"

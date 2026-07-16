@@ -146,11 +146,32 @@ data class AppConfig(
 
             val ssl = buildSsl(source, env)
 
+            // The public base URL is what clients use to reach this server and,
+            // crucially, the prefix of every locally-served image link. When it
+            // isn't set explicitly we derive it, but MUST NOT fall back to
+            // "localhost" in production: the server binds 0.0.0.0, so "localhost"
+            // there produced broken image URLs like https://localhost/images/... .
+            // Prefer the configured public domain (SSL_DOMAIN — the hostname the
+            // server's certificate is issued for and that it is actually reached
+            // at, e.g. api.oneverandah.app).
             val defaultScheme = if (ssl != null) "https" else "http"
-            val defaultHostForUrl = if (host == "0.0.0.0") "localhost" else host
+            val sslDomain = source["SSL_DOMAIN"]?.takeIf { it.isNotBlank() }
+            val defaultHostForUrl = when {
+                sslDomain != null -> sslDomain
+                host == "0.0.0.0" -> "localhost"
+                else -> host
+            }
             val defaultPortForUrl = ssl?.port ?: port
+            // Omit the port when it is the scheme's default (443 for https, 80
+            // for http) so public URLs stay clean (https://api.example.app/...
+            // rather than https://api.example.app:443/...).
+            val portSuffix = when {
+                defaultScheme == "https" && defaultPortForUrl == 443 -> ""
+                defaultScheme == "http" && defaultPortForUrl == 80 -> ""
+                else -> ":$defaultPortForUrl"
+            }
             val publicBaseUrl = (source["PUBLIC_BASE_URL"]
-                ?: "$defaultScheme://$defaultHostForUrl:$defaultPortForUrl").trimEnd('/')
+                ?: "$defaultScheme://$defaultHostForUrl$portSuffix").trimEnd('/')
 
             val allowedCorsHosts = source["CORS_ALLOWED_HOSTS"]
                 ?.split(",")

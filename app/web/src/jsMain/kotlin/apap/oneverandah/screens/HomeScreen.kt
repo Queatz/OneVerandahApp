@@ -233,8 +233,13 @@ private fun PinnedRecentSection(
                         val service = Catalog.serviceById(item.serviceId)
                         val name = service?.title?.resolve(language) ?: item.name
                         val image = service?.icon ?: item.image
+                        val cover = ImageStore.coverFor(item.serviceId)
                         Div(attrs = {
                             classes(Styles.pinnedCard)
+                            if (cover != null) {
+                                classes(Styles.pinnedCardCovered)
+                                style { property("background-image", "url('$cover')") }
+                            }
                             attr("role", "button")
                             attr("title", name)
                             onClick { onServiceSelected(item.serviceId) }
@@ -258,8 +263,13 @@ private fun PinnedRecentSection(
                 Div(attrs = { classes(Styles.pinnedRow) }) {
                     popular.forEach { service ->
                         val name = service.title.resolve(language)
+                        val cover = ImageStore.coverFor(service.id)
                         Div(attrs = {
                             classes(Styles.pinnedCard)
+                            if (cover != null) {
+                                classes(Styles.pinnedCardCovered)
+                                style { property("background-image", "url('$cover')") }
+                            }
                             attr("role", "button")
                             attr("title", name)
                             onClick { onServiceSelected(service.id) }

@@ -64,6 +64,38 @@ class ImageSystemTest {
     }
 
     @Test
+    fun productionPublicBaseUrlUsesSslDomainNotLocalhost() {
+        // Reproduces the production bug: with SSL on and the server binding
+        // 0.0.0.0, the public base URL used to become https://localhost:443,
+        // yielding broken image links like https://localhost/images/... .
+        val envFile = Files.createTempFile("ov-prod", ".env").toFile()
+        envFile.writeText(
+            """
+            APP_ENV=production
+            APP_HOST=0.0.0.0
+            APP_PORT=80
+            SSL_ENABLED=true
+            SSL_PORT=443
+            SSL_DOMAIN=api.oneverandah.app
+            SSL_KEYSTORE_PATH=/tmp/keystore.p12
+            """.trimIndent(),
+        )
+
+        val config = AppConfig.load(envFile)
+
+        // The public base URL now uses the real domain and omits the default
+        // https port instead of falling back to localhost.
+        assertEquals("https://api.oneverandah.app", config.publicBaseUrl)
+
+        // A locally-served image link built from that base points at the public
+        // domain, which is exactly what the frontend needs.
+        val dir = Files.createTempDirectory("ov-prod-img").toFile()
+        val storage = LocalStorageService(dir, config.publicBaseUrl)
+        val url = runBlocking { storage.upload("category/massages.png", GeneratedImage(byteArrayOf(1, 2, 3))) }
+        assertEquals("https://api.oneverandah.app/images/category/massages.png", url)
+    }
+
+    @Test
     fun placeholderGeneratorProducesDecodablePng() = runBlocking {
         val image = PlaceholderQwenClient(size = 64).generate("Massages")
         assertEquals("image/png", image.contentType)

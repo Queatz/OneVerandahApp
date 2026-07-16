@@ -15,6 +15,7 @@ import apap.oneverandah.model.Money
 import apap.oneverandah.model.PriceBreakdown
 import apap.oneverandah.model.Review
 import apap.oneverandah.model.ServiceProvider
+import apap.oneverandah.state.ImageStore
 import org.jetbrains.compose.web.dom.A
 import org.jetbrains.compose.web.dom.Button
 import org.jetbrains.compose.web.dom.Div
@@ -726,8 +727,13 @@ fun ProviderDetailsContent(
                 Div(attrs = { classes(Styles.pinnedRow, Styles.pinnedRowWrap) }) {
                     providerServices.forEach { service ->
                         val name = service.title.resolve(language)
+                        val cover = ImageStore.coverFor(service.id)
                         Div(attrs = {
                             classes(Styles.pinnedCard)
+                            if (cover != null) {
+                                classes(Styles.pinnedCardCovered)
+                                style { property("background-image", "url('$cover')") }
+                            }
                             attr("role", "button")
                             attr("title", name)
                             onClick { onServiceSelected(service.id) }

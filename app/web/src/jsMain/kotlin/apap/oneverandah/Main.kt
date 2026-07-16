@@ -37,7 +37,7 @@ fun App() {
     LaunchedEffect(Unit) {
         while (true) {
             ImageStore.refresh()
-            delay(10_000)
+            delay(60_000)
         }
     }
 

@@ -176,6 +176,7 @@ object Styles {
     const val pinnedRow = "pinned-row"
     const val pinnedRowWrap = "pinned-row-wrap"
     const val pinnedCard = "pinned-card"
+    const val pinnedCardCovered = "pinned-card-covered"
     const val pinnedCardIcon = "pinned-card-icon"
     const val pinnedCardLabel = "pinned-card-label"
     const val pinnedBadge = "pinned-badge"
@@ -1301,6 +1302,26 @@ object Styles {
         }
         .${pinnedCard}:hover { background-color: var(--md-sys-color-surface-variant); }
         .${pinnedCard}:active { transform: scale(0.97); }
+        /* Service card with a generated cover image. The cover is applied as a
+           background so a missing/broken URL simply falls back to the base card
+           colour (no broken-image glyph). */
+        .${pinnedCard}.${pinnedCardCovered} {
+            min-height: 96px;
+            padding: 0;
+            gap: 0;
+            overflow: hidden;
+            background-size: cover;
+            background-position: center;
+            justify-content: flex-end;
+        }
+        .${pinnedCard}.${pinnedCardCovered} .${pinnedCardIcon} { display: none; }
+        .${pinnedCard}.${pinnedCardCovered} .${pinnedCardLabel} {
+            width: 100%;
+            padding: 22px 6px 8px;
+            color: #ffffff;
+            text-shadow: 0 1px 3px rgba(0, 0, 0, 0.6);
+            background: linear-gradient(to top, rgba(0, 0, 0, 0.6), rgba(0, 0, 0, 0));
+        }
         .${pinnedCardIcon} {
             width: 48px;
             height: 48px;
@@ -1329,6 +1350,10 @@ object Styles {
             right: 6px;
             color: var(--md-sys-color-primary);
             font-size: 16px;
+        }
+        .${pinnedCard}.${pinnedCardCovered} .${pinnedBadge} {
+            color: #ffffff;
+            text-shadow: 0 1px 3px rgba(0, 0, 0, 0.6);
         }
         .${pinnedEmpty} {
             font-size: 14px;
