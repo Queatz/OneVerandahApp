@@ -10,6 +10,7 @@ import apap.oneverandah.images.ImageTargetType
 import apap.oneverandah.images.InMemoryImageRepository
 import apap.oneverandah.images.QueueService
 import apap.oneverandah.images.qwen.PlaceholderQwenClient
+import apap.oneverandah.images.qwen.QwenErrorLog
 import apap.oneverandah.images.storage.LocalStorageService
 import io.ktor.client.request.get
 import io.ktor.client.request.post
@@ -23,7 +24,9 @@ import kotlinx.coroutines.CoroutineScope
 import kotlinx.coroutines.Dispatchers
 import kotlinx.coroutines.SupervisorJob
 import kotlinx.coroutines.cancel
+import kotlinx.coroutines.delay
 import kotlinx.coroutines.runBlocking
+import kotlinx.coroutines.withTimeout
 import java.io.ByteArrayInputStream
 import java.io.File
 import java.nio.file.Files
@@ -132,6 +135,48 @@ class ImageSystemTest {
     }
 
     @Test
+    fun rescheduleFailedResetsStatusToPendingAndReprocesses() = runBlocking {
+        val repo = InMemoryImageRepository()
+        val dir = Files.createTempDirectory("ov-restart").toFile()
+        val generation = ImageGenerationService(
+            PlaceholderQwenClient(size = 32),
+            LocalStorageService(dir, "http://localhost"),
+            repo,
+            1,
+        )
+        val scope = CoroutineScope(SupervisorJob() + Dispatchers.Unconfined)
+        val queue = QueueService(generation, repo, scope, maxConcurrent = 1, delayBetweenMs = 0)
+
+        // Simulate an image record left FAILED by a previous (crashed) run.
+        repo.save(
+            ImageEntity(
+                id = "cat_massages",
+                targetId = "massages",
+                targetType = ImageTargetType.CATEGORY,
+                name = "Massages",
+                prompt = "p",
+                status = ImageStatus.FAILED,
+                createdAt = 1,
+                updatedAt = 1,
+            ),
+        )
+
+        // This is exactly what ImageSystem.create() now runs on every server start.
+        queue.rescheduleFailed()
+
+        assertEquals(ImageStatus.PENDING, repo.findByImageId("cat_massages")?.status)
+
+        // The reset image was also re-queued, so once workers start it gets processed.
+        queue.start()
+        withTimeout(5_000) {
+            while (repo.findByImageId("cat_massages")?.status != ImageStatus.COMPLETED) {
+                delay(10)
+            }
+        }
+        scope.cancel()
+    }
+
+    @Test
     fun healthAndImagesEndpointsWork() = testApplication {
         val config = noEnvConfig()
         val system = ImageSystem.create(config)
@@ -178,5 +223,40 @@ class ImageSystemTest {
         val system = ImageSystem.create(config)
         application { module(config, system) }
         assertEquals("Hello, Ktor!", client.get("/").bodyAsText())
+    }
+
+    @Test
+    fun qwenErrorLogAppendsTimestampedMessages() {
+        val file = Files.createTempFile("qwen-errors", ".txt").toFile()
+        file.delete() // start from "does not exist yet", like a fresh deployment
+        val errorLog = QwenErrorLog(file)
+
+        errorLog.record("Qwen submit failed (400 Bad Request): boom")
+        errorLog.record("Qwen task abc123 failed: oops")
+
+        val lines = file.readLines()
+        assertEquals(2, lines.size)
+        assertTrue(lines[0].endsWith("Qwen submit failed (400 Bad Request): boom"))
+        assertTrue(lines[1].endsWith("Qwen task abc123 failed: oops"))
+    }
+
+    @Test
+    fun qwenErrorsEndpointServesLogFileOrEmpty() = testApplication {
+        val logFile = Files.createTempFile("qwen-errors", ".txt").toFile()
+        logFile.delete()
+        val config = noEnvConfig().copy(qwenErrorLogPath = logFile.absolutePath)
+        val system = ImageSystem.create(config)
+        application { module(config, system) }
+
+        // No errors recorded yet -> the endpoint is reachable but empty.
+        val beforeAny = client.get("/qwen_errors")
+        assertEquals(HttpStatusCode.OK, beforeAny.status)
+        assertEquals("", beforeAny.bodyAsText())
+
+        QwenErrorLog(logFile).record("Qwen task xyz failed: something went wrong")
+
+        val afterFailure = client.get("/qwen_errors")
+        assertEquals(HttpStatusCode.OK, afterFailure.status)
+        assertTrue(afterFailure.bodyAsText().contains("Qwen task xyz failed: something went wrong"))
     }
 }

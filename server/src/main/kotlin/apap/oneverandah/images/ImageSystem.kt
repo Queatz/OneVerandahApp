@@ -6,6 +6,7 @@ import apap.oneverandah.images.arango.ArangoImageRepository
 import apap.oneverandah.images.qwen.DashScopeQwenClient
 import apap.oneverandah.images.qwen.PlaceholderQwenClient
 import apap.oneverandah.images.qwen.QwenClient
+import apap.oneverandah.images.qwen.QwenErrorLog
 import apap.oneverandah.images.storage.AliyunOssStorageService
 import apap.oneverandah.images.storage.LocalStorageService
 import apap.oneverandah.images.storage.StorageService
@@ -114,6 +115,8 @@ class ImageSystem private constructor(
     }
 
     companion object {
+        private val log = LoggerFactory.getLogger(ImageSystem::class.java)
+
         /**
          * Builds a fully wired [ImageSystem]. Never throws for missing optional
          * infrastructure; it degrades to local/in-memory backends instead.
@@ -132,14 +135,14 @@ class ImageSystem private constructor(
                 ArangoImageRepository.connect(config.arango, httpClient) ?: InMemoryImageRepository()
             val repositoryKind = if (repository is InMemoryImageRepository) "in-memory" else "arangodb"
 
-            val storage: StorageService = if (config.oss.enabled) {
+            val storage: StorageService = if (config.oss.enabled) {k
                 AliyunOssStorageService(config.oss, httpClient)
             } else {
                 LocalStorageService(File(config.localStorageDir), config.publicBaseUrl)
             }
 
             val qwen: QwenClient = if (config.qwen.enabled) {
-                DashScopeQwenClient(config.qwen, httpClient)
+                DashScopeQwenClient(config.qwen, httpClient, errorLog = QwenErrorLog(File(config.qwenErrorLogPath)))
             } else {
                 PlaceholderQwenClient()
             }
@@ -153,6 +156,16 @@ class ImageSystem private constructor(
                 maxConcurrent = config.maxConcurrentGenerations,
                 delayBetweenMs = config.generationDelayMs,
             )
+
+            // A FAILED image is only "permanently" failed until the next server
+            // restart: any image record left FAILED (e.g. from a previous run
+            // that ran out of retries) is reset to PENDING and re-queued here,
+            // so a fresh process always gives every image another chance
+            // instead of leaving it stuck forever.
+            runCatching { queue.rescheduleFailed() }
+                .onFailure {
+                    log.warn("Failed to reset FAILED images to PENDING on startup: {}", it.message)
+                }
 
             return ImageSystem(
                 config = config,

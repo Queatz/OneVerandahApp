@@ -95,6 +95,8 @@ data class AppConfig(
     val qwen: QwenConfig,
     /** Directory that backs the local storage fallback. */
     val localStorageDir: String,
+    /** Local file every Qwen/DashScope generation failure is appended to. */
+    val qwenErrorLogPath: String,
     val maxConcurrentGenerations: Int,
     val generationDelayMs: Long,
     val maxRetries: Int,
@@ -169,6 +171,7 @@ data class AppConfig(
                 oss = oss,
                 qwen = qwen,
                 localStorageDir = source["LOCAL_STORAGE_DIR"] ?: "data/images",
+                qwenErrorLogPath = source["QWEN_ERROR_LOG_PATH"] ?: "qwen_errors.txt",
                 maxConcurrentGenerations = source.int("MAX_CONCURRENT_GENERATIONS", 2),
                 generationDelayMs = source.long("GENERATION_DELAY_MS", 1000),
                 maxRetries = source.int("GENERATION_MAX_RETRIES", 3),

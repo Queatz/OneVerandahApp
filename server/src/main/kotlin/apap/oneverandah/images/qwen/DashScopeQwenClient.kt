@@ -14,6 +14,7 @@ import io.ktor.http.ContentType
 import io.ktor.http.HttpHeaders
 import io.ktor.http.contentType
 import io.ktor.http.isSuccess
+import kotlinx.coroutines.CancellationException
 import kotlinx.coroutines.delay
 import kotlinx.serialization.json.Json
 import kotlinx.serialization.json.buildJsonObject
@@ -36,6 +37,7 @@ class DashScopeQwenClient(
     private val client: HttpClient,
     private val pollIntervalMs: Long = 2_000,
     private val maxPollAttempts: Int = 90,
+    private val errorLog: QwenErrorLog? = null,
 ) : QwenClient {
 
     override val kind: String = "qwen"
@@ -46,9 +48,17 @@ class DashScopeQwenClient(
         config.endpoint.substringBefore("/api/").trimEnd('/') + "/api/v1/tasks/"
 
     override suspend fun generate(prompt: String): GeneratedImage {
-        val taskId = submitTask(prompt)
-        val imageUrl = pollForResult(taskId)
-        return download(imageUrl)
+        try {
+            val taskId = submitTask(prompt)
+            val imageUrl = pollForResult(taskId)
+            return download(imageUrl)
+        } catch (e: CancellationException) {
+            // Not a Qwen failure (e.g. app shutdown); don't pollute the error log.
+            throw e
+        } catch (e: Exception) {
+            errorLog?.record("prompt=\"$prompt\" model=${config.model} endpoint=${config.endpoint}: ${e.message}")
+            throw e
+        }
     }
 
     private suspend fun submitTask(prompt: String): String {

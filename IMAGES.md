@@ -191,69 +191,91 @@ The **same build** runs in both environments; only configuration differs.
 - Permissive CORS (any origin) so the webpack dev server on `:8080` can call it.
 
 ### Production
-Two supported TLS strategies:
+The backend serves directly on the **default public ports 80 (HTTP) / 443
+(HTTPS) with SSL enabled** — no nginx reverse proxy required in front of it.
+`deploy/deploy.sh` sets this up automatically on every deploy:
 
-**A) Terminate TLS at nginx (recommended, matches [`DEPLOY.md`](./DEPLOY.md)).**
-Keep the backend on plain HTTP (`127.0.0.1:7071`) and let nginx serve HTTPS and
-reverse-proxy the API and images to it:
+1. The fat JAR is built targeting **Java 21** bytecode (`jvmToolchain(21)` in
+   `server/build.gradle.kts` / `core/build.gradle.kts`). Before restarting the
+   service, `deploy.sh` checks the remote JDK's major version and
+   automatically installs `openjdk-21-jdk-headless` (and switches
+   `update-alternatives` to it) if an older JDK is active — this avoids the
+   app crash-looping with `UnsupportedClassVersionError` right after startup.
+2. It converts the server's existing **Let's Encrypt** certificate for
+   `SSL_DOMAIN` (default `api.oneverandah.app`, at
+   `/etc/letsencrypt/live/<SSL_DOMAIN>/{fullchain,privkey}.pem`) into a PKCS12
+   keystore at `/opt/oneverandah-images/keystore.p12`.
+3. It uploads your **local `.env`** (with `APP_ENV=production` and your real
+   `ARANGO`/`OSS`/`QWEN` settings) to the server first, then overwrites just
+   `APP_PORT=80`, `SSL_ENABLED=true`, `SSL_PORT=443` and the keystore
+   path/password/`SSL_PRIVATE_KEY_PASSWORD` on top of it — so the deployed
+   server always runs with the same production config as your local `.env`,
+   not the development placeholders from `.env.example`.
+4. It grants the systemd service `AmbientCapabilities=CAP_NET_BIND_SERVICE` so
+   the app can bind ports 80/443 without running as root.
+5. It installs a certbot **renewal-hook** that regenerates the keystore and
+   restarts the service whenever the certificate is renewed.
+6. Right after generating the keystore, it verifies with `keytool -list` that
+   the JVM can actually read it back, and automatically retries with
+   `-legacy` / explicit `PBE-SHA1-3DES`+`SHA1` encryption if the default
+   OpenSSL 3.x PBES2/AES-256 encoding isn't supported by the installed JDK
+   (a common cause of the app crashing immediately on startup).
+7. It opens ports `80`/`443` in the OS firewall (`ufw`/`firewalld`) if one is
+   active, then waits for the app to answer on `https://127.0.0.1/health`
+   (loopback) — printing the last 40 log lines automatically if it doesn't —
+   and finally checks `https://<SSL_DOMAIN>/health` from **your** machine
+   (pinning the connection to the target IP with `curl --resolve`, so it
+   works even before DNS is fully (re)pointed).
 
-```nginx
-# add inside the existing server { } block in DEPLOY.md
-location /api/  { proxy_pass http://127.0.0.1:7071; }
-location /images/ { proxy_pass http://127.0.0.1:7071; }
-```
+The certificate itself must already exist on the server (issue it once with
+`certbot`, e.g. `sudo certbot certonly --standalone -d api.oneverandah.app`) —
+`deploy.sh` only consumes it, it never issues or renews certificates itself.
 
-Because the frontend uses a same-origin base URL in production, `/api` and
-`/images` are served from your domain over HTTPS with no extra config.
-
-**B) Terminate TLS in the app (built-in HTTPS connector).**
-Provide a Java keystore and enable SSL:
-
-```bash
-APP_ENV=production
-SSL_ENABLED=true
-SSL_KEYSTORE_PATH=/opt/oneverandah-images/keystore.p12
-SSL_KEYSTORE_PASSWORD=changeit
-SSL_KEY_ALIAS=oneverandah
-SSL_PORT=8443
-CORS_ALLOWED_HOSTS=oneverandah.app
-```
-
-Create a PKCS12 keystore from Let's Encrypt certificates, e.g.:
-
-```shell
-openssl pkcs12 -export \
-  -in  /etc/letsencrypt/live/oneverandah.app/fullchain.pem \
-  -inkey /etc/letsencrypt/live/oneverandah.app/privkey.pem \
-  -out /opt/oneverandah-images/keystore.p12 \
-  -name oneverandah -passout pass:changeit
-```
-
-When `SSL_ENABLED=true`, the server listens on both the HTTP `APP_PORT` and the
-HTTPS `SSL_PORT`.
+If you'd rather terminate TLS at nginx instead (e.g. to keep the backend
+behind the same reverse proxy as the UI, see [`DEPLOY.md`](./DEPLOY.md)), set
+`APP_PORT` back to an internal port such as `7071`, leave `SSL_ENABLED=false`,
+and proxy `/api/` and `/images/` to it from nginx.
 
 ---
 
-## 9. Deploying to an Ubuntu Lightnode
+## 9. Deploying to the production server
+
+Provisioning (`init.sh`) and issuing the SSL certificate happen **once, on the
+server**. Day-to-day, the actual build and deploy (`deploy.sh`) runs **from
+your local machine**: it builds the JAR, pushes it over SSH, wires up SSL from
+the existing certificate and (re)starts the service — nothing needs to be
+built or cloned on the server itself.
 
 ```shell
-# On the server, one-time provisioning (optionally with ArangoDB):
+# One-time, on the server (SSH in first), optionally with ArangoDB:
+ssh root@38.54.15.84
 git clone <your-repo> && cd <repo>
 INSTALL_ARANGO=1 sudo ./deploy/init.sh
-nano /opt/oneverandah-images/.env      # add Qwen key / OSS creds / SSL
+nano /opt/oneverandah-images/.env               # add Qwen key / OSS creds
+sudo certbot certonly --standalone -d api.oneverandah.app   # one-time cert
+exit
 
-# Build + (re)deploy the systemd service:
+# From your LOCAL machine — builds, deploys and runs the service:
 ./deploy/deploy.sh
+# or target a different host/user/domain:
+SERVER_HOST=38.54.15.84 SERVER_USER=root SSL_DOMAIN=api.oneverandah.app ./deploy/deploy.sh
 
 # Observe:
-sudo journalctl -u oneverandah-images.service -f
-curl -s http://127.0.0.1:7071/health
+ssh root@38.54.15.84 sudo journalctl -u oneverandah-images.service -f
+curl -s https://api.oneverandah.app/health
 ```
 
-`deploy.sh` builds the fat JAR (`:server:buildFatJar` →
-`server/build/libs/server-all.jar`), installs it to `/opt/oneverandah-images`,
-and manages a `oneverandah-images.service` unit that loads `.env` via
-`EnvironmentFile`.
+`deploy.sh` builds the fat JAR locally (`:server:buildFatJar` →
+`server/build/libs/server-all.jar`), uploads it over SSH/SCP to
+`/opt/oneverandah-images` on `38.54.15.84` (default; override with
+`SERVER_HOST`/`SERVER_USER`), **uploads your local `.env`** (overwriting the
+remote one so production settings actually make it to the server — only
+falls back to seeding `.env.example` when no local `.env` exists and the
+remote one is also missing), converts the server's Let's Encrypt certificate
+for `SSL_DOMAIN` into a PKCS12 keystore, wires `.env` to serve on ports 80/443
+with SSL enabled, installs a certbot renewal-hook to keep the keystore in sync,
+and remotely (re)writes and restarts the `oneverandah-images.service` systemd
+unit that loads `.env` via `EnvironmentFile`.
 
 ---
 
@@ -266,3 +288,50 @@ and manages a `oneverandah-images.service` unit that loads `.env` via
   credentials; the scheduler re-queues failures every `RESCHEDULE_INTERVAL_MS`.
   You can force a retry with `POST /api/v1/images/generate`.
 - **Want to force placeholders** — leave `QWEN_API_KEY` empty.
+- **Deployed server shows `"environment":"DEVELOPMENT"` / `"storage":"local"` /
+  `"generator":"placeholder"` even though your local `.env` is set up for
+  production** — `deploy.sh` now always uploads your local `.env` to the
+  server (overwriting the remote one); previously it only ever seeded
+  `.env.example` on the very first deploy and never touched `.env` again, so
+  the real production values (`APP_ENV`, `QWEN_API_KEY`, `OSS_*`, ...) never
+  reached the server. Just re-run `./deploy/deploy.sh`. If the app then
+  crashes with a `BadPaddingException` unlocking the SSL key, it means your
+  `.env` had a stale `SSL_PRIVATE_KEY_PASSWORD` from an older setup — this is
+  now also overwritten automatically to match the freshly generated keystore
+  password.
+- **`sudo: unable to resolve host ...` printed during deploy** — harmless; it
+  happens once on a server whose hostname isn't yet in `/etc/hosts`.
+  `deploy.sh` now adds that entry automatically on the first run, so it should
+  not repeat on subsequent deploys.
+- **Health check can't connect at all** — `deploy.sh` now checks
+  `https://127.0.0.1/health` on the server (proves the app itself bound
+  80/443) and `https://<SSL_DOMAIN>/health` from your machine (proves it's
+  reachable from outside), printing a clear warning if either fails. If the
+  external check fails while the local one succeeds, it's a network problem,
+  not the app — most commonly: DNS for `SSL_DOMAIN` not (yet) pointing at
+  `SERVER_HOST`, or ports `80`/`443` blocked by your **cloud provider's**
+  security group/firewall (`deploy.sh` only opens the OS-level firewall, e.g.
+  `ufw`/`firewalld`; it can't change provider-side rules).
+- **Service keeps crashing right after start (`status=1/FAILURE`,
+  `activating (auto-restart)`)** — two known causes, both handled
+  automatically by `deploy.sh` now:
+  - `UnsupportedClassVersionError: ... class file version 65.0, this version
+    of the Java Runtime only recognizes class file versions up to 61.0` — the
+    JAR is built for Java 21 but an older JDK (e.g. 17) is active on the
+    server. `deploy.sh` detects this and installs/activates OpenJDK 21
+    automatically before restarting the service.
+  - The JVM couldn't parse the PKCS12 keystore built from the Let's Encrypt
+    certificate (OpenSSL 3.x's default encryption isn't always readable by
+    every JDK). `deploy.sh` validates the keystore with `keytool` right after
+    building it and automatically rebuilds it with compatible algorithms if
+    needed.
+  If it still fails after a deploy, `deploy.sh` prints the last 40 log lines
+  automatically — inspect them with
+  `ssh <host> sudo journalctl -u oneverandah-images.service -n 100 --no-pager`
+  for the exact exception.
+- **`apt-get update` fails during deploy because of an unrelated broken
+  third-party repo** (e.g. a stale/incorrect entry under
+  `/etc/apt/sources.list.d/`) — `deploy.sh`'s JDK-install step tolerates this
+  (`apt-get update ... || true`) so it doesn't block installing the JDK from
+  the main Ubuntu archives, but a broken repo file left on the server should
+  still be fixed/removed if it's not actually needed.

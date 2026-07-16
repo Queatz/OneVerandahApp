@@ -21,6 +21,8 @@ object ImageApi {
 
     val baseUrl: String by lazy { resolveBaseUrl() }
 
+    val apiBaseUrl = "https://api.oneverandah.app"
+
     private fun resolveBaseUrl(): String {
         val override = window.asDynamic().__API_BASE__
         if (override != null && override is String && override.isNotBlank()) {
@@ -37,7 +39,7 @@ object ImageApi {
 
     /** Fetches the current set of images, or an empty response on any error. */
     suspend fun fetchImages(): ImagesResponse = try {
-        val text = client.get("$baseUrl/api/v1/images").bodyAsText()
+        val text = client.get("$apiBaseUrl/api/v1/images").bodyAsText()
         json.decodeFromString(ImagesResponse.serializer(), text)
     } catch (e: Throwable) {
         console.error("Failed to load images: ${e.message}")

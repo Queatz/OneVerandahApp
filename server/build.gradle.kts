@@ -10,6 +10,13 @@ application {
     mainClass = "apap.oneverandah.ApplicationKt"
 }
 
+kotlin {
+    // Pin the produced bytecode to Java 21 so the fat JAR runs on the
+    // OpenJDK 21 installed on the production server by deploy/init.sh,
+    // regardless of which JDK is used to run the build locally.
+    jvmToolchain(21)
+}
+
 dependencies {
     api(projects.core)
     implementation(libs.logback)

@@ -19,7 +19,8 @@ INSTALL_ARANGO="${INSTALL_ARANGO:-0}"
 echo "==> Updating apt and installing base dependencies..."
 sudo apt-get update -y
 sudo DEBIAN_FRONTEND=noninteractive apt-get install -y \
-    openjdk-17-jdk-headless curl wget git unzip ca-certificates
+    openjdk-21-jdk-headless curl wget git unzip ca-certificates
+sudo update-alternatives --set java "$(update-alternatives --list java | grep -m1 'java-21')" 2>/dev/null || true
 
 if [ "$INSTALL_ARANGO" = "1" ]; then
     echo "==> Installing ArangoDB..."

@@ -8,9 +8,12 @@ import apap.oneverandah.images.ImageStatus
 import apap.oneverandah.images.ImageStatusResponse
 import apap.oneverandah.images.ImageSystem
 import apap.oneverandah.images.ImagesResponse
+import io.ktor.http.ContentType
 import io.ktor.http.HttpStatusCode
 import io.ktor.server.request.receive
 import io.ktor.server.response.respond
+import io.ktor.server.response.respondFile
+import io.ktor.server.response.respondText
 import io.ktor.server.routing.Route
 import io.ktor.server.routing.get
 import io.ktor.server.routing.post
@@ -38,6 +41,7 @@ data class HealthResponse(
  *  - `POST /api/v1/images/generate`
  *  - `GET  /api/v1/images/status/{targetId}`
  *  - `GET  /images/{...}` — serves locally stored images (local storage mode)
+ *  - `GET  /qwen_errors` — serves the local Qwen/DashScope error log
  */
 fun Route.imageRoutes(system: ImageSystem, config: AppConfig) {
     val repository = system.repository
@@ -105,4 +109,16 @@ fun Route.imageRoutes(system: ImageSystem, config: AppConfig) {
     // by the frontend without any external CDN.
     val localDir = File(config.localStorageDir).apply { mkdirs() }
     staticFiles("/images", localDir)
+
+    // Serve the local Qwen/DashScope error log (see QwenErrorLog) as a plain
+    // text file, so failures can be inspected without shell access to the
+    // server.
+    get("/qwen_errors") {
+        val errorLogFile = File(config.qwenErrorLogPath)
+        if (!errorLogFile.exists()) {
+            call.respondText("", ContentType.Text.Plain, HttpStatusCode.OK)
+            return@get
+        }
+        call.respondFile(errorLogFile)
+    }
 }
