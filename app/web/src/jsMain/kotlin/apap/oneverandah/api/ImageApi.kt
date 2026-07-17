@@ -1,9 +1,15 @@
 package apap.oneverandah.api
 
 import apap.oneverandah.images.ImagesResponse
+import apap.oneverandah.search.SearchHistoryResponse
+import apap.oneverandah.search.SearchRequest
 import io.ktor.client.HttpClient
 import io.ktor.client.request.get
+import io.ktor.client.request.post
+import io.ktor.client.request.setBody
 import io.ktor.client.statement.bodyAsText
+import io.ktor.http.ContentType
+import io.ktor.http.contentType
 import kotlinx.browser.window
 import kotlinx.serialization.json.Json
 
@@ -44,5 +50,31 @@ object ImageApi {
     } catch (e: Throwable) {
         console.error("Failed to load images: ${e.message}")
         ImagesResponse(emptyList())
+    }
+
+    /**
+     * Records a search query for analytics. Best-effort: any failure is logged
+     * and swallowed so it never disrupts the (client-side) search experience.
+     */
+    suspend fun logSearch(query: String) {
+        val trimmed = query.trim()
+        if (trimmed.isBlank()) return
+        try {
+            client.post("$apiBaseUrl/search") {
+                contentType(ContentType.Application.Json)
+                setBody(json.encodeToString(SearchRequest.serializer(), SearchRequest(trimmed)))
+            }
+        } catch (e: Throwable) {
+            console.error("Failed to log search: ${e.message}")
+        }
+    }
+
+    /** Fetches the latest recorded searches, or an empty response on any error. */
+    suspend fun fetchSearchHistory(): SearchHistoryResponse = try {
+        val text = client.get("$apiBaseUrl/search-history").bodyAsText()
+        json.decodeFromString(SearchHistoryResponse.serializer(), text)
+    } catch (e: Throwable) {
+        console.error("Failed to load search history: ${e.message}")
+        SearchHistoryResponse(emptyList())
     }
 }

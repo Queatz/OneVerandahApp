@@ -11,6 +11,9 @@ import apap.oneverandah.images.storage.AliyunOssStorageService
 import apap.oneverandah.images.storage.LocalImageCache
 import apap.oneverandah.images.storage.LocalStorageService
 import apap.oneverandah.images.storage.StorageService
+import apap.oneverandah.search.InMemorySearchRepository
+import apap.oneverandah.search.SearchRepository
+import apap.oneverandah.search.arango.ArangoSearchRepository
 import io.ktor.client.HttpClient
 import io.ktor.client.engine.cio.CIO
 import io.ktor.client.plugins.HttpTimeout
@@ -38,6 +41,7 @@ import java.io.File
 class ImageSystem private constructor(
     val config: AppConfig,
     val repository: ImageRepository,
+    val searchRepository: SearchRepository,
     val queue: QueueService,
     private val httpClient: HttpClient,
     private val scope: CoroutineScope,
@@ -140,6 +144,12 @@ class ImageSystem private constructor(
             val repository: ImageRepository = arangoRepository ?: InMemoryImageRepository()
             val repositoryKind = if (repository is InMemoryImageRepository) "in-memory" else "arangodb"
 
+            // Best-effort search analytics: persisted in ArangoDB when reachable,
+            // otherwise kept in memory. Unlike images it is never required in
+            // production, so a failure here only downgrades to in-memory storage.
+            val searchRepository: SearchRepository =
+                ArangoSearchRepository.connect(config.arango, httpClient) ?: InMemorySearchRepository()
+
             val storage: StorageService = if (config.oss.enabled) {
                 AliyunOssStorageService(config.oss, httpClient)
             } else {
@@ -187,6 +197,7 @@ class ImageSystem private constructor(
             return ImageSystem(
                 config = config,
                 repository = repository,
+                searchRepository = searchRepository,
                 queue = queue,
                 httpClient = httpClient,
                 scope = scope,

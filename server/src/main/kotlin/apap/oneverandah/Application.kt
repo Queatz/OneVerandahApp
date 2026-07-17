@@ -4,6 +4,7 @@ import apap.oneverandah.config.AppConfig
 import apap.oneverandah.images.ApiError
 import apap.oneverandah.images.ImageSystem
 import apap.oneverandah.routes.imageRoutes
+import apap.oneverandah.routes.searchRoutes
 import io.ktor.http.HttpHeaders
 import io.ktor.http.HttpMethod
 import io.ktor.http.HttpStatusCode
@@ -126,6 +127,7 @@ fun Application.module(config: AppConfig, imageSystem: ImageSystem) {
             call.respondText(sayHello("Ktor"))
         }
         imageRoutes(imageSystem, config)
+        searchRoutes(imageSystem)
     }
 }
 

@@ -8,6 +8,7 @@ import androidx.compose.runtime.remember
 import androidx.compose.runtime.setValue
 import kotlinx.coroutines.delay
 import apap.oneverandah.Styles
+import apap.oneverandah.api.ImageApi
 import apap.oneverandah.components.BottomDialog
 import apap.oneverandah.components.CoverImage
 import apap.oneverandah.components.MaterialSymbol
@@ -37,6 +38,12 @@ private const val PLACEHOLDER_DELETE_MS = 25L
 private const val PLACEHOLDER_TYPE_MS = 90L
 
 /**
+ * How long to wait after the user stops typing before reporting the search
+ * query to the backend, so a burst of keystrokes yields a single request.
+ */
+private const val SEARCH_DEBOUNCE_MS = 500L
+
+/**
  * Category dashboard (Category step of Category -> Services -> Offer).
  */
 @Composable
@@ -49,6 +56,14 @@ fun HomeScreen(
     var searchQuery by remember { mutableStateOf("") }
     var showClearConfirm by remember { mutableStateOf(false) }
     var animatedPlaceholder by remember(language) { mutableStateOf(strings.searchPlaceholder) }
+
+    // Debounce the search query and report it to the backend. Searching itself
+    // still happens on the client; this only records what people look for.
+    LaunchedEffect(searchQuery) {
+        if (searchQuery.isBlank()) return@LaunchedEffect
+        delay(SEARCH_DEBOUNCE_MS)
+        ImageApi.logSearch(searchQuery)
+    }
 
     LaunchedEffect(language) {
         animatedPlaceholder = strings.searchPlaceholder

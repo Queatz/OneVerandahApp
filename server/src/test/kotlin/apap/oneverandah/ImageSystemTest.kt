@@ -390,6 +390,59 @@ class ImageSystemTest {
     }
 
     @Test
+    fun searchEndpointRecordsQueryAndValidatesInput() = testApplication {
+        val config = noEnvConfig()
+        val system = ImageSystem.create(config)
+        application { module(config, system) }
+
+        // A blank query is rejected.
+        val blank = client.post("/search") {
+            contentType(ContentType.Application.Json)
+            setBody("""{"query":"   "}""")
+        }
+        assertEquals(HttpStatusCode.BadRequest, blank.status)
+
+        // A real query is accepted and echoed back.
+        val accepted = client.post("/search") {
+            contentType(ContentType.Application.Json)
+            setBody("""{"query":"deep tissue massage"}""")
+        }
+        assertEquals(HttpStatusCode.Accepted, accepted.status)
+        assertTrue(accepted.bodyAsText().contains("deep tissue massage"))
+    }
+
+    @Test
+    fun searchHistoryReturnsLatestTwentyNewestFirst() = testApplication {
+        val config = noEnvConfig()
+        val system = ImageSystem.create(config)
+        application { module(config, system) }
+
+        // Record 25 distinct queries; only the latest 20 should come back.
+        for (i in 1..25) {
+            val response = client.post("/search") {
+                contentType(ContentType.Application.Json)
+                setBody("""{"query":"query-$i"}""")
+            }
+            assertEquals(HttpStatusCode.Accepted, response.status)
+            // Ensure a strictly increasing createdAt so ordering is deterministic.
+            delay(2)
+        }
+
+        val history = client.get("/search-history")
+        assertEquals(HttpStatusCode.OK, history.status)
+        val body = history.bodyAsText()
+
+        // Newest queries are present, oldest ones have fallen off the list.
+        assertTrue(body.contains("query-25"), "Latest query should be present")
+        assertTrue(body.contains("query-6"), "20th-newest query should be present")
+        assertTrue(!body.contains("\"query-5\""), "Older queries should be dropped")
+
+        // Exactly 20 records are returned.
+        val count = Regex("\"query\":\"query-").findAll(body).count()
+        assertEquals(20, count)
+    }
+
+    @Test
     fun qwenErrorLogAppendsTimestampedMessages() {
         val file = Files.createTempFile("qwen-errors", ".txt").toFile()
         file.delete() // start from "does not exist yet", like a fresh deployment
