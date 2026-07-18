@@ -161,6 +161,12 @@ object Styles {
     const val dialogActions = "dialog-actions"
     const val textInput = "text-input"
     const val textError = "text-error"
+
+    // Chat-style input (text field with a send button that appears when typing)
+    const val chatInput = "chat-input"
+    const val chatInputField = "chat-input-field"
+    const val chatInputFieldFilled = "chat-input-field-filled"
+    const val chatSend = "chat-send"
     const val btnText = "btn-text"
     const val contentLocked = "content-locked"
 
@@ -421,7 +427,7 @@ object Styles {
             position: relative;
             z-index: 1;
             padding-top: 168px;
-            background-color: var(--md-sys-color-surface);
+            // background-color: var(--md-sys-color-surface);
             background-clip: content-box;
         }
 
@@ -458,10 +464,10 @@ object Styles {
             border: 1px solid #ffffff16;
             color: var(--md-sys-color-on-surface);
             font-family: inherit;
-            transition: background-color 0.2s, transform 0.1s;
+            transition: background-color 0.2s, transform 0.1s, box-shadow 0.2s;
             user-select: none;
         }
-        .${card}:hover { background-color: var(--md-sys-color-primary-container); }
+        .${card}:hover { background-color: var(--md-sys-color-primary-container); box-shadow: 0 0 16px -4px #ffffff36; }
         .${card}:active { transform: scale(0.97); }
         .${card} .${materialSymbols} {
             font-size: 32px;
@@ -543,10 +549,10 @@ object Styles {
             cursor: pointer;
             border: 1px solid #ffffff16;
             box-shadow: 0 4px 8px -8px var(--md-shadow-light) inset;
-            transition: background-color 0.2s, transform 0.1s;
+            transition: background-color 0.2s, transform 0.1s, box-shadow 0.2s;
             user-select: none;
         }
-        .${listCard}:hover { background-color: var(--md-sys-color-primary-container); }
+        .${listCard}:hover { background-color: var(--md-sys-color-primary-container); box-shadow: 0 0 16px -4px #ffffff36; }
         .${listCard}:active { transform: scale(0.99); }
         .${listIcon} {
             font-size: 40px;
@@ -1209,6 +1215,43 @@ object Styles {
             color: var(--md-sys-color-on-surface);
         }
         .${textInput}:focus { outline: 2px solid var(--md-sys-color-primary); border-color: transparent; }
+
+        /* Chat-style input: a text field with a send button that appears on the
+           right once the user starts typing. */
+        .${chatInput} {
+            position: relative;
+            display: flex;
+            align-items: center;
+        }
+        .${chatInputField} {
+            transition: padding-right 0.2s ease;
+        }
+        .${chatInputField}.${chatInputFieldFilled} {
+            padding-right: 60px;
+        }
+        .${chatSend} {
+            position: absolute;
+            right: 8px;
+            top: 50%;
+            transform: translateY(-50%);
+            width: 40px;
+            height: 40px;
+            border-radius: 50%;
+            border: none;
+            display: flex;
+            align-items: center;
+            justify-content: center;
+            background: none; //linear-gradient(135deg, var(--md-sys-color-primary), var(--md-sys-color-primary-dark));
+            color: var(--md-sys-color-primary);
+            cursor: pointer;
+            // box-shadow: 0 4px 12px var(--md-shadow), 0 4px 8px -8px var(--md-shadow-light) inset;
+            // border: 1px solid #ffffff16;
+            transition: filter 0.2s, transform 0.1s;
+        }
+        .${chatSend} .${materialSymbols} { font-size: 22px; }
+        .${chatSend}:hover { filter: brightness(1.07); }
+        .${chatSend}:active { transform: translateY(-50%) scale(0.94); }
+
         .${dialogActions} {
             display: flex;
             align-items: center;
@@ -1342,9 +1385,9 @@ object Styles {
             box-shadow: 0 4px 8px -8px var(--md-shadow-light) inset;
             cursor: pointer;
             scroll-snap-align: start;
-            transition: background-color 0.2s, transform 0.1s;
+            transition: background-color 0.2s, transform 0.1s, box-shadow 0.2s;
         }
-        .${pinnedCard}:hover { background-color: var(--md-sys-color-surface-variant); }
+        .${pinnedCard}:hover { background-color: var(--md-sys-color-surface-variant); box-shadow: 0 0 16px -4px #ffffff36; }
         .${pinnedCard}:active { transform: scale(0.97); }
         /* Service card with a generated cover image. The cover — including its
            50% surface veil and the light border/glow — is rendered entirely by

@@ -10,6 +10,7 @@ import kotlinx.coroutines.delay
 import apap.oneverandah.Styles
 import apap.oneverandah.api.ImageApi
 import apap.oneverandah.components.BottomDialog
+import apap.oneverandah.components.ChatInput
 import apap.oneverandah.components.CoverImage
 import apap.oneverandah.components.MaterialSymbol
 import apap.oneverandah.components.Scaffold
@@ -18,12 +19,9 @@ import apap.oneverandah.i18n.Localization
 import apap.oneverandah.i18n.UiStrings
 import apap.oneverandah.state.ImageStore
 import apap.oneverandah.state.PinnedStore
-import org.jetbrains.compose.web.attributes.InputType
-import org.jetbrains.compose.web.attributes.placeholder
 import org.jetbrains.compose.web.dom.Button
 import org.jetbrains.compose.web.dom.Div
 import org.jetbrains.compose.web.dom.H2
-import org.jetbrains.compose.web.dom.Input
 import org.jetbrains.compose.web.dom.P
 import org.jetbrains.compose.web.dom.Span
 import org.jetbrains.compose.web.dom.Text
@@ -113,17 +111,13 @@ fun HomeScreen(
     ) {
         P(attrs = { classes(Styles.homePrompt, Styles.homePromptLarge) }) { Text(strings.homePrompt) }
         Div(attrs = { classes(Styles.textField) }) {
-            Input(type = InputType.Text) {
-                classes(Styles.textInput)
-                value(searchQuery)
-                placeholder(animatedPlaceholder)
-                onInput { searchQuery = it.value }
-                ref { inputRef ->
-                    inputRef.focus()
-
-                    onDispose {  }
-                }
-            }
+            ChatInput(
+                value = searchQuery,
+                onValueChange = { searchQuery = it },
+                onSend = { searchQuery = it.orEmpty() },
+                placeholder = animatedPlaceholder,
+                autoFocus = true,
+            )
         }
 
         if (searchQuery.isBlank()) {
