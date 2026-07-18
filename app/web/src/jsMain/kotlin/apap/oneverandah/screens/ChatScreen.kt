@@ -120,6 +120,7 @@ fun ChatScreen(
                 onSend = { it?.let(::sendMessage) },
                 placeholder = strings.chatPlaceholder,
                 autoFocus = initialMessage == null,
+                multiline = true,
             )
         },
         overlay = {

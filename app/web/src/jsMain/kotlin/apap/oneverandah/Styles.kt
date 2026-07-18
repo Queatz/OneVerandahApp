@@ -165,6 +165,7 @@ object Styles {
     // Chat-style input (text field with a send button that appears when typing)
     const val chatInput = "chat-input"
     const val chatInputField = "chat-input-field"
+    const val chatInputFieldMultiline = "chat-input-field-multiline"
     const val chatInputFieldFilled = "chat-input-field-filled"
     const val chatSend = "chat-send"
     const val btnText = "btn-text"
@@ -1256,6 +1257,13 @@ object Styles {
         }
         .${chatInputField} {
             transition: padding-right 0.2s ease;
+        }
+        .${chatInputFieldMultiline} {
+            min-height: 56px;
+            max-height: 104px;
+            line-height: 24px;
+            resize: none;
+            overflow-y: auto;
         }
         .${chatInputField}.${chatInputFieldFilled} {
             padding-right: 60px;
