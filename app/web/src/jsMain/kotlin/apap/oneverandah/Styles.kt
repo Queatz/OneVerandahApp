@@ -183,6 +183,8 @@ object Styles {
     const val chatEmptyState = "chat-empty-state"
     const val chatEmptyIcon = "chat-empty-icon"
     const val chatSuggestion = "chat-suggestion"
+    const val chatFollowUps = "chat-follow-ups"
+    const val chatFollowUp = "chat-follow-up"
     const val miniAppCard = "mini-app-card"
     const val languageStudyCard = "language-study-card"
     const val languageSentence = "language-sentence"
@@ -1389,6 +1391,33 @@ object Styles {
             color: var(--md-sys-color-primary);
             font-size: 20px;
         }
+        .${chatFollowUps} {
+            display: flex;
+            flex-direction: column;
+            align-items: flex-start;
+            gap: 6px;
+            width: 100%;
+            margin-top: 6px;
+        }
+        .${chatFollowUp} {
+            border: 1px solid color-mix(in srgb, var(--md-sys-color-outline) 35%, transparent);
+            border-radius: 999px;
+            padding: 7px 12px;
+            background: color-mix(in srgb, var(--md-sys-color-surface-variant) 55%, transparent);
+            color: var(--md-sys-color-on-surface-variant);
+            font: inherit;
+            font-size: 13px;
+            line-height: 1.3;
+            text-align: left;
+            cursor: pointer;
+            transition: background 0.15s, border-color 0.15s, color 0.15s;
+        }
+        .${chatFollowUp}:hover {
+            border-color: color-mix(in srgb, var(--md-sys-color-primary) 65%, transparent);
+            background: var(--md-sys-color-primary-container);
+            color: var(--md-sys-color-on-primary-container);
+        }
+        .${chatFollowUp}:active { filter: brightness(0.96); }
         @keyframes spin { to { transform: rotate(360deg); } }
         .${miniAppCard} {
             width: 100%;

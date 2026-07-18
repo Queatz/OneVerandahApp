@@ -66,6 +66,7 @@ fun ChatScreen(
         draft = ""
         error = null
         sending = true
+        latestAiMessageId = null
         messages += ChatMessage(
             id = "client-${Date.now()}",
             sender = ChatSender.YOU,
@@ -143,6 +144,8 @@ fun ChatScreen(
                 ChatMessageView(
                     message = message,
                     strings = strings,
+                    showFollowUpQuestions = !sending && message.id == latestAiMessageId,
+                    onFollowUpQuestion = ::sendMessage,
                     onResidentSelected = { card ->
                         val provider = Catalog.services.asSequence()
                             .map { it.provider }
@@ -195,6 +198,8 @@ private fun ChatEmptyState(suggestions: List<String>, onSuggestion: (String) -> 
 private fun ChatMessageView(
     message: ChatMessage,
     strings: UiStrings,
+    showFollowUpQuestions: Boolean,
+    onFollowUpQuestion: (String) -> Unit,
     onResidentSelected: (ResidentCardMiniApp) -> Unit,
 ) {
     val fromUser = message.sender == ChatSender.YOU
@@ -217,6 +222,25 @@ private fun ChatMessageView(
             is ResidentCardMiniApp -> ResidentCard(miniApp, strings) { onResidentSelected(miniApp) }
             is FactMiniApp -> FactCard(miniApp)
             null -> Unit
+        }
+        if (showFollowUpQuestions) {
+            FollowUpQuestions(message.followUpQuestions, onFollowUpQuestion)
+        }
+    }
+}
+
+@Composable
+private fun FollowUpQuestions(questions: List<String>, onQuestion: (String) -> Unit) {
+    if (questions.isEmpty()) return
+    Div(attrs = { classes(Styles.chatFollowUps) }) {
+        questions.forEach { question ->
+            Button(attrs = {
+                classes(Styles.chatFollowUp)
+                attr("type", "button")
+                onClick { onQuestion(question) }
+            }) {
+                Text(question)
+            }
         }
     }
 }

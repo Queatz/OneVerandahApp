@@ -21,6 +21,7 @@ import io.ktor.http.headersOf
 import kotlin.test.Test
 import kotlin.test.assertContains
 import kotlin.test.assertEquals
+import kotlin.test.assertFailsWith
 import kotlin.test.assertIs
 import kotlin.test.assertNotNull
 import kotlin.test.assertNull
@@ -43,7 +44,10 @@ class ChatServiceTest {
     @Test
     fun `send persists both messages and propagates active language`() = runBlocking {
         val repository = InMemoryChatRepository()
-        val ai = FakeChatAiClient(GeneratedChatReply(text = "Xin chào!"))
+        val followUpQuestions = listOf("Bạn muốn biết thêm gì?", "Tôi có thể giúp gì?", "Tiếp theo là gì?")
+        val ai = FakeChatAiClient(
+            GeneratedChatReply(text = "Xin chào!", followUpQuestions = followUpQuestions),
+        )
         val service = service(repository, ai)
 
         val response = service.send(ChatRequest(message = "Hello", languageTag = "vi-VN"))
@@ -53,6 +57,7 @@ class ChatServiceTest {
         assertEquals(listOf(ChatSender.YOU, ChatSender.AI), history.map { it.sender })
         assertEquals("Hello", history.first().text)
         assertEquals("Xin chào!", response.message.text)
+        assertEquals(followUpQuestions, response.message.followUpQuestions)
     }
 
     @Test
@@ -127,7 +132,7 @@ class ChatServiceTest {
         val engine = MockEngine { request ->
             requestBody = (request.body as OutgoingContent.ByteArrayContent).bytes().decodeToString()
             respond(
-                content = """{"choices":[{"message":{"content":"{\"text\":\"Let's learn.\",\"languageStudy\":null,\"factId\":null}"}}]}""",
+                content = """{"choices":[{"message":{"content":"{\"text\":\"Let's learn.\",\"languageStudy\":null,\"factId\":null,\"followUpQuestions\":[\"Which phrase should we practise?\",\"Would you like another example?\",\"Should I explain the grammar?\"]}"}}]}""",
                 status = HttpStatusCode.OK,
                 headers = headersOf(HttpHeaders.ContentType, "application/json"),
             )
@@ -154,6 +159,8 @@ class ChatServiceTest {
         assertContains(systemPrompt, "Teach me how to talk about stickiness in Vietnamese")
         assertContains(systemPrompt, "Dạy tôi cách nói về độ dính bằng tiếng Việt")
         assertContains(systemPrompt, "教我如何用越南语谈论黏性")
+        assertContains(systemPrompt, "Always provide exactly three concise, distinct followUpQuestions")
+        assertContains(systemPrompt, "in the user's active language")
         client.close()
     }
 
@@ -186,7 +193,8 @@ class ChatServiceTest {
                 "tokens": [
                   {"text":"Tôi","definition":"I","contextualMeaning":"The speaker"}
                 ]
-              }
+              },
+              "followUpQuestions": ["Can we practise another sentence?", "What does this phrase mean?", "How do I pronounce it?"]
             }
             """.trimIndent(),
         )
@@ -197,7 +205,9 @@ class ChatServiceTest {
 
     @Test
     fun `Qwen structured reply parser tolerates fenced regular response`() {
-        val result = QwenStructuredReplyParser.parse("```json\n{\"text\":\"Hello\",\"languageStudy\":null}\n```")
+        val result = QwenStructuredReplyParser.parse(
+            "```json\n{\"text\":\"Hello\",\"languageStudy\":null,\"followUpQuestions\":[\"How can you help?\",\"What can I ask?\",\"What should we discuss?\"]}\n```",
+        )
 
         assertEquals("Hello", result.text)
         assertNull(result.languageStudy)
@@ -206,10 +216,48 @@ class ChatServiceTest {
     @Test
     fun `Qwen structured reply parser accepts catalog fact id`() {
         val result = QwenStructuredReplyParser.parse(
-            """{"text":"A useful fact.","languageStudy":null,"factId":"balcony-drains"}""",
+            """{"text":"A useful fact.","languageStudy":null,"factId":"balcony-drains","followUpQuestions":["How often should I check?","What tools do I need?","What else should I know?"]}""",
         )
 
         assertEquals("balcony-drains", result.factId)
+    }
+
+    @Test
+    fun `Qwen structured reply parser accepts exactly three normalized follow-up questions`() {
+        val result = QwenStructuredReplyParser.parse(
+            """
+            {
+              "text": "Keep balcony drains clear before heavy rain.",
+              "languageStudy": null,
+              "factId": "balcony-drains",
+              "followUpQuestions": [
+                "  How often should I check the drains?  ",
+                "What tools should I use?",
+                "What else should I prepare for heavy rain?"
+              ]
+            }
+            """.trimIndent(),
+        )
+
+        assertEquals(
+            listOf(
+                "How often should I check the drains?",
+                "What tools should I use?",
+                "What else should I prepare for heavy rain?",
+            ),
+            result.followUpQuestions,
+        )
+    }
+
+    @Test
+    fun `Qwen structured reply parser rejects fewer than three distinct follow-up questions`() {
+        val error = assertFailsWith<IllegalArgumentException> {
+            QwenStructuredReplyParser.parse(
+                """{"text":"Hello","followUpQuestions":["What next?","What next?",""]}""",
+            )
+        }
+
+        assertContains(error.message.orEmpty(), "exactly three distinct follow-up questions")
     }
 
     private fun service(

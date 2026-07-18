@@ -52,6 +52,7 @@ data class GeneratedChatReply(
     val text: String,
     val languageStudy: GeneratedLanguageStudy? = null,
     val factId: String? = null,
+    val followUpQuestions: List<String> = emptyList(),
 )
 
 data class GeneratedLanguageStudy(
@@ -134,6 +135,7 @@ class ChatService(
             text = generated.text,
             createdAt = clock(),
             miniApp = miniApp,
+            followUpQuestions = generated.followUpQuestions,
         )
         repository.append(conversationId, aiMessage)
         return ChatResponse(conversationId, aiMessage)

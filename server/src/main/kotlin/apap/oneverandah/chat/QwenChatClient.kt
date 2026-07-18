@@ -33,6 +33,11 @@ object QwenStructuredReplyParser {
             .trim()
         val wire = json.decodeFromString<QwenReplyWire>(normalized)
         require(wire.text.isNotBlank()) { "Qwen returned an empty chat response" }
+        val followUpQuestions = wire.followUpQuestions
+            .map(String::trim)
+            .filter(String::isNotEmpty)
+            .distinct()
+        require(followUpQuestions.size == 3) { "Qwen must return exactly three distinct follow-up questions" }
         return GeneratedChatReply(
             text = wire.text.trim(),
             languageStudy = wire.languageStudy?.let { study ->
@@ -45,6 +50,7 @@ object QwenStructuredReplyParser {
                 )
             },
             factId = wire.factId?.trim()?.takeIf { it.isNotEmpty() },
+            followUpQuestions = followUpQuestions,
         )
     }
 }
@@ -54,6 +60,7 @@ private data class QwenReplyWire(
     val text: String,
     val languageStudy: QwenLanguageStudyWire? = null,
     val factId: String? = null,
+    val followUpQuestions: List<String>,
 )
 
 @Serializable
@@ -124,7 +131,8 @@ class DashScopeChatAiClient(
         return """
             You are the One Verandah community assistant. Reply in the user's active language '${request.languageTag}'.
             Always return one JSON object and no markdown. The schema is:
-            {"text":"helpful response","languageStudy":null,"factId":null}
+            {"text":"helpful response","languageStudy":null,"factId":null,"followUpQuestions":["first question","second question","third question"]}
+            Always provide exactly three concise, distinct followUpQuestions in the user's active language. Each must be a natural next message the user could send to continue this conversation, and must end with a question mark appropriate to that language.
             For language study, language practice, requests to teach how to discuss a topic in another language, translation exercises, or homework help, set languageStudy to:
             {"sentence":"target-language sentence","targetLanguageTag":"ISO 639-1 tag","tokens":[{"text":"complete word, meaningful phrase, or punctuation token","definition":"detailed definition in the user's active language","contextualMeaning":"meaning in this sentence in the user's active language"}]}
             Recognize language-learning intent from meaning in every language; never rely on English keywords. Use the latest message and conversation context to identify direct or indirect requests to learn, practise, understand, translate, write, speak, or discuss any topic in another language, as well as language homework help.

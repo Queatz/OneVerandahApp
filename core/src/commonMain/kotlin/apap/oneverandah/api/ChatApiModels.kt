@@ -39,6 +39,7 @@ data class ChatMessage(
     val text: String,
     val createdAt: Long,
     val miniApp: ChatMiniApp? = null,
+    val followUpQuestions: List<String> = emptyList(),
 )
 
 @Serializable
