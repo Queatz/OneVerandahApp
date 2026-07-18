@@ -44,6 +44,7 @@ object QwenStructuredReplyParser {
                     },
                 )
             },
+            factId = wire.factId?.trim()?.takeIf { it.isNotEmpty() },
         )
     }
 }
@@ -52,6 +53,7 @@ object QwenStructuredReplyParser {
 private data class QwenReplyWire(
     val text: String,
     val languageStudy: QwenLanguageStudyWire? = null,
+    val factId: String? = null,
 )
 
 @Serializable
@@ -116,13 +118,20 @@ class DashScopeChatAiClient(
         val residentContext = request.matchedResident?.let {
             "A local resident matched the request: id=${it.id}, name=${it.name}, address=${it.blockAddress}."
         } ?: "No local resident matched the request."
+        val factCatalog = request.facts.joinToString(separator = "; ") { fact ->
+            "${fact.id}: ${fact.title} [${fact.keywords.joinToString()}]"
+        }
         return """
             You are the One Verandah community assistant. Reply in the user's active language '${request.languageTag}'.
             Always return one JSON object and no markdown. The schema is:
-            {"text":"helpful response","languageStudy":null}
-            For language study, language practice, translation exercises, or homework help, set languageStudy to:
+            {"text":"helpful response","languageStudy":null,"factId":null}
+            For language study, language practice, requests to teach how to discuss a topic in another language, translation exercises, or homework help, set languageStudy to:
             {"sentence":"target-language sentence","targetLanguageTag":"ISO 639-1 tag","tokens":[{"text":"word or punctuation token","definition":"detailed definition in the user's active language","contextualMeaning":"meaning in this sentence in the user's active language"}]}
-            Tokenize the complete sentence in order. Otherwise languageStudy must be null.
+            Recognize language-learning intent from meaning in every language; never rely on English keywords. Use the latest message and conversation context to identify direct or indirect requests to learn, practise, understand, translate, write, speak, or discuss any topic in another language, as well as language homework help.
+            Whenever that intent is present, languageStudy MUST be a complete non-null object. If the user names a topic rather than a sentence, create a useful target-language example sentence about that topic. Tokenize the complete sentence in order. Only use null when there is no language-learning intent.
+            These equivalent examples must all produce a non-null languageStudy object: "Teach me how to talk about stickiness in Vietnamese.", "Dạy tôi cách nói về độ dính bằng tiếng Việt.", and "教我如何用越南语谈论黏性。" Treat them as semantic examples, not as a keyword list.
+            Available apartment facts: $factCatalog
+            When a catalog fact directly helps answer the user's question or they ask for an apartment fact, set factId to exactly one listed id. Otherwise factId must be null. Never invent a fact id or fact content.
             $residentContext If a resident matched, acknowledge them accurately in text. Never invent resident details.
         """.trimIndent()
     }

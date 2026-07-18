@@ -71,4 +71,19 @@ class ChatApiModelsTest {
         assertEquals(miniApp, decoded)
         assertIs<ResidentCardMiniApp>(decoded)
     }
+
+    @Test
+    fun `fact card payload round trips as structured JSON`() {
+        val miniApp: ChatMiniApp = FactMiniApp(
+            factId = "balcony-drains",
+            title = "Keep balcony drains clear",
+            body = "Clear leaves and debris before heavy rain.",
+            icon = "water_drop",
+        )
+
+        val decoded = json.decodeFromString<ChatMiniApp>(json.encodeToString(miniApp))
+
+        assertEquals(miniApp, decoded)
+        assertIs<FactMiniApp>(decoded)
+    }
 }

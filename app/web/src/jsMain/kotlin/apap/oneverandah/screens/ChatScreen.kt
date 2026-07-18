@@ -14,6 +14,7 @@ import apap.oneverandah.api.ChatApi
 import apap.oneverandah.api.ChatMessage
 import apap.oneverandah.api.ChatRequest
 import apap.oneverandah.api.ChatSender
+import apap.oneverandah.api.FactMiniApp
 import apap.oneverandah.api.LanguageStudyMiniApp
 import apap.oneverandah.api.LanguageStudyToken
 import apap.oneverandah.api.ResidentCardMiniApp
@@ -30,6 +31,7 @@ import kotlinx.browser.document
 import kotlinx.coroutines.async
 import kotlinx.coroutines.awaitAll
 import kotlinx.coroutines.coroutineScope
+import kotlinx.coroutines.delay
 import kotlinx.coroutines.launch
 import org.jetbrains.compose.web.dom.Button
 import org.jetbrains.compose.web.dom.Div
@@ -55,6 +57,8 @@ fun ChatScreen(
     var sending by remember { mutableStateOf(false) }
     var error by remember { mutableStateOf<String?>(null) }
     var selectedProvider by remember { mutableStateOf<ServiceProvider?>(null) }
+    var showProviderDetails by remember { mutableStateOf(false) }
+    var latestAiMessageId by remember { mutableStateOf<String?>(null) }
 
     fun sendMessage(raw: String) {
         val text = raw.trim()
@@ -74,6 +78,7 @@ fun ChatScreen(
             }.onSuccess { response ->
                 conversationId = response.conversationId
                 messages += response.message
+                latestAiMessageId = response.message.id
             }.onFailure {
                 error = strings.chatError
             }
@@ -88,9 +93,25 @@ fun ChatScreen(
         }
     }
 
+    LaunchedEffect(latestAiMessageId) {
+        latestAiMessageId?.let { messageId ->
+            document.getElementById(chatMessageElementId(messageId))
+                ?.asDynamic()
+                ?.scrollIntoView(js("({ behavior: 'smooth', block: 'start' })"))
+        }
+    }
+
+    LaunchedEffect(selectedProvider) {
+        if (selectedProvider != null && !showProviderDetails) {
+            delay(16)
+            showProviderDetails = true
+        }
+    }
+
     Scaffold(
         title = strings.chatTitle,
         onBack = onBack,
+        showChatAction = false,
         onHome = onHome,
         footer = {
             ChatInput(
@@ -104,24 +125,33 @@ fun ChatScreen(
         overlay = {
             selectedProvider?.let { provider ->
                 ProviderDetailsDialog(
-                    visible = true,
+                    visible = showProviderDetails,
                     provider = provider,
                     language = language,
                     strings = strings,
-                    onDismiss = { selectedProvider = null },
+                    onDismiss = { showProviderDetails = false },
                 )
             }
         },
     ) {
         Div(attrs = { classes(Styles.aiChat) }) {
+            if (messages.isEmpty() && !sending) {
+                ChatEmptyState(strings.chatSuggestions, ::sendMessage)
+            }
             messages.forEach { message ->
                 ChatMessageView(
                     message = message,
                     strings = strings,
                     onResidentSelected = { card ->
-                        selectedProvider = Catalog.services.asSequence()
+                        val provider = Catalog.services.asSequence()
                             .map { it.provider }
                             .firstOrNull { it.id == card.residentId }
+                        if (provider == selectedProvider) {
+                            showProviderDetails = true
+                        } else {
+                            showProviderDetails = false
+                            selectedProvider = provider
+                        }
                     },
                 )
             }
@@ -142,6 +172,25 @@ fun ChatScreen(
 }
 
 @Composable
+private fun ChatEmptyState(suggestions: List<String>, onSuggestion: (String) -> Unit) {
+    Div(attrs = { classes(Styles.chatEmptyState) }) {
+        Div(attrs = { classes(Styles.chatEmptyIcon) }) {
+            MaterialSymbol("auto_awesome")
+        }
+        suggestions.forEach { suggestion ->
+            Button(attrs = {
+                classes(Styles.chatSuggestion)
+                attr("type", "button")
+                onClick { onSuggestion(suggestion) }
+            }) {
+                Text(suggestion)
+                MaterialSymbol("north_east")
+            }
+        }
+    }
+}
+
+@Composable
 private fun ChatMessageView(
     message: ChatMessage,
     strings: UiStrings,
@@ -151,6 +200,7 @@ private fun ChatMessageView(
     Div(attrs = {
         classes(Styles.chatMessageRow)
         if (fromUser) classes(Styles.chatMessageRowYou)
+        if (!fromUser) id(chatMessageElementId(message.id))
     }) {
         Div(attrs = { classes(Styles.chatMessageMeta) }) {
             Text(if (fromUser) strings.chatYouSender else strings.chatAiSender)
@@ -164,7 +214,23 @@ private fun ChatMessageView(
         when (val miniApp = message.miniApp) {
             is LanguageStudyMiniApp -> LanguageStudyCard(miniApp, strings)
             is ResidentCardMiniApp -> ResidentCard(miniApp, strings) { onResidentSelected(miniApp) }
+            is FactMiniApp -> FactCard(miniApp)
             null -> Unit
+        }
+    }
+}
+
+private fun chatMessageElementId(messageId: String): String = "chat-message-$messageId"
+
+@Composable
+private fun FactCard(app: FactMiniApp) {
+    Div(attrs = { classes(Styles.miniAppCard, Styles.factCard) }) {
+        Div(attrs = { classes(Styles.factIcon) }) {
+            MaterialSymbol(app.icon)
+        }
+        Div(attrs = { classes(Styles.factBody) }) {
+            Div(attrs = { classes(Styles.factTitle) }) { Text(app.title) }
+            P { Text(app.body) }
         }
     }
 }

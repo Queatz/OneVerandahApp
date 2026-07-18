@@ -2,19 +2,33 @@ package apap.oneverandah.chat
 
 import apap.oneverandah.api.ChatRequest
 import apap.oneverandah.api.ChatSender
+import apap.oneverandah.api.FactMiniApp
 import apap.oneverandah.api.LanguageStudyMiniApp
 import apap.oneverandah.api.LanguageStudyToken
 import apap.oneverandah.api.ResidentCardMiniApp
 import apap.oneverandah.api.SpeechRequest
+import apap.oneverandah.config.QwenChatConfig
 import apap.oneverandah.model.LocalizedText
 import apap.oneverandah.model.ServiceProvider
 import apap.oneverandah.model.Sex
+import io.ktor.client.HttpClient
+import io.ktor.client.engine.mock.MockEngine
+import io.ktor.client.engine.mock.respond
+import io.ktor.http.HttpHeaders
+import io.ktor.http.HttpStatusCode
+import io.ktor.http.content.OutgoingContent
+import io.ktor.http.headersOf
 import kotlin.test.Test
+import kotlin.test.assertContains
 import kotlin.test.assertEquals
 import kotlin.test.assertIs
 import kotlin.test.assertNotNull
 import kotlin.test.assertNull
 import kotlinx.coroutines.runBlocking
+import kotlinx.serialization.json.Json
+import kotlinx.serialization.json.jsonArray
+import kotlinx.serialization.json.jsonObject
+import kotlinx.serialization.json.jsonPrimitive
 
 class ChatServiceTest {
     private val resident = ServiceProvider(
@@ -79,6 +93,71 @@ class ChatServiceTest {
     }
 
     @Test
+    fun `catalog fact reply becomes localized fact mini app`() = runBlocking {
+        val ai = FakeChatAiClient(
+            GeneratedChatReply(text = "Here is a useful apartment fact.", factId = "balcony-drains"),
+        )
+        val service = service(InMemoryChatRepository(), ai)
+
+        val response = service.send(
+            ChatRequest(message = "How should I prepare my balcony for rain?", languageTag = "vi"),
+        )
+
+        val miniApp = assertIs<FactMiniApp>(response.message.miniApp)
+        assertEquals("balcony-drains", miniApp.factId)
+        assertEquals("Giữ thông thoáng lỗ thoát nước ban công", miniApp.title)
+        assertEquals(true, ai.lastRequest?.facts?.any { it.id == "balcony-drains" })
+    }
+
+    @Test
+    fun `unknown fact reply cannot create a card outside the catalog`() = runBlocking {
+        val service = service(
+            InMemoryChatRepository(),
+            FakeChatAiClient(GeneratedChatReply(text = "No matching fact.", factId = "invented-fact")),
+        )
+
+        val response = service.send(ChatRequest(message = "Tell me something", languageTag = "en"))
+
+        assertNull(response.message.miniApp)
+    }
+
+    @Test
+    fun `Qwen receives multilingual semantic language study instructions`() = runBlocking {
+        var requestBody = ""
+        val engine = MockEngine { request ->
+            requestBody = (request.body as OutgoingContent.ByteArrayContent).bytes().decodeToString()
+            respond(
+                content = """{"choices":[{"message":{"content":"{\"text\":\"Let's learn.\",\"languageStudy\":null,\"factId\":null}"}}]}""",
+                status = HttpStatusCode.OK,
+                headers = headersOf(HttpHeaders.ContentType, "application/json"),
+            )
+        }
+        val client = HttpClient(engine)
+        val ai = DashScopeChatAiClient(qwenConfig(), client)
+
+        ai.generate(
+            ChatGenerationRequest(
+                message = "Dạy tôi cách nói về độ dính bằng tiếng Việt.",
+                languageTag = "vi",
+                history = emptyList(),
+                matchedResident = null,
+                facts = emptyList(),
+            ),
+        )
+
+        val body = Json.parseToJsonElement(requestBody).jsonObject
+        val systemPrompt = body["messages"]?.jsonArray
+            ?.first()?.jsonObject
+            ?.get("content")?.jsonPrimitive?.content.orEmpty()
+        assertContains(systemPrompt, "Recognize language-learning intent from meaning in every language")
+        assertContains(systemPrompt, "never rely on English keywords")
+        assertContains(systemPrompt, "Teach me how to talk about stickiness in Vietnamese")
+        assertContains(systemPrompt, "Dạy tôi cách nói về độ dính bằng tiếng Việt")
+        assertContains(systemPrompt, "教我如何用越南语谈论黏性")
+        client.close()
+    }
+
+    @Test
     fun `speech service designs one voice and reuses it for synthesis`() = runBlocking {
         val client = FakeSpeechClient()
         val service = SpeechService(client)
@@ -124,6 +203,15 @@ class ChatServiceTest {
         assertNull(result.languageStudy)
     }
 
+    @Test
+    fun `Qwen structured reply parser accepts catalog fact id`() {
+        val result = QwenStructuredReplyParser.parse(
+            """{"text":"A useful fact.","languageStudy":null,"factId":"balcony-drains"}""",
+        )
+
+        assertEquals("balcony-drains", result.factId)
+    }
+
     private fun service(
         repository: ChatRepository,
         ai: ChatAiClient,
@@ -133,6 +221,16 @@ class ChatServiceTest {
         residentDirectory = ResidentDirectory(listOf(resident)),
         clock = { 1_000L },
         idGenerator = sequenceOf("conversation-1", "user-1", "ai-1").iterator()::next,
+    )
+
+    private fun qwenConfig() = QwenChatConfig(
+        chatEndpoint = "https://example.test/chat",
+        chatModel = "qwen-plus",
+        ttsEndpoint = "https://example.test/tts",
+        ttsModel = "cosyvoice-v3.5-plus",
+        voiceDesignEndpoint = "https://example.test/customization",
+        voiceDesignModel = "voice-enrollment",
+        apiKey = "test-key",
     )
 }
 

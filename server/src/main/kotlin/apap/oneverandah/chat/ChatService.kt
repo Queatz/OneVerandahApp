@@ -4,10 +4,13 @@ import apap.oneverandah.api.ChatMessage
 import apap.oneverandah.api.ChatRequest
 import apap.oneverandah.api.ChatResponse
 import apap.oneverandah.api.ChatSender
+import apap.oneverandah.api.FactMiniApp
 import apap.oneverandah.api.LanguageStudyMiniApp
 import apap.oneverandah.api.LanguageStudyToken
 import apap.oneverandah.api.ResidentCardMiniApp
 import apap.oneverandah.api.SpeechRequest
+import apap.oneverandah.data.FactsCatalog
+import apap.oneverandah.model.ApartmentFact
 import apap.oneverandah.model.Language
 import apap.oneverandah.model.ServiceProvider
 import kotlinx.coroutines.sync.Mutex
@@ -36,11 +39,19 @@ data class ChatGenerationRequest(
     val languageTag: String,
     val history: List<ChatMessage>,
     val matchedResident: ServiceProvider?,
+    val facts: List<FactSummary>,
+)
+
+data class FactSummary(
+    val id: String,
+    val title: String,
+    val keywords: List<String>,
 )
 
 data class GeneratedChatReply(
     val text: String,
     val languageStudy: GeneratedLanguageStudy? = null,
+    val factId: String? = null,
 )
 
 data class GeneratedLanguageStudy(
@@ -69,6 +80,7 @@ class ChatService(
     private val repository: ChatRepository,
     private val aiClient: ChatAiClient,
     private val residentDirectory: ResidentDirectory,
+    private val facts: List<ApartmentFact> = FactsCatalog.all,
     private val clock: () -> Long = System::currentTimeMillis,
     private val idGenerator: () -> String = { UUID.randomUUID().toString() },
 ) {
@@ -83,6 +95,7 @@ class ChatService(
         )
         repository.append(conversationId, userMessage)
 
+        val language = Language.fromTag(request.languageTag)
         val matchedResident = residentDirectory.findMention(request.message)
         val generated = aiClient.generate(
             ChatGenerationRequest(
@@ -90,9 +103,12 @@ class ChatService(
                 languageTag = request.languageTag,
                 history = repository.history(conversationId),
                 matchedResident = matchedResident,
+                facts = facts.map { fact ->
+                    FactSummary(fact.id, fact.title.resolve(language), fact.keywords)
+                },
             ),
         )
-        val language = Language.fromTag(request.languageTag)
+        val matchedFact = facts.firstOrNull { it.id == generated.factId }
         val miniApp = when {
             matchedResident != null -> ResidentCardMiniApp(
                 residentId = matchedResident.id,
@@ -104,6 +120,12 @@ class ChatService(
                 intro = matchedResident.intro.resolve(language),
             )
             generated.languageStudy != null -> generated.languageStudy.toMiniApp()
+            matchedFact != null -> FactMiniApp(
+                factId = matchedFact.id,
+                title = matchedFact.title.resolve(language),
+                body = matchedFact.body.resolve(language),
+                icon = matchedFact.icon,
+            )
             else -> null
         }
         val aiMessage = ChatMessage(

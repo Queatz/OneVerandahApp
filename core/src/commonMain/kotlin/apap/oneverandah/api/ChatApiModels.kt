@@ -78,6 +78,15 @@ data class ResidentCardMiniApp(
 ) : ChatMiniApp
 
 @Serializable
+@SerialName("fact")
+data class FactMiniApp(
+    val factId: String,
+    val title: String,
+    val body: String,
+    val icon: String,
+) : ChatMiniApp
+
+@Serializable
 data class SpeechRequest(
     val text: String,
     val languageTag: String,

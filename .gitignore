@@ -21,5 +21,7 @@ node_modules/
 # Image backend secrets & generated artifacts (see IMAGES.md)
 .env
 data/
+!core/src/commonMain/kotlin/apap/oneverandah/data/
+!core/src/commonMain/kotlin/apap/oneverandah/data/FactsCatalog.kt
 *.p12
 *.jks

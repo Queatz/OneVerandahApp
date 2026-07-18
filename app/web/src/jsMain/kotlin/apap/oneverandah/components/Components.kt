@@ -87,8 +87,10 @@ fun AppBar(
     title: String? = null,
     onBack: (() -> Unit)? = null,
     onMenu: (() -> Unit)? = null,
+    showChatAction: Boolean = true,
 ) {
     val strings = Localization.strings
+    val router = Router.current
     Div(attrs = { classes(Styles.appBar) }) {
         if (onBack != null) {
             Span(attrs = {
@@ -107,6 +109,14 @@ fun AppBar(
         }
         if (title != null) {
             H1(attrs = { classes(Styles.appBarTitle) }) { Text(title) }
+        }
+        if (showChatAction) {
+            Span(attrs = {
+                classes(Styles.materialSymbols, Styles.appBarIcon)
+                attr("role", "button")
+                attr("aria-label", strings.chatTitle)
+                onClick { router.navigate("/chat") }
+            }) { Text("chat") }
         }
         Button(attrs = {
             classes(Styles.langToggle)
@@ -158,6 +168,10 @@ fun NavigationDrawer(
             onClose()
             if (onHome != null) onHome() else router.navigate("/")
         }
+        DrawerItem("chat", strings.chatTitle) {
+            onClose()
+            router.navigate("/chat")
+        }
         DrawerItem("add_business", strings.helpListService) {
             onClose()
             router.navigate("/list")
@@ -205,6 +219,7 @@ fun Scaffold(
     title: String? = null,
     onBack: (() -> Unit)? = null,
     onHome: (() -> Unit)? = null,
+    showChatAction: Boolean = true,
     showBanner: Boolean = false,
     bannerImageUrl: String? = null,
     footer: (ContentBuilder<HTMLElement>)? = null,
@@ -216,7 +231,12 @@ fun Scaffold(
     var drawerOpen by remember { mutableStateOf(false) }
     Div(attrs = { classes(Styles.appShell) }) {
         Div(attrs = { classes(Styles.appFrame) }) {
-            AppBar(title = title, onBack = onBack, onMenu = { drawerOpen = true })
+            AppBar(
+                title = title,
+                onBack = onBack,
+                onMenu = { drawerOpen = true },
+                showChatAction = showChatAction,
+            )
             if (showBanner) {
                 Div(attrs = {
                     classes(Styles.banner)

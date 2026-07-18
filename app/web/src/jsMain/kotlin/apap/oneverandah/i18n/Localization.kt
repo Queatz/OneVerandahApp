@@ -123,6 +123,7 @@ data class UiStrings(
     val chatDefinition: String,
     val chatInContext: String,
     val chatResidentDetails: String,
+    val chatSuggestions: List<String>,
 )
 
 private val English = UiStrings(
@@ -223,8 +224,8 @@ private val English = UiStrings(
     clearAllConfirm = "Remove all saved services from this list?",
     pinnedEmpty = "Save services you love, or book one to save it here!",
     serviceTemporarilyUnavailable = "This service is temporarily unavailable",
-    chatTitle = "AI chat",
-    chatPlaceholder = "Ask AI anything…",
+    chatTitle = "Chat",
+    chatPlaceholder = "Ask anything…",
     chatAiSender = "AI",
     chatYouSender = "You",
     chatThinking = "I'm thinking…",
@@ -233,6 +234,11 @@ private val English = UiStrings(
     chatDefinition = "Definition",
     chatInContext = "In this sentence",
     chatResidentDetails = "View resident details",
+    chatSuggestions = listOf(
+        "Share a useful apartment care tip",
+        "Teach me a useful Vietnamese phrase",
+        "What can I do at One Verandah today?",
+    ),
 )
 
 private val Vietnamese = UiStrings(
@@ -333,8 +339,8 @@ private val Vietnamese = UiStrings(
     clearAllConfirm = "Xóa tất cả dịch vụ đã lưu khỏi danh sách này?",
     pinnedEmpty = "Lưu các dịch vụ bạn thích, hoặc đặt một dịch vụ để lưu vào đây!",
     serviceTemporarilyUnavailable = "Dịch vụ này tạm thời không khả dụng",
-    chatTitle = "Trò chuyện AI",
-    chatPlaceholder = "Hỏi AI bất cứ điều gì…",
+    chatTitle = "Trò chuyện",
+    chatPlaceholder = "Hỏi bất cứ điều gì…",
     chatAiSender = "AI",
     chatYouSender = "Bạn",
     chatThinking = "Tôi đang suy nghĩ…",
@@ -343,6 +349,11 @@ private val Vietnamese = UiStrings(
     chatDefinition = "Định nghĩa",
     chatInContext = "Trong câu này",
     chatResidentDetails = "Xem thông tin cư dân",
+    chatSuggestions = listOf(
+        "Chia sẻ một mẹo chăm sóc căn hộ hữu ích",
+        "Dạy tôi một câu tiếng Việt hữu ích",
+        "Hôm nay tôi có thể làm gì tại One Verandah?",
+    ),
 )
 
 private val Chinese = UiStrings(
@@ -443,8 +454,8 @@ private val Chinese = UiStrings(
     clearAllConfirm = "从此列表中移除所有已保存的服务吗？",
     pinnedEmpty = "收藏您喜欢的服务，或预订一个将其收藏在这里！",
     serviceTemporarilyUnavailable = "该服务暂时不可用",
-    chatTitle = "AI 聊天",
-    chatPlaceholder = "向 AI 提问…",
+    chatTitle = "聊天",
+    chatPlaceholder = "问任何问题…",
     chatAiSender = "AI",
     chatYouSender = "您",
     chatThinking = "我在想…",
@@ -453,6 +464,11 @@ private val Chinese = UiStrings(
     chatDefinition = "定义",
     chatInContext = "在本句中的含义",
     chatResidentDetails = "查看居民详情",
+    chatSuggestions = listOf(
+        "分享一个实用的公寓养护技巧",
+        "教我一句实用的越南语",
+        "今天在 One Verandah 可以做什么？",
+    ),
 )
 
 fun stringsFor(language: Language): UiStrings = when (language) {

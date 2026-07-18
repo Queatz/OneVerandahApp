@@ -179,6 +179,9 @@ object Styles {
     const val chatBubbleYou = "chat-bubble-you"
     const val chatStatus = "chat-status"
     const val chatError = "chat-error"
+    const val chatEmptyState = "chat-empty-state"
+    const val chatEmptyIcon = "chat-empty-icon"
+    const val chatSuggestion = "chat-suggestion"
     const val miniAppCard = "mini-app-card"
     const val languageStudyCard = "language-study-card"
     const val languageSentence = "language-sentence"
@@ -193,6 +196,10 @@ object Styles {
     const val residentChatBody = "resident-chat-body"
     const val residentChatName = "resident-chat-name"
     const val residentChatAction = "resident-chat-action"
+    const val factCard = "fact-card"
+    const val factIcon = "fact-icon"
+    const val factBody = "fact-body"
+    const val factTitle = "fact-title"
 
     // Offer toolbar (Save / Share)
     const val offerToolbar = "offer-toolbar"
@@ -1324,6 +1331,56 @@ object Styles {
         }
         .${chatStatus} .${materialSymbols} { animation: spin 1.2s linear infinite; }
         .${chatError} { color: var(--md-sys-color-error); }
+        .${chatEmptyState} {
+            display: flex;
+            flex-direction: column;
+            align-items: center;
+            justify-content: center;
+            gap: 11px;
+            flex: 1 1 auto;
+            width: min(100%, 520px);
+            min-height: 55vh;
+            margin: auto;
+            text-align: center;
+        }
+        .${chatEmptyIcon} {
+            display: grid;
+            place-items: center;
+            width: 58px;
+            height: 58px;
+            margin-bottom: 7px;
+            border-radius: 20px;
+            background: var(--md-sys-color-primary-container);
+            color: var(--md-sys-color-on-primary-container);
+        }
+        .${chatEmptyIcon} .${materialSymbols} { font-size: 30px; }
+        .${chatSuggestion} {
+            display: flex;
+            align-items: center;
+            justify-content: space-between;
+            gap: 14px;
+            width: 100%;
+            border: 1px solid color-mix(in srgb, var(--md-sys-color-outline) 55%, transparent);
+            border-radius: 18px;
+            padding: 13px 16px;
+            background: var(--md-sys-color-surface);
+            color: var(--md-sys-color-on-surface);
+            box-shadow: 0 3px 12px var(--md-shadow);
+            font: inherit;
+            text-align: left;
+            cursor: pointer;
+            transition: background 0.15s, border-color 0.15s, transform 0.15s;
+        }
+        .${chatSuggestion}:hover {
+            border-color: var(--md-sys-color-primary);
+            background: var(--md-sys-color-surface-variant);
+        }
+        .${chatSuggestion}:active { transform: scale(0.97); }
+        .${chatSuggestion} .${materialSymbols} {
+            flex: 0 0 auto;
+            color: var(--md-sys-color-primary);
+            font-size: 20px;
+        }
         @keyframes spin { to { transform: rotate(360deg); } }
         .${miniAppCard} {
             width: 100%;
@@ -1369,7 +1426,10 @@ object Styles {
             font: inherit;
             font-weight: 700;
             cursor: pointer;
+            transition: filter 0.15s, transform 0.15s;
         }
+        .${sentencePlay}:hover { filter: brightness(1.07); }
+        .${sentencePlay}:active { transform: scale(0.98); }
         .${sentencePlay}:disabled { opacity: 0.48; cursor: wait; }
         .${wordDefinition} {
             display: flex;
@@ -1389,6 +1449,37 @@ object Styles {
             font-weight: 800;
             letter-spacing: 0.07em;
             text-transform: uppercase;
+        }
+        .${factCard} {
+            display: flex;
+            align-items: flex-start;
+            gap: 14px;
+            padding: 17px;
+            background: linear-gradient(145deg, var(--md-sys-color-surface), var(--md-sys-color-primary-container));
+        }
+        .${factIcon} {
+            display: grid;
+            place-items: center;
+            flex: 0 0 48px;
+            width: 48px;
+            height: 48px;
+            border-radius: 15px;
+            background: var(--md-sys-color-primary);
+            color: var(--md-sys-color-on-primary);
+        }
+        .${factIcon} .${materialSymbols} { font-size: 27px; }
+        .${factBody} { min-width: 0; }
+        .${factTitle} {
+            margin: 1px 0 6px;
+            color: var(--md-sys-color-on-surface);
+            font-size: 17px;
+            font-weight: 800;
+        }
+        .${factBody} p {
+            margin: 0;
+            color: var(--md-sys-color-on-surface-variant);
+            font-size: 14px;
+            line-height: 1.5;
         }
         .${residentChatCard} {
             display: flex;
