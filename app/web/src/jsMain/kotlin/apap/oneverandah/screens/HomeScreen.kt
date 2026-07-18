@@ -48,6 +48,7 @@ private const val SEARCH_DEBOUNCE_MS = 500L
 fun HomeScreen(
     onCategorySelected: (String) -> Unit,
     onServiceSelected: (String) -> Unit,
+    onChatRequested: (String) -> Unit,
 ) {
     val strings = Localization.strings
     val language = Localization.language
@@ -114,7 +115,9 @@ fun HomeScreen(
             ChatInput(
                 value = searchQuery,
                 onValueChange = { searchQuery = it },
-                onSend = { searchQuery = it.orEmpty() },
+                onSend = { value ->
+                    value?.trim()?.takeIf { it.isNotEmpty() }?.let(onChatRequested)
+                },
                 placeholder = animatedPlaceholder,
                 autoFocus = true,
             )

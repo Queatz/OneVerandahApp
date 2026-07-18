@@ -287,7 +287,7 @@ sudo systemctl restart "${SERVICE_NAME}.service"
 # actually bound the HTTPS port, independent of DNS/external firewalls.
 echo "==> Waiting for the app to come up..."
 UP=0
-for _ in $(seq 1 15); do
+for _ in $(seq 1 30); do
     if sudo curl -sk --max-time 2 "https://127.0.0.1/health" >/dev/null 2>&1; then
         UP=1
         break

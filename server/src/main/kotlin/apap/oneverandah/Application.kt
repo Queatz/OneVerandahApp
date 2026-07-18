@@ -1,9 +1,11 @@
 package apap.oneverandah
 
+import apap.oneverandah.chat.ChatSystem
 import apap.oneverandah.config.AppConfig
 import apap.oneverandah.images.ApiError
 import apap.oneverandah.images.ImageSystem
 import apap.oneverandah.routes.imageRoutes
+import apap.oneverandah.routes.chatRoutes
 import apap.oneverandah.routes.searchRoutes
 import io.ktor.http.HttpHeaders
 import io.ktor.http.HttpMethod
@@ -24,6 +26,10 @@ import io.ktor.server.response.respond
 import io.ktor.server.response.respondText
 import io.ktor.server.routing.get
 import io.ktor.server.routing.routing
+import kotlinx.coroutines.CancellationException
+import kotlinx.coroutines.CoroutineScope
+import kotlinx.coroutines.Job
+import kotlinx.coroutines.launch
 import kotlinx.coroutines.runBlocking
 import kotlinx.serialization.json.Json
 import org.slf4j.LoggerFactory
@@ -44,6 +50,7 @@ private val log = LoggerFactory.getLogger("apap.oneverandah.Application")
 fun main() {
     val config = AppConfig.load()
     val imageSystem = runBlocking { ImageSystem.create(config) }
+    val chatSystem = runBlocking { ChatSystem.create(config) }
 
     val server = embeddedServer(
         Netty,
@@ -67,7 +74,7 @@ fun main() {
                 log.info("HTTPS connector enabled on port {}", ssl.port)
             }
         },
-        module = { module(config, imageSystem) },
+        module = { module(config, imageSystem, chatSystem) },
     )
 
     if (config.autoStart) imageSystem.startup()
@@ -82,7 +89,8 @@ fun main() {
 fun Application.module() {
     val config = AppConfig.load()
     val imageSystem = runBlocking { ImageSystem.create(config) }
-    module(config, imageSystem)
+    val chatSystem = runBlocking { ChatSystem.create(config) }
+    module(config, imageSystem, chatSystem)
 }
 
 /**
@@ -90,6 +98,13 @@ fun Application.module() {
  * seeding and starts no workers (see [ImageSystem.startup]).
  */
 fun Application.module(config: AppConfig, imageSystem: ImageSystem) {
+    val chatSystem = runBlocking { ChatSystem.create(config) }
+    module(config, imageSystem, chatSystem)
+}
+
+fun Application.module(config: AppConfig, imageSystem: ImageSystem, chatSystem: ChatSystem) {
+    launchChatStartup(chatSystem::startup)
+
     install(ContentNegotiation) {
         json(Json {
             ignoreUnknownKeys = true
@@ -119,7 +134,10 @@ fun Application.module(config: AppConfig, imageSystem: ImageSystem) {
         }
     }
 
-    monitor.subscribe(ApplicationStopped) { imageSystem.shutdown() }
+    monitor.subscribe(ApplicationStopped) {
+        imageSystem.shutdown()
+        chatSystem.shutdown()
+    }
 
     routing {
         // Preserved for backwards compatibility / simple liveness probe.
@@ -128,6 +146,19 @@ fun Application.module(config: AppConfig, imageSystem: ImageSystem) {
         }
         imageRoutes(imageSystem, config)
         searchRoutes(imageSystem)
+        chatRoutes(chatSystem.chatService, chatSystem.speechService)
+    }
+}
+
+internal fun CoroutineScope.launchChatStartup(startup: suspend () -> Unit): Job {
+    return launch {
+        try {
+            startup()
+        } catch (cause: CancellationException) {
+            throw cause
+        } catch (cause: Exception) {
+            log.error("Asynchronous chat startup failed; speech initialization will retry on demand", cause)
+        }
     }
 }
 

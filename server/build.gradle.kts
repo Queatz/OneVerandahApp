@@ -19,6 +19,7 @@ kotlin {
 
 dependencies {
     api(projects.core)
+    implementation(libs.dashscope.sdk)
     implementation(libs.logback)
 
     // Ktor server
@@ -39,5 +40,6 @@ dependencies {
     implementation(libs.kotlinx.coroutines.core)
 
     testImplementation(libs.ktor.serverTestHost)
+    testImplementation(libs.ktor.clientMock)
     testImplementation(libs.kotlin.testJunit)
 }

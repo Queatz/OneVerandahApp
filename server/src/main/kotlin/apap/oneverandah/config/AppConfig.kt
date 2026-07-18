@@ -83,10 +83,23 @@ data class OssConfig(
 }
 
 /** Qwen (DashScope) image-synthesis settings. [enabled] requires an API key. */
-data class QwenConfig(
+data class QwenImageConfig(
     val endpoint: String,
     val apiKey: String,
     val model: String,
+) {
+    val enabled: Boolean get() = apiKey.isNotBlank()
+}
+
+/** Qwen chat and CosyVoice settings. All AI traffic uses the same API key. */
+data class QwenChatConfig(
+    val chatEndpoint: String,
+    val chatModel: String,
+    val ttsEndpoint: String,
+    val ttsModel: String,
+    val voiceDesignEndpoint: String,
+    val voiceDesignModel: String,
+    val apiKey: String,
 ) {
     val enabled: Boolean get() = apiKey.isNotBlank()
 }
@@ -110,7 +123,8 @@ data class AppConfig(
     val allowedCorsHosts: List<String>,
     val arango: ArangoConfig,
     val oss: OssConfig,
-    val qwen: QwenConfig,
+    val qwen: QwenImageConfig,
+    val qwenChat: QwenChatConfig,
     /** Directory that backs the local storage fallback. */
     val localStorageDir: String,
     /**
@@ -200,11 +214,22 @@ data class AppConfig(
                 cname = source.bool("OSS_CNAME", false),
             )
 
-            val qwen = QwenConfig(
+            val qwen = QwenImageConfig(
                 endpoint = source["QWEN_API_ENDPOINT"]
                     ?: "https://dashscope.aliyuncs.com/api/v1/services/aigc/text2image/image-synthesis",
                 apiKey = source["QWEN_API_KEY"] ?: "",
                 model = source["QWEN_MODEL"] ?: "wanx2.1-t2i-turbo",
+            )
+
+            val qwenChat = QwenChatConfig(
+                chatEndpoint = source["QWEN_CHAT_ENDPOINT"]
+                    ?: "https://dashscope.aliyuncs.com/compatible-mode/v1/chat/completions",
+                chatModel = source["QWEN_CHAT_MODEL"] ?: "qwen-plus",
+                ttsEndpoint = "wss://dashscope.aliyuncs.com/api-ws/v1/inference/",
+                ttsModel = "cosyvoice-v3.5-plus",
+                voiceDesignEndpoint = "https://dashscope.aliyuncs.com/api/v1/services/audio/tts/customization",
+                voiceDesignModel = source["QWEN_VOICE_DESIGN_MODEL"] ?: "voice-enrollment",
+                apiKey = source["QWEN_API_KEY"] ?: "",
             )
 
             return AppConfig(
@@ -217,6 +242,7 @@ data class AppConfig(
                 arango = arango,
                 oss = oss,
                 qwen = qwen,
+                qwenChat = qwenChat,
                 localStorageDir = source["LOCAL_STORAGE_DIR"] ?: "data/images",
                 imageCacheDir = source["IMAGE_CACHE_DIR"] ?: "data/image-cache",
                 qwenErrorLogPath = source["QWEN_ERROR_LOG_PATH"] ?: "qwen_errors.txt",

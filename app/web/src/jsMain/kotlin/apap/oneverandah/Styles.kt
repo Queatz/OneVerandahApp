@@ -170,6 +170,30 @@ object Styles {
     const val btnText = "btn-text"
     const val contentLocked = "content-locked"
 
+    // AI chat and integrated mini apps
+    const val aiChat = "ai-chat"
+    const val chatMessageRow = "chat-message-row"
+    const val chatMessageRowYou = "chat-message-row-you"
+    const val chatMessageMeta = "chat-message-meta"
+    const val chatBubble = "chat-bubble"
+    const val chatBubbleYou = "chat-bubble-you"
+    const val chatStatus = "chat-status"
+    const val chatError = "chat-error"
+    const val miniAppCard = "mini-app-card"
+    const val languageStudyCard = "language-study-card"
+    const val languageSentence = "language-sentence"
+    const val languageToken = "language-token"
+    const val languageTokenSelected = "language-token-selected"
+    const val sentencePlay = "sentence-play"
+    const val wordDefinition = "word-definition"
+    const val wordDefinitionTitle = "word-definition-title"
+    const val wordDefinitionLabel = "word-definition-label"
+    const val residentChatCard = "resident-chat-card"
+    const val residentChatAvatar = "resident-chat-avatar"
+    const val residentChatBody = "resident-chat-body"
+    const val residentChatName = "resident-chat-name"
+    const val residentChatAction = "resident-chat-action"
+
     // Offer toolbar (Save / Share)
     const val offerToolbar = "offer-toolbar"
     const val toolbarBtn = "toolbar-btn"
@@ -1251,6 +1275,154 @@ object Styles {
         .${chatSend} .${materialSymbols} { font-size: 22px; }
         .${chatSend}:hover { filter: brightness(1.07); }
         .${chatSend}:active { transform: translateY(-50%) scale(0.94); }
+
+        .${aiChat} {
+            display: flex;
+            flex-direction: column;
+            gap: 18px;
+            min-height: 100%;
+            padding: 8px 0 20px;
+        }
+        .${chatMessageRow} {
+            display: flex;
+            flex-direction: column;
+            align-items: flex-start;
+            gap: 5px;
+            max-width: 88%;
+        }
+        .${chatMessageRowYou} {
+            align-self: flex-end;
+            align-items: flex-end;
+        }
+        .${chatMessageMeta} {
+            padding: 0 8px;
+            color: var(--md-sys-color-on-surface-variant);
+            font-size: 12px;
+            font-weight: 700;
+            letter-spacing: 0.03em;
+        }
+        .${chatBubble} {
+            padding: 12px 15px;
+            border-radius: 6px 20px 20px 20px;
+            background: var(--md-sys-color-surface-variant);
+            color: var(--md-sys-color-on-surface);
+            box-shadow: 0 2px 8px var(--md-shadow);
+        }
+        .${chatBubbleYou} {
+            border-radius: 20px 6px 20px 20px;
+            background: var(--md-sys-color-primary-container);
+            color: var(--md-sys-color-on-primary-container);
+        }
+        .${chatBubble} p { margin: 0; line-height: 1.5; white-space: pre-wrap; }
+        .${chatStatus}, .${chatError} {
+            display: flex;
+            align-items: center;
+            gap: 8px;
+            padding: 4px 8px;
+            color: var(--md-sys-color-on-surface-variant);
+            font-size: 14px;
+        }
+        .${chatStatus} .${materialSymbols} { animation: spin 1.2s linear infinite; }
+        .${chatError} { color: var(--md-sys-color-error); }
+        @keyframes spin { to { transform: rotate(360deg); } }
+        .${miniAppCard} {
+            width: 100%;
+            margin-top: 5px;
+            border: 1px solid color-mix(in srgb, var(--md-sys-color-outline) 45%, transparent);
+            border-radius: 20px;
+            background: var(--md-sys-color-surface);
+            color: var(--md-sys-color-on-surface);
+            box-shadow: 0 5px 18px var(--md-shadow);
+        }
+        .${languageStudyCard} { padding: 16px; }
+        .${languageSentence} {
+            display: flex;
+            flex-wrap: wrap;
+            gap: 7px;
+            margin-bottom: 14px;
+        }
+        .${languageToken} {
+            border: 0;
+            border-radius: 10px;
+            padding: 6px 8px;
+            background: var(--md-sys-color-surface-variant);
+            color: var(--md-sys-color-on-surface);
+            font: inherit;
+            font-size: 18px;
+            cursor: pointer;
+            transition: background 0.15s, color 0.15s, transform 0.15s;
+        }
+        .${languageToken}:hover { transform: translateY(-1px); }
+        .${languageTokenSelected} {
+            background: var(--md-sys-color-primary-container);
+            color: var(--md-sys-color-on-primary-container);
+        }
+        .${sentencePlay} {
+            display: inline-flex;
+            align-items: center;
+            gap: 7px;
+            border: 0;
+            border-radius: 999px;
+            padding: 9px 13px;
+            background: var(--md-sys-color-primary);
+            color: var(--md-sys-color-on-primary);
+            font: inherit;
+            font-weight: 700;
+            cursor: pointer;
+        }
+        .${sentencePlay}:disabled { opacity: 0.48; cursor: wait; }
+        .${wordDefinition} {
+            display: flex;
+            flex-direction: column;
+            gap: 5px;
+            margin-top: 14px;
+            padding: 14px;
+            border-radius: 14px;
+            background: var(--md-sys-color-surface-variant);
+        }
+        .${wordDefinition} p { margin: 0 0 7px; line-height: 1.45; }
+        .${wordDefinitionTitle} { font-size: 20px; font-weight: 800; }
+        .${wordDefinitionLabel} {
+            margin-top: 3px;
+            color: var(--md-sys-color-primary);
+            font-size: 11px;
+            font-weight: 800;
+            letter-spacing: 0.07em;
+            text-transform: uppercase;
+        }
+        .${residentChatCard} {
+            display: flex;
+            align-items: center;
+            gap: 12px;
+            padding: 14px;
+            text-align: left;
+            font: inherit;
+            cursor: pointer;
+        }
+        .${residentChatAvatar} {
+            display: grid;
+            place-items: center;
+            flex: 0 0 48px;
+            width: 48px;
+            height: 48px;
+            border-radius: 50%;
+            background: var(--md-sys-color-primary-container);
+            color: var(--md-sys-color-on-primary-container);
+        }
+        .${residentChatBody} {
+            display: flex;
+            flex: 1;
+            min-width: 0;
+            flex-direction: column;
+            gap: 3px;
+            color: var(--md-sys-color-on-surface-variant);
+        }
+        .${residentChatName} { color: var(--md-sys-color-on-surface); font-weight: 800; }
+        .${residentChatAction} { color: var(--md-sys-color-primary); font-size: 12px; font-weight: 700; }
+        @media (max-width: 420px) {
+            .${chatMessageRow} { max-width: 94%; }
+            .${languageToken} { font-size: 17px; }
+        }
 
         .${dialogActions} {
             display: flex;

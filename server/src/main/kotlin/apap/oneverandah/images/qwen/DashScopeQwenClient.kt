@@ -1,6 +1,6 @@
 package apap.oneverandah.images.qwen
 
-import apap.oneverandah.config.QwenConfig
+import apap.oneverandah.config.QwenImageConfig
 import apap.oneverandah.images.storage.GeneratedImage
 import io.ktor.client.HttpClient
 import io.ktor.client.call.body
@@ -32,7 +32,7 @@ import kotlinx.serialization.json.put
  * retry/backoff policy.
  */
 class DashScopeQwenClient(
-    private val config: QwenConfig,
+    private val config: QwenImageConfig,
     private val client: HttpClient,
     private val pollIntervalMs: Long = 2_000,
     private val maxPollAttempts: Int = 90,

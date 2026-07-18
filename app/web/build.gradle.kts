@@ -27,6 +27,9 @@ kotlin {
             // splitChunks) are never referenced -> blank page.
             implementation(devNpm("html-webpack-plugin", "5.6.3"))
         }
+        jsTest.dependencies {
+            implementation(kotlin("test"))
+        }
     }
 }
 

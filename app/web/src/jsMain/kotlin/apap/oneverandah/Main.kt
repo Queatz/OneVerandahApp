@@ -2,6 +2,10 @@ package apap.oneverandah
 
 import androidx.compose.runtime.Composable
 import androidx.compose.runtime.LaunchedEffect
+import androidx.compose.runtime.getValue
+import androidx.compose.runtime.mutableStateOf
+import androidx.compose.runtime.remember
+import androidx.compose.runtime.setValue
 import app.softwork.routingcompose.BrowserRouter
 import app.softwork.routingcompose.Router
 import apap.oneverandah.data.Catalog
@@ -14,6 +18,7 @@ import apap.oneverandah.screens.ServicesScreen
 import apap.oneverandah.screens.AboutScreen
 import apap.oneverandah.screens.HelpScreen
 import apap.oneverandah.screens.ListServiceScreen
+import apap.oneverandah.screens.ChatScreen
 import org.jetbrains.compose.web.renderComposable
 
 fun main() {
@@ -32,6 +37,7 @@ fun main() {
  */
 @Composable
 fun App() {
+    var pendingChatMessage by remember { mutableStateOf<String?>(null) }
     // Load generated cover images on launch and keep them fresh by polling the
     // backend. Failures are swallowed inside ImageStore so the UI always renders.
     LaunchedEffect(Unit) {
@@ -99,10 +105,25 @@ fun App() {
             }
         }
 
+        route("chat") {
+            noMatch {
+                ChatScreen(
+                    initialMessage = pendingChatMessage,
+                    onInitialMessageConsumed = { pendingChatMessage = null },
+                    onBack = { router.navigate("/") },
+                    onHome = { router.navigate("/") },
+                )
+            }
+        }
+
         route("/") {
             HomeScreen(
                 onCategorySelected = { categoryId -> router.navigate("/category/$categoryId") },
                 onServiceSelected = { serviceId -> router.navigate("/service/$serviceId") },
+                onChatRequested = { message ->
+                    pendingChatMessage = message
+                    router.navigate("/chat")
+                },
             )
         }
 
@@ -110,6 +131,10 @@ fun App() {
             HomeScreen(
                 onCategorySelected = { categoryId -> router.navigate("/category/$categoryId") },
                 onServiceSelected = { serviceId -> router.navigate("/service/$serviceId") },
+                onChatRequested = { message ->
+                    pendingChatMessage = message
+                    router.navigate("/chat")
+                },
             )
         }
     }
