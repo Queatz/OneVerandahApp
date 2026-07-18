@@ -132,7 +132,7 @@ class ChatServiceTest {
         val engine = MockEngine { request ->
             requestBody = (request.body as OutgoingContent.ByteArrayContent).bytes().decodeToString()
             respond(
-                content = """{"choices":[{"message":{"content":"{\"text\":\"Let's learn.\",\"languageStudy\":null,\"factId\":null,\"followUpQuestions\":[\"Which phrase should we practise?\",\"Would you like another example?\",\"Should I explain the grammar?\"]}"}}]}""",
+                content = """{"choices":[{"message":{"content":"{\"text\":\"Let's learn.\",\"languageStudy\":null,\"factId\":null,\"followUpQuestions\":[\"Practise another phrase\",\"Show me another example\",\"Explain the grammar\"]}"}}]}""",
                 status = HttpStatusCode.OK,
                 headers = headersOf(HttpHeaders.ContentType, "application/json"),
             )
@@ -161,6 +161,10 @@ class ChatServiceTest {
         assertContains(systemPrompt, "教我如何用越南语谈论黏性")
         assertContains(systemPrompt, "Always provide exactly three concise, distinct followUpQuestions")
         assertContains(systemPrompt, "in the user's active language")
+        assertContains(systemPrompt, "written from the user's perspective")
+        assertContains(systemPrompt, "They may be questions or commands")
+        assertContains(systemPrompt, "Never phrase them from the assistant's perspective")
+        assertContains(systemPrompt, "Prefer short messages")
         client.close()
     }
 
@@ -194,7 +198,7 @@ class ChatServiceTest {
                   {"text":"Tôi","definition":"I","contextualMeaning":"The speaker"}
                 ]
               },
-              "followUpQuestions": ["Can we practise another sentence?", "What does this phrase mean?", "How do I pronounce it?"]
+              "followUpQuestions": ["Practise another sentence", "Explain this phrase", "Help me pronounce it"]
             }
             """.trimIndent(),
         )
@@ -231,9 +235,9 @@ class ChatServiceTest {
               "languageStudy": null,
               "factId": "balcony-drains",
               "followUpQuestions": [
-                "  How often should I check the drains?  ",
-                "What tools should I use?",
-                "What else should I prepare for heavy rain?"
+                "  How often should I check?  ",
+                "Show me the right tools",
+                "Help me prepare for heavy rain"
               ]
             }
             """.trimIndent(),
@@ -241,9 +245,9 @@ class ChatServiceTest {
 
         assertEquals(
             listOf(
-                "How often should I check the drains?",
-                "What tools should I use?",
-                "What else should I prepare for heavy rain?",
+                "How often should I check?",
+                "Show me the right tools",
+                "Help me prepare for heavy rain",
             ),
             result.followUpQuestions,
         )
