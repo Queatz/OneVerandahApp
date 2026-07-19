@@ -164,10 +164,12 @@ object Styles {
 
     // Chat-style input (text field with a send button that appears when typing)
     const val chatInput = "chat-input"
+    const val chatInputListening = "chat-input-listening"
     const val chatInputField = "chat-input-field"
     const val chatInputFieldMultiline = "chat-input-field-multiline"
     const val chatInputFieldFilled = "chat-input-field-filled"
     const val chatSend = "chat-send"
+    const val chatVoiceIndicator = "chat-voice-indicator"
     const val btnText = "btn-text"
     const val contentLocked = "content-locked"
 
@@ -1258,7 +1260,12 @@ object Styles {
             align-items: center;
         }
         .${chatInputField} {
-            transition: padding-right 0.2s ease;
+            transition: padding-right 0.2s ease, background 0.2s ease, box-shadow 0.2s ease;
+        }
+        .${chatInputListening} .${chatInputField} {
+            padding-right: 60px;
+            background: color-mix(in srgb, var(--md-sys-color-primary) 10%, transparent);
+            box-shadow: 0 0 0 2px var(--md-sys-color-primary);
         }
         .${chatInputFieldMultiline} {
             min-height: 56px;
@@ -1292,6 +1299,22 @@ object Styles {
         .${chatSend} .${materialSymbols} { font-size: 22px; }
         .${chatSend}:hover { filter: brightness(1.07); }
         .${chatSend}:active { transform: translateY(-50%) scale(0.94); }
+        .${chatVoiceIndicator} {
+            position: absolute;
+            right: 16px;
+            top: 50%;
+            transform: translateY(-50%);
+            display: grid;
+            place-items: center;
+            color: var(--md-sys-color-primary);
+            pointer-events: none;
+            animation: voice-pulse 1s ease-in-out infinite;
+        }
+        .${chatVoiceIndicator} .${materialSymbols} { font-size: 24px; }
+        @keyframes voice-pulse {
+            0%, 100% { opacity: 0.55; transform: translateY(-50%) scale(0.9); }
+            50% { opacity: 1; transform: translateY(-50%) scale(1.12); }
+        }
 
         .${aiChat} {
             display: flex;

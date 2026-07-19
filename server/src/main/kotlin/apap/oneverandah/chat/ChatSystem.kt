@@ -5,11 +5,13 @@ import apap.oneverandah.data.Catalog
 import io.ktor.client.HttpClient
 import io.ktor.client.engine.cio.CIO
 import io.ktor.client.plugins.HttpTimeout
+import io.ktor.client.plugins.websocket.WebSockets
 import org.slf4j.LoggerFactory
 
 class ChatSystem(
     val chatService: ChatService,
     val speechService: SpeechService,
+    val asrRelay: QwenAsrRelay,
     private val httpClient: HttpClient,
     private val voiceDesignEnabled: Boolean,
 ) {
@@ -31,6 +33,7 @@ class ChatSystem(
                     connectTimeoutMillis = 30_000
                     socketTimeoutMillis = 120_000
                 }
+                install(WebSockets)
                 expectSuccess = false
             }
             val arangoRepository = ArangoChatRepository.connect(config.arango, client)
@@ -48,6 +51,7 @@ class ChatSystem(
                     residentDirectory = ResidentDirectory(residents),
                 ),
                 speechService = SpeechService(DashScopeSpeechClient(config.qwenChat, client)),
+                asrRelay = QwenAsrRelay(config.qwenChat, client),
                 httpClient = client,
                 voiceDesignEnabled = config.qwenChat.enabled,
             )

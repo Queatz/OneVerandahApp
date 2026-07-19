@@ -6,11 +6,13 @@ import apap.oneverandah.api.ChatRequest
 import apap.oneverandah.api.SpeechRequest
 import apap.oneverandah.api.SpeechResponse
 import apap.oneverandah.chat.ChatService
+import apap.oneverandah.chat.QwenAsrRelay
 import apap.oneverandah.chat.SpeechService
 import io.ktor.http.HttpStatusCode
 import io.ktor.server.request.receive
 import io.ktor.server.response.respond
 import io.ktor.server.routing.Route
+import io.ktor.server.websocket.webSocket
 import io.ktor.server.routing.get
 import io.ktor.server.routing.post
 import java.util.Base64
@@ -46,5 +48,11 @@ fun Route.chatRoutes(chatService: ChatService, speechService: SpeechService) {
                 contentType = speech.contentType,
             ),
         )
+    }
+}
+
+fun Route.asrRoutes(asrRelay: QwenAsrRelay) {
+    webSocket("/api/chat/asr") {
+        asrRelay.relay(this)
     }
 }

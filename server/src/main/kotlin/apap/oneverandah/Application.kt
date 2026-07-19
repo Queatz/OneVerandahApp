@@ -6,6 +6,7 @@ import apap.oneverandah.images.ApiError
 import apap.oneverandah.images.ImageSystem
 import apap.oneverandah.routes.imageRoutes
 import apap.oneverandah.routes.chatRoutes
+import apap.oneverandah.routes.asrRoutes
 import apap.oneverandah.routes.searchRoutes
 import io.ktor.http.HttpHeaders
 import io.ktor.http.HttpMethod
@@ -26,6 +27,7 @@ import io.ktor.server.response.respond
 import io.ktor.server.response.respondText
 import io.ktor.server.routing.get
 import io.ktor.server.routing.routing
+import io.ktor.server.websocket.WebSockets
 import kotlinx.coroutines.CancellationException
 import kotlinx.coroutines.CoroutineScope
 import kotlinx.coroutines.Job
@@ -113,6 +115,7 @@ fun Application.module(config: AppConfig, imageSystem: ImageSystem, chatSystem: 
         })
     }
     install(CallLogging) { level = Level.INFO }
+    install(WebSockets)
     install(CORS) {
         allowMethod(HttpMethod.Get)
         allowMethod(HttpMethod.Post)
@@ -147,6 +150,7 @@ fun Application.module(config: AppConfig, imageSystem: ImageSystem, chatSystem: 
         imageRoutes(imageSystem, config)
         searchRoutes(imageSystem)
         chatRoutes(chatSystem.chatService, chatSystem.speechService)
+        asrRoutes(chatSystem.asrRelay)
     }
 }
 

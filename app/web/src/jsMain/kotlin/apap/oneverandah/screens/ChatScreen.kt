@@ -119,7 +119,7 @@ fun ChatScreen(
                 value = draft,
                 onValueChange = { draft = it },
                 onSend = { it?.let(::sendMessage) },
-                placeholder = strings.chatPlaceholder,
+                placeholder = "Hold to speak...",
                 autoFocus = initialMessage == null,
                 multiline = true,
             )

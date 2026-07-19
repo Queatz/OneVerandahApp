@@ -198,6 +198,16 @@ set_env_var "SSL_KEY_ALIAS" "oneverandah"
 # fails to unlock the key with BadPaddingException at startup.
 set_env_var "SSL_PRIVATE_KEY_PASSWORD" "${KEYSTORE_PASSWORD}"
 
+# Voice input uses a workspace-scoped Qwen realtime endpoint. The workspace ID
+# cannot be inferred from the API key, so fail the deployment instead of
+# restarting with a backend that accepts /api/chat/asr but cannot transcribe.
+set_env_var_if_blank "QWEN_ASR_MODEL" "qwen3-asr-flash-realtime"
+if ! sudo grep -qE '^QWEN_ASR_WORKSPACE_ID=.+$|^QWEN_ASR_ENDPOINT=.+$' "${ENV_FILE}"; then
+    echo "ERROR: realtime voice input requires QWEN_ASR_WORKSPACE_ID or QWEN_ASR_ENDPOINT in ${ENV_FILE}." >&2
+    echo "       Add the Beijing Model Studio workspace ID to the local .env and deploy again." >&2
+    exit 1
+fi
+
 # If init.sh installed ArangoDB locally, keep a freshly-uploaded .env with blank
 # ARANGO_* values from silently disabling persistence and falling back to the
 # in-memory repository in production.

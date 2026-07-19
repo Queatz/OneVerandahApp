@@ -91,7 +91,7 @@ data class QwenImageConfig(
     val enabled: Boolean get() = apiKey.isNotBlank()
 }
 
-/** Qwen chat and CosyVoice settings. All AI traffic uses the same API key. */
+/** Qwen chat, speech synthesis, and speech recognition settings. */
 data class QwenChatConfig(
     val chatEndpoint: String,
     val chatModel: String,
@@ -99,9 +99,29 @@ data class QwenChatConfig(
     val ttsModel: String,
     val voiceDesignEndpoint: String,
     val voiceDesignModel: String,
+    val asrEndpoint: String,
+    val asrModel: String,
     val apiKey: String,
 ) {
     val enabled: Boolean get() = apiKey.isNotBlank()
+    val asrUnavailableReason: String?
+        get() = when {
+            !enabled -> "QWEN_API_KEY"
+            asrEndpoint.isBlank() -> "QWEN_ASR_WORKSPACE_ID or QWEN_ASR_ENDPOINT"
+            asrModel.isBlank() -> "QWEN_ASR_MODEL"
+            else -> null
+        }
+    val asrEnabled: Boolean get() = asrUnavailableReason == null
+
+    fun asrUrl(language: String? = null): String {
+        val base = "$asrEndpoint${if ('?' in asrEndpoint) '&' else '?'}model=$asrModel"
+        return if (language.isNullOrBlank()) base else "$base&language=$language"
+    }
+
+    fun asrHeaders(): Map<String, String> = mapOf(
+        "Authorization" to "Bearer $apiKey",
+        "OpenAI-Beta" to "realtime=v1",
+    )
 }
 
 /**
@@ -229,6 +249,11 @@ data class AppConfig(
                 ttsModel = "cosyvoice-v3.5-plus",
                 voiceDesignEndpoint = "https://dashscope.aliyuncs.com/api/v1/services/audio/tts/customization",
                 voiceDesignModel = source["QWEN_VOICE_DESIGN_MODEL"] ?: "voice-enrollment",
+                asrEndpoint = source["QWEN_ASR_ENDPOINT"]
+                    ?: source["QWEN_ASR_WORKSPACE_ID"]?.let { workspaceId ->
+                        "wss://$workspaceId.cn-beijing.maas.aliyuncs.com/api-ws/v1/realtime"
+                    }.orEmpty(),
+                asrModel = source["QWEN_ASR_MODEL"] ?: "qwen3-asr-flash-realtime",
                 apiKey = source["QWEN_API_KEY"] ?: "",
             )
 

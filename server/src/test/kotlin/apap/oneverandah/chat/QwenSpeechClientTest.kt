@@ -172,6 +172,8 @@ class QwenSpeechClientTest {
         ttsModel = "cosyvoice-v3.5-plus",
         voiceDesignEndpoint = "https://example.test/customization",
         voiceDesignModel = "voice-enrollment",
+        asrEndpoint = "wss://example.test/realtime",
+        asrModel = "qwen3-asr-flash-realtime",
         apiKey = "test-key",
     )
 }

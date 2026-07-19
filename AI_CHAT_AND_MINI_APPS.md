@@ -329,8 +329,12 @@ The relevant configuration is resolved in `AppConfig`:
 | `QWEN_CHAT_ENDPOINT` | Defaults to the DashScope OpenAI-compatible chat-completions endpoint |
 | `QWEN_CHAT_MODEL` | Defaults to `qwen-plus` |
 | `QWEN_VOICE_DESIGN_MODEL` | Defaults to `voice-enrollment` |
+| `QWEN_ASR_WORKSPACE_ID` | Beijing Model Studio workspace ID; required to enable realtime voice input |
+| `QWEN_ASR_ENDPOINT` | Optional full workspace-scoped realtime endpoint override for another region |
+| `QWEN_ASR_MODEL` | Defaults to `qwen3-asr-flash-realtime` |
 
 CosyVoice synthesis and voice-design endpoints are intentionally fixed to matching Beijing-region DashScope endpoints. Do not restore old speech endpoint overrides that can mix regions or use an incompatible multimodal HTTP route.
+Realtime ASR uses `wss://{WorkspaceId}.cn-beijing.maas.aliyuncs.com/api-ws/v1/realtime` with the model supplied as a query parameter. The backend adds the Qwen API key and relays WebSocket events so credentials are never sent to the browser.
 
 ## How to add a new mini app
 
