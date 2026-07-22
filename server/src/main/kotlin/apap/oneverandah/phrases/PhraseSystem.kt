@@ -119,7 +119,7 @@ class PhraseSystem private constructor(
         private val log = LoggerFactory.getLogger(PhraseSystem::class.java)
 
         /** Internal pseudo-phrase id used to persist the phrasebook cover URL. */
-        const val COVER_PHRASE_ID = "__phrases_cover__"
+        const val COVER_PHRASE_ID = InMemoryPhraseRepository.COVER_PHRASE_ID
 
         /**
          * Builds a [PhraseSystem] reusing the image system's [storage] and
@@ -140,18 +140,31 @@ class PhraseSystem private constructor(
                 expectSuccess = false
             }
 
-            val phraseRepo = ArangoPhraseRepository.connect(config.arango, client)
-                ?: InMemoryPhraseRepository().also {
-                    if (config.isProduction) {
-                        log.warn("Production phrase repository fell back to in-memory storage")
-                    } else {
-                        log.info("Phrase repository using in-memory development store")
-                    }
-                }
+            val arangoPhrases = ArangoPhraseRepository.connect(config.arango, client)
+            if (arangoPhrases == null && config.isProduction) {
+                if (ownsClient) runCatching { client.close() }
+                error(
+                    "Production phrases require ArangoDB at ${config.arango.baseUrl}. " +
+                        "Set ARANGO_HOST (and credentials) so phrase edits/reactions persist across restarts.",
+                )
+            }
+            val phraseRepo: PhraseRepository = arangoPhrases ?: InMemoryPhraseRepository().also {
+                log.info(
+                    "Phrase repository using in-memory development store " +
+                        "(data resets on restart; configure ARANGO_HOST to persist)",
+                )
+            }
+            log.info(
+                "Phrase repository backend: {}",
+                if (arangoPhrases != null) "arangodb" else "in-memory",
+            )
 
             val photoRepo = ArangoReferencePhotoRepository.connect(config.arango, client)
                 ?: InMemoryReferencePhotoRepository().also {
-                    log.info("Reference photo repository using ${if (config.arango.enabled) "fallback " else ""}in-memory store")
+                    log.info(
+                        "Reference photo repository using {}in-memory store",
+                        if (config.arango.enabled) "fallback " else "",
+                    )
                 }
 
             val qwen: QwenClient = if (config.qwen.enabled) {

@@ -3,8 +3,10 @@ package apap.oneverandah.phrases.arango
 import apap.oneverandah.config.ArangoConfig
 import apap.oneverandah.images.arango.ArangoException
 import apap.oneverandah.phrases.Phrase
+import apap.oneverandah.phrases.InMemoryPhraseRepository
 import apap.oneverandah.phrases.PhraseRepository
 import io.ktor.client.HttpClient
+import io.ktor.client.request.get
 import io.ktor.client.request.header
 import io.ktor.client.request.post
 import io.ktor.client.request.setBody
@@ -20,6 +22,7 @@ import kotlinx.serialization.json.buildJsonObject
 import kotlinx.serialization.json.encodeToJsonElement
 import kotlinx.serialization.json.jsonArray
 import kotlinx.serialization.json.jsonObject
+import kotlinx.serialization.json.jsonPrimitive
 import kotlinx.serialization.json.put
 import org.slf4j.LoggerFactory
 import java.util.Base64
@@ -66,16 +69,50 @@ class ArangoPhraseRepository private constructor(
 
     override suspend fun seedIfEmpty(seed: List<Phrase>) {
         val existing = findAll()
-        if (existing.isNotEmpty()) return
+        // Cover pseudo-doc alone must not block (or satisfy) the founding seed.
+        if (InMemoryPhraseRepository.hasCatalogPhrases(existing.map { it.id })) return
+
+        // If the collection has rows we failed to decode, reseeding would
+        // overwrite=_key and wipe reactions/edits. Refuse and log instead.
+        val total = runCatching { collectionCount() }.getOrDefault(existing.size.toLong())
+        if (total > existing.size) {
+            log.error(
+                "Refusing phrase seed: '{}' has {} document(s) but only {} decoded. " +
+                    "Fix serialization instead of reseeding (which would reset reactions).",
+                collection,
+                total,
+                existing.size,
+            )
+            return
+        }
+
         val now = System.currentTimeMillis()
+        val existingIds = existing.map { it.id }.toHashSet()
+        var inserted = 0
         seed.forEachIndexed { index, phrase ->
+            if (phrase.id in existingIds) return@forEachIndexed
             save(
                 phrase.copy(
                     createdAt = phrase.createdAt.takeIf { it > 0 } ?: (now + index),
                     updatedAt = phrase.updatedAt.takeIf { it > 0 } ?: (now + index),
                 ),
             )
+            inserted++
         }
+        if (inserted > 0) {
+            log.info("Seeded {} founding phrase(s) into ArangoDB '{}'", inserted, collection)
+        }
+    }
+
+    private suspend fun collectionCount(): Long {
+        val response = client.get("$dbUrl/_api/collection/$collection/count") {
+            authed()
+        }
+        ensureSuccess(response, "count $collection")
+        val text = response.bodyAsText()
+        val count = json.parseToJsonElement(text).jsonObject["count"]
+            ?.jsonPrimitive?.content?.toLongOrNull()
+        return count ?: 0L
     }
 
     private suspend fun query(aql: String, bindVars: JsonObject?): List<Phrase> {
@@ -93,7 +130,11 @@ class ArangoPhraseRepository private constructor(
         ensureSuccess(response, "query")
         val result = json.parseToJsonElement(text).jsonObject["result"]?.jsonArray ?: return emptyList()
         return result.mapNotNull { element ->
-            runCatching { json.decodeFromJsonElement(Phrase.serializer(), element) }.getOrNull()
+            runCatching { json.decodeFromJsonElement(Phrase.serializer(), element) }
+                .onFailure { err ->
+                    log.warn("Skipping undecodable phrase document: {}", err.message)
+                }
+                .getOrNull()
         }
     }
 
@@ -118,7 +159,12 @@ class ArangoPhraseRepository private constructor(
                 log.info("Phrase repository connected to ArangoDB collection '{}'", repo.collection)
                 repo
             } catch (e: Exception) {
-                log.warn("ArangoDB phrases unavailable ({}); falling back to in-memory", e.message)
+                log.warn(
+                    "ArangoDB phrases unavailable at {} ({}); falling back to in-memory " +
+                        "(phrase edits and reactions will reset on restart)",
+                    config.baseUrl,
+                    e.message,
+                )
                 null
             }
         }

@@ -9,6 +9,14 @@ interface PhraseRepository {
     suspend fun findById(id: String): PhraseModel?
     suspend fun save(phrase: PhraseModel)
     suspend fun delete(id: String): Boolean
+
+    /**
+     * Inserts the founding deck only when no real phrases exist yet.
+     *
+     * Important: this must never overwrite edits, reactions, or admin-created
+     * phrases. The internal cover pseudo-document is ignored when deciding
+     * emptiness so a cover-only collection still receives the founding deck.
+     */
     suspend fun seedIfEmpty(seed: List<PhraseModel> = PhrasesCatalog.all)
 }
 
@@ -28,13 +36,23 @@ class InMemoryPhraseRepository : PhraseRepository {
     override suspend fun delete(id: String): Boolean = items.remove(id) != null
 
     override suspend fun seedIfEmpty(seed: List<PhraseModel>) {
-        if (items.isNotEmpty()) return
+        if (hasCatalogPhrases(items.keys)) return
         val now = System.currentTimeMillis()
         seed.forEachIndexed { index, phrase ->
+            // Never clobber a row that appeared between the emptiness check and insert.
+            if (items.containsKey(phrase.id)) return@forEachIndexed
             items[phrase.id] = phrase.copy(
                 createdAt = phrase.createdAt.takeIf { it > 0 } ?: (now + index),
                 updatedAt = phrase.updatedAt.takeIf { it > 0 } ?: (now + index),
             )
         }
+    }
+
+    companion object {
+        /** Pseudo-id used by [apap.oneverandah.phrases.PhraseSystem] for cover URL storage. */
+        const val COVER_PHRASE_ID = "__phrases_cover__"
+
+        fun hasCatalogPhrases(ids: Iterable<String>): Boolean =
+            ids.any { it != COVER_PHRASE_ID }
     }
 }
