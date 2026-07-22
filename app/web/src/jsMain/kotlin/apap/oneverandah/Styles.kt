@@ -254,6 +254,7 @@ object Styles {
     const val adminUploadBlock = "admin-upload-block"
     const val adminCoverCard = "admin-cover-card"
     const val adminCoverPreview = "admin-cover-preview"
+    const val adminPhraseThumb = "admin-phrase-thumb"
     const val adminLocationSuggestions = "admin-location-suggestions"
     const val adminIconField = "admin-icon-field"
     const val adminIconInput = "admin-icon-input"
@@ -2019,6 +2020,15 @@ object Styles {
             color: var(--md-sys-color-primary);
             pointer-events: none;
         }
+        .${adminPhraseThumb} {
+            width: 48px;
+            height: 48px;
+            border-radius: 12px;
+            object-fit: cover;
+            flex-shrink: 0;
+            background: var(--ov-surface-2, rgba(0,0,0,0.06));
+        }
+
         .${adminRefGrid} {
             display: grid;
             grid-template-columns: repeat(2, minmax(0, 1fr));

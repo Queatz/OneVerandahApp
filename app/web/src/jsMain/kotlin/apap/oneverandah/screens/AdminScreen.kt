@@ -61,6 +61,8 @@ fun AdminScreen(onBack: () -> Unit) {
     var pendingDeletePhrase by remember { mutableStateOf<Phrase?>(null) }
     var pendingDeletePhoto by remember { mutableStateOf<ReferencePhoto?>(null) }
     var generateTarget by remember { mutableStateOf<GenerateTarget?>(null) }
+    /** Latest generated image URL to inject into the open phrase editor. */
+    var editorImageOverride by remember { mutableStateOf<String?>(null) }
 
     fun refresh() {
         if (!AdminAuth.isSignedIn) return
@@ -137,10 +139,12 @@ fun AdminScreen(onBack: () -> Unit) {
             PhraseEditorDialog(
                 visible = showEditor,
                 initial = editing,
+                injectedImageUrl = editorImageOverride,
                 knownLocations = knownLocations(phrases),
                 onDismiss = {
                     showEditor = false
                     editing = null
+                    editorImageOverride = null
                 },
                 onSave = { request ->
                     scope.launch {
@@ -152,6 +156,7 @@ fun AdminScreen(onBack: () -> Unit) {
                             }
                             showEditor = false
                             editing = null
+                            editorImageOverride = null
                             refresh()
                             Toaster.show(strings.adminSaved)
                         } catch (e: Throwable) {
@@ -164,9 +169,10 @@ fun AdminScreen(onBack: () -> Unit) {
                         phraseId = phraseDraftId ?: editing?.id,
                         seedImageUrl = currentImageUrl,
                         onApplied = { url ->
-                            // Editor re-reads via parent refresh after close; stash for immediate field fill.
-                            generateTarget = null
-                            // Re-open editor is already open; PhraseEditorDialog watches external image via key.
+                            // Push into the open editor immediately (works for edit + create).
+                            editing = editing?.copy(imageUrl = url)
+                                ?: editing
+                            editorImageOverride = url
                         },
                     )
                 },
@@ -228,40 +234,49 @@ fun AdminScreen(onBack: () -> Unit) {
                     }
                     null -> ""
                 },
-                onDismiss = { generateTarget = null },
+                onDismiss = { if (generateTarget != null) generateTarget = null },
                 onGenerate = { prompt, selectedIds ->
-                    val target = generateTarget ?: return@GeneratePhotoDialog
-                    scope.launch {
-                        try {
-                            val result = PhraseApi.generateImage(
-                                GeneratePhraseImageRequest(
-                                    prompt = prompt,
-                                    referencePhotoIds = selectedIds,
-                                    phraseId = (target as? GenerateTarget.Phrase)?.phraseId,
-                                    asCover = target is GenerateTarget.Cover,
-                                ),
-                            )
-                            when (target) {
-                                is GenerateTarget.Cover -> {
-                                    coverImageUrl = result.coverImageUrl ?: result.imageUrl
-                                }
-                                is GenerateTarget.Phrase -> {
-                                    result.phrase?.let { updated ->
-                                        phrases = phrases.map { if (it.id == updated.id) updated else it }
-                                    }
-                                    // If editing this phrase, push image into editor via refresh.
-                                    if (showEditor && editing?.id == target.phraseId) {
-                                        editing = result.phrase ?: editing?.copy(imageUrl = result.imageUrl)
+                    val target = generateTarget
+                        ?: error("Generate sheet closed before generation started")
+                    val result = PhraseApi.generateImage(
+                        GeneratePhraseImageRequest(
+                            prompt = prompt,
+                            referencePhotoIds = selectedIds,
+                            phraseId = (target as? GenerateTarget.Phrase)?.phraseId,
+                            asCover = target is GenerateTarget.Cover,
+                        ),
+                    )
+                    val imageUrl = result.imageUrl
+                    when (target) {
+                        is GenerateTarget.Cover -> {
+                            coverImageUrl = result.coverImageUrl ?: imageUrl
+                        }
+                        is GenerateTarget.Phrase -> {
+                            result.phrase?.let { updated ->
+                                phrases = phrases.map { if (it.id == updated.id) updated else it }
+                            } ?: run {
+                                // Generated without attaching (e.g. draft) — still reflect URL if list has id later.
+                                target.phraseId?.let { id ->
+                                    phrases = phrases.map {
+                                        if (it.id == id) it.copy(imageUrl = imageUrl) else it
                                     }
                                 }
                             }
-                            generateTarget = null
-                            refresh()
-                            Toaster.show(strings.adminSaved)
-                        } catch (e: Throwable) {
-                            Toaster.show(e.message ?: strings.adminError)
+                            if (showEditor) {
+                                val matchesEdit = target.phraseId == null || editing?.id == target.phraseId
+                                if (matchesEdit) {
+                                    editing = result.phrase
+                                        ?: editing?.copy(imageUrl = imageUrl)
+                                    editorImageOverride = imageUrl
+                                }
+                            }
+                            target.onApplied?.invoke(imageUrl)
                         }
                     }
+                    // Close sheet first so the user sees the updated cover/list underneath.
+                    generateTarget = null
+                    refresh()
+                    Toaster.show(strings.adminSaved)
                 },
             )
         },
@@ -324,6 +339,7 @@ fun AdminScreen(onBack: () -> Unit) {
                 Div(attrs = { classes(Styles.adminActions) }) {
                     PrimaryButton(label = strings.adminAddPhrase, icon = "add") {
                         editing = null
+                        editorImageOverride = null
                         showEditor = true
                     }
                 }
@@ -332,7 +348,14 @@ fun AdminScreen(onBack: () -> Unit) {
                 }
                 phrases.forEach { phrase ->
                     Div(attrs = { classes(Styles.listCard) }) {
-                        MaterialSymbol(phrase.icon, extraClass = Styles.listIcon)
+                        val thumb = phrase.imageUrl
+                        if (!thumb.isNullOrBlank()) {
+                            Img(src = thumb, alt = phrase.spoken.en, attrs = {
+                                classes(Styles.adminPhraseThumb)
+                            })
+                        } else {
+                            MaterialSymbol(phrase.icon, extraClass = Styles.listIcon)
+                        }
                         Div(attrs = { classes(Styles.listDetails) }) {
                             H2 { Text(phrase.spoken.en) }
                             P {
@@ -357,6 +380,7 @@ fun AdminScreen(onBack: () -> Unit) {
                                 attr("type", "button")
                                 onClick {
                                     editing = phrase
+                                    editorImageOverride = null
                                     showEditor = true
                                 }
                             }) { Text(strings.adminEdit) }
@@ -579,12 +603,14 @@ private fun GeneratePhotoDialog(
     photos: List<ReferencePhoto>,
     defaultPrompt: String,
     onDismiss: () -> Unit,
-    onGenerate: (prompt: String, selectedIds: List<String>) -> Unit,
+    /** Suspends until generation finishes; throw to keep the sheet open for retry. */
+    onGenerate: suspend (prompt: String, selectedIds: List<String>) -> Unit,
 ) {
     val strings = Localization.strings
+    val scope = rememberCoroutineScope()
     var prompt by remember(visible, defaultPrompt) { mutableStateOf(defaultPrompt) }
     var selected by remember(visible) { mutableStateOf<Set<String>>(emptySet()) }
-    var busy by remember { mutableStateOf(false) }
+    var busy by remember(visible) { mutableStateOf(false) }
 
     BottomDialog(
         visible = visible,
@@ -632,7 +658,7 @@ private fun GeneratePhotoDialog(
             Button(attrs = {
                 classes(Styles.btnText)
                 attr("type", "button")
-                attr("disabled", busy.toString())
+                if (busy) attr("disabled", "true")
                 onClick { if (!busy) onDismiss() }
             }) { Text(strings.close) }
             PrimaryButton(
@@ -641,8 +667,20 @@ private fun GeneratePhotoDialog(
                 enabled = !busy && prompt.isNotBlank(),
             ) {
                 if (busy) return@PrimaryButton
-                busy = true
-                onGenerate(prompt.trim(), selected.toList())
+                val promptValue = prompt.trim()
+                val selectedIds = selected.toList()
+                scope.launch {
+                    busy = true
+                    try {
+                        onGenerate(promptValue, selectedIds)
+                        // Parent closes the sheet on success (visible → false).
+                    } catch (e: Throwable) {
+                        Toaster.show(e.message ?: strings.adminError)
+                    } finally {
+                        // If still visible (failure), unlock the button for retry.
+                        busy = false
+                    }
+                }
             }
         }
     }
@@ -650,21 +688,13 @@ private fun GeneratePhotoDialog(
     LaunchedEffect(visible) {
         if (!visible) busy = false
     }
-
-    // If generation fails the parent leaves the sheet open — clear busy so the
-    // user can retry without dismissing.
-    LaunchedEffect(busy, visible) {
-        if (busy && visible) {
-            kotlinx.coroutines.delay(30_000)
-            busy = false
-        }
-    }
 }
 
 @Composable
 private fun PhraseEditorDialog(
     visible: Boolean,
     initial: Phrase?,
+    injectedImageUrl: String? = null,
     knownLocations: List<PhraseLocations.Entry>,
     onDismiss: () -> Unit,
     onSave: (PhraseUpsertRequest) -> Unit,
@@ -688,7 +718,7 @@ private fun PhraseEditorDialog(
     var instructionsVi by remember(initial?.id, visible) {
         mutableStateOf(initial?.instructions?.vi ?: PhraseDefaults.instructions.vi)
     }
-    var imageUrl by remember(initial?.id, initial?.imageUrl, visible) {
+    var imageUrl by remember(initial?.id, visible) {
         mutableStateOf(initial?.imageUrl.orEmpty())
     }
     var approved by remember(initial?.id, visible) { mutableStateOf(initial?.approved ?: true) }
@@ -696,8 +726,16 @@ private fun PhraseEditorDialog(
 
     // Keep imageUrl in sync when parent refreshes the edited phrase after generation.
     LaunchedEffect(initial?.imageUrl, visible) {
-        if (visible && initial != null) {
-            imageUrl = initial.imageUrl.orEmpty()
+        if (visible) {
+            val fromInitial = initial?.imageUrl.orEmpty()
+            if (fromInitial.isNotBlank()) imageUrl = fromInitial
+        }
+    }
+
+    // Immediate inject from generate-photo sheet (covers create-mode where initial is null).
+    LaunchedEffect(injectedImageUrl, visible) {
+        if (visible && !injectedImageUrl.isNullOrBlank()) {
+            imageUrl = injectedImageUrl
         }
     }
 
@@ -785,13 +823,11 @@ private fun PhraseEditorDialog(
                     classes(Styles.adminCoverPreview)
                 })
             }
-            if (initial != null) {
-                PrimaryButton(
-                    label = strings.adminGeneratePhoto,
-                    icon = "auto_awesome",
-                ) {
-                    onGeneratePhoto(initial.id, imageUrl.takeIf { it.isNotBlank() })
-                }
+            PrimaryButton(
+                label = strings.adminGeneratePhoto,
+                icon = "auto_awesome",
+            ) {
+                onGeneratePhoto(initial?.id, imageUrl.takeIf { it.isNotBlank() })
             }
 
             Button(attrs = {
