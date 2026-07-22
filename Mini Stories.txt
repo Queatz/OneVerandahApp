@@ -2,13 +2,55 @@ Mini Stories
 
 # UI
 
-Mini stories show up at the top.
+Mini stories show up at the top in a banner which highlights a single story, above the main header text on the
+main page. When the banner is clicked, the user is just taken to the mini stories page.
 
-# Writing stories
+Mini stories have the ability to present Phrases. A Phrase can be collected and added to the user's collection of phrases.
+
+# Mini Stories screen
+
+The user's collection of phrases is shown in the top. The latest phrase is shown in the center, and can be clicked to
+navigate to the phrases screen, where the user can read the original mini story and delete their collected phrases.
+
+A grid of stories is shown, each with their title, cover photo, author, synopsis text,
+number of pages, and a button to read the story.
+
+# Mini Story screen
+
+A story consists of a series of pages, each with a photo (optional) and text,
+and any number of buttons to continue the story. If the page has no buttons defined,
+a default "Next page" button is shown.
+
+The story is presented in a page-flipping or page-flying-off animated interface.
+
+## Translation help and translation cache
 
 If the story is not in the user's selected language, the user can click on tokenized words to translate and dissect
 their meaning with AI in the context of the story, which is cached on the server and reused of the word was already
 translated in the same story.
+
+At the end of the story, 4 other random stories are shown and can be clicked to read them.
+
+# Writing stories
+
+On the stories screen, the user can click a pencil icon button to write a story in the user's selected language
+quickly using AI. This leads to the story editor, which is accessed via a special password in a bottom sheet.
+The password is hard coded in the backend.
+
+Main story features:
+
+ - Title
+ - Cover photo
+ - Author
+ - Synopsis
+
+Story page features:
+
+ - Photo (optional)
+ - Text, with AI-assisted writing, and support for entering a phrase with `<phrase id="123"></phrase>`
+ - Buttons (optional)
+
+<examine the features of stories above and explain how to write a story.>
 
 # Reading stories
 

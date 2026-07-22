@@ -39,7 +39,9 @@ import org.jetbrains.compose.web.dom.P
 import org.jetbrains.compose.web.dom.Span
 import org.jetbrains.compose.web.dom.Text
 import org.w3c.dom.HTMLAudioElement
+import org.w3c.dom.HTMLElement
 import kotlin.js.Date
+import kotlin.math.abs
 
 @Composable
 fun ChatScreen(
@@ -95,10 +97,11 @@ fun ChatScreen(
     }
 
     LaunchedEffect(latestAiMessageId) {
-        latestAiMessageId?.let { messageId ->
-            document.getElementById(chatMessageElementId(messageId))
-                ?.asDynamic()
-                ?.scrollIntoView(js("({ behavior: 'smooth', block: 'start' })"))
+        val messageId = latestAiMessageId ?: return@LaunchedEffect
+        // Wait a frame so the new message is in the DOM and laid out before measuring.
+        repeat(5) {
+            if (scrollChatMessageIntoView(messageId)) return@LaunchedEffect
+            delay(16)
         }
     }
 
@@ -246,6 +249,35 @@ private fun FollowUpQuestions(questions: List<String>, onQuestion: (String) -> U
 }
 
 private fun chatMessageElementId(messageId: String): String = "chat-message-$messageId"
+
+/**
+ * Scrolls an AI message to the top of the scaffold messages pane only.
+ *
+ * Avoids [org.w3c.dom.Element.scrollIntoView], which walks all scrollable
+ * ancestors and can move the whole page/frame. Returns `true` once scrolling
+ * was applied or the message is already aligned; `false` if the DOM/layout is
+ * not ready yet (caller should retry). Does nothing when the messages pane is
+ * not scrollable.
+ */
+private fun scrollChatMessageIntoView(messageId: String): Boolean {
+    val message = document.getElementById(chatMessageElementId(messageId)) as? HTMLElement
+        ?: return false
+    val container = message.closest(".${Styles.content}") as? HTMLElement
+        ?: return false
+
+    // Only scroll the messages view, and only once it is actually scrollable.
+    // Returning false lets the caller retry while layout is still settling.
+    if (container.scrollHeight <= container.clientHeight + 1) return false
+
+    val delta = message.getBoundingClientRect().top - container.getBoundingClientRect().top
+    if (abs(delta) < 1.0) return true
+
+    val targetTop = container.scrollTop + delta
+    val options = js("({ behavior: 'smooth', top: 0.0 })")
+    options.top = targetTop
+    container.asDynamic().scrollTo(options)
+    return true
+}
 
 @Composable
 private fun FactCard(app: FactMiniApp) {
