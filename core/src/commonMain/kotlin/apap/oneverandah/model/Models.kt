@@ -9,7 +9,10 @@ package apap.oneverandah.model
 enum class Language(val tag: String) {
     ENGLISH("en"),
     VIETNAMESE("vi"),
-    CHINESE("zh");
+    CHINESE("zh"),
+    JAPANESE("ja"),
+    KOREAN("ko"),
+    RUSSIAN("ru");
 
     companion object {
         /** The language used when nothing else matches. */
@@ -33,16 +36,25 @@ enum class Language(val tag: String) {
  * Keeping translations on the data itself (rather than a separate key lookup)
  * means the same model can be serialized straight to/from an API later without
  * the client needing a bundled dictionary for catalog content.
+ *
+ * Missing language fields fall back to English so catalog entries can grow
+ * translations incrementally.
  */
 data class LocalizedText(
     val en: String,
     val vi: String,
     val zh: String = en,
+    val ja: String = en,
+    val ko: String = en,
+    val ru: String = en,
 ) {
     fun resolve(language: Language): String = when (language) {
         Language.ENGLISH -> en
         Language.VIETNAMESE -> vi
         Language.CHINESE -> zh
+        Language.JAPANESE -> ja
+        Language.KOREAN -> ko
+        Language.RUSSIAN -> ru
     }
 }
 

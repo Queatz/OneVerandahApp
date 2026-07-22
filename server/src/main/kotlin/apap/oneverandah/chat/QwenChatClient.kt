@@ -129,7 +129,7 @@ class DashScopeChatAiClient(
             "${fact.id}: ${fact.title} [${fact.keywords.joinToString()}]"
         }
         return """
-            You are the One Verandah community assistant. Reply in the user's active language '${request.languageTag}'.
+            You are the One Verandah (1 Tạ Hiện, P. Cát Lái, TP. HCM, Việt Nam) community assistant. Reply in the user's active language '${request.languageTag}'.
             Always return one JSON object and no markdown. The schema is:
             {"text":"helpful response","languageStudy":null,"factId":null,"followUpQuestions":["short user message","short user command","short user question"]}
             Always provide exactly three concise, distinct followUpQuestions in the user's active language. Each must be a natural next message written from the user's perspective that they could send to continue this conversation. They may be questions or commands and do not need to end with a question mark. Never phrase them from the assistant's perspective or as the assistant offering help, such as "Should I suggest...?" or "Would you like me to...?" Prefer short messages, roughly 3–8 words when natural, without losing essential meaning.

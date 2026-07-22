@@ -81,12 +81,14 @@ fun CoverImage(url: String) {
  *
  * @param title optional title text (omitted on the booking screen, like the prototype).
  * @param onBack when provided, shows a back arrow that invokes it; otherwise a menu icon.
+ * @param onLanguageClick opens the language selection dialog (replaces cycling toggle).
  */
 @Composable
 fun AppBar(
     title: String? = null,
     onBack: (() -> Unit)? = null,
     onMenu: (() -> Unit)? = null,
+    onLanguageClick: (() -> Unit)? = null,
     showChatAction: Boolean = true,
 ) {
     val strings = Localization.strings
@@ -116,12 +118,12 @@ fun AppBar(
                 attr("role", "button")
                 attr("aria-label", strings.chatTitle)
                 onClick { router.navigate("/chat") }
-            }) { Text("chat") }
+            }) { Text("chat_bubble") }
         }
         Button(attrs = {
             classes(Styles.langToggle)
             attr("aria-label", strings.menuLanguage)
-            onClick { Localization.toggleLanguage() }
+            onClick { onLanguageClick?.invoke() }
         }) {
             Span(attrs = { classes(Styles.langFlag) }) { Text(flagFor(Localization.language)) }
             Text(strings.languageName)
@@ -186,15 +188,49 @@ fun NavigationDrawer(
         }
 
         Div(attrs = { classes(Styles.drawerSection) }) { Text(strings.menuLanguage) }
-        Language.entries.forEach { lang ->
-            Button(attrs = {
-                classes(Styles.langOption)
-                if (lang == Localization.language) classes(Styles.langOptionActive)
-                onClick { Localization.setLanguage(lang) }
-            }) {
-                Span(attrs = { classes(Styles.langFlag) }) { Text(flagFor(lang)) }
-                Text(stringsFor(lang).languageName)
+        LanguageOptions(onSelected = { /* stay open so user can compare */ })
+    }
+}
+
+/**
+ * Bottom-sheet dialog listing every supported language with flags.
+ * Used by the app-bar language button when there are too many languages
+ * to cycle through.
+ */
+@Composable
+fun LanguageDialog(
+    visible: Boolean,
+    onDismiss: () -> Unit,
+) {
+    val strings = Localization.strings
+    BottomDialog(
+        visible = visible,
+        closeLabel = strings.close,
+        onDismiss = onDismiss,
+    ) {
+        Div(attrs = { classes(Styles.dialogHeader) }) {
+            P(attrs = { classes(Styles.dialogTitle) }) { Text(strings.menuLanguage) }
+        }
+        Div(attrs = { classes(Styles.dialogBody) }) {
+            LanguageOptions(onSelected = { onDismiss() })
+        }
+    }
+}
+
+/** Renders a flag + native name button for each [Language]. */
+@Composable
+private fun LanguageOptions(onSelected: (Language) -> Unit) {
+    Language.entries.forEach { lang ->
+        Button(attrs = {
+            classes(Styles.langOption)
+            if (lang == Localization.language) classes(Styles.langOptionActive)
+            onClick {
+                Localization.setLanguage(lang)
+                onSelected(lang)
             }
+        }) {
+            Span(attrs = { classes(Styles.langFlag) }) { Text(flagFor(lang)) }
+            Text(stringsFor(lang).languageName)
         }
     }
 }
@@ -229,12 +265,14 @@ fun Scaffold(
     content: ContentBuilder<HTMLDivElement>,
 ) {
     var drawerOpen by remember { mutableStateOf(false) }
+    var languageDialogOpen by remember { mutableStateOf(false) }
     Div(attrs = { classes(Styles.appShell) }) {
         Div(attrs = { classes(Styles.appFrame) }) {
             AppBar(
                 title = title,
                 onBack = onBack,
                 onMenu = { drawerOpen = true },
+                onLanguageClick = { languageDialogOpen = true },
                 showChatAction = showChatAction,
             )
             if (showBanner) {
@@ -292,6 +330,10 @@ fun Scaffold(
                 open = drawerOpen,
                 onClose = { drawerOpen = false },
                 onHome = onHome,
+            )
+            LanguageDialog(
+                visible = languageDialogOpen,
+                onDismiss = { languageDialogOpen = false },
             )
         }
     }
