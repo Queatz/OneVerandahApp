@@ -336,6 +336,12 @@ The relevant configuration is resolved in `AppConfig`:
 CosyVoice synthesis and voice-design endpoints are intentionally fixed to matching Beijing-region DashScope endpoints. Do not restore old speech endpoint overrides that can mix regions or use an incompatible multimodal HTTP route.
 Realtime ASR uses `wss://{WorkspaceId}.cn-beijing.maas.aliyuncs.com/api-ws/v1/realtime` with the model supplied as a query parameter. The backend adds the Qwen API key and relays WebSocket events so credentials are never sent to the browser.
 
+Hold-to-speak performance notes:
+
+- The browser warms mic + ASR WebSocket after ~150ms of hold; listening UI starts at ~350ms so short clicks never request the microphone.
+- The browser keeps the ASR socket warm for 60s between holds and sends raw PCM16 binary frames.
+- The server converts binary PCM to Qwen's base64 JSON `input_audio_buffer.append` events and keeps one upstream Qwen socket warm for 60s.
+
 ## How to add a new mini app
 
 Use this sequence. Keep the change vertical and minimal: contract, model decision, trusted server enrichment, renderer, and tests.

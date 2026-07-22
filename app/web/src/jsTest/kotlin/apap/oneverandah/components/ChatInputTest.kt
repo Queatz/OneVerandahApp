@@ -32,44 +32,73 @@ class ChatInputTest {
     }
 
     @Test
-    fun `hold gesture starts only after delay and stops on release`() {
-        var scheduled: (() -> Unit)? = null
+    fun `hold gesture warms up before start and stops on release`() {
+        val scheduler = TestScheduler()
+        var warmUps = 0
         var starts = 0
         var stops = 0
         val gesture = HoldToSpeakGesture(
-            schedule = { action -> scheduled = action; 1 },
-            cancelScheduled = { scheduled = null },
+            schedule = scheduler::schedule,
+            cancelScheduled = scheduler::cancel,
+            onWarmUp = { warmUps++ },
             onStart = { starts++ },
             onStop = { stops++ },
         )
 
         gesture.press()
+        assertEquals(0, warmUps)
         assertEquals(0, starts)
-        scheduled?.invoke()
+        assertTrue(scheduler.fire(150))
+        assertEquals(1, warmUps)
+        assertEquals(0, starts)
+        assertTrue(scheduler.fire(350))
         assertEquals(1, starts)
         gesture.release()
         assertEquals(1, stops)
     }
 
     @Test
-    fun `short press and cancelled hold never start voice input`() {
-        var scheduled: (() -> Unit)? = null
+    fun `short press never warms up or starts voice input`() {
+        val scheduler = TestScheduler()
+        var warmUps = 0
         var starts = 0
         val gesture = HoldToSpeakGesture(
-            schedule = { action -> scheduled = action; 1 },
-            cancelScheduled = { scheduled = null },
+            schedule = scheduler::schedule,
+            cancelScheduled = scheduler::cancel,
+            onWarmUp = { warmUps++ },
             onStart = { starts++ },
             onStop = {},
         )
 
         gesture.press()
         gesture.release()
-        scheduled?.invoke()
-        gesture.press()
-        gesture.cancel()
-        scheduled?.invoke()
-
+        assertTrue(scheduler.isEmpty)
+        assertEquals(0, warmUps)
         assertEquals(0, starts)
+    }
+
+    @Test
+    fun `cancelled hold after warm-up does not start listening`() {
+        val scheduler = TestScheduler()
+        var warmUps = 0
+        var starts = 0
+        var warmCancels = 0
+        val gesture = HoldToSpeakGesture(
+            schedule = scheduler::schedule,
+            cancelScheduled = scheduler::cancel,
+            onWarmUp = { warmUps++ },
+            onStart = { starts++ },
+            onStop = {},
+            onWarmUpCancel = { warmCancels++ },
+        )
+
+        gesture.press()
+        assertTrue(scheduler.fire(150))
+        gesture.release()
+        assertEquals(1, warmUps)
+        assertEquals(0, starts)
+        assertEquals(1, warmCancels)
+        assertTrue(scheduler.isEmpty)
     }
 
     @Test
@@ -79,11 +108,12 @@ class ChatInputTest {
 
     @Test
     fun `releasing pointer outside input stops active voice input`() {
-        var scheduled: (() -> Unit)? = null
+        val scheduler = TestScheduler()
         var stops = 0
         val gesture = HoldToSpeakGesture(
-            schedule = { action -> scheduled = action; 1 },
-            cancelScheduled = { scheduled = null },
+            schedule = scheduler::schedule,
+            cancelScheduled = scheduler::cancel,
+            onWarmUp = {},
             onStart = {},
             onStop = { stops++ },
         )
@@ -91,10 +121,34 @@ class ChatInputTest {
         val removeListeners = installHoldListeners(input, gesture)
 
         input.dispatchEvent(Event("pointerdown"))
-        scheduled?.invoke()
+        assertTrue(scheduler.fire(350))
         window.dispatchEvent(Event("pointerup"))
 
         assertEquals(1, stops)
         removeListeners()
+    }
+
+    private class TestScheduler {
+        private var nextId = 1
+        private val tasks = mutableMapOf<Int, Pair<Int, () -> Unit>>()
+
+        val isEmpty: Boolean get() = tasks.isEmpty()
+
+        fun schedule(delayMs: Int, action: () -> Unit): Int {
+            val id = nextId++
+            tasks[id] = delayMs to action
+            return id
+        }
+
+        fun cancel(id: Int) {
+            tasks.remove(id)
+        }
+
+        fun fire(delayMs: Int): Boolean {
+            val id = tasks.keys.firstOrNull { tasks[it]?.first == delayMs } ?: return false
+            val action = tasks.remove(id)?.second ?: return false
+            action.invoke()
+            return true
+        }
     }
 }

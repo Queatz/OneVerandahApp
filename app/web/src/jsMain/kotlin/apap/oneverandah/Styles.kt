@@ -165,6 +165,7 @@ object Styles {
     // Chat-style input (text field with a send button that appears when typing)
     const val chatInput = "chat-input"
     const val chatInputListening = "chat-input-listening"
+    const val chatInputConnecting = "chat-input-connecting"
     const val chatInputField = "chat-input-field"
     const val chatInputFieldMultiline = "chat-input-field-multiline"
     const val chatInputFieldFilled = "chat-input-field-filled"
@@ -1266,6 +1267,13 @@ object Styles {
             padding-right: 60px;
             background: color-mix(in srgb, var(--md-sys-color-primary) 10%, transparent);
             box-shadow: 0 0 0 2px var(--md-sys-color-primary);
+        }
+        .${chatInputConnecting} .${chatInputField} {
+            background: color-mix(in srgb, var(--md-sys-color-primary) 6%, transparent);
+            box-shadow: 0 0 0 2px color-mix(in srgb, var(--md-sys-color-primary) 55%, transparent);
+        }
+        .${chatInputConnecting} .${chatVoiceIndicator} .${materialSymbols} {
+            animation: spin 1.1s linear infinite;
         }
         .${chatInputFieldMultiline} {
             min-height: 56px;

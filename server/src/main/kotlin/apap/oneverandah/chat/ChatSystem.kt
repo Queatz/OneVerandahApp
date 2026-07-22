@@ -6,6 +6,10 @@ import io.ktor.client.HttpClient
 import io.ktor.client.engine.cio.CIO
 import io.ktor.client.plugins.HttpTimeout
 import io.ktor.client.plugins.websocket.WebSockets
+import kotlinx.coroutines.CoroutineScope
+import kotlinx.coroutines.Dispatchers
+import kotlinx.coroutines.SupervisorJob
+import kotlinx.coroutines.cancel
 import org.slf4j.LoggerFactory
 
 class ChatSystem(
@@ -14,12 +18,16 @@ class ChatSystem(
     val asrRelay: QwenAsrRelay,
     private val httpClient: HttpClient,
     private val voiceDesignEnabled: Boolean,
+    private val scope: CoroutineScope,
 ) {
     suspend fun startup() {
         if (voiceDesignEnabled) speechService.startup()
+        asrRelay.startup()
     }
 
     fun shutdown() {
+        asrRelay.shutdown()
+        scope.cancel()
         httpClient.close()
     }
 
@@ -27,6 +35,7 @@ class ChatSystem(
         private val log = LoggerFactory.getLogger(ChatSystem::class.java)
 
         suspend fun create(config: AppConfig): ChatSystem {
+            val scope = CoroutineScope(SupervisorJob() + Dispatchers.IO)
             val client = HttpClient(CIO) {
                 install(HttpTimeout) {
                     requestTimeoutMillis = 120_000
@@ -39,6 +48,7 @@ class ChatSystem(
             val arangoRepository = ArangoChatRepository.connect(config.arango, client)
             if (arangoRepository == null && config.isProduction) {
                 client.close()
+                scope.cancel()
                 error("Production chat requires ArangoDB at ${config.arango.baseUrl}")
             }
             val repository = arangoRepository ?: InMemoryChatRepository()
@@ -51,9 +61,10 @@ class ChatSystem(
                     residentDirectory = ResidentDirectory(residents),
                 ),
                 speechService = SpeechService(DashScopeSpeechClient(config.qwenChat, client)),
-                asrRelay = QwenAsrRelay(config.qwenChat, client),
+                asrRelay = QwenAsrRelay(config.qwenChat, client, scope),
                 httpClient = client,
                 voiceDesignEnabled = config.qwenChat.enabled,
+                scope = scope,
             )
         }
     }

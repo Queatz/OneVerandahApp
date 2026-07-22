@@ -2,6 +2,8 @@ package apap.oneverandah.components
 
 import apap.oneverandah.api.chatApiUrl
 import kotlinx.browser.window
+import org.khronos.webgl.Int16Array
+import org.w3c.dom.MessageEvent
 import org.w3c.dom.WebSocket
 import kotlin.js.JSON
 import kotlin.math.ceil
@@ -11,6 +13,17 @@ import kotlin.math.min
 
 private const val targetSampleRate = 16_000
 private const val webSocketOpen: Short = 1
+private const val warmUpDelayMs = 150
+private const val holdConfirmDelayMs = 350
+private const val socketIdleTtlMs = 60_000
+private const val maxBufferedPcmBytes = targetSampleRate * 2 * 3 // ~3s of PCM16 mono
+private const val scriptProcessorBufferSize = 2048 // ~43ms at 48 kHz
+
+internal enum class VoiceInputUiState {
+    Idle,
+    Connecting,
+    Listening,
+}
 
 internal class VoiceTranscript(private val initialValue: String) {
     fun partial(text: String, stash: String): String = merge(text + stash)
@@ -28,212 +41,436 @@ internal class VoiceTranscript(private val initialValue: String) {
     }
 }
 
+/**
+ * Hold-to-speak gesture with a warm-up phase.
+ *
+ * - [warmUpDelayMs] (default 150ms): start background prep (mic/socket). Short clicks never reach this.
+ * - [startDelayMs] (default 350ms): enter listening / send audio.
+ */
 internal class HoldToSpeakGesture(
-    private val schedule: (action: () -> Unit) -> Int,
+    private val schedule: (delayMs: Int, action: () -> Unit) -> Int,
     private val cancelScheduled: (Int) -> Unit,
+    private val onWarmUp: () -> Unit,
     private val onStart: () -> Unit,
     private val onStop: () -> Unit,
+    /** Called when the press ends after warm-up but before the hold was confirmed. */
+    private val onWarmUpCancel: () -> Unit = {},
+    private val warmUpDelayMs: Int = apap.oneverandah.components.warmUpDelayMs,
+    private val startDelayMs: Int = holdConfirmDelayMs,
 ) {
-    private var scheduledId: Int? = null
+    private var warmUpId: Int? = null
+    private var startId: Int? = null
+    private var warmed = false
     private var started = false
 
     fun press() {
-        if (scheduledId != null || started) return
-        scheduledId = schedule {
-            scheduledId = null
+        if (warmUpId != null || startId != null || started) return
+        warmUpId = schedule(warmUpDelayMs) {
+            warmUpId = null
+            warmed = true
+            onWarmUp()
+        }
+        startId = schedule(startDelayMs) {
+            startId = null
             started = true
             onStart()
         }
     }
 
     fun release() {
+        val wasStarted = started
+        val wasWarmed = warmed
         cancelPending()
-        if (started) {
-            started = false
-            onStop()
+        started = false
+        warmed = false
+        when {
+            wasStarted -> onStop()
+            wasWarmed -> onWarmUpCancel()
         }
     }
 
     fun cancel() = release()
 
     private fun cancelPending() {
-        scheduledId?.let(cancelScheduled)
-        scheduledId = null
+        warmUpId?.let(cancelScheduled)
+        startId?.let(cancelScheduled)
+        warmUpId = null
+        startId = null
     }
 }
 
+/**
+ * Long-lived browser ASR session.
+ *
+ * Warm-up opens mic + AudioWorklet + WebSocket without showing listening UI.
+ * Turns can reuse the connection for [socketIdleTtlMs] after release.
+ * PCM is sent as raw binary frames; the server wraps them for Qwen.
+ */
 internal class BrowserVoiceInput(
-    initialValue: String,
-    private val language: String,
+    private var language: String,
     private val onValueChange: (String) -> Unit,
-    private val onListeningChange: (Boolean) -> Unit,
+    private val onStateChange: (VoiceInputUiState) -> Unit,
     private val onError: (String) -> Unit,
 ) {
-    private val transcript = VoiceTranscript(initialValue)
+    private var transcript: VoiceTranscript? = null
     private var socket: WebSocket? = null
     private var mediaStream: dynamic = null
     private var audioContext: dynamic = null
     private var audioSource: dynamic = null
-    private var audioProcessor: dynamic = null
-    private var stopRequested = false
+    private var captureNode: dynamic = null
+    private var muteGain: dynamic = null
+    private var workletLoaded = false
+    private var micRequestInFlight = false
+    private var listening = false
     private var sessionReady = false
-    private var closeTimer: Int? = null
+    private var sessionLanguage: String? = null
+    private var disposed = false
+    private var idleTimer: Int? = null
+    private var pendingPcm = js("[]")
+    private var pendingBytes = 0
+    private var openedAtMs = 0.0
+    private var firstAudioSent = false
 
-    fun start() {
-        stopRequested = false
-        sessionReady = false
-        onListeningChange(true)
+    fun warmUp(language: String = this.language) {
+        if (disposed) return
+        this.language = language
+        clearIdleTimer()
+        ensureMicrophone()
+        ensureSocket()
+    }
+
+    fun beginListening(initialValue: String, language: String = this.language) {
+        if (disposed) return
+        this.language = language
+        transcript = VoiceTranscript(initialValue)
+        listening = true
+        firstAudioSent = false
+        clearIdleTimer()
+        onStateChange(if (sessionReady) VoiceInputUiState.Listening else VoiceInputUiState.Connecting)
+        ensureMicrophone()
+        ensureSocket()
+        flushPendingIfReady()
+    }
+
+    fun endListening() {
+        if (disposed) return
+        if (!listening) {
+            scheduleIdleClose()
+            return
+        }
+        listening = false
+        onStateChange(VoiceInputUiState.Idle)
+        val activeSocket = socket
+        if (activeSocket != null && activeSocket.readyState == webSocketOpen && sessionReady) {
+            runCatching { activeSocket.send("""{"type":"input_audio_buffer.commit"}""") }
+        }
+        scheduleIdleClose()
+    }
+
+    /** Keep mic/socket warm after an aborted warm-up (hold released before confirm). */
+    fun park() {
+        if (disposed || listening) return
+        scheduleIdleClose()
+    }
+
+    fun dispose() {
+        if (disposed) return
+        disposed = true
+        listening = false
+        clearIdleTimer()
+        stopAudioGraph(stopTracks = true)
+        finishAndCloseSocket()
+        onStateChange(VoiceInputUiState.Idle)
+    }
+
+    private fun ensureMicrophone() {
+        if (disposed || mediaStream != null || micRequestInFlight) {
+            if (mediaStream != null) ensureAudioGraph(mediaStream)
+            return
+        }
         val mediaDevices = window.navigator.asDynamic().mediaDevices
         if (mediaDevices == null) {
             fail("Microphone access is not supported by this browser")
             return
         }
+        micRequestInFlight = true
         val constraints = js("({audio:{channelCount:1,echoCancellation:true,noiseSuppression:true},video:false})")
         mediaDevices.getUserMedia(constraints).then(
             { stream: dynamic ->
-                if (stopRequested) {
+                micRequestInFlight = false
+                if (disposed) {
                     stopTracks(stream)
-                } else {
-                    mediaStream = stream
-                    openSocket()
-                    startAudio(stream)
+                    return@then null
                 }
+                mediaStream = stream
+                ensureAudioGraph(stream)
                 null
             },
             { cause: dynamic ->
+                micRequestInFlight = false
                 fail(cause?.message?.toString() ?: "Microphone permission was denied")
                 null
             },
         )
     }
 
-    fun stop() {
-        stopRequested = true
-        stopAudio()
-        onListeningChange(false)
-        val activeSocket = socket
-        if (activeSocket != null && activeSocket.readyState < 2) {
-            if (activeSocket.readyState == webSocketOpen && sessionReady) {
-                finishSession(activeSocket)
-            } else {
-                scheduleSocketClose()
+    private fun ensureSocket() {
+        if (disposed) return
+        val existing = socket
+        if (existing != null && existing.readyState < 2) {
+            if (existing.readyState == webSocketOpen && sessionLanguage != language) {
+                existing.send(sessionUpdateEvent(language))
+                sessionLanguage = language
+                sessionReady = false
+                if (listening) onStateChange(VoiceInputUiState.Connecting)
             }
+            return
         }
-    }
-
-    fun dispose() {
-        stopRequested = true
-        stopAudio()
-        closeSocket()
-        onListeningChange(false)
-    }
-
-    private fun openSocket() {
+        sessionReady = false
+        openedAtMs = window.performance.now()
         val activeSocket = WebSocket(chatAsrWebSocketUrl(language))
+        // Binary PCM frames are sent as ArrayBuffer.
+        activeSocket.asDynamic().binaryType = "arraybuffer"
         socket = activeSocket
         activeSocket.onopen = {
+            console.info("[asr] browser socket open in ${msSince(openedAtMs)}ms")
             activeSocket.send(sessionUpdateEvent(language))
+            sessionLanguage = language
         }
-        activeSocket.onmessage = { event ->
-            val data = runCatching { JSON.parse<dynamic>(event.asDynamic().data as String) }.getOrNull()
-            if (data != null) {
-                when (data.type as? String) {
-                    "session.updated" -> {
-                        sessionReady = true
-                        if (stopRequested) finishSession(activeSocket)
+        activeSocket.onmessage = { event: MessageEvent ->
+            val raw = event.data
+            if (raw is String) {
+                val data = runCatching { JSON.parse<dynamic>(raw) }.getOrNull()
+                if (data != null) {
+                    when (data.type as? String) {
+                        "session.updated" -> {
+                            sessionReady = true
+                            console.info("[asr] session ready in ${msSince(openedAtMs)}ms")
+                            if (listening) onStateChange(VoiceInputUiState.Listening)
+                            flushPendingIfReady()
+                        }
+                        "conversation.item.input_audio_transcription.text" -> {
+                            transcript?.let {
+                                onValueChange(it.partial(data.text as? String ?: "", data.stash as? String ?: ""))
+                            }
+                        }
+                        "conversation.item.input_audio_transcription.delta" -> {
+                            transcript?.let {
+                                onValueChange(it.partial(data.delta as? String ?: "", ""))
+                            }
+                        }
+                        "conversation.item.input_audio_transcription.completed" -> {
+                            transcript?.let {
+                                onValueChange(it.completed(data.transcript as? String ?: ""))
+                            }
+                        }
+                        "session.finished" -> {
+                            sessionReady = false
+                            closeSocketOnly()
+                        }
+                        "error" -> fail(data.error?.message?.toString() ?: "Voice recognition failed")
                     }
-                    "conversation.item.input_audio_transcription.text" -> {
-                        onValueChange(transcript.partial(data.text as? String ?: "", data.stash as? String ?: ""))
-                    }
-                    "conversation.item.input_audio_transcription.delta" -> {
-                        onValueChange(transcript.partial(data.delta as? String ?: "", ""))
-                    }
-                    "conversation.item.input_audio_transcription.completed" -> {
-                        onValueChange(transcript.completed(data.transcript as? String ?: ""))
-                    }
-                    "session.finished" -> closeSocket()
-                    "error" -> fail(data.error?.message?.toString() ?: "Voice recognition failed")
                 }
             }
         }
-        activeSocket.onerror = { fail("Voice recognition connection failed") }
+        activeSocket.onerror = {
+            if (!disposed) fail("Voice recognition connection failed")
+        }
         activeSocket.onclose = {
-            socket = null
-            stopAudio()
-            onListeningChange(false)
+            if (socket === activeSocket) {
+                socket = null
+                sessionReady = false
+                sessionLanguage = null
+                pendingPcm = js("[]")
+                pendingBytes = 0
+                if (listening) {
+                    listening = false
+                    onStateChange(VoiceInputUiState.Idle)
+                }
+            }
         }
     }
 
-    private fun startAudio(stream: dynamic) {
+    private fun ensureAudioGraph(stream: dynamic) {
+        if (disposed) return
+        val existing = audioContext
+        if (existing != null) {
+            runCatching { existing.resume() }
+            return
+        }
         val context = js("new (window.AudioContext || window.webkitAudioContext)()")
         audioContext = context
-        context.resume()
+        runCatching { context.resume() }
         val source = context.createMediaStreamSource(stream)
-        val processor = context.createScriptProcessor(4096, 1, 1)
         audioSource = source
-        audioProcessor = processor
+        val gain = context.createGain()
+        gain.gain.value = 0
+        muteGain = gain
+        gain.connect(context.destination)
+
+        val useWorklet = context.audioWorklet != null && js("typeof AudioWorkletNode !== 'undefined'") as Boolean
+        if (useWorklet) {
+            installWorkletCapture(context, source, gain)
+        } else {
+            installScriptProcessorCapture(context, source, gain)
+        }
+    }
+
+    private fun installWorkletCapture(context: dynamic, source: dynamic, gain: dynamic) {
+        if (workletLoaded || captureNode != null) return
+        val sourceCode = asrWorkletSource
+        val blob = js("new Blob([sourceCode], {type:'application/javascript'})")
+        val url = js("URL.createObjectURL(blob)") as String
+        context.audioWorklet.addModule(url).then(
+            {
+                runCatching { js("URL.revokeObjectURL(url)") }
+                if (disposed || audioContext !== context) return@then null
+                workletLoaded = true
+                val node = js("new AudioWorkletNode(context, 'asr-pcm-processor')")
+                captureNode = node
+                node.port.onmessage = { event: dynamic ->
+                    onPcmFrame(event.data)
+                }
+                source.connect(node)
+                node.connect(gain)
+                null
+            },
+            { cause: dynamic ->
+                runCatching { js("URL.revokeObjectURL(url)") }
+                console.warn("AudioWorklet unavailable, falling back to ScriptProcessor", cause)
+                installScriptProcessorCapture(context, source, gain)
+                null
+            },
+        )
+    }
+
+    private fun installScriptProcessorCapture(context: dynamic, source: dynamic, gain: dynamic) {
+        if (captureNode != null) return
+        val processor = context.createScriptProcessor(scriptProcessorBufferSize, 1, 1)
+        captureNode = processor
         processor.onaudioprocess = { event: dynamic ->
-            val activeSocket = socket
-            if (!stopRequested && sessionReady && activeSocket?.readyState == webSocketOpen) {
+            if (listening || pendingBytes > 0) {
                 val samples = event.inputBuffer.getChannelData(0)
-                val audio = pcm16Base64(samples, (context.sampleRate as Number).toInt())
-                activeSocket.send("""{"type":"input_audio_buffer.append","audio":"$audio"}""")
+                val pcm = resamplePcm16(samples, (context.sampleRate as Number).toInt())
+                onPcmFrame(pcm.buffer)
             }
         }
         source.connect(processor)
-        processor.connect(context.destination)
+        processor.connect(gain)
     }
 
-    private fun stopAudio() {
-        val processor = audioProcessor
-        if (processor != null) {
-            runCatching { processor.disconnect() }
+    private fun onPcmFrame(buffer: dynamic) {
+        if (disposed) return
+        if (!listening) return
+        val bytes = (buffer.byteLength as? Number)?.toInt() ?: return
+        if (bytes <= 0) return
+        val activeSocket = socket
+        if (sessionReady && activeSocket?.readyState == webSocketOpen) {
+            sendBinary(activeSocket, buffer)
+        } else {
+            bufferPcm(buffer, bytes)
         }
+    }
+
+    private fun bufferPcm(buffer: dynamic, bytes: Int) {
+        while (pendingBytes + bytes > maxBufferedPcmBytes && (pendingPcm.length as Int) > 0) {
+            val dropped = pendingPcm.shift()
+            pendingBytes -= (dropped.byteLength as Number).toInt()
+        }
+        // Copy so the worklet can reuse its transfer buffer.
+        val copy = js("buffer.slice(0)")
+        pendingPcm.push(copy)
+        pendingBytes += bytes
+    }
+
+    private fun flushPendingIfReady() {
+        val activeSocket = socket
+        if (!sessionReady || activeSocket?.readyState != webSocketOpen) return
+        val count = pendingPcm.length as Int
+        for (index in 0 until count) {
+            sendBinary(activeSocket, pendingPcm[index])
+        }
+        pendingPcm = js("[]")
+        pendingBytes = 0
+    }
+
+    private fun sendBinary(activeSocket: WebSocket, buffer: dynamic) {
+        if (!firstAudioSent) {
+            firstAudioSent = true
+            console.info("[asr] first audio sent at ${msSince(openedAtMs)}ms")
+        }
+        activeSocket.asDynamic().send(buffer)
+    }
+
+    private fun stopAudioGraph(stopTracks: Boolean) {
+        val node = captureNode
+        if (node != null) runCatching { node.disconnect() }
         val source = audioSource
-        if (source != null) {
-            runCatching { source.disconnect() }
-        }
+        if (source != null) runCatching { source.disconnect() }
+        val gain = muteGain
+        if (gain != null) runCatching { gain.disconnect() }
         val context = audioContext
-        if (context != null) {
-            runCatching { context.close() }
+        if (context != null) runCatching { context.close() }
+        if (stopTracks) {
+            val stream = mediaStream
+            if (stream != null) runCatching { stopTracks(stream) }
+            mediaStream = null
         }
-        val stream = mediaStream
-        if (stream != null) {
-            runCatching { stopTracks(stream) }
-        }
-        audioProcessor = null
+        captureNode = null
         audioSource = null
+        muteGain = null
         audioContext = null
-        mediaStream = null
+        workletLoaded = false
+    }
+
+    private fun scheduleIdleClose() {
+        clearIdleTimer()
+        idleTimer = window.setTimeout({
+            idleTimer = null
+            if (disposed || listening) return@setTimeout
+            // Keep the socket warm for a minute, then fully tear down.
+            finishAndCloseSocket()
+            stopAudioGraph(stopTracks = true)
+        }, socketIdleTtlMs)
+    }
+
+    private fun clearIdleTimer() {
+        idleTimer?.let(window::clearTimeout)
+        idleTimer = null
+    }
+
+    private fun finishAndCloseSocket() {
+        val activeSocket = socket
+        if (activeSocket != null && activeSocket.readyState == webSocketOpen) {
+            runCatching { activeSocket.send("""{"type":"session.finish"}""") }
+        }
+        closeSocketOnly()
+    }
+
+    private fun closeSocketOnly() {
+        val activeSocket = socket
+        socket = null
+        sessionReady = false
+        sessionLanguage = null
+        pendingPcm = js("[]")
+        pendingBytes = 0
+        if (activeSocket != null && activeSocket.readyState < 2) {
+            runCatching { activeSocket.close() }
+        }
     }
 
     private fun fail(message: String) {
-        stopRequested = true
-        stopAudio()
-        closeSocket()
-        onListeningChange(false)
+        if (disposed) return
+        listening = false
+        clearIdleTimer()
+        stopAudioGraph(stopTracks = true)
+        closeSocketOnly()
+        onStateChange(VoiceInputUiState.Idle)
         onError(message)
     }
 
-    private fun closeSocket() {
-        closeTimer?.let(window::clearTimeout)
-        closeTimer = null
-        val activeSocket = socket
-        socket = null
-        if (activeSocket != null && activeSocket.readyState < 2) runCatching { activeSocket.close() }
-    }
-
-    private fun finishSession(activeSocket: WebSocket) {
-        sessionReady = false
-        activeSocket.send("""{"type":"input_audio_buffer.commit"}""")
-        activeSocket.send("""{"type":"session.finish"}""")
-        scheduleSocketClose()
-    }
-
-    private fun scheduleSocketClose() {
-        closeTimer?.let(window::clearTimeout)
-        closeTimer = window.setTimeout({ closeSocket() }, 5_000)
-    }
+    private fun msSince(start: Double): Int =
+        max(0, (window.performance.now() - start).toInt())
 }
 
 private fun stopTracks(stream: dynamic) {
@@ -244,34 +481,27 @@ private fun stopTracks(stream: dynamic) {
 private fun chatAsrWebSocketUrl(language: String): String {
     val url = chatApiUrl("/asr?language=$language")
     return when {
-        url.startsWith("https://") -> "wss://${url.removePrefix("https://")}" 
-        url.startsWith("http://") -> "ws://${url.removePrefix("http://")}" 
+        url.startsWith("https://") -> "wss://${url.removePrefix("https://")}"
+        url.startsWith("http://") -> "ws://${url.removePrefix("http://")}"
         else -> "${if (window.location.protocol == "https:") "wss" else "ws"}://${window.location.host}$url"
     }
 }
 
-private fun pcm16Base64(samples: dynamic, inputSampleRate: Int): String {
-    val pcm = resamplePcm16(samples, inputSampleRate)
-    val bytes = js("new Uint8Array(pcm.buffer)")
-    val byteCount = bytes.length as Int
-    val binary = buildString(byteCount) {
-        for (index in 0 until byteCount) append((bytes[index] as Number).toInt().toChar())
-    }
-    return window.btoa(binary)
-}
-
-private fun resamplePcm16(samples: dynamic, inputSampleRate: Int): dynamic {
+/**
+ * Average-downsample float32 samples to 16 kHz PCM16. Used by the ScriptProcessor fallback.
+ */
+internal fun resamplePcm16(samples: dynamic, inputSampleRate: Int): Int16Array {
     val ratio = inputSampleRate.toDouble() / targetSampleRate
     val sampleCount = samples.length as Int
     val outputSize = max(1, floor(sampleCount / ratio).toInt())
-    val output = js("new Int16Array(outputSize)")
+    val output = Int16Array(outputSize)
     for (index in 0 until outputSize) {
         val start = floor(index * ratio).toInt()
         val end = min(sampleCount, max(start + 1, ceil((index + 1) * ratio).toInt()))
         var sum = 0.0
         for (sampleIndex in start until end) sum += (samples[sampleIndex] as Number).toDouble()
         val sample = (sum / (end - start)).coerceIn(-1.0, 1.0)
-        output[index] = if (sample < 0) (sample * 32768).toInt() else (sample * 32767).toInt()
+        output.asDynamic()[index] = if (sample < 0) (sample * 32768).toInt() else (sample * 32767).toInt()
     }
     return output
 }
@@ -280,3 +510,42 @@ internal fun sessionUpdateEvent(language: String): String =
     """{"type":"session.update","session":{"modalities":["text"],"input_audio_format":"pcm","sample_rate":16000,"input_audio_transcription":{"language":"$language"},"turn_detection":null}}"""
 
 internal val sessionUpdateEvent: String get() = sessionUpdateEvent("en")
+
+// language=JavaScript
+private const val asrWorkletSource: String = """
+class AsrPcmProcessor extends AudioWorkletProcessor {
+  constructor() {
+    super();
+    this.ratio = sampleRate / 16000;
+    this.frameTarget = 640; // 40ms at 16 kHz
+    this.out = new Int16Array(this.frameTarget);
+    this.outIndex = 0;
+    this.readOffset = 0;
+  }
+  process(inputs) {
+    const input = inputs[0];
+    if (!input || !input[0]) return true;
+    const channel = input[0];
+    while (this.readOffset + this.ratio <= channel.length) {
+      const start = this.readOffset | 0;
+      const end = Math.min(channel.length, Math.ceil(this.readOffset + this.ratio));
+      let sum = 0;
+      for (let i = start; i < end; i++) sum += channel[i];
+      const sample = sum / Math.max(1, end - start);
+      const clamped = sample < -1 ? -1 : sample > 1 ? 1 : sample;
+      this.out[this.outIndex++] = clamped < 0 ? (clamped * 0x8000) : (clamped * 0x7FFF);
+      if (this.outIndex >= this.frameTarget) {
+        const copy = this.out.slice(0);
+        this.port.postMessage(copy.buffer, [copy.buffer]);
+        this.out = new Int16Array(this.frameTarget);
+        this.outIndex = 0;
+      }
+      this.readOffset += this.ratio;
+    }
+    this.readOffset -= channel.length;
+    if (this.readOffset < 0) this.readOffset = 0;
+    return true;
+  }
+}
+registerProcessor('asr-pcm-processor', AsrPcmProcessor);
+"""

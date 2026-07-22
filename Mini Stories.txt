@@ -1,0 +1,18 @@
+Mini Stories
+
+# UI
+
+Mini stories show up at the top.
+
+# Writing stories
+
+If the story is not in the user's selected language, the user can click on tokenized words to translate and dissect
+their meaning with AI in the context of the story, which is cached on the server and reused of the word was already
+translated in the same story.
+
+# Reading stories
+
+Stories show who read up to the end of each page.
+
+Nice, easy to use, book page flipping interface, with large photos that fade in at the top once loaded,
+with a fixed 9:16 aspect ratio.

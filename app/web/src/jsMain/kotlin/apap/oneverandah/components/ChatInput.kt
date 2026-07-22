@@ -59,6 +59,9 @@ internal fun installHoldListeners(element: Element, gesture: HoldToSpeakGesture)
  * send button, [onSend] is invoked with the current [value] (which may be
  * `null`/blank, matching the `(value: String?) -> Unit` contract).
  *
+ * Hold-to-speak warms the mic/socket after ~150ms and only enters listening
+ * after ~350ms, so short clicks never request microphone permission.
+ *
  * @param value the current text to display.
  * @param onValueChange called on every input change with the new text.
  * @param onSend called with the current value when the user submits (Enter key
@@ -77,31 +80,48 @@ fun ChatInput(
 ) {
     val hasText = value.isNotEmpty()
     var textAreaRef by remember { mutableStateOf<HTMLTextAreaElement?>(null) }
-    var listening by remember { mutableStateOf(false) }
-    var voiceInput by remember { mutableStateOf<BrowserVoiceInput?>(null) }
+    var voiceState by remember { mutableStateOf(VoiceInputUiState.Idle) }
     val currentValue = rememberUpdatedState(value)
     val currentOnValueChange = rememberUpdatedState(onValueChange)
-    val holdGesture = remember {
-        HoldToSpeakGesture(
-            schedule = { action -> window.setTimeout(action, 350) },
-            cancelScheduled = window::clearTimeout,
-            onStart = {
-                voiceInput?.dispose()
-                voiceInput = BrowserVoiceInput(
-                    initialValue = currentValue.value,
-                    language = Localization.language.tag,
-                    onValueChange = { currentOnValueChange.value(it) },
-                    onListeningChange = { listening = it },
-                    onError = { console.error(it) },
-                ).also(BrowserVoiceInput::start)
-            },
-            onStop = { voiceInput?.stop() },
+    val currentLanguage = rememberUpdatedState(Localization.language.tag)
+    val voiceSession = remember {
+        VoiceSessionController(
+            onValueChange = { currentOnValueChange.value(it) },
+            onStateChange = { voiceState = it },
+            onError = { console.error(it) },
         )
     }
-    DisposableEffect(Unit) {
+    val activeVoice = voiceState != VoiceInputUiState.Idle
+    val statusPlaceholder = when (voiceState) {
+        VoiceInputUiState.Connecting -> "Connecting..."
+        VoiceInputUiState.Listening -> "Listening..."
+        VoiceInputUiState.Idle -> placeholder
+    }
+    val statusAria = when (voiceState) {
+        VoiceInputUiState.Connecting -> "Connecting voice input"
+        VoiceInputUiState.Listening -> "Listening for speech"
+        VoiceInputUiState.Idle -> placeholder
+    }
+
+    val holdGesture = remember(voiceSession) {
+        HoldToSpeakGesture(
+            schedule = { delayMs, action -> window.setTimeout(action, delayMs) },
+            cancelScheduled = window::clearTimeout,
+            onWarmUp = { voiceSession.warmUp(currentLanguage.value) },
+            onStart = {
+                voiceSession.beginListening(
+                    initialValue = currentValue.value,
+                    language = currentLanguage.value,
+                )
+            },
+            onStop = { voiceSession.endListening() },
+            onWarmUpCancel = { voiceSession.park() },
+        )
+    }
+    DisposableEffect(voiceSession) {
         onDispose {
             holdGesture.cancel()
-            voiceInput?.dispose()
+            voiceSession.dispose()
         }
     }
     if (multiline) {
@@ -111,14 +131,15 @@ fun ChatInput(
     }
     Div(attrs = {
         classes(Styles.chatInput)
-        if (listening) classes(Styles.chatInputListening)
+        if (activeVoice) classes(Styles.chatInputListening)
+        if (voiceState == VoiceInputUiState.Connecting) classes(Styles.chatInputConnecting)
     }) {
         if (multiline) {
             TextArea(value = value) {
                 classes(Styles.textInput, Styles.chatInputField, Styles.chatInputFieldMultiline)
                 if (hasText) classes(Styles.chatInputFieldFilled)
-                placeholder(if (listening) "Listening..." else placeholder)
-                attr("aria-label", if (listening) "Listening for speech" else placeholder)
+                placeholder(statusPlaceholder)
+                attr("aria-label", statusAria)
                 onInput {
                     resizeChatInput(it.target)
                     onValueChange(it.value)
@@ -149,8 +170,8 @@ fun ChatInput(
                 classes(Styles.textInput, Styles.chatInputField)
                 if (hasText) classes(Styles.chatInputFieldFilled)
                 value(value)
-                placeholder(if (listening) "Listening..." else placeholder)
-                attr("aria-label", if (listening) "Listening for speech" else placeholder)
+                placeholder(statusPlaceholder)
+                attr("aria-label", statusAria)
                 onInput { onValueChange(it.value) }
                 onKeyDown { event ->
                     if (event.key == "Enter" && !event.shiftKey) {
@@ -165,12 +186,12 @@ fun ChatInput(
                 }
             }
         }
-        if (listening) {
+        if (activeVoice) {
             Div(attrs = {
                 classes(Styles.chatVoiceIndicator)
                 attr("aria-hidden", "true")
             }) {
-                MaterialSymbol("mic")
+                MaterialSymbol(if (voiceState == VoiceInputUiState.Connecting) "progress_activity" else "mic")
             }
         } else if (hasText) {
             Button(attrs = {
@@ -182,5 +203,46 @@ fun ChatInput(
                 MaterialSymbol("send")
             }
         }
+    }
+}
+
+/** Owns a long-lived [BrowserVoiceInput] for the lifetime of [ChatInput]. */
+private class VoiceSessionController(
+    private val onValueChange: (String) -> Unit,
+    private val onStateChange: (VoiceInputUiState) -> Unit,
+    private val onError: (String) -> Unit,
+) {
+    private var session: BrowserVoiceInput? = null
+
+    fun warmUp(language: String) {
+        ensure(language).warmUp(language)
+    }
+
+    fun beginListening(initialValue: String, language: String) {
+        ensure(language).beginListening(initialValue, language)
+    }
+
+    fun endListening() {
+        session?.endListening()
+    }
+
+    fun park() {
+        session?.park()
+    }
+
+    fun dispose() {
+        session?.dispose()
+        session = null
+    }
+
+    private fun ensure(language: String): BrowserVoiceInput {
+        val existing = session
+        if (existing != null) return existing
+        return BrowserVoiceInput(
+            language = language,
+            onValueChange = onValueChange,
+            onStateChange = onStateChange,
+            onError = onError,
+        ).also { session = it }
     }
 }

@@ -15,6 +15,7 @@ import io.ktor.websocket.Frame
 import io.ktor.websocket.readText
 import kotlinx.coroutines.channels.Channel
 import kotlinx.coroutines.runBlocking
+import java.util.Base64
 import kotlin.test.Test
 import kotlin.test.assertEquals
 import kotlin.test.assertFalse
@@ -56,13 +57,14 @@ class QwenAsrRelayTest {
     }
 
     @Test
-    fun `relay forwards transcription and error events and rejects binary browser frames`() = runBlocking {
+    fun `relay forwards text events and converts binary PCM into Qwen append events`() = runBlocking {
         val browserIncoming = Channel<Frame>(Channel.UNLIMITED)
         val browserOutgoing = Channel<Frame>(Channel.UNLIMITED)
         val qwenIncoming = Channel<Frame>(Channel.UNLIMITED)
         val qwenOutgoing = Channel<Frame>(Channel.UNLIMITED)
-        browserIncoming.send(Frame.Text("{\"type\":\"input_audio_buffer.append\",\"audio\":\"AQI=\"}"))
-        browserIncoming.send(Frame.Binary(true, byteArrayOf(1, 2)))
+        val pcm = byteArrayOf(1, 2, 3, 4)
+        browserIncoming.send(Frame.Text("{\"type\":\"session.update\"}"))
+        browserIncoming.send(Frame.Binary(true, pcm))
         browserIncoming.close()
         qwenIncoming.send(Frame.Text("{\"type\":\"conversation.item.input_audio_transcription.completed\",\"transcript\":\"hello\"}"))
         qwenIncoming.send(Frame.Text("{\"type\":\"error\",\"error\":{\"message\":\"invalid audio format\"}}"))
@@ -71,10 +73,14 @@ class QwenAsrRelayTest {
         relayAsrFrames(browserIncoming, browserOutgoing, qwenIncoming, qwenOutgoing)
 
         assertEquals(
-            "{\"type\":\"input_audio_buffer.append\",\"audio\":\"AQI=\"}",
+            "{\"type\":\"session.update\"}",
             (qwenOutgoing.receive() as Frame.Text).readText(),
         )
-        assertTrue(qwenOutgoing.isClosedForReceive)
+        assertEquals(
+            """{"type":"input_audio_buffer.append","audio":"${Base64.getEncoder().encodeToString(pcm)}"}""",
+            (qwenOutgoing.receive() as Frame.Text).readText(),
+        )
+        assertTrue(qwenOutgoing.isClosedForReceive.not())
         assertEquals(
             "{\"type\":\"conversation.item.input_audio_transcription.completed\",\"transcript\":\"hello\"}",
             (browserOutgoing.receive() as Frame.Text).readText(),

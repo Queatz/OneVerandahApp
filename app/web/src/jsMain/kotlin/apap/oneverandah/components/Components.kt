@@ -170,17 +170,17 @@ fun NavigationDrawer(
             onClose()
             if (onHome != null) onHome() else router.navigate("/")
         }
-        DrawerItem("chat", strings.chatTitle) {
+        DrawerItem("chat_bubble", strings.chatTitle) {
             onClose()
             router.navigate("/chat")
-        }
-        DrawerItem("add_business", strings.helpListService) {
-            onClose()
-            router.navigate("/list")
         }
         DrawerItem("info", strings.menuAbout) {
             onClose()
             router.navigate("/about")
+        }
+        DrawerItem("add_business", strings.helpListService) {
+            onClose()
+            router.navigate("/list")
         }
         DrawerItem("help_outline", strings.menuHelp) {
             onClose()
