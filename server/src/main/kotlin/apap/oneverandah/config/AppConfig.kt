@@ -87,11 +87,17 @@ data class QwenImageConfig(
     val endpoint: String,
     val apiKey: String,
     val model: String,
-    /** DashScope endpoint for reference-to-image (R2I) scene crafting. */
+    /**
+     * DashScope endpoint for reference-grounded still-image generation.
+     * Default is the multimodal generation API used by wan2.6-image.
+     */
     val r2iEndpoint: String =
-        "https://dashscope.aliyuncs.com/api/v1/services/aigc/image2image/image-synthesis",
-    /** Model used when reference photos are supplied (Qwen R2I / VACE). */
-    val r2iModel: String = "wanx2.1-vace-plus",
+        "https://dashscope.aliyuncs.com/api/v1/services/aigc/multimodal-generation/generation",
+    /**
+     * Model used when apartment reference photos are supplied.
+     * wan2.6-image accepts multiple reference images + a text prompt.
+     */
+    val r2iModel: String = "wan2.6-image",
 ) {
     val enabled: Boolean get() = apiKey.isNotBlank()
 }
@@ -249,8 +255,8 @@ data class AppConfig(
                 apiKey = source["QWEN_API_KEY"] ?: "",
                 model = source["QWEN_MODEL"] ?: "wanx2.1-t2i-turbo",
                 r2iEndpoint = source["QWEN_R2I_ENDPOINT"]
-                    ?: "https://dashscope.aliyuncs.com/api/v1/services/aigc/image2image/image-synthesis",
-                r2iModel = source["QWEN_R2I_MODEL"] ?: "wanx2.1-vace-plus",
+                    ?: "https://dashscope.aliyuncs.com/api/v1/services/aigc/multimodal-generation/generation",
+                r2iModel = source["QWEN_R2I_MODEL"] ?: "wan2.6-image",
             )
 
             val qwenChat = QwenChatConfig(

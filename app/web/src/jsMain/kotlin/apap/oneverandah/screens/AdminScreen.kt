@@ -605,7 +605,7 @@ private fun GeneratePhotoDialog(
                     Text(strings.adminGenerateNoPhotos)
                 }
             } else {
-                Label(attrs = { classes(Styles.textLabel) }) {
+                Label(attrs = { classes(Styles.phraseExpandHint) }) {
                     Text(strings.adminSelectReferences)
                 }
                 Div(attrs = { classes(Styles.adminRefGrid) }) {

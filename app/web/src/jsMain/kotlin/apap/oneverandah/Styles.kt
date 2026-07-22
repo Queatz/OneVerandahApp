@@ -240,6 +240,7 @@ object Styles {
     const val phraseSpoken = "phrase-spoken"
     const val phraseRawAsk = "phrase-raw-ask"
     const val phraseVerse = "phrase-verse"
+    const val phraseVerseBlock = "phrase-verse-block"
     const val phraseExpandHint = "phrase-expand-hint"
     const val phraseReactions = "phrase-reactions"
     const val phraseReactionBtn = "phrase-reaction-btn"
@@ -1891,6 +1892,10 @@ object Styles {
             font-size: 13px;
             color: var(--md-sys-color-on-surface-variant);
         }
+        .${phraseVerseBlock} {
+            margin-top: 12px;
+        }
+
         .${phraseVerse} {
             margin: 4px 0 0;
             font-size: 14px;

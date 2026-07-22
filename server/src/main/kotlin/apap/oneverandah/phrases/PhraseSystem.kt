@@ -155,7 +155,14 @@ class PhraseSystem private constructor(
                 }
 
             val qwen: QwenClient = if (config.qwen.enabled) {
-                DashScopeQwenClient(config.qwen, client)
+                // Pass local image root so reference photos stored on disk can be
+                // re-hosted to DashScope temp OSS (localhost URLs are rejected).
+                DashScopeQwenClient(
+                    config = config.qwen,
+                    client = client,
+                    localImageRoot = java.io.File(config.localStorageDir),
+                    publicBaseUrl = config.publicBaseUrl,
+                )
             } else {
                 PlaceholderQwenClient()
             }

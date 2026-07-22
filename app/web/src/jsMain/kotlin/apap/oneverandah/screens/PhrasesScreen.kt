@@ -170,6 +170,9 @@ private fun PhraseCard(
                 Text(phrase.location.resolve(language))
             }
 
+            Span(attrs = { classes(Styles.phraseSpokenLabel) }) {
+                Text(strings.phrasesSpokenIn)
+            }
             H2(attrs = { classes(Styles.phraseSpoken) }) {
                 Text(phrase.spoken.resolve(language))
             }
@@ -178,8 +181,13 @@ private fun PhraseCard(
             }
 
             if (expanded) {
-                P(attrs = { classes(Styles.phraseVerse) }) {
-                    Text(phrase.verse.resolve(language))
+                Div(attrs = { classes(Styles.phraseVerseBlock) }) {
+                    Span(attrs = { classes(Styles.phraseInstructionsLabel) }) {
+                        Text(strings.phrasesVerse)
+                    }
+                    P(attrs = { classes(Styles.phraseVerse) }) {
+                        Text(phrase.verse.resolve(language))
+                    }
                 }
                 Div(attrs = { classes(Styles.phraseInstructions) }) {
                     Span(attrs = { classes(Styles.phraseInstructionsLabel) }) {

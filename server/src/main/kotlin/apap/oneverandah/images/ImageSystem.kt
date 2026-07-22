@@ -164,7 +164,12 @@ class ImageSystem private constructor(
             val errorLog = QwenErrorLog(File(config.qwenErrorLogPath))
 
             val qwen: QwenClient = if (config.qwen.enabled) {
-                DashScopeQwenClient(config.qwen, httpClient)
+                DashScopeQwenClient(
+                    config = config.qwen,
+                    client = httpClient,
+                    localImageRoot = File(config.localStorageDir),
+                    publicBaseUrl = config.publicBaseUrl,
+                )
             } else {
                 PlaceholderQwenClient()
             }
