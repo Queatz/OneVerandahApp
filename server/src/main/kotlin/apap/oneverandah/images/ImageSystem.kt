@@ -140,7 +140,11 @@ class ImageSystem private constructor(
             val arangoRepository = ArangoImageRepository.connect(config.arango, httpClient)
             if (arangoRepository == null && config.isProduction) {
                 httpClient.close()
-                error("Production requires ArangoDB, but it could not be initialized at ${config.arango.baseUrl}")
+                error(
+                    "Production requires ArangoDB, but it could not be initialized at ${config.arango.baseUrl}. " +
+                        "Check that arangodb3 is running and ARANGO_USER/ARANGO_PASSWORD are correct " +
+                        "(a 401 means the password does not match the server root user).",
+                )
             }
             val repository: ImageRepository = arangoRepository ?: InMemoryImageRepository()
             val repositoryKind = if (repository is InMemoryImageRepository) "in-memory" else "arangodb"

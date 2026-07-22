@@ -211,6 +211,12 @@ fi
 # If init.sh installed ArangoDB locally, keep a freshly-uploaded .env with blank
 # ARANGO_* values from silently disabling persistence and falling back to the
 # in-memory repository in production.
+#
+# Production refuses to boot without a working Arango connection, so we also
+# verify ARANGO_USER/ARANGO_PASSWORD against the local server. Older init.sh
+# installs preseeded a blank root password; if that still works and .env has a
+# non-empty password, we promote root to the configured password so deploy and
+# runtime stay in sync.
 if systemctl list-unit-files arangodb3.service >/dev/null 2>&1; then
     sudo systemctl enable --now arangodb3 >/dev/null 2>&1 || true
     if curl -sS --max-time 2 "http://127.0.0.1:8529/_api/version" >/dev/null 2>&1; then
@@ -219,12 +225,53 @@ if systemctl list-unit-files arangodb3.service >/dev/null 2>&1; then
         set_env_var_if_blank "ARANGO_DB" "image_generator"
         set_env_var_if_blank "ARANGO_USER" "root"
         set_env_var_if_blank "ARANGO_SSL" "false"
+
+        ARANGO_USER_VAL="$(sudo grep -E '^ARANGO_USER=' "${ENV_FILE}" 2>/dev/null | tail -1 | cut -d= -f2- | tr -d '\r')"
+        ARANGO_PASS_VAL="$(sudo grep -E '^ARANGO_PASSWORD=' "${ENV_FILE}" 2>/dev/null | tail -1 | cut -d= -f2- | tr -d '\r')"
+        ARANGO_USER_VAL="${ARANGO_USER_VAL:-root}"
+        ARANGO_URL="http://127.0.0.1:8529/_api/version"
+
+        arango_auth_ok() {
+            local user="$1" pass="$2"
+            local code
+            code="$(curl -sS --max-time 3 -o /dev/null -w '%{http_code}' -u "${user}:${pass}" "${ARANGO_URL}" || true)"
+            [ "${code}" = "200" ]
+        }
+
+        if arango_auth_ok "${ARANGO_USER_VAL}" "${ARANGO_PASS_VAL}"; then
+            echo "    ArangoDB credentials in ${ENV_FILE} are valid."
+        elif arango_auth_ok "root" ""; then
+            if [ -n "${ARANGO_PASS_VAL}" ]; then
+                echo "    ArangoDB still has a blank root password; setting it from ARANGO_PASSWORD..."
+                PASS_JSON="$(ARANGO_PASS_VAL="${ARANGO_PASS_VAL}" python3 -c 'import json,os; print(json.dumps({"passwd": os.environ["ARANGO_PASS_VAL"]}))')"
+                set_code="$(curl -sS --max-time 5 -o /tmp/arango-pass.json -w '%{http_code}' \
+                    -u 'root:' -X PATCH \
+                    -H 'Content-Type: application/json' \
+                    -d "${PASS_JSON}" \
+                    "http://127.0.0.1:8529/_api/user/root" || true)"
+                if [ "${set_code}" != "200" ] || ! arango_auth_ok "${ARANGO_USER_VAL}" "${ARANGO_PASS_VAL}"; then
+                    echo "ERROR: failed to set ArangoDB root password to ARANGO_PASSWORD (HTTP ${set_code})." >&2
+                    echo "       Body: $(cat /tmp/arango-pass.json 2>/dev/null || true)" >&2
+                    exit 1
+                fi
+                echo "    ArangoDB root password now matches ARANGO_PASSWORD."
+            else
+                echo "    ArangoDB accepts blank root password (ARANGO_PASSWORD is empty)."
+            fi
+        else
+            echo "ERROR: ArangoDB rejected ARANGO_USER/ARANGO_PASSWORD from ${ENV_FILE}." >&2
+            echo "       Update ARANGO_PASSWORD to the server root password, or reset it with:" >&2
+            echo "       curl -u root:OLDPASS -X PATCH -H 'Content-Type: application/json' \\" >&2
+            echo "         -d '{\"passwd\":\"NEWPASS\"}' http://127.0.0.1:8529/_api/user/root" >&2
+            exit 1
+        fi
     else
         echo "ERROR: arangodb3.service exists but 127.0.0.1:8529 did not answer." >&2
         echo "       Check: sudo systemctl status arangodb3 --no-pager" >&2
         exit 1
     fi
 fi
+
 sudo chown "${APP_USER}:${APP_USER}" "${ENV_FILE}"
 
 # --- Make sure the OS firewall lets the public 80/443 ports through --------

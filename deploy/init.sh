@@ -15,6 +15,9 @@ set -euo pipefail
 APP_DIR="${APP_DIR:-/opt/oneverandah-images}"
 APP_USER="${APP_USER:-$(logname 2>/dev/null || echo "$USER")}"
 INSTALL_ARANGO="${INSTALL_ARANGO:-0}"
+# Default root password for non-interactive installs. Override with ARANGO_PASSWORD=...
+# An empty default used to leave production unable to authenticate once .env had a real password.
+ARANGO_PASSWORD="${ARANGO_PASSWORD:-root}"
 
 ARANGO_LIST=/etc/apt/sources.list.d/arangodb.list
 
@@ -65,9 +68,9 @@ if [ "$INSTALL_ARANGO" = "1" ]; then
         sudo apt-get update -y \
             -o Acquire::AllowInsecureRepositories=true \
             -o Acquire::AllowDowngradeToInsecureRepositories=true
-        # Preseed a blank root password for a non-interactive install.
-        echo "arangodb3 arangodb3/password password ${ARANGO_PASSWORD:-}" | sudo debconf-set-selections
-        echo "arangodb3 arangodb3/password_again password ${ARANGO_PASSWORD:-}" | sudo debconf-set-selections
+        # Preseed root password for a non-interactive install (default: root).
+        echo "arangodb3 arangodb3/password password ${ARANGO_PASSWORD}" | sudo debconf-set-selections
+        echo "arangodb3 arangodb3/password_again password ${ARANGO_PASSWORD}" | sudo debconf-set-selections
         echo "arangodb3 arangodb3/upgrade boolean true" | sudo debconf-set-selections
         echo "arangodb3 arangodb3/storage_engine select rocksdb" | sudo debconf-set-selections
         sudo DEBIAN_FRONTEND=noninteractive apt-get install -y arangodb3
@@ -113,7 +116,7 @@ if [ "$INSTALL_ARANGO" = "1" ]; then
     set_env_var_if_blank "${APP_DIR}/.env" "ARANGO_PORT" "8529"
     set_env_var_if_blank "${APP_DIR}/.env" "ARANGO_DB" "image_generator"
     set_env_var_if_blank "${APP_DIR}/.env" "ARANGO_USER" "root"
-    set_env_var_if_blank "${APP_DIR}/.env" "ARANGO_PASSWORD" "${ARANGO_PASSWORD:-}"
+    set_env_var_if_blank "${APP_DIR}/.env" "ARANGO_PASSWORD" "${ARANGO_PASSWORD}"
     set_env_var_if_blank "${APP_DIR}/.env" "ARANGO_SSL" "false"
     sudo chown "${APP_USER}:${APP_USER}" "${APP_DIR}/.env"
     echo "    ArangoDB is running on 127.0.0.1:8529 and ${APP_DIR}/.env enables it."
