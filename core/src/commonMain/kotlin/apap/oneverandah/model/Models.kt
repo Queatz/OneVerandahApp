@@ -40,6 +40,7 @@ enum class Language(val tag: String) {
  * Missing language fields fall back to English so catalog entries can grow
  * translations incrementally.
  */
+@kotlinx.serialization.Serializable
 data class LocalizedText(
     val en: String,
     val vi: String,

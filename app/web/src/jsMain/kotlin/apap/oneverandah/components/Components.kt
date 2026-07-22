@@ -90,6 +90,7 @@ fun AppBar(
     onMenu: (() -> Unit)? = null,
     onLanguageClick: (() -> Unit)? = null,
     showChatAction: Boolean = true,
+    showPhrasesAction: Boolean = true,
 ) {
     val strings = Localization.strings
     val router = Router.current
@@ -111,6 +112,14 @@ fun AppBar(
         }
         if (title != null) {
             H1(attrs = { classes(Styles.appBarTitle) }) { Text(title) }
+        }
+        if (showPhrasesAction) {
+            Span(attrs = {
+                classes(Styles.materialSymbols, Styles.appBarIcon)
+                attr("role", "button")
+                attr("aria-label", strings.phrasesTitle)
+                onClick { router.navigate("/phrases") }
+            }) { Text("import_contacts") }
         }
         if (showChatAction) {
             Span(attrs = {
@@ -169,6 +178,14 @@ fun NavigationDrawer(
         DrawerItem("home", strings.menuHome) {
             onClose()
             if (onHome != null) onHome() else router.navigate("/")
+        }
+        DrawerItem("import_contacts", strings.phrasesTitle) {
+            onClose()
+            router.navigate("/phrases")
+        }
+        DrawerItem("auto_stories", strings.storiesTitle) {
+            onClose()
+            router.navigate("/stories")
         }
         DrawerItem("chat_bubble", strings.chatTitle) {
             onClose()
@@ -256,6 +273,7 @@ fun Scaffold(
     onBack: (() -> Unit)? = null,
     onHome: (() -> Unit)? = null,
     showChatAction: Boolean = true,
+    showPhrasesAction: Boolean = true,
     showBanner: Boolean = false,
     bannerImageUrl: String? = null,
     footer: (ContentBuilder<HTMLElement>)? = null,
@@ -274,6 +292,7 @@ fun Scaffold(
                 onMenu = { drawerOpen = true },
                 onLanguageClick = { languageDialogOpen = true },
                 showChatAction = showChatAction,
+                showPhrasesAction = showPhrasesAction,
             )
             if (showBanner) {
                 Div(attrs = {

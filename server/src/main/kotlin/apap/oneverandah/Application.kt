@@ -4,9 +4,11 @@ import apap.oneverandah.chat.ChatSystem
 import apap.oneverandah.config.AppConfig
 import apap.oneverandah.images.ApiError
 import apap.oneverandah.images.ImageSystem
+import apap.oneverandah.phrases.PhraseSystem
 import apap.oneverandah.routes.imageRoutes
 import apap.oneverandah.routes.chatRoutes
 import apap.oneverandah.routes.asrRoutes
+import apap.oneverandah.routes.phraseRoutes
 import apap.oneverandah.routes.searchRoutes
 import io.ktor.http.HttpHeaders
 import io.ktor.http.HttpMethod
@@ -53,6 +55,9 @@ fun main() {
     val config = AppConfig.load()
     val imageSystem = runBlocking { ImageSystem.create(config) }
     val chatSystem = runBlocking { ChatSystem.create(config) }
+    val phraseSystem = runBlocking {
+        PhraseSystem.create(config, imageSystem.storage, imageSystem.httpClient)
+    }
 
     val server = embeddedServer(
         Netty,
@@ -76,10 +81,13 @@ fun main() {
                 log.info("HTTPS connector enabled on port {}", ssl.port)
             }
         },
-        module = { module(config, imageSystem, chatSystem) },
+        module = { module(config, imageSystem, chatSystem, phraseSystem) },
     )
 
-    if (config.autoStart) imageSystem.startup()
+    if (config.autoStart) {
+        imageSystem.startup()
+        phraseSystem.startup()
+    }
     server.start(wait = true)
 }
 
@@ -92,7 +100,10 @@ fun Application.module() {
     val config = AppConfig.load()
     val imageSystem = runBlocking { ImageSystem.create(config) }
     val chatSystem = runBlocking { ChatSystem.create(config) }
-    module(config, imageSystem, chatSystem)
+    val phraseSystem = runBlocking {
+        PhraseSystem.create(config, imageSystem.storage, imageSystem.httpClient)
+    }
+    module(config, imageSystem, chatSystem, phraseSystem)
 }
 
 /**
@@ -101,11 +112,28 @@ fun Application.module() {
  */
 fun Application.module(config: AppConfig, imageSystem: ImageSystem) {
     val chatSystem = runBlocking { ChatSystem.create(config) }
-    module(config, imageSystem, chatSystem)
+    val phraseSystem = runBlocking {
+        PhraseSystem.create(config, imageSystem.storage, imageSystem.httpClient)
+    }
+    module(config, imageSystem, chatSystem, phraseSystem)
 }
 
 fun Application.module(config: AppConfig, imageSystem: ImageSystem, chatSystem: ChatSystem) {
+    val phraseSystem = runBlocking {
+        PhraseSystem.create(config, imageSystem.storage, imageSystem.httpClient)
+    }
+    module(config, imageSystem, chatSystem, phraseSystem)
+}
+
+fun Application.module(
+    config: AppConfig,
+    imageSystem: ImageSystem,
+    chatSystem: ChatSystem,
+    phraseSystem: PhraseSystem,
+) {
     launchChatStartup(chatSystem::startup)
+    // Seed the phrasebook asynchronously so cold starts stay snappy.
+    phraseSystem.startup()
 
     install(ContentNegotiation) {
         json(Json {
@@ -119,6 +147,8 @@ fun Application.module(config: AppConfig, imageSystem: ImageSystem, chatSystem: 
     install(CORS) {
         allowMethod(HttpMethod.Get)
         allowMethod(HttpMethod.Post)
+        allowMethod(HttpMethod.Put)
+        allowMethod(HttpMethod.Delete)
         allowMethod(HttpMethod.Options)
         allowHeader(HttpHeaders.ContentType)
         allowHeader(HttpHeaders.Authorization)
@@ -140,6 +170,7 @@ fun Application.module(config: AppConfig, imageSystem: ImageSystem, chatSystem: 
     monitor.subscribe(ApplicationStopped) {
         imageSystem.shutdown()
         chatSystem.shutdown()
+        phraseSystem.shutdown()
     }
 
     routing {
@@ -151,6 +182,7 @@ fun Application.module(config: AppConfig, imageSystem: ImageSystem, chatSystem: 
         searchRoutes(imageSystem)
         chatRoutes(chatSystem.chatService, chatSystem.speechService)
         asrRoutes(chatSystem.asrRelay)
+        phraseRoutes(phraseSystem, config)
     }
 }
 

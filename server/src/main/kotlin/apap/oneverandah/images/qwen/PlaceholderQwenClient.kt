@@ -26,7 +26,10 @@ class PlaceholderQwenClient(
 
     override val kind: String = "placeholder"
 
-    override suspend fun generate(prompt: String): GeneratedImage = withContext(Dispatchers.IO) {
+    override suspend fun generate(
+        prompt: String,
+        referenceImageUrls: List<String>,
+    ): GeneratedImage = withContext(Dispatchers.IO) {
         val image = BufferedImage(size, size, BufferedImage.TYPE_INT_RGB)
         val g = image.createGraphics()
         try {

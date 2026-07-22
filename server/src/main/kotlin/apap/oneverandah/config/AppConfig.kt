@@ -87,6 +87,11 @@ data class QwenImageConfig(
     val endpoint: String,
     val apiKey: String,
     val model: String,
+    /** DashScope endpoint for reference-to-image (R2I) scene crafting. */
+    val r2iEndpoint: String =
+        "https://dashscope.aliyuncs.com/api/v1/services/aigc/image2image/image-synthesis",
+    /** Model used when reference photos are supplied (Qwen R2I / VACE). */
+    val r2iModel: String = "wanx2.1-vace-plus",
 ) {
     val enabled: Boolean get() = apiKey.isNotBlank()
 }
@@ -163,6 +168,10 @@ data class AppConfig(
      * generation worker on startup. Disabled in tests to keep them hermetic.
      */
     val autoStart: Boolean,
+    /** Shared password for the hidden admin portal sign-in sheet. */
+    val adminPassword: String,
+    /** HS256 secret used to mint never-expiring admin JWTs. */
+    val adminJwtSecret: String,
 ) {
     val isProduction: Boolean get() = env == AppEnv.PRODUCTION
 
@@ -239,6 +248,9 @@ data class AppConfig(
                     ?: "https://dashscope.aliyuncs.com/api/v1/services/aigc/text2image/image-synthesis",
                 apiKey = source["QWEN_API_KEY"] ?: "",
                 model = source["QWEN_MODEL"] ?: "wanx2.1-t2i-turbo",
+                r2iEndpoint = source["QWEN_R2I_ENDPOINT"]
+                    ?: "https://dashscope.aliyuncs.com/api/v1/services/aigc/image2image/image-synthesis",
+                r2iModel = source["QWEN_R2I_MODEL"] ?: "wanx2.1-vace-plus",
             )
 
             val qwenChat = QwenChatConfig(
@@ -276,6 +288,10 @@ data class AppConfig(
                 maxRetries = source.int("GENERATION_MAX_RETRIES", 3),
                 rescheduleIntervalMs = source.long("RESCHEDULE_INTERVAL_MS", 60 * 60 * 1000),
                 autoStart = source.bool("IMAGE_AUTOSTART", true),
+                adminPassword = source["ADMIN_PASSWORD"] ?: "oneverandah",
+                adminJwtSecret = source["ADMIN_JWT_SECRET"]
+                    ?: source["ADMIN_PASSWORD"]
+                    ?: "oneverandah-dev-jwt-secret",
             )
         }
 

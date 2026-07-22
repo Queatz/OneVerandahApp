@@ -3,16 +3,21 @@ package apap.oneverandah.images.qwen
 import apap.oneverandah.images.storage.GeneratedImage
 
 /**
- * Generates an image from a text [prompt].
+ * Abstraction over the Qwen / DashScope image generation backend.
  *
- * Implementations: [DashScopeQwenClient] (real Qwen/DashScope text-to-image)
- * and [PlaceholderQwenClient] (an offline, deterministic renderer used when no
- * API key is configured so the pipeline still produces a usable cover).
+ * Implementations must be safe to call concurrently; the queue service may
+ * run several generations in parallel (bounded by configuration).
+ *
+ * [referenceImageUrls] enables reference-to-image (R2I) scene crafting when
+ * non-empty — the model should ground the result in those apartment photos.
  */
 interface QwenClient {
-    /** A short label used in logs (e.g. "qwen", "placeholder"). */
+    /** Human-readable name used in logs (e.g. `"qwen"`, `"placeholder"`). */
     val kind: String
 
     /** Returns the generated image bytes, or throws on failure. */
-    suspend fun generate(prompt: String): GeneratedImage
+    suspend fun generate(
+        prompt: String,
+        referenceImageUrls: List<String> = emptyList(),
+    ): GeneratedImage
 }

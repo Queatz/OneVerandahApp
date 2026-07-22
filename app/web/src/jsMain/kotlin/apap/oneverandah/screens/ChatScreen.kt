@@ -49,6 +49,8 @@ fun ChatScreen(
     onInitialMessageConsumed: () -> Unit,
     onBack: () -> Unit,
     onHome: () -> Unit,
+    onOpenPhrases: () -> Unit = {},
+    onOpenStories: () -> Unit = {},
 ) {
     val strings = Localization.strings
     val language = Localization.language
@@ -141,7 +143,12 @@ fun ChatScreen(
     ) {
         Div(attrs = { classes(Styles.aiChat) }) {
             if (messages.isEmpty() && !sending) {
-                ChatEmptyState(strings.chatSuggestions, ::sendMessage)
+                ChatEmptyState(
+                    suggestions = strings.chatSuggestions,
+                    onSuggestion = ::sendMessage,
+                    onOpenPhrases = onOpenPhrases,
+                    onOpenStories = onOpenStories,
+                )
             }
             messages.forEach { message ->
                 ChatMessageView(
@@ -179,11 +186,50 @@ fun ChatScreen(
 }
 
 @Composable
-private fun ChatEmptyState(suggestions: List<String>, onSuggestion: (String) -> Unit) {
+private fun ChatEmptyState(
+    suggestions: List<String>,
+    onSuggestion: (String) -> Unit,
+    onOpenPhrases: () -> Unit,
+    onOpenStories: () -> Unit,
+) {
+    val strings = Localization.strings
     Div(attrs = { classes(Styles.chatEmptyState) }) {
         Div(attrs = { classes(Styles.chatEmptyIcon) }) {
             MaterialSymbol("auto_awesome")
         }
+        P(attrs = { classes(Styles.chatEmptyLead) }) {
+            Text(strings.chatEmptyLead)
+        }
+
+        Div(attrs = { classes(Styles.chatEmptyActions) }) {
+            Button(attrs = {
+                classes(Styles.chatExploreCard)
+                attr("type", "button")
+                onClick { onOpenPhrases() }
+            }) {
+                MaterialSymbol("import_contacts")
+                Div {
+                    Span(attrs = { classes(Styles.chatExploreTitle) }) { Text(strings.chatExplorePhrases) }
+                    Span(attrs = { classes(Styles.chatExploreSub) }) { Text(strings.chatExplorePhrasesSub) }
+                }
+                MaterialSymbol("north_east")
+            }
+            Button(attrs = {
+                classes(Styles.chatExploreCard)
+                attr("type", "button")
+                onClick { onOpenStories() }
+            }) {
+                MaterialSymbol("auto_stories")
+                Div {
+                    Span(attrs = { classes(Styles.chatExploreTitle) }) { Text(strings.chatExploreStories) }
+                    Span(attrs = { classes(Styles.chatExploreSub) }) { Text(strings.chatExploreStoriesSub) }
+                }
+                MaterialSymbol("north_east")
+            }
+        }
+
+        Span(attrs = { classes(Styles.chatEmptyOr) }) { Text(strings.chatEmptyOrAsk) }
+
         suggestions.forEach { suggestion ->
             Button(attrs = {
                 classes(Styles.chatSuggestion)

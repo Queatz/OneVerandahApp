@@ -165,6 +165,14 @@ class ChatServiceTest {
         assertContains(systemPrompt, "They may be questions or commands")
         assertContains(systemPrompt, "Never phrase them from the assistant's perspective")
         assertContains(systemPrompt, "Prefer short messages")
+        assertContains(systemPrompt, "Earth-Mystical Parlance")
+        assertContains(systemPrompt, "Lời Huyền Linh")
+        assertContains(systemPrompt, "You fully understand Earth-Mystical Parlance")
+        assertContains(systemPrompt, "Never claim you lack access")
+        assertContains(systemPrompt, "This child's shoulders hum for healing hands")
+        assertContains(systemPrompt, "Dạ, con mong tay lành chạm vai đang ngân")
+        assertContains(systemPrompt, "This child")
+        assertContains(systemPrompt, "Dạ, con")
         client.close()
     }
 

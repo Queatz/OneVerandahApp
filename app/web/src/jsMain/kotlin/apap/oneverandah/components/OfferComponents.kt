@@ -256,6 +256,12 @@ fun PriceSummaryView(
 /**
  * Modal bottom-sheet dialog template.
  * Handles the dimmed scrim, drag-to-dismiss behavior, and drag handle.
+ *
+ * Open/close animation is driven by CSS transitions on the scrim/sheet. Callers
+ * should keep this composable mounted and toggle [visible] — do not wrap it in
+ * `if (visible)` or the enter transition will be skipped. This component also
+ * self-corrects the first-frame case (mounted already-open) by painting closed
+ * for one frame before applying the open class, so every future sheet animates.
  */
 @Composable
 fun BottomDialog(
@@ -272,20 +278,37 @@ fun BottomDialog(
     // Distance the sheet must be pulled down before it dismisses on release.
     val dismissThreshold = 120.0
 
-    // Whenever the sheet closes, fully release any in-progress drag so it
-    // doesn't reopen stuck in the "grabbing" state (e.g. when the pointer was
-    // released outside the sheet and never fired mouseup/touchend here).
+    // `rendered` keeps the dialog in the DOM through the exit animation.
+    // `open` is the CSS-visible flag — always starts false on enter so the
+    // browser paints translateY(100%) before transitioning to 0.
+    var rendered by remember { mutableStateOf(visible) }
+    var open by remember { mutableStateOf(false) }
+
     LaunchedEffect(visible) {
-        if (!visible) {
+        if (visible) {
+            rendered = true
+            open = false
             dragStart = null
             dragY = 0.0
+            // One frame is enough for the closed styles to apply before open.
+            kotlinx.coroutines.delay(16)
+            open = true
+        } else if (rendered) {
+            open = false
+            dragStart = null
+            dragY = 0.0
+            // Match Styles.dialogSheet transition (~300ms).
+            kotlinx.coroutines.delay(320)
+            rendered = false
         }
     }
+
+    if (!rendered) return
 
     // Scrim covers the frame; clicking it dismisses the sheet.
     Div(attrs = {
         classes(Styles.dialogScrim)
-        if (visible) classes(Styles.dialogScrimVisible)
+        if (open) classes(Styles.dialogScrimVisible)
         attr("role", "presentation")
         onClick { onDismiss() }
     }) {

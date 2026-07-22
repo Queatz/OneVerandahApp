@@ -211,9 +211,12 @@ class ImageSystemTest {
         val generateCount = java.util.concurrent.atomic.AtomicInteger(0)
         val countingQwen = object : QwenClient {
             override val kind = "counting"
-            override suspend fun generate(prompt: String): GeneratedImage {
+            override suspend fun generate(
+                prompt: String,
+                referenceImageUrls: List<String>,
+            ): GeneratedImage {
                 generateCount.incrementAndGet()
-                return PlaceholderQwenClient(size = 32).generate(prompt)
+                return PlaceholderQwenClient(size = 32).generate(prompt, referenceImageUrls)
             }
         }
 

@@ -230,6 +230,51 @@ object Styles {
     const val pinnedBadge = "pinned-badge"
     const val pinnedEmpty = "pinned-empty"
 
+    // Phrases / Earth-Mystical Parlance
+    const val phraseCard = "phrase-card"
+    const val phraseCardCovered = "phrase-card-covered"
+    const val phraseCardBody = "phrase-card-body"
+    const val phraseLocationHeader = "phrase-location-header"
+    const val phraseLocationTag = "phrase-location-tag"
+    const val phraseLocationIcon = "phrase-location-icon"
+    const val phraseSpoken = "phrase-spoken"
+    const val phraseRawAsk = "phrase-raw-ask"
+    const val phraseVerse = "phrase-verse"
+    const val phraseExpandHint = "phrase-expand-hint"
+    const val phraseReactions = "phrase-reactions"
+    const val phraseReactionBtn = "phrase-reaction-btn"
+
+    // Admin portal
+    const val adminToolbar = "admin-toolbar"
+    const val adminActions = "admin-actions"
+    const val adminRowActions = "admin-row-actions"
+    const val adminPhotoCard = "admin-photo-card"
+    const val adminPhotoThumb = "admin-photo-thumb"
+    const val adminUploadBlock = "admin-upload-block"
+    const val adminCoverCard = "admin-cover-card"
+    const val adminCoverPreview = "admin-cover-preview"
+    const val adminLocationSuggestions = "admin-location-suggestions"
+    const val adminIconField = "admin-icon-field"
+    const val adminIconInput = "admin-icon-input"
+    const val adminIconPreview = "admin-icon-preview"
+    const val adminRefGrid = "admin-ref-grid"
+    const val adminRefTile = "admin-ref-tile"
+    const val adminRefTileSelected = "selected"
+    const val adminRefThumb = "admin-ref-thumb"
+    const val phraseSpokenLabel = "phrase-spoken-label"
+    const val phrasesOriginStory = "phrases-origin-story"
+    const val phraseInstructions = "phrase-instructions"
+    const val phraseInstructionsLabel = "phrase-instructions-label"
+    const val chatEmptyLead = "chat-empty-lead"
+    const val chatEmptyActions = "chat-empty-actions"
+    const val chatEmptyOr = "chat-empty-or"
+    const val chatExploreCard = "chat-explore-card"
+    const val chatExploreTitle = "chat-explore-title"
+    const val chatExploreSub = "chat-explore-sub"
+    const val storiesSoon = "stories-soon"
+    const val hiddenAdminWrap = "hidden-admin-wrap"
+    const val hiddenAdminButton = "hidden-admin-button"
+
     /**
      * Injects [css] into the document head exactly once. Safe to call from
      * `main()` on every load (guarded by an id).
@@ -1779,6 +1824,342 @@ object Styles {
             border-radius: 16px;
             padding: 16px;
             text-align: center;
+        }
+
+        /* ---- Phrases ---- */
+        .${phraseLocationHeader} {
+            display: flex;
+            align-items: center;
+            gap: 8px;
+            margin: 20px 0 8px;
+        }
+        .${phraseLocationHeader} .${sectionTitle} {
+            margin: 0;
+        }
+        .${phraseLocationHeader} .${materialSymbols} {
+            color: var(--md-sys-color-primary);
+            font-size: 22px;
+        }
+        .${phraseCard} {
+            position: relative;
+            display: flex;
+            flex-direction: column;
+            gap: 8px;
+            padding: 16px;
+            margin-bottom: 12px;
+            border-radius: 20px;
+            background: var(--md-sys-color-surface);
+            border: 1px solid #ffffff16;
+            box-shadow: 0 8px 24px -18px var(--md-shadow);
+            cursor: pointer;
+            overflow: hidden;
+            transition: transform 0.12s ease, box-shadow 0.2s ease;
+        }
+        .${phraseCard}:active { transform: scale(0.99); }
+        .${phraseCard}.${phraseCardCovered} {
+            min-height: 160px;
+            border: none;
+        }
+        .${phraseCardBody} {
+            position: relative;
+            z-index: 1;
+            display: flex;
+            flex-direction: column;
+            gap: 8px;
+        }
+        .${phraseLocationTag} {
+            display: inline-flex;
+            align-items: center;
+            gap: 6px;
+            font-size: 12px;
+            font-weight: 600;
+            color: var(--md-sys-color-on-surface-variant);
+            text-transform: uppercase;
+            letter-spacing: 0.04em;
+        }
+        .${phraseLocationIcon} { font-size: 16px !important; }
+        .${phraseSpoken} {
+            margin: 0;
+            font-size: 18px;
+            line-height: 1.35;
+            font-weight: 650;
+            color: var(--md-sys-color-on-surface);
+            font-style: italic;
+        }
+        .${phraseRawAsk} {
+            margin: 0;
+            font-size: 13px;
+            color: var(--md-sys-color-on-surface-variant);
+        }
+        .${phraseVerse} {
+            margin: 4px 0 0;
+            font-size: 14px;
+            line-height: 1.5;
+            color: var(--md-sys-color-on-surface);
+            background: color-mix(in srgb, var(--md-sys-color-primary-container) 45%, transparent);
+            border-radius: 14px;
+            padding: 12px;
+        }
+        .${phraseExpandHint} {
+            font-size: 12px;
+            color: var(--md-sys-color-primary);
+            font-weight: 600;
+        }
+        .${phraseReactions} {
+            display: flex;
+            flex-wrap: wrap;
+            gap: 6px;
+            margin-top: 4px;
+        }
+        .${phraseReactionBtn} {
+            border: 1px solid var(--md-sys-color-outline);
+            background: var(--md-sys-color-surface-variant);
+            color: var(--md-sys-color-on-surface);
+            border-radius: 999px;
+            padding: 4px 10px;
+            font-size: 13px;
+            cursor: pointer;
+        }
+        .${phraseReactionBtn}:hover {
+            background: var(--md-sys-color-primary-container);
+        }
+
+        .${phrasesOriginStory} {
+            margin: 28px 4px 12px 4px;
+            padding: 0 4px;
+            font-size: 14px;
+            line-height: 1.55;
+            font-style: italic;
+            opacity: 0.5;
+            color: var(--md-sys-color-on-surface);
+        }
+
+        /* ---- Admin ---- */
+        .${adminToolbar} {
+            display: flex;
+            align-items: center;
+            justify-content: space-between;
+            gap: 8px;
+            margin-bottom: 12px;
+            flex-wrap: wrap;
+        }
+        .${adminActions} {
+            margin-bottom: 12px;
+        }
+        .${adminRowActions} {
+            display: flex;
+            flex-direction: column;
+            gap: 4px;
+            margin-left: auto;
+        }
+        .${adminPhotoCard} {
+            display: flex;
+            align-items: center;
+            gap: 12px;
+            padding: 12px;
+            margin-bottom: 10px;
+            border-radius: 16px;
+            background: var(--md-sys-color-surface);
+            border: 1px solid #ffffff16;
+        }
+        .${adminPhotoThumb} {
+            width: 64px;
+            height: 64px;
+            border-radius: 12px;
+            object-fit: cover;
+            flex: 0 0 auto;
+            background: var(--md-sys-color-surface-variant);
+        }
+
+        .${adminUploadBlock} {
+            margin: 8px 0 20px 0;
+        }
+        .${adminCoverCard} {
+            display: flex;
+            flex-direction: column;
+            gap: 12px;
+            padding: 16px;
+            border-radius: 20px;
+            background: color-mix(in srgb, var(--md-sys-color-primary) 6%, var(--md-sys-color-surface));
+            border: 1px solid var(--md-sys-color-outline-variant, var(--md-sys-color-outline));
+            margin-bottom: 16px;
+        }
+        .${adminCoverPreview} {
+            width: 100%;
+            max-height: 220px;
+            object-fit: cover;
+            border-radius: 16px;
+            display: block;
+        }
+        .${adminLocationSuggestions} {
+            display: flex;
+            flex-wrap: wrap;
+            gap: 8px;
+            margin: -4px 0 12px 0;
+        }
+        .${adminIconField} {
+            position: relative;
+            display: flex;
+            align-items: center;
+        }
+        .${adminIconInput} {
+            padding-right: 52px;
+        }
+        .${adminIconPreview} {
+            position: absolute;
+            right: 14px;
+            top: 50%;
+            transform: translateY(-50%);
+            display: inline-flex;
+            color: var(--md-sys-color-primary);
+            pointer-events: none;
+        }
+        .${adminRefGrid} {
+            display: grid;
+            grid-template-columns: repeat(2, minmax(0, 1fr));
+            gap: 10px;
+            margin-top: 8px;
+        }
+        .${adminRefTile} {
+            display: flex;
+            flex-direction: column;
+            gap: 6px;
+            align-items: stretch;
+            text-align: left;
+            padding: 8px;
+            border-radius: 16px;
+            border: 1px solid var(--md-sys-color-outline);
+            background: var(--md-sys-color-surface);
+            color: inherit;
+            font: inherit;
+            cursor: pointer;
+        }
+        .${adminRefTile}.${adminRefTileSelected} {
+            border-color: var(--md-sys-color-primary);
+            box-shadow: 0 0 0 2px color-mix(in srgb, var(--md-sys-color-primary) 35%, transparent);
+        }
+        .${adminRefThumb} {
+            width: 100%;
+            height: 88px;
+            object-fit: cover;
+            border-radius: 12px;
+            display: block;
+        }
+        .${phraseSpokenLabel} {
+            display: block;
+            font-size: 12px;
+            font-weight: 700;
+            letter-spacing: 0.4px;
+            text-transform: uppercase;
+            color: var(--md-sys-color-primary);
+            margin: 8px 0 2px 0;
+        }
+        .${phraseInstructions} {
+            margin-top: 12px;
+            padding: 12px 14px;
+            border-radius: 16px;
+            background: color-mix(in srgb, var(--md-sys-color-tertiary, var(--md-sys-color-primary)) 10%, transparent);
+        }
+        .${phraseInstructionsLabel} {
+            display: block;
+            font-size: 12px;
+            font-weight: 700;
+            text-transform: uppercase;
+            letter-spacing: 0.4px;
+            margin-bottom: 4px;
+            color: var(--md-sys-color-on-surface-variant);
+        }
+        .${phraseInstructions} p {
+            margin: 0;
+            font-size: 14px;
+            line-height: 1.45;
+        }
+        .${chatEmptyLead} {
+            margin: 0 0 12px 0;
+            text-align: center;
+            color: var(--md-sys-color-on-surface-variant);
+            font-size: 15px;
+            line-height: 1.45;
+        }
+        .${chatEmptyActions} {
+            display: flex;
+            flex-direction: column;
+            gap: 10px;
+            width: 100%;
+            margin-bottom: 8px;
+        }
+        .${chatEmptyOr} {
+            display: block;
+            width: 100%;
+            text-align: center;
+            font-size: 12px;
+            font-weight: 700;
+            letter-spacing: 0.5px;
+            text-transform: uppercase;
+            color: var(--md-sys-color-on-surface-variant);
+            opacity: 0.75;
+            margin: 4px 0 2px 0;
+        }
+        .${chatExploreCard} {
+            display: flex;
+            align-items: center;
+            gap: 12px;
+            width: 100%;
+            box-sizing: border-box;
+            text-align: left;
+            padding: 14px 16px;
+            border-radius: 18px;
+            border: 1px solid var(--md-sys-color-outline);
+            background: color-mix(in srgb, var(--md-sys-color-primary) 8%, var(--md-sys-color-surface));
+            color: var(--md-sys-color-on-surface);
+            font: inherit;
+            cursor: pointer;
+        }
+        .${chatExploreCard} > div {
+            display: flex;
+            flex-direction: column;
+            gap: 2px;
+            flex: 1 1 auto;
+            min-width: 0;
+        }
+        .${chatExploreTitle} {
+            font-weight: 700;
+            font-size: 15px;
+        }
+        .${chatExploreSub} {
+            font-size: 13px;
+            color: var(--md-sys-color-on-surface-variant);
+        }
+        .${storiesSoon} {
+            display: flex;
+            flex-direction: column;
+            align-items: center;
+            gap: 12px;
+            padding: 24px 8px 40px;
+            text-align: center;
+        }
+        .${storiesSoon} h2 {
+            margin: 0;
+            font-size: 22px;
+        }
+        .${hiddenAdminWrap} {
+            display: flex;
+            justify-content: center;
+            margin-top: 28px;
+            opacity: 0.18;
+        }
+        .${hiddenAdminButton} {
+            border: none;
+            background: transparent;
+            color: var(--md-sys-color-on-surface-variant);
+            font-size: 18px;
+            line-height: 1;
+            padding: 12px 24px;
+            cursor: default;
+        }
+        .${hiddenAdminButton}:hover {
+            opacity: 1;
+            cursor: pointer;
         }
     """.trimIndent()
 }

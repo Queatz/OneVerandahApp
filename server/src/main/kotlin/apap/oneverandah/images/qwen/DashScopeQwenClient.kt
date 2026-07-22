@@ -16,6 +16,8 @@ import io.ktor.http.contentType
 import io.ktor.http.isSuccess
 import kotlinx.coroutines.delay
 import kotlinx.serialization.json.Json
+import kotlinx.serialization.json.add
+import kotlinx.serialization.json.buildJsonArray
 import kotlinx.serialization.json.buildJsonObject
 import kotlinx.serialization.json.jsonArray
 import kotlinx.serialization.json.jsonObject
@@ -24,12 +26,11 @@ import kotlinx.serialization.json.put
 
 /**
  * Real Qwen image generation via Alibaba Cloud DashScope's asynchronous
- * text-to-image API.
+ * text-to-image and reference-to-image APIs.
  *
  * The flow is: submit the task (async) → poll the task until it succeeds →
  * download the produced image bytes. Errors are surfaced as exceptions so the
- * caller ([apap.oneverandah.images.ImageGenerationService]) can apply its
- * retry/backoff policy.
+ * caller can apply its retry/backoff policy.
  */
 class DashScopeQwenClient(
     private val config: QwenImageConfig,
@@ -45,25 +46,48 @@ class DashScopeQwenClient(
     private val tasksBaseUrl: String =
         config.endpoint.substringBefore("/api/").trimEnd('/') + "/api/v1/tasks/"
 
-    override suspend fun generate(prompt: String): GeneratedImage {
-        // Failures are surfaced as exceptions; the caller (ImageGenerationService)
-        // applies retry/backoff and records the failure to the shared error log.
-        val taskId = submitTask(prompt)
+    override suspend fun generate(
+        prompt: String,
+        referenceImageUrls: List<String>,
+    ): GeneratedImage {
+        val taskId = submitTask(prompt, referenceImageUrls.filter { it.isNotBlank() })
         val imageUrl = pollForResult(taskId)
         return download(imageUrl)
     }
 
-    private suspend fun submitTask(prompt: String): String {
+    private suspend fun submitTask(prompt: String, referenceImageUrls: List<String>): String {
+        val useR2i = referenceImageUrls.isNotEmpty()
+        val endpoint = if (useR2i) config.r2iEndpoint else config.endpoint
+        val model = if (useR2i) config.r2iModel else config.model
+
         val requestBody = buildJsonObject {
-            put("model", config.model)
-            put("input", buildJsonObject { put("prompt", prompt) })
-            put("parameters", buildJsonObject {
-                put("size", "1024*1024")
-                put("n", 1)
-            })
+            put("model", model)
+            put(
+                "input",
+                buildJsonObject {
+                    put("prompt", prompt)
+                    if (useR2i) {
+                        // wanx2.1-vace-plus reference-to-image contract
+                        put("function", "image_reference")
+                        put(
+                            "ref_images_url",
+                            buildJsonArray {
+                                referenceImageUrls.forEach { add(it) }
+                            },
+                        )
+                    }
+                },
+            )
+            put(
+                "parameters",
+                buildJsonObject {
+                    put("size", "1024*1024")
+                    put("n", 1)
+                },
+            )
         }
 
-        val response: HttpResponse = client.post(config.endpoint) {
+        val response: HttpResponse = client.post(endpoint) {
             header(HttpHeaders.Authorization, "Bearer ${config.apiKey}")
             header("X-DashScope-Async", "enable")
             contentType(ContentType.Application.Json)

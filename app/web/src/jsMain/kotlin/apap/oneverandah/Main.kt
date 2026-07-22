@@ -16,9 +16,12 @@ import apap.oneverandah.screens.OfferScreen
 import apap.oneverandah.screens.ProviderScreen
 import apap.oneverandah.screens.ServicesScreen
 import apap.oneverandah.screens.AboutScreen
+import apap.oneverandah.screens.AdminScreen
 import apap.oneverandah.screens.HelpScreen
 import apap.oneverandah.screens.ListServiceScreen
 import apap.oneverandah.screens.ChatScreen
+import apap.oneverandah.screens.ComingSoonStoriesScreen
+import apap.oneverandah.screens.PhrasesScreen
 import org.jetbrains.compose.web.renderComposable
 
 fun main() {
@@ -112,7 +115,34 @@ fun App() {
                     onInitialMessageConsumed = { pendingChatMessage = null },
                     onBack = { router.navigate("/") },
                     onHome = { router.navigate("/") },
+                    onOpenPhrases = { router.navigate("/phrases") },
+                    onOpenStories = { router.navigate("/stories") },
                 )
+            }
+        }
+
+        route("phrases") {
+            noMatch {
+                PhrasesScreen(
+                    onBack = { router.navigate("/") },
+                    onHome = { router.navigate("/") },
+                )
+            }
+        }
+
+        route("stories") {
+            noMatch {
+                ComingSoonStoriesScreen(
+                    onBack = { router.navigate("/") },
+                    onHome = { router.navigate("/") },
+                    onOpenPhrases = { router.navigate("/phrases") },
+                )
+            }
+        }
+
+        route("admin") {
+            noMatch {
+                AdminScreen(onBack = { router.navigate("/") })
             }
         }
 
