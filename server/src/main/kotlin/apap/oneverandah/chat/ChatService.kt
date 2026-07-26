@@ -9,6 +9,7 @@ import apap.oneverandah.api.LanguageStudyMiniApp
 import apap.oneverandah.api.LanguageStudyToken
 import apap.oneverandah.api.ResidentCardMiniApp
 import apap.oneverandah.api.SpeechRequest
+import apap.oneverandah.api.SpeechWordTiming
 import apap.oneverandah.data.FactsCatalog
 import apap.oneverandah.model.ApartmentFact
 import apap.oneverandah.model.Language
@@ -153,6 +154,7 @@ private fun GeneratedLanguageStudy.toMiniApp() = LanguageStudyMiniApp(
 data class GeneratedSpeech(
     val bytes: ByteArray,
     val contentType: String,
+    val words: List<SpeechWordTiming> = emptyList(),
 )
 
 interface SpeechClient {

@@ -9,5 +9,7 @@ class ChatApiTest {
         assertEquals("https://api.oneverandah.app/api/chat", chatApiUrl())
         assertEquals("https://api.oneverandah.app/api/chat/conversation-1", chatApiUrl("/conversation-1"))
         assertEquals("https://api.oneverandah.app/api/chat/speech", chatApiUrl("/speech"))
+        assertEquals("https://api.oneverandah.app/api/chat/study", chatApiUrl("/study"))
+        assertEquals("https://api.oneverandah.app/api/chat/study/dissect", chatApiUrl("/study/dissect"))
     }
 }

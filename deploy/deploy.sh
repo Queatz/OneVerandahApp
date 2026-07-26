@@ -384,5 +384,5 @@ else
 fi
 
 echo
-echo "Tail logs with: ssh ${SSH_HOST} sudo journalctl -u ${SERVICE_NAME}.service -f"
+echo "Tail logs with: ssh ${SSH_HOST} sudo journalctl -u ${SERVICE_NAME}.service -n 100 -f"
 echo "Health check:   curl -s https://${SSL_DOMAIN}/health"

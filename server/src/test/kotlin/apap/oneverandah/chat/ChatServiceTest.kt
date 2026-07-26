@@ -285,9 +285,10 @@ class ChatServiceTest {
 
     private fun qwenConfig() = QwenChatConfig(
         chatEndpoint = "https://example.test/chat",
-        chatModel = "qwen-plus",
+        chatModel = "qwen3-max-preview",
         ttsEndpoint = "https://example.test/tts",
-        ttsModel = "cosyvoice-v3.5-plus",
+        ttsModel = "qwen-audio-3.0-tts-flash",
+        ttsVoice = "longanhuan_v3.6",
         voiceDesignEndpoint = "https://example.test/customization",
         voiceDesignModel = "voice-enrollment",
         asrEndpoint = "wss://example.test/realtime",

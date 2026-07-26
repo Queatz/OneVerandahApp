@@ -101,6 +101,7 @@ fun AdminScreen(onBack: () -> Unit) {
         title = strings.adminTitle,
         onBack = onBack,
         showChatAction = false,
+        showPhrasesAction = false,
         lockScroll = anySheetOpen,
         overlay = {
             // Always mount sheets and toggle `visible` so enter/exit CSS animates.

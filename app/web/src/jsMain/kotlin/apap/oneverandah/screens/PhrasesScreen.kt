@@ -182,11 +182,11 @@ private fun PhraseCard(
 
             if (expanded) {
                 Div(attrs = { classes(Styles.phraseVerseBlock) }) {
-                    Span(attrs = { classes(Styles.phraseInstructionsLabel) }) {
-                        Text(strings.phrasesVerse)
-                    }
                     P(attrs = { classes(Styles.phraseVerse) }) {
-                        Text(phrase.verse.resolve(language))
+                        Span(attrs = { classes(Styles.phraseInstructionsLabel) }) {
+                            Text(strings.phrasesVerse)
+                        }
+                        Div { Text(phrase.verse.resolve(language)) }
                     }
                 }
                 Div(attrs = { classes(Styles.phraseInstructions) }) {

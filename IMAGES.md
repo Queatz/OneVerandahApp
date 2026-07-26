@@ -105,7 +105,7 @@ The backend calls Alibaba Cloud **Model Studio / DashScope** text-to-image
    ```bash
    QWEN_API_KEY=sk-xxxxxxxxxxxxxxxxxxxxxxxx
    # Optional overrides:
-   QWEN_MODEL=wanx2.1-t2i-turbo
+   QWEN_MODEL=wan2.7-image
    QWEN_API_ENDPOINT=https://dashscope.aliyuncs.com/api/v1/services/aigc/text2image/image-synthesis
    # For the international endpoint use dashscope-intl.aliyuncs.com
    ```

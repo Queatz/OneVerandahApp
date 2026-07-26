@@ -3,21 +3,36 @@ package apap.oneverandah.routes
 import apap.oneverandah.api.ChatErrorResponse
 import apap.oneverandah.api.ChatHistoryResponse
 import apap.oneverandah.api.ChatRequest
+import apap.oneverandah.api.SaveChatMessageRequest
 import apap.oneverandah.api.SpeechRequest
 import apap.oneverandah.api.SpeechResponse
+import apap.oneverandah.api.StudyDissectSentenceRequest
+import apap.oneverandah.api.StudySessionRequest
 import apap.oneverandah.chat.ChatService
 import apap.oneverandah.chat.QwenAsrRelay
+import apap.oneverandah.chat.SavedMessagesService
 import apap.oneverandah.chat.SpeechService
+import apap.oneverandah.chat.StudyService
+import apap.oneverandah.chat.UnauthorizedDeviceException
 import io.ktor.http.HttpStatusCode
+import io.ktor.server.request.header
 import io.ktor.server.request.receive
 import io.ktor.server.response.respond
 import io.ktor.server.routing.Route
-import io.ktor.server.websocket.webSocket
+import io.ktor.server.routing.delete
 import io.ktor.server.routing.get
 import io.ktor.server.routing.post
+import io.ktor.server.websocket.webSocket
 import java.util.Base64
 
-fun Route.chatRoutes(chatService: ChatService, speechService: SpeechService) {
+const val DEVICE_TOKEN_HEADER = "X-Device-Token"
+
+fun Route.chatRoutes(
+    chatService: ChatService,
+    speechService: SpeechService,
+    savedMessagesService: SavedMessagesService? = null,
+    studyService: StudyService? = null,
+) {
     post("/api/chat") {
         val request = call.receive<ChatRequest>()
         if (request.normalizedOrNull() == null) {
@@ -25,15 +40,6 @@ fun Route.chatRoutes(chatService: ChatService, speechService: SpeechService) {
             return@post
         }
         call.respond(chatService.send(request))
-    }
-
-    get("/api/chat/{conversationId}") {
-        val conversationId = call.parameters["conversationId"]?.trim().orEmpty()
-        if (conversationId.isEmpty()) {
-            call.respond(HttpStatusCode.BadRequest, ChatErrorResponse("Conversation id is required"))
-            return@get
-        }
-        call.respond(ChatHistoryResponse(conversationId, chatService.history(conversationId)))
     }
 
     post("/api/chat/speech") {
@@ -46,8 +52,86 @@ fun Route.chatRoutes(chatService: ChatService, speechService: SpeechService) {
             SpeechResponse(
                 audioBase64 = Base64.getEncoder().encodeToString(speech.bytes),
                 contentType = speech.contentType,
+                words = speech.words,
             ),
         )
+    }
+
+    if (studyService != null) {
+        post("/api/chat/study") {
+            val request = call.receive<StudySessionRequest>()
+            if (request.normalizedOrNull() == null) {
+                call.respond(HttpStatusCode.BadRequest, ChatErrorResponse("Study text must not be blank"))
+                return@post
+            }
+            call.respond(studyService.skeleton(request))
+        }
+
+        post("/api/chat/study/dissect") {
+            val request = call.receive<StudyDissectSentenceRequest>()
+            if (request.normalizedOrNull() == null) {
+                call.respond(
+                    HttpStatusCode.BadRequest,
+                    ChatErrorResponse("Study dissect requires non-blank text, sentence, and tokens"),
+                )
+                return@post
+            }
+            call.respond(studyService.dissectSentence(request))
+        }
+    }
+
+    // Register static /saved paths before /{conversationId} so "saved" is not captured as an id.
+    if (savedMessagesService != null) {
+        get("/api/chat/saved") {
+            val token = call.request.header(DEVICE_TOKEN_HEADER)
+            try {
+                call.respond(savedMessagesService.list(token))
+            } catch (_: UnauthorizedDeviceException) {
+                call.respond(HttpStatusCode.Unauthorized, ChatErrorResponse("Valid device token required"))
+            }
+        }
+
+        post("/api/chat/saved") {
+            val token = call.request.header(DEVICE_TOKEN_HEADER)
+            val request = call.receive<SaveChatMessageRequest>()
+            if (request.normalizedOrNull() == null) {
+                call.respond(HttpStatusCode.BadRequest, ChatErrorResponse("Message text must not be blank"))
+                return@post
+            }
+            try {
+                call.respond(savedMessagesService.save(token, request))
+            } catch (_: UnauthorizedDeviceException) {
+                call.respond(HttpStatusCode.Unauthorized, ChatErrorResponse("Valid device token required"))
+            }
+        }
+
+        delete("/api/chat/saved/{id}") {
+            val token = call.request.header(DEVICE_TOKEN_HEADER)
+            val id = call.parameters["id"]?.trim().orEmpty()
+            if (id.isEmpty()) {
+                call.respond(HttpStatusCode.BadRequest, ChatErrorResponse("Saved message id is required"))
+                return@delete
+            }
+            try {
+                val deleted = savedMessagesService.delete(token, id)
+                if (!deleted) {
+                    call.respond(HttpStatusCode.NotFound, ChatErrorResponse("Saved message not found"))
+                    return@delete
+                }
+                call.respond(HttpStatusCode.NoContent)
+            } catch (_: UnauthorizedDeviceException) {
+                call.respond(HttpStatusCode.Unauthorized, ChatErrorResponse("Valid device token required"))
+            }
+        }
+    }
+
+    get("/api/chat/{conversationId}") {
+        val conversationId = call.parameters["conversationId"]?.trim().orEmpty()
+        if (conversationId.isEmpty()) {
+            call.respond(HttpStatusCode.BadRequest, ChatErrorResponse("Conversation id is required"))
+            return@get
+        }
+        call.respond(ChatHistoryResponse(conversationId, chatService.history(conversationId)))
     }
 }
 

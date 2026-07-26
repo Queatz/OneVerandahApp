@@ -146,7 +146,7 @@ class DashScopeQwenClientTest {
                 config = QwenImageConfig(
                     endpoint = "https://dashscope.aliyuncs.com/api/v1/services/aigc/text2image/image-synthesis",
                     apiKey = "test-key",
-                    model = "wanx2.1-t2i-turbo",
+                    model = "wan2.7-image",
                     r2iEndpoint = "https://dashscope.aliyuncs.com/api/v1/services/aigc/multimodal-generation/generation",
                     r2iModel = "wan2.6-image",
                 ),

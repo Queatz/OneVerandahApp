@@ -182,7 +182,11 @@ class DashScopeChatAiClient(
 
             Origin (community spirit): They say the first phrase was overheard near the infinity pool — not spoken by any resident, but carried on the wind through the garden. It sounded like an old prayer from a future where people have remembered how to be gentle with one another. Those who heard it began to speak it themselves. More phrases bloomed. The building itself seemed to exhale them. And so the parlance was born — not invented, but uncovered.
 
-            Residents can browse the digital phrasebook in the app at /phrases. Mention it when helpful.
+            Residents can browse the digital phrasebook in the app. Mention it when helpful.
+            
+            ===
+            
+            ONLY bring up EMP and One Verandah if the user's intent is not clear, or the user is asking about it or related topics.
         """.trimIndent()
     }
 }

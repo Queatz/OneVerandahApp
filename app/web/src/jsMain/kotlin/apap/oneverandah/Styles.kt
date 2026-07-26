@@ -273,6 +273,30 @@ object Styles {
     const val chatExploreCard = "chat-explore-card"
     const val chatExploreTitle = "chat-explore-title"
     const val chatExploreSub = "chat-explore-sub"
+    const val chatBookmarkBtn = "chat-bookmark-btn"
+    const val savedPanelScrim = "saved-panel-scrim"
+    const val savedPanel = "saved-panel"
+    const val savedPanelHeader = "saved-panel-header"
+    const val savedPanelTitle = "saved-panel-title"
+    const val savedPanelBody = "saved-panel-body"
+    const val savedPanelEmpty = "saved-panel-empty"
+    const val savedItem = "saved-item"
+    const val savedItemSender = "saved-item-sender"
+    const val savedItemText = "saved-item-text"
+    const val savedItemActions = "saved-item-actions"
+    const val savedItemAction = "saved-item-action"
+    const val savedItemActionDanger = "saved-item-action-danger"
+    const val studySessionBody = "study-session-body"
+    const val studySessionHint = "study-session-hint"
+    const val studySessionError = "study-session-error"
+    const val studySentenceBlock = "study-sentence-block"
+    const val studySentenceError = "study-sentence-error"
+    const val studyTokenPlain = "study-token-plain"
+    const val studyTokenPending = "study-token-pending"
+    const val studyTokenDetail = "study-token-detail"
+    const val studyExampleSentence = "study-example-sentence"
+    const val studyExampleTranslation = "study-example-translation"
+    const val studyPreparingMeanings = "study-preparing-meanings"
     const val storiesSoon = "stories-soon"
     const val hiddenAdminWrap = "hidden-admin-wrap"
     const val hiddenAdminButton = "hidden-admin-button"
@@ -1849,7 +1873,7 @@ object Styles {
             gap: 8px;
             padding: 16px;
             margin-bottom: 12px;
-            border-radius: 20px;
+            border-radius: 28px; // Must be the same as `cover-image-veiled`
             background: var(--md-sys-color-surface);
             border: 1px solid #ffffff16;
             box-shadow: 0 8px 24px -18px var(--md-shadow);
@@ -2142,6 +2166,226 @@ object Styles {
             font-size: 15px;
         }
         .${chatExploreSub} {
+            font-size: 13px;
+            color: var(--md-sys-color-on-surface-variant);
+        }
+        .${chatMessageMeta} {
+            display: flex;
+            align-items: center;
+            gap: 6px;
+        }
+        .${chatBookmarkBtn} {
+            border: none;
+            background: transparent;
+            color: var(--md-sys-color-on-surface-variant);
+            padding: 2px;
+            margin: 0;
+            cursor: pointer;
+            display: inline-flex;
+            align-items: center;
+            justify-content: center;
+            border-radius: 999px;
+        }
+        .${chatBookmarkBtn}:hover {
+            color: var(--md-sys-color-primary);
+            background: color-mix(in srgb, var(--md-sys-color-primary) 10%, transparent);
+        }
+        .${chatBookmarkBtn} .${materialSymbols} {
+            font-size: 18px;
+        }
+        .${savedPanelScrim} {
+            position: absolute;
+            inset: 0;
+            background: rgba(0, 0, 0, 0.35);
+            z-index: 40;
+        }
+        .${savedPanel} {
+            position: absolute;
+            left: 0;
+            right: 0;
+            bottom: 0;
+            top: 12%;
+            z-index: 41;
+            display: flex;
+            flex-direction: column;
+            background: var(--md-sys-color-surface);
+            border-radius: 24px 24px 0 0;
+            box-shadow: 0 -8px 28px rgba(0, 0, 0, 0.18);
+            overflow: hidden;
+        }
+        .${savedPanelHeader} {
+            display: flex;
+            align-items: center;
+            justify-content: space-between;
+            gap: 12px;
+            padding: 16px 16px 10px;
+            // border-bottom: 1px solid var(--md-sys-color-outline-variant, var(--md-sys-color-outline));
+        }
+        .${savedPanelTitle} {
+            font-size: 18px;
+            font-weight: 700;
+        }
+        .${savedPanelBody} {
+            flex: 1 1 auto;
+            overflow-y: auto;
+            padding: 12px 16px 28px;
+            display: flex;
+            flex-direction: column;
+            gap: 12px;
+        }
+        .${savedPanelEmpty} {
+            display: flex;
+            flex-direction: column;
+            align-items: center;
+            gap: 10px;
+            text-align: center;
+            padding: 36px 12px;
+            color: var(--md-sys-color-on-surface-variant);
+        }
+        .${savedPanelEmpty} p {
+            margin: 0;
+            max-width: 28ch;
+            line-height: 1.45;
+        }
+        .${savedItem} {
+            display: flex;
+            flex-direction: column;
+            gap: 8px;
+            padding: 14px;
+            border-radius: 18px;
+            border: 1px solid var(--md-sys-color-outline);
+            background: color-mix(in srgb, var(--md-sys-color-primary) 5%, var(--md-sys-color-surface));
+        }
+        .${savedItemSender} {
+            font-size: 12px;
+            font-weight: 700;
+            letter-spacing: 0.3px;
+            text-transform: uppercase;
+            color: var(--md-sys-color-on-surface-variant);
+        }
+        .${savedItemText} {
+            margin: 0;
+            font-size: 15px;
+            line-height: 1.45;
+            white-space: pre-wrap;
+            word-break: break-word;
+        }
+        .${savedItemActions} {
+            display: flex;
+            flex-wrap: wrap;
+            gap: 8px;
+            margin-top: 2px;
+        }
+        .${savedItemAction} {
+            display: inline-flex;
+            align-items: center;
+            gap: 4px;
+            border: 1px solid var(--md-sys-color-outline);
+            background: var(--md-sys-color-surface);
+            color: var(--md-sys-color-on-surface);
+            border-radius: 999px;
+            padding: 6px 12px;
+            font: inherit;
+            font-size: 13px;
+            font-weight: 600;
+            cursor: pointer;
+        }
+        .${savedItemAction} .${materialSymbols} {
+            font-size: 16px;
+        }
+        .${savedItemActionDanger} {
+            color: var(--md-sys-color-error, #b3261e);
+            border-color: color-mix(in srgb, var(--md-sys-color-error, #b3261e) 35%, var(--md-sys-color-outline));
+        }
+        /* Study content scrolls via dialogContent; do not nest a second capped
+           scroll region or the sheet cannot expand toward the sheet max-height. */
+        .${studySessionBody} {
+            display: flex;
+            flex-direction: column;
+            gap: 14px;
+            padding-bottom: 8px;
+        }
+        .${studySessionHint} {
+            font-size: 13px;
+            color: var(--md-sys-color-on-surface-variant);
+            line-height: 1.4;
+        }
+        .${studySessionError} {
+            display: flex;
+            flex-direction: column;
+            align-items: flex-start;
+            gap: 10px;
+            color: var(--md-sys-color-on-surface-variant);
+        }
+        .${studySessionError} p {
+            margin: 0;
+            line-height: 1.45;
+        }
+        .${studySentenceBlock} {
+            display: flex;
+            flex-direction: column;
+            gap: 10px;
+            padding: 12px;
+            border-radius: 16px;
+            border: 1px solid var(--md-sys-color-outline);
+            background: color-mix(in srgb, var(--md-sys-color-primary) 5%, var(--md-sys-color-surface));
+        }
+        .${studySentenceBlock} .${languageSentence} {
+            margin-bottom: 0;
+        }
+        .${studyTokenPlain} {
+            display: inline-flex;
+            align-items: center;
+            padding: 6px 2px;
+            font-size: 18px;
+            line-height: 1.3;
+            color: var(--md-sys-color-on-surface-variant);
+        }
+        .${studyTokenPending} {
+            display: inline-flex;
+            align-items: center;
+            border: 1px dashed color-mix(in srgb, var(--md-sys-color-outline) 70%, transparent);
+            background: color-mix(in srgb, var(--md-sys-color-surface-variant) 45%, transparent);
+            color: var(--md-sys-color-on-surface-variant);
+            border-radius: 10px;
+            padding: 4px 8px;
+            margin: 2px;
+            font: inherit;
+            font-size: 17px;
+            line-height: 1.3;
+            opacity: 0.78;
+            cursor: default;
+        }
+        .${studySentenceError} {
+            display: flex;
+            flex-wrap: wrap;
+            align-items: center;
+            gap: 8px;
+            font-size: 13px;
+            color: var(--md-sys-color-error, #b3261e);
+        }
+        .${studyPreparingMeanings} .${materialSymbols} { animation: spin 1.2s linear infinite; }
+        .${studyPreparingMeanings} {
+            display: inline-flex;
+            align-items: center;
+            gap: 8px;
+            font-size: 13px;
+            color: var(--md-sys-color-on-surface-variant);
+        }
+        .${studyTokenDetail} {
+            margin-top: 2px;
+        }
+        .${studyExampleSentence} {
+            margin: 0 0 10px;
+            padding-left: 10px;
+            border-left: 3px solid color-mix(in srgb, var(--md-sys-color-primary) 45%, transparent);
+        }
+        .${studyExampleSentence} p {
+            margin: 0 !important;
+            line-height: 1.4;
+        }
+        .${studyExampleTranslation} {
+            margin-top: 2px !important;
             font-size: 13px;
             color: var(--md-sys-color-on-surface-variant);
         }

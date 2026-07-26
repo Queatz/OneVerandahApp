@@ -15,7 +15,10 @@ import org.slf4j.LoggerFactory
 class ChatSystem(
     val chatService: ChatService,
     val speechService: SpeechService,
+    val studyService: StudyService,
     val asrRelay: QwenAsrRelay,
+    val deviceService: DeviceService,
+    val savedMessagesService: SavedMessagesService,
     private val httpClient: HttpClient,
     private val voiceDesignEnabled: Boolean,
     private val scope: CoroutineScope,
@@ -46,14 +49,21 @@ class ChatSystem(
                 expectSuccess = false
             }
             val arangoRepository = ArangoChatRepository.connect(config.arango, client)
+            val arangoDeviceRepository = ArangoDeviceRepository.connect(config.arango, client)
+            val arangoSavedRepository = ArangoSavedMessagesRepository.connect(config.arango, client)
             if (arangoRepository == null && config.isProduction) {
                 client.close()
                 scope.cancel()
                 error("Production chat requires ArangoDB at ${config.arango.baseUrl}")
             }
             val repository = arangoRepository ?: InMemoryChatRepository()
+            val deviceRepository = arangoDeviceRepository ?: InMemoryDeviceRepository()
+            val savedRepository = arangoSavedRepository ?: InMemorySavedMessagesRepository()
             if (arangoRepository == null) log.info("Chat persistence is using the in-memory development store")
+            if (arangoDeviceRepository == null) log.info("Device identity is using the in-memory development store")
+            if (arangoSavedRepository == null) log.info("Saved messages are using the in-memory development store")
             val residents = Catalog.services.map { it.provider }.distinctBy { it.id }
+            val deviceService = DeviceService(deviceRepository)
             return ChatSystem(
                 chatService = ChatService(
                     repository = repository,
@@ -61,7 +71,13 @@ class ChatSystem(
                     residentDirectory = ResidentDirectory(residents),
                 ),
                 speechService = SpeechService(DashScopeSpeechClient(config.qwenChat, client)),
+                studyService = StudyService(DashScopeStudyAiClient(config.qwenChat, client)),
                 asrRelay = QwenAsrRelay(config.qwenChat, client, scope),
+                deviceService = deviceService,
+                savedMessagesService = SavedMessagesService(
+                    repository = savedRepository,
+                    deviceService = deviceService,
+                ),
                 httpClient = client,
                 voiceDesignEnabled = config.qwenChat.enabled,
                 scope = scope,

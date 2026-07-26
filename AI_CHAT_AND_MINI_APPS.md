@@ -12,6 +12,17 @@ This guide explains how One Verandah's AI chat works and how to add a new mini a
 - Chat history is persisted in ArangoDB in production.
 - One message currently supports zero or one mini app. Supporting several mini apps requires an intentional contract change.
 
+
+## Saved messages and device identity
+
+Guest users can bookmark individual chat messages (user or AI, including mini-app payloads) without accounts.
+
+- The browser obtains a long opaque device token via `POST /api/device` and stores **only that token** in `localStorage` (`oneverandah.deviceToken`).
+- Saved message bodies live on the backend in `saved_chat_messages`, scoped by a hash of the device token.
+- Browser CRUD uses `GET/POST /api/chat/saved` and `DELETE /api/chat/saved/{id}` with the `X-Device-Token` header.
+- Chat UI entry points: header bookmarks shortcut and empty-state “Saved messages” card share one in-chat panel.
+- Restart actions from a saved item: **Send** starts a fresh conversation and auto-sends the text; **Edit** prefills the composer. Mini-apps are shown while browsing saved items but are not re-injected into the new conversation.
+
 ## Architecture at a glance
 
 ```text
@@ -47,7 +58,7 @@ The shared contract lives in `core`, orchestration and AI calls live in `server`
 | Trusted facts | `core/src/commonMain/kotlin/apap/oneverandah/data/FactsCatalog.kt` | Localized apartment fact catalog |
 | Chat orchestration | `server/src/main/kotlin/apap/oneverandah/chat/ChatService.kt` | Persists messages, gathers trusted context, calls AI, validates selections, and builds mini apps |
 | Qwen chat | `server/src/main/kotlin/apap/oneverandah/chat/QwenChatClient.kt` | System prompt, JSON request, wire schema, and structured reply parsing |
-| Speech | `server/src/main/kotlin/apap/oneverandah/chat/QwenSpeechClient.kt` | Qwen voice design and CosyVoice synthesis |
+| Speech | `server/src/main/kotlin/apap/oneverandah/chat/QwenSpeechClient.kt` | Qwen-Audio-TTS synthesis with the default system voice |
 | Composition | `server/src/main/kotlin/apap/oneverandah/chat/ChatSystem.kt` | Creates repositories, clients, services, and resident directory |
 | Persistence | `server/src/main/kotlin/apap/oneverandah/chat/ArangoChatRepository.kt` | Stores and retrieves chat messages from ArangoDB |
 | HTTP routes | `server/src/main/kotlin/apap/oneverandah/routes/ChatRoutes.kt` | Send, history, and speech endpoints |
@@ -160,7 +171,7 @@ Adding a sealed subtype will force this dispatch to be updated at compile time. 
 
 `DashScopeChatAiClient` calls the OpenAI-compatible DashScope chat-completions endpoint with:
 
-- Model: `qwen-plus` by default.
+- Model: `qwen3-max-preview` by default.
 - `response_format.type`: `json_object`.
 - Temperature: `0.4`.
 - A system message containing the active language, response schema, mini-app instructions, and trusted context.
@@ -248,9 +259,103 @@ Never ask Qwen to emit HTML, CSS, executable code, URLs for privileged actions, 
 
 **UI behavior:** A themed informational card is rendered below the answer.
 
+## On-demand Study sessions
+
+Every chat message has a **Study** button next to Save. It opens a bottom-sheet study session for that message's text (user or AI), independent of the language-study mini app.
+
+Loading is progressive so the learner can enter the session quickly:
+
+1. **Skeleton** — language detection, sentence split, tokenization (no full meanings yet)
+2. **Per-sentence dissect** — full token details for one sentence at a time (client fans out with modest parallelism)
+
+### Skeleton
+
+```http
+POST /api/chat/study
+Content-Type: application/json
+
+{
+  "text": "Tôi đang học tiếng Việt. Bạn khỏe không?",
+  "languageTag": "en"
+}
+```
+
+`languageTag` is the learner's active UI language (used later for explanations). The server detects the source-text language, splits by sentence, tokenizes, and returns a lightweight skeleton. Lexical tokens are `PENDING`; punctuation is `PLAIN`:
+
+```json
+{
+  "text": "Tôi đang học tiếng Việt. Bạn khỏe không?",
+  "textLanguageTag": "vi",
+  "sentences": [
+    {
+      "text": "Tôi đang học tiếng Việt.",
+      "tokens": [
+        { "text": "Tôi", "status": "PENDING" },
+        { "text": "đang", "status": "PENDING" },
+        { "text": ".", "status": "PLAIN" }
+      ]
+    }
+  ]
+}
+```
+
+### Per-sentence dissection
+
+After the skeleton is shown, the client calls once per sentence:
+
+```http
+POST /api/chat/study/dissect
+Content-Type: application/json
+
+{
+  "text": "Tôi đang học tiếng Việt. Bạn khỏe không?",
+  "sentenceText": "Tôi đang học tiếng Việt.",
+  "tokens": ["Tôi", "đang", "."],
+  "textLanguageTag": "vi",
+  "languageTag": "en"
+}
+```
+
+Response (same token texts/order; lexical tokens become `READY`):
+
+```json
+{
+  "sentenceText": "Tôi đang học tiếng Việt.",
+  "tokens": [
+    {
+      "text": "Tôi",
+      "status": "READY",
+      "literalMeaning": "I",
+      "register": "neutral",
+      "contextualMeaning": "The speaker",
+      "nearSynonyms": ["mình"],
+      "exampleSentences": [
+        { "text": "Tôi đi học.", "translation": "I go to school." },
+        { "text": "Tôi thích trà.", "translation": "I like tea." },
+        { "text": "Tôi ở đây.", "translation": "I am here." }
+      ]
+    },
+    { "text": ".", "status": "PLAIN" }
+  ]
+}
+```
+
+UI behavior:
+
+- Bottom sheet opens as soon as the skeleton returns (short spinner only for that first call).
+- Sentence blocks with tokens and a TTS play button under each sentence (TTS can start from skeleton sentence text).
+- Tapping a lexical token selects it and speaks that word. Prefer clipping the already-fetched sentence audio using TTS word timings; only fall back to a per-word TTS call when timings are missing.
+- `PENDING` words are visible and tappable for audio; full dissection panel opens when `READY`.
+- Failed sentence dissections keep the tokenized sentence and offer a local retry; other sentences stay usable.
+- Example sentence text and TTS use the source-text language; example translations and explanations use the active UI language.
+- Sessions are cached per message id in the browser; reopening resumes from cache and only refetches missing/failed sentences.
+- AI JSON parsers are lenient: non-object entries in `sentences`/`tokens` arrays are skipped so one bad element does not discard salvageable content.
+
+Implementation lives in `StudyService` / `DashScopeStudyAiClient`, routes `POST /api/chat/study` + `POST /api/chat/study/dissect`, and `StudySessionDialog` in `ChatScreen`.
+
 ## Speech integration
 
-Language Study uses the same chat backend rather than calling Qwen from the browser:
+Language Study and on-demand Study sessions use the same chat backend rather than calling Qwen from the browser:
 
 ```http
 POST /api/chat/speech
@@ -267,21 +372,35 @@ The server returns:
 ```json
 {
   "audioBase64": "...",
-  "contentType": "audio/mpeg"
+  "contentType": "audio/mpeg",
+  "words": [
+    { "text": "xin", "beginMs": 0, "endMs": 180, "beginIndex": 0, "endIndex": 3 },
+    { "text": "chào", "beginMs": 200, "endMs": 520, "beginIndex": 4, "endIndex": 8 }
+  ]
 }
 ```
 
-`ChatApi.speechDataUrl` converts this response to a browser data URL.
+`words` is optional/empty when the provider does not return timestamps. Times are milliseconds from the start of the audio; `beginIndex`/`endIndex` are character offsets into the synthesized text when available.
+
+`ChatApi.speech` returns the full payload (including timings). `ChatApi.speechDataUrl` is a convenience that converts audio to a browser data URL.
+
+Study-session word playback:
+
+1. Fetch one TTS clip per sentence (with word timings when available).
+2. On token tap, map the study token onto TTS words via `SpeechTimingAligner` (char-index overlap, then text occurrence / character join).
+3. Play that slice of the sentence audio in the browser (`currentTime` + stop at `endMs`).
+4. Only if timings cannot be aligned, synthesize the single token as a fallback.
 
 Speech implementation rules:
 
-- Use `cosyvoice-v3.5-plus`.
-- Keep voice design and synthesis in the same DashScope Beijing region.
-- Voice design uses the DashScope customization HTTP endpoint.
-- Synthesis uses the official DashScope Java SDK/WebSocket protocol.
-- The designed voice ID is cached by `SpeechService`.
+- Use `qwen-audio-3.0-tts-flash`.
+- Use the default designed system voice `longanhuan_v3.6` (overridable with `QWEN_TTS_VOICE`).
+- Keep synthesis on the DashScope Beijing WebSocket endpoint.
+- Synthesis uses the official DashScope Java SDK/WebSocket protocol shared with CosyVoice-compatible models.
+- Enable word-level timestamps (`enableWordTimestamp`) and surface them on `SpeechResponse.words`.
+- The resolved voice ID is cached by `SpeechService`.
 - Voice initialization is launched asynchronously with the Ktor application, so server readiness is not blocked.
-- If startup voice design fails, the server stays available and speech retries initialization on demand.
+- If startup voice resolution fails, the server stays available and speech retries initialization on demand.
 
 ## HTTP API
 
@@ -289,7 +408,9 @@ Speech implementation rules:
 | --- | --- | --- |
 | `POST` | `/api/chat` | Normalize a user message, generate an AI response, persist both, and return the AI message |
 | `GET` | `/api/chat/{conversationId}` | Return persisted messages ordered by creation time |
-| `POST` | `/api/chat/speech` | Synthesize speech and return Base64 audio |
+| `POST` | `/api/chat/speech` | Synthesize speech and return Base64 audio plus optional word timings |
+| `POST` | `/api/chat/study` | Build a fast study skeleton (language + sentences + tokens) for arbitrary chat text |
+| `POST` | `/api/chat/study/dissect` | Fill full token dissections for one skeleton sentence |
 
 The send response is:
 
@@ -327,13 +448,15 @@ The relevant configuration is resolved in `AppConfig`:
 | --- | --- |
 | `QWEN_API_KEY` | Required to enable Qwen chat and speech |
 | `QWEN_CHAT_ENDPOINT` | Defaults to the DashScope OpenAI-compatible chat-completions endpoint |
-| `QWEN_CHAT_MODEL` | Defaults to `qwen-plus` |
-| `QWEN_VOICE_DESIGN_MODEL` | Defaults to `voice-enrollment` |
+| `QWEN_CHAT_MODEL` | Defaults to `qwen3-max-preview` |
+| `QWEN_TTS_MODEL` | Defaults to `qwen-audio-3.0-tts-flash` |
+| `QWEN_TTS_VOICE` | Defaults to `longanhuan_v3.6` |
+| `QWEN_VOICE_DESIGN_MODEL` | Reserved; defaults to `voice-enrollment` |
 | `QWEN_ASR_WORKSPACE_ID` | Beijing Model Studio workspace ID; required to enable realtime voice input |
 | `QWEN_ASR_ENDPOINT` | Optional full workspace-scoped realtime endpoint override for another region |
 | `QWEN_ASR_MODEL` | Defaults to `qwen3-asr-flash-realtime` |
 
-CosyVoice synthesis and voice-design endpoints are intentionally fixed to matching Beijing-region DashScope endpoints. Do not restore old speech endpoint overrides that can mix regions or use an incompatible multimodal HTTP route.
+Qwen-Audio-TTS synthesis is intentionally fixed to the Beijing-region DashScope WebSocket endpoint. Do not restore old speech endpoint overrides that can mix regions or use an incompatible multimodal HTTP route.
 Realtime ASR uses `wss://{WorkspaceId}.cn-beijing.maas.aliyuncs.com/api-ws/v1/realtime` with the model supplied as a query parameter. The backend adds the Qwen API key and relays WebSocket events so credentials are never sent to the browser.
 
 Hold-to-speak performance notes:

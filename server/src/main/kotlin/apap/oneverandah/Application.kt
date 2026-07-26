@@ -8,6 +8,7 @@ import apap.oneverandah.phrases.PhraseSystem
 import apap.oneverandah.routes.imageRoutes
 import apap.oneverandah.routes.chatRoutes
 import apap.oneverandah.routes.asrRoutes
+import apap.oneverandah.routes.deviceRoutes
 import apap.oneverandah.routes.phraseRoutes
 import apap.oneverandah.routes.searchRoutes
 import io.ktor.http.HttpHeaders
@@ -152,6 +153,7 @@ fun Application.module(
         allowMethod(HttpMethod.Options)
         allowHeader(HttpHeaders.ContentType)
         allowHeader(HttpHeaders.Authorization)
+        allowHeader("X-Device-Token")
         if (config.allowedCorsHosts.isEmpty()) {
             anyHost()
         } else {
@@ -180,8 +182,14 @@ fun Application.module(
         }
         imageRoutes(imageSystem, config)
         searchRoutes(imageSystem)
-        chatRoutes(chatSystem.chatService, chatSystem.speechService)
+        chatRoutes(
+            chatSystem.chatService,
+            chatSystem.speechService,
+            chatSystem.savedMessagesService,
+            chatSystem.studyService,
+        )
         asrRoutes(chatSystem.asrRelay)
+        deviceRoutes(chatSystem.deviceService)
         phraseRoutes(phraseSystem, config)
     }
 }

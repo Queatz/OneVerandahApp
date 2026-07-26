@@ -108,6 +108,8 @@ data class QwenChatConfig(
     val chatModel: String,
     val ttsEndpoint: String,
     val ttsModel: String,
+    /** Built-in Qwen-Audio-TTS system voice used as the app default. */
+    val ttsVoice: String,
     val voiceDesignEndpoint: String,
     val voiceDesignModel: String,
     val asrEndpoint: String,
@@ -253,7 +255,7 @@ data class AppConfig(
                 endpoint = source["QWEN_API_ENDPOINT"]
                     ?: "https://dashscope.aliyuncs.com/api/v1/services/aigc/text2image/image-synthesis",
                 apiKey = source["QWEN_API_KEY"] ?: "",
-                model = source["QWEN_MODEL"] ?: "wanx2.1-t2i-turbo",
+                model = source["QWEN_MODEL"] ?: "wan2.7-image",
                 r2iEndpoint = source["QWEN_R2I_ENDPOINT"]
                     ?: "https://dashscope.aliyuncs.com/api/v1/services/aigc/multimodal-generation/generation",
                 r2iModel = source["QWEN_R2I_MODEL"] ?: "wan2.6-image",
@@ -262,9 +264,12 @@ data class AppConfig(
             val qwenChat = QwenChatConfig(
                 chatEndpoint = source["QWEN_CHAT_ENDPOINT"]
                     ?: "https://dashscope.aliyuncs.com/compatible-mode/v1/chat/completions",
-                chatModel = source["QWEN_CHAT_MODEL"] ?: "qwen-plus",
+                chatModel = source["QWEN_CHAT_MODEL"] ?: "qwen3-max-preview",
+                // Qwen-Audio-TTS shares the CosyVoice-compatible WebSocket synthesis protocol.
                 ttsEndpoint = "wss://dashscope.aliyuncs.com/api-ws/v1/inference/",
-                ttsModel = "cosyvoice-v3.5-plus",
+                ttsModel = source["QWEN_TTS_MODEL"] ?: "qwen-audio-3.0-tts-flash",
+                // Default curated social-companion voice for qwen-audio-3.0-tts-flash.
+                ttsVoice = source["QWEN_TTS_VOICE"] ?: "longanhuan_v3.6",
                 voiceDesignEndpoint = "https://dashscope.aliyuncs.com/api/v1/services/audio/tts/customization",
                 voiceDesignModel = source["QWEN_VOICE_DESIGN_MODEL"] ?: "voice-enrollment",
                 asrEndpoint = source["QWEN_ASR_ENDPOINT"]

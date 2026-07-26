@@ -1,78 +1,47 @@
 package apap.oneverandah.chat
 
 import apap.oneverandah.api.SpeechRequest
+import apap.oneverandah.api.SpeechWordTiming
 import apap.oneverandah.config.QwenChatConfig
+import com.alibaba.dashscope.audio.tts.SpeechSynthesisResult
+import com.alibaba.dashscope.audio.tts.timestamp.Word
 import com.alibaba.dashscope.audio.ttsv2.SpeechSynthesisAudioFormat
 import com.alibaba.dashscope.audio.ttsv2.SpeechSynthesisParam
 import com.alibaba.dashscope.audio.ttsv2.SpeechSynthesizer
+import com.alibaba.dashscope.common.ResultCallback
 import io.ktor.client.HttpClient
-import io.ktor.client.request.header
-import io.ktor.client.request.post
-import io.ktor.client.request.setBody
-import io.ktor.client.statement.bodyAsText
-import io.ktor.http.ContentType
-import io.ktor.http.HttpHeaders
-import io.ktor.http.contentType
-import io.ktor.http.isSuccess
 import kotlinx.coroutines.CancellationException
 import kotlinx.coroutines.Dispatchers
 import kotlinx.coroutines.withContext
-import kotlinx.serialization.json.Json
-import kotlinx.serialization.json.JsonObject
-import kotlinx.serialization.json.buildJsonObject
-import kotlinx.serialization.json.jsonObject
-import kotlinx.serialization.json.jsonPrimitive
-import kotlinx.serialization.json.put
+import java.io.ByteArrayOutputStream
 import java.nio.ByteBuffer
+import java.util.concurrent.CountDownLatch
+import java.util.concurrent.atomic.AtomicReference
 
 class DashScopeSpeechClient(
     private val config: QwenChatConfig,
-    private val client: HttpClient,
-    private val synthesizer: CosyVoiceSynthesizer = DashScopeCosyVoiceSynthesizer(config),
+    @Suppress("unused") private val client: HttpClient,
+    private val synthesizer: QwenAudioTtsSynthesizer = DashScopeQwenAudioTtsSynthesizer(config),
 ) : SpeechClient {
-    private val json = Json { ignoreUnknownKeys = true }
-
+    /**
+     * Qwen-Audio-TTS ships curated system voices instead of CosyVoice-style prompt design.
+     * Resolve the configured default designed voice once and reuse it for synthesis.
+     */
     override suspend fun designVoice(): String {
-        check(config.enabled) { "Qwen voice design requires QWEN_API_KEY" }
-        val body = buildJsonObject {
-            put("model", config.voiceDesignModel)
-            put("input", buildJsonObject {
-                put("action", "create_voice")
-                put("target_model", config.ttsModel)
-                put("prefix", "onev")
-                put(
-                    "voice_prompt",
-                    "A warm, calm and approachable multilingual community assistant voice with clear pronunciation.",
-                )
-                put("preview_text", "Hello! I am your friendly One Verandah community assistant.")
-            })
-            put("parameters", buildJsonObject {
-                put("sample_rate", 24_000)
-                put("response_format", "wav")
-            })
-        }
-        val response = client.post(config.voiceDesignEndpoint) {
-            header(HttpHeaders.Authorization, "Bearer ${config.apiKey}")
-            contentType(ContentType.Application.Json)
-            setBody(json.encodeToString(JsonObject.serializer(), body))
-        }
-        val responseText = response.bodyAsText()
-        if (!response.status.isSuccess()) {
-            throw QwenSpeechException("Qwen voice design failed (${response.status}): $responseText")
-        }
-        val output = json.parseToJsonElement(responseText).jsonObject["output"]?.jsonObject
-            ?: throw QwenSpeechException("Qwen voice design returned no output: $responseText")
-        return output["voice"]?.jsonPrimitive?.content
-            ?: output["voice_id"]?.jsonPrimitive?.content
-            ?: throw QwenSpeechException("Qwen voice design returned no voice id: $responseText")
+        check(config.enabled) { "Qwen speech synthesis requires QWEN_API_KEY" }
+        val voice = config.ttsVoice.trim()
+        check(voice.isNotEmpty()) { "Qwen TTS requires QWEN_TTS_VOICE" }
+        return voice
     }
 
     override suspend fun synthesize(request: SpeechRequest, voiceId: String): GeneratedSpeech {
         check(config.enabled) { "Qwen speech synthesis requires QWEN_API_KEY" }
         return try {
+            val audio = synthesizer.synthesize(request.text, voiceId, request.languageTag)
             GeneratedSpeech(
-                bytes = synthesizer.synthesize(request.text, voiceId, request.languageTag),
+                bytes = audio.bytes,
                 contentType = "audio/mpeg",
+                words = audio.words,
             )
         } catch (cause: CancellationException) {
             throw cause
@@ -82,14 +51,19 @@ class DashScopeSpeechClient(
     }
 }
 
-fun interface CosyVoiceSynthesizer {
-    suspend fun synthesize(text: String, voiceId: String, languageTag: String): ByteArray
+data class SynthesizedAudio(
+    val bytes: ByteArray,
+    val words: List<SpeechWordTiming> = emptyList(),
+)
+
+fun interface QwenAudioTtsSynthesizer {
+    suspend fun synthesize(text: String, voiceId: String, languageTag: String): SynthesizedAudio
 }
 
-private class DashScopeCosyVoiceSynthesizer(
+private class DashScopeQwenAudioTtsSynthesizer(
     private val config: QwenChatConfig,
-) : CosyVoiceSynthesizer {
-    override suspend fun synthesize(text: String, voiceId: String, languageTag: String): ByteArray =
+) : QwenAudioTtsSynthesizer {
+    override suspend fun synthesize(text: String, voiceId: String, languageTag: String): SynthesizedAudio =
         withContext(Dispatchers.IO) {
             val parameters = SpeechSynthesisParam.builder()
                 .apiKey(config.apiKey)
@@ -97,9 +71,66 @@ private class DashScopeCosyVoiceSynthesizer(
                 .voice(voiceId)
                 .format(SpeechSynthesisAudioFormat.MP3_24000HZ_MONO_256KBPS)
                 .languageHints(listOf(languageTag.substringBefore('-').lowercase()))
+                .enableWordTimestamp(true)
                 .build()
-            SpeechSynthesizer(parameters, null, config.ttsEndpoint).call(text).toByteArray()
+
+            val audioOut = ByteArrayOutputStream()
+            val latestWords = AtomicReference<List<SpeechWordTiming>>(emptyList())
+            val done = CountDownLatch(1)
+            val failure = AtomicReference<Exception?>(null)
+
+            val callback = object : ResultCallback<SpeechSynthesisResult>() {
+                override fun onEvent(message: SpeechSynthesisResult) {
+                    message.audioFrame?.let { frame ->
+                        audioOut.write(frame.toByteArray())
+                    }
+                    val sentence = message.timestamp ?: return
+                    val mapped = sentence.words
+                        ?.mapNotNull { it.toSpeechWordTiming() }
+                        .orEmpty()
+                    if (mapped.isNotEmpty()) {
+                        // Providers stream progressive sentence snapshots; keep the richest one.
+                        val current = latestWords.get()
+                        if (mapped.size >= current.size || sentence.endTime > 0) {
+                            latestWords.set(mapped)
+                        }
+                    }
+                }
+
+                override fun onComplete() {
+                    done.countDown()
+                }
+
+                override fun onError(e: Exception) {
+                    failure.set(e)
+                    done.countDown()
+                }
+            }
+
+            // Callback mode delivers both binary frames and timestamp JSON events.
+            SpeechSynthesizer(parameters, callback, config.ttsEndpoint).call(text)
+            done.await()
+            failure.get()?.let { throw it }
+            SynthesizedAudio(
+                bytes = audioOut.toByteArray(),
+                words = latestWords.get(),
+            )
         }
+}
+
+internal fun Word.toSpeechWordTiming(): SpeechWordTiming? {
+    val wordText = text?.trim().orEmpty()
+    if (wordText.isEmpty()) return null
+    val begin = beginTime.coerceAtLeast(0)
+    val end = endTime.coerceAtLeast(begin)
+    if (end <= begin) return null
+    return SpeechWordTiming(
+        text = wordText,
+        beginMs = begin,
+        endMs = end,
+        beginIndex = beginIndex,
+        endIndex = endIndex,
+    )
 }
 
 private fun ByteBuffer.toByteArray(): ByteArray {

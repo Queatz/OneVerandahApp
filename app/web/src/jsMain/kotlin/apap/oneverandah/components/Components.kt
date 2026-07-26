@@ -91,6 +91,7 @@ fun AppBar(
     onLanguageClick: (() -> Unit)? = null,
     showChatAction: Boolean = true,
     showPhrasesAction: Boolean = true,
+    appBarAction: (@Composable () -> Unit)? = null,
 ) {
     val strings = Localization.strings
     val router = Router.current
@@ -113,6 +114,7 @@ fun AppBar(
         if (title != null) {
             H1(attrs = { classes(Styles.appBarTitle) }) { Text(title) }
         }
+        appBarAction?.invoke()
         if (showPhrasesAction) {
             Span(attrs = {
                 classes(Styles.materialSymbols, Styles.appBarIcon)
@@ -274,6 +276,7 @@ fun Scaffold(
     onHome: (() -> Unit)? = null,
     showChatAction: Boolean = true,
     showPhrasesAction: Boolean = true,
+    appBarAction: (@Composable () -> Unit)? = null,
     showBanner: Boolean = false,
     bannerImageUrl: String? = null,
     footer: (ContentBuilder<HTMLElement>)? = null,
@@ -293,6 +296,7 @@ fun Scaffold(
                 onLanguageClick = { languageDialogOpen = true },
                 showChatAction = showChatAction,
                 showPhrasesAction = showPhrasesAction,
+                appBarAction = appBarAction,
             )
             if (showBanner) {
                 Div(attrs = {

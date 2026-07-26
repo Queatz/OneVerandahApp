@@ -60,8 +60,6 @@ fun Route.phraseRoutes(system: PhraseSystem, config: AppConfig) {
 
     route("/api/v1/phrases") {
         get {
-            // Ensure seed data is present even if async startup has not finished.
-            phrases.seedIfEmpty()
             val approved = phrases.findAll()
                 .filter { it.approved && it.id != PhraseSystem.COVER_PHRASE_ID }
             call.respond(
