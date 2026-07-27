@@ -202,6 +202,67 @@ class ChatApiModelsTest {
     }
 
     @Test
+    fun `save study session request normalizes language and rejects blank text`() {
+        val session = StudySessionResponse(
+            text = "  Xin chào.  ",
+            textLanguageTag = "vi-VN",
+            sentences = listOf(
+                StudySentence(
+                    text = "Xin chào.",
+                    tokens = listOf(StudyToken(text = "Xin", status = StudyTokenStatus.PENDING)),
+                ),
+            ),
+        )
+        val request = SaveStudySessionRequest(
+            sourceMessageId = "  msg-1  ",
+            languageTag = "en-US",
+            session = session,
+        )
+        val normalized = request.normalizedOrNull()
+        assertEquals("msg-1", normalized?.sourceMessageId)
+        assertEquals("en", normalized?.languageTag)
+        assertEquals("Xin chào.", normalized?.session?.text)
+        assertEquals("vi", normalized?.session?.textLanguageTag)
+
+        assertNull(
+            SaveStudySessionRequest(
+                languageTag = "en",
+                session = StudySessionResponse(text = "  ", textLanguageTag = "en", sentences = emptyList()),
+            ).normalizedOrNull(),
+        )
+    }
+
+    @Test
+    fun `saved study session payload round trips as structured JSON`() {
+        val saved = SavedStudySession(
+            id = "study-1",
+            sourceMessageId = "msg-1",
+            languageTag = "en",
+            text = "Xin chào.",
+            textLanguageTag = "vi",
+            session = StudySessionResponse(
+                text = "Xin chào.",
+                textLanguageTag = "vi",
+                sentences = listOf(
+                    StudySentence(
+                        text = "Xin chào.",
+                        tokens = listOf(
+                            StudyToken(text = "Xin", status = StudyTokenStatus.PENDING),
+                            StudyToken(text = "chào", status = StudyTokenStatus.READY, literalMeaning = "hello"),
+                        ),
+                    ),
+                ),
+            ),
+            createdAt = 10L,
+            updatedAt = 20L,
+        )
+
+        val decoded = json.decodeFromString<SavedStudySession>(json.encodeToString(saved))
+        assertEquals(saved, decoded)
+        assertEquals(StudyTokenStatus.PENDING, decoded.session.sentences.single().tokens[0].status)
+    }
+
+    @Test
     fun `speech response round trips with optional word timings`() {
         val response = SpeechResponse(
             audioBase64 = "AQID",

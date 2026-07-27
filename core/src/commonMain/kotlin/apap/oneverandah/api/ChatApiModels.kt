@@ -295,3 +295,45 @@ data class SavedChatMessage(
 
 @Serializable
 data class SavedChatMessagesResponse(val items: List<SavedChatMessage>)
+
+/**
+ * Upsert a progressive study session for the current device.
+ *
+ * Called automatically as the client receives the skeleton and each sentence
+ * dissection so the learner can resume later from the chat empty state.
+ */
+@Serializable
+data class SaveStudySessionRequest(
+    val sourceMessageId: String? = null,
+    val languageTag: String,
+    val session: StudySessionResponse,
+) {
+    fun normalizedOrNull(): SaveStudySessionRequest? {
+        val normalizedText = session.text.trim().takeIf { it.isNotEmpty() } ?: return null
+        if (session.sentences.isEmpty()) return null
+        return copy(
+            sourceMessageId = sourceMessageId?.trim()?.takeIf { it.isNotEmpty() },
+            languageTag = Language.fromTag(languageTag).tag,
+            session = session.copy(
+                text = normalizedText,
+                textLanguageTag = Language.fromTag(session.textLanguageTag).tag,
+            ),
+        )
+    }
+}
+
+/** A study session snapshot scoped to a device token. */
+@Serializable
+data class SavedStudySession(
+    val id: String,
+    val sourceMessageId: String? = null,
+    val languageTag: String,
+    val text: String,
+    val textLanguageTag: String,
+    val session: StudySessionResponse,
+    val createdAt: Long,
+    val updatedAt: Long,
+)
+
+@Serializable
+data class SavedStudySessionsResponse(val items: List<SavedStudySession>)

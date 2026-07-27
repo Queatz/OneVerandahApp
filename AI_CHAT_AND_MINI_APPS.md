@@ -23,6 +23,17 @@ Guest users can bookmark individual chat messages (user or AI, including mini-ap
 - Chat UI entry points: header bookmarks shortcut and empty-state “Saved messages” card share one in-chat panel.
 - Restart actions from a saved item: **Send** starts a fresh conversation and auto-sends the text; **Edit** prefills the composer. Mini-apps are shown while browsing saved items but are not re-injected into the new conversation.
 
+## Study session persistence
+
+On-demand study sessions are also persisted per device so learners can leave and resume later.
+
+- Progressive session snapshots (skeleton + any completed sentence dissections) are upserted automatically while studying.
+- Backend collection: `saved_study_sessions`, scoped by device token hash (same `X-Device-Token` header).
+- Browser API: `GET/POST /api/chat/study/sessions` and `DELETE /api/chat/study/sessions/{id}`.
+- Dedupes by `sourceMessageId` (the chat message id) so reopening the same message updates one row.
+- Empty-state “Study sessions” card opens an in-chat panel; **Open** resumes the bottom sheet where the learner left off and only refetches missing/failed sentence dissections.
+- Soft per-device cap of 50 newest sessions.
+
 ## Architecture at a glance
 
 ```text
@@ -348,10 +359,11 @@ UI behavior:
 - `PENDING` words are visible and tappable for audio; full dissection panel opens when `READY`.
 - Failed sentence dissections keep the tokenized sentence and offer a local retry; other sentences stay usable.
 - Example sentence text and TTS use the source-text language; example translations and explanations use the active UI language.
-- Sessions are cached per message id in the browser; reopening resumes from cache and only refetches missing/failed sentences.
+- Sessions are cached per message id in the browser **and** persisted on the server for the device token; reopening resumes from cache/server and only refetches missing/failed sentences.
 - AI JSON parsers are lenient: non-object entries in `sentences`/`tokens` arrays are skipped so one bad element does not discard salvageable content.
+- From the chat empty state, **Study sessions** lists recent device sessions; opening one restores the progressive payload in the study bottom sheet.
 
-Implementation lives in `StudyService` / `DashScopeStudyAiClient`, routes `POST /api/chat/study` + `POST /api/chat/study/dissect`, and `StudySessionDialog` in `ChatScreen`.
+Implementation lives in `StudyService` / `DashScopeStudyAiClient` / `StudySessionsService`, routes `POST /api/chat/study` + `POST /api/chat/study/dissect` + `/api/chat/study/sessions`, and `StudySessionDialog` / `StudySessionsPanel` in `ChatScreen`.
 
 ## Speech integration
 
@@ -411,6 +423,9 @@ Speech implementation rules:
 | `POST` | `/api/chat/speech` | Synthesize speech and return Base64 audio plus optional word timings |
 | `POST` | `/api/chat/study` | Build a fast study skeleton (language + sentences + tokens) for arbitrary chat text |
 | `POST` | `/api/chat/study/dissect` | Fill full token dissections for one skeleton sentence |
+| `GET` | `/api/chat/study/sessions` | List progressive study sessions for the device token |
+| `POST` | `/api/chat/study/sessions` | Upsert a progressive study session snapshot for the device |
+| `DELETE` | `/api/chat/study/sessions/{id}` | Delete one study session owned by the device |
 
 The send response is:
 

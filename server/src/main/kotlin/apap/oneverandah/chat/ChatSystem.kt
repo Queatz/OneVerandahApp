@@ -19,6 +19,7 @@ class ChatSystem(
     val asrRelay: QwenAsrRelay,
     val deviceService: DeviceService,
     val savedMessagesService: SavedMessagesService,
+    val studySessionsService: StudySessionsService,
     private val httpClient: HttpClient,
     private val voiceDesignEnabled: Boolean,
     private val scope: CoroutineScope,
@@ -51,6 +52,7 @@ class ChatSystem(
             val arangoRepository = ArangoChatRepository.connect(config.arango, client)
             val arangoDeviceRepository = ArangoDeviceRepository.connect(config.arango, client)
             val arangoSavedRepository = ArangoSavedMessagesRepository.connect(config.arango, client)
+            val arangoStudySessionsRepository = ArangoStudySessionsRepository.connect(config.arango, client)
             if (arangoRepository == null && config.isProduction) {
                 client.close()
                 scope.cancel()
@@ -59,9 +61,11 @@ class ChatSystem(
             val repository = arangoRepository ?: InMemoryChatRepository()
             val deviceRepository = arangoDeviceRepository ?: InMemoryDeviceRepository()
             val savedRepository = arangoSavedRepository ?: InMemorySavedMessagesRepository()
+            val studySessionsRepository = arangoStudySessionsRepository ?: InMemoryStudySessionsRepository()
             if (arangoRepository == null) log.info("Chat persistence is using the in-memory development store")
             if (arangoDeviceRepository == null) log.info("Device identity is using the in-memory development store")
             if (arangoSavedRepository == null) log.info("Saved messages are using the in-memory development store")
+            if (arangoStudySessionsRepository == null) log.info("Study sessions are using the in-memory development store")
             val residents = Catalog.services.map { it.provider }.distinctBy { it.id }
             val deviceService = DeviceService(deviceRepository)
             return ChatSystem(
@@ -76,6 +80,10 @@ class ChatSystem(
                 deviceService = deviceService,
                 savedMessagesService = SavedMessagesService(
                     repository = savedRepository,
+                    deviceService = deviceService,
+                ),
+                studySessionsService = StudySessionsService(
+                    repository = studySessionsRepository,
                     deviceService = deviceService,
                 ),
                 httpClient = client,

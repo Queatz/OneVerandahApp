@@ -116,6 +116,37 @@ object ChatApi {
         return json.decodeFromString(StudyDissectSentenceResponse.serializer(), text)
     }
 
+    suspend fun listStudySessions(): SavedStudySessionsResponse {
+        val token = DeviceTokenStore.ensureToken()
+        val response = client.get(chatApiUrl("/study/sessions")) {
+            header(DEVICE_TOKEN_HEADER, token)
+        }
+        val text = response.bodyAsText()
+        if (!response.status.isSuccess()) throw ChatApiException(errorMessage(text, response.status.value))
+        return json.decodeFromString(SavedStudySessionsResponse.serializer(), text)
+    }
+
+    suspend fun saveStudySession(request: SaveStudySessionRequest): SavedStudySession {
+        val token = DeviceTokenStore.ensureToken()
+        val response = client.post(chatApiUrl("/study/sessions")) {
+            header(DEVICE_TOKEN_HEADER, token)
+            contentType(ContentType.Application.Json)
+            setBody(json.encodeToString(SaveStudySessionRequest.serializer(), request))
+        }
+        val text = response.bodyAsText()
+        if (!response.status.isSuccess()) throw ChatApiException(errorMessage(text, response.status.value))
+        return json.decodeFromString(SavedStudySession.serializer(), text)
+    }
+
+    suspend fun deleteStudySession(id: String) {
+        val token = DeviceTokenStore.ensureToken()
+        val response = client.delete(chatApiUrl("/study/sessions/$id")) {
+            header(DEVICE_TOKEN_HEADER, token)
+        }
+        val text = response.bodyAsText()
+        if (!response.status.isSuccess()) throw ChatApiException(errorMessage(text, response.status.value))
+    }
+
     private fun errorMessage(body: String, status: Int): String =
         runCatching { json.decodeFromString(ChatErrorResponse.serializer(), body).error }
             .getOrElse { "Chat request failed ($status)" }

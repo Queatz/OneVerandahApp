@@ -19,7 +19,9 @@ import apap.oneverandah.api.LanguageStudyMiniApp
 import apap.oneverandah.api.LanguageStudyToken
 import apap.oneverandah.api.ResidentCardMiniApp
 import apap.oneverandah.api.SaveChatMessageRequest
+import apap.oneverandah.api.SaveStudySessionRequest
 import apap.oneverandah.api.SavedChatMessage
+import apap.oneverandah.api.SavedStudySession
 import apap.oneverandah.api.SpeechRequest
 import apap.oneverandah.api.SpeechTimingAligner
 import apap.oneverandah.api.SpeechWordTiming
@@ -89,6 +91,11 @@ fun ChatScreen(
     var studySession by remember { mutableStateOf<StudySessionResponse?>(null) }
     val studySentenceStatus = remember { mutableStateMapOf<Int, StudySentenceLoadState>() }
     val studyCache = remember { mutableStateMapOf<String, StudySessionResponse>() }
+    // sourceMessageId (or session id fallback) -> persisted study row id
+    val studyPersistedBySourceId = remember { mutableStateMapOf<String, String>() }
+    var studySessionsPanelOpen by remember { mutableStateOf(false) }
+    var studySessionItems by remember { mutableStateOf<List<SavedStudySession>>(emptyList()) }
+    var studySessionsLoading by remember { mutableStateOf(false) }
 
     fun applySavedItems(items: List<SavedChatMessage>) {
         savedItems = items
@@ -96,6 +103,19 @@ fun ChatScreen(
         items.forEach { item ->
             val key = item.sourceMessageId ?: item.id
             savedBySourceId[key] = item.id
+        }
+    }
+
+    fun applyStudySessionItems(items: List<SavedStudySession>) {
+        studySessionItems = items
+        studyPersistedBySourceId.clear()
+        items.forEach { item ->
+            val key = item.sourceMessageId ?: item.id
+            studyPersistedBySourceId[key] = item.id
+            // Warm in-memory cache for matching UI language so reopen is instant.
+            if (item.languageTag == language.tag) {
+                studyCache[key] = item.session
+            }
         }
     }
 
@@ -111,9 +131,45 @@ fun ChatScreen(
         }
     }
 
+    fun refreshStudySessions(silent: Boolean = false) {
+        scope.launch {
+            if (!silent) studySessionsLoading = true
+            runCatching { ChatApi.listStudySessions() }
+                .onSuccess { applyStudySessionItems(it.items) }
+                .onFailure {
+                    if (!silent) Toaster.show(strings.chatStudySessionsError)
+                }
+            studySessionsLoading = false
+        }
+    }
+
     fun openSavedPanel() {
         savedPanelOpen = true
         refreshSaved()
+    }
+
+    fun openStudySessionsPanel() {
+        studySessionsPanelOpen = true
+        refreshStudySessions()
+    }
+
+    fun persistStudySession(messageId: String, session: StudySessionResponse) {
+        scope.launch {
+            runCatching {
+                ChatApi.saveStudySession(
+                    SaveStudySessionRequest(
+                        sourceMessageId = messageId,
+                        languageTag = language.tag,
+                        session = session,
+                    ),
+                )
+            }.onSuccess { saved ->
+                studyPersistedBySourceId[messageId] = saved.id
+                studySessionItems = (listOf(saved) + studySessionItems.filterNot {
+                    it.id == saved.id || (saved.sourceMessageId != null && it.sourceMessageId == saved.sourceMessageId)
+                }).sortedByDescending { it.updatedAt }
+            }
+        }
     }
 
     fun sendMessage(raw: String) {
@@ -246,6 +302,7 @@ fun ChatScreen(
             )
             val updated = current.copy(sentences = updatedSentences)
             studyCache[messageId] = updated
+            persistStudySession(messageId, updated)
             if (studyTarget?.id == messageId) {
                 studySession = updated
                 studySentenceStatus[sentenceIndex] = StudySentenceLoadState.READY
@@ -298,6 +355,7 @@ fun ChatScreen(
                 ChatApi.study(StudySessionRequest(text = text, languageTag = language.tag))
             }.onSuccess { session ->
                 studyCache[message.id] = session
+                persistStudySession(message.id, session)
                 if (studyTarget?.id == message.id) {
                     studySession = session
                     studyError = null
@@ -314,6 +372,42 @@ fun ChatScreen(
         }
     }
 
+    fun openSavedStudySession(item: SavedStudySession) {
+        studySessionsPanelOpen = false
+        val key = item.sourceMessageId ?: item.id
+        // Meanings are in the learner language stored with the session; regenerate if UI language changed.
+        if (item.languageTag == language.tag) {
+            studyCache[key] = item.session
+        } else {
+            studyCache.remove(key)
+        }
+        studyPersistedBySourceId[key] = item.id
+        openStudy(
+            ChatMessage(
+                id = key,
+                sender = ChatSender.AI,
+                text = item.session.text,
+                createdAt = item.createdAt,
+            ),
+        )
+    }
+
+    fun removeStudySession(item: SavedStudySession) {
+        scope.launch {
+            runCatching { ChatApi.deleteStudySession(item.id) }
+                .onSuccess {
+                    studySessionItems = studySessionItems.filterNot { it.id == item.id }
+                    val keysToRemove = studyPersistedBySourceId.filterValues { it == item.id }.keys.toList()
+                    keysToRemove.forEach { key ->
+                        studyPersistedBySourceId.remove(key)
+                        studyCache.remove(key)
+                    }
+                    Toaster.show(strings.removedToast)
+                }
+                .onFailure { Toaster.show(strings.chatStudySessionsError) }
+        }
+    }
+
     fun retryStudySentence(sentenceIndex: Int) {
         val messageId = studyTarget?.id ?: return
         scope.launch {
@@ -327,12 +421,18 @@ fun ChatScreen(
 
     LaunchedEffect(Unit) {
         refreshSaved(silent = true)
+        refreshStudySessions(silent = true)
     }
 
     LaunchedEffect(language.tag) {
         // Definitions are localized to the active UI language, so drop stale sessions.
         studyCache.clear()
         studySentenceStatus.clear()
+        // Re-warm cache from server snapshots that match the new UI language.
+        studySessionItems.filter { it.languageTag == language.tag }.forEach { item ->
+            val key = item.sourceMessageId ?: item.id
+            studyCache[key] = item.session
+        }
         if (studySessionVisible) {
             studyTarget?.let(::openStudy)
         } else {
@@ -428,6 +528,16 @@ fun ChatScreen(
                     },
                 )
             }
+            if (studySessionsPanelOpen) {
+                StudySessionsPanel(
+                    items = studySessionItems,
+                    loading = studySessionsLoading,
+                    strings = strings,
+                    onClose = { studySessionsPanelOpen = false },
+                    onOpen = ::openSavedStudySession,
+                    onRemove = ::removeStudySession,
+                )
+            }
             StudySessionDialog(
                 visible = studySessionVisible,
                 loading = studyLoading,
@@ -449,6 +559,7 @@ fun ChatScreen(
                     onOpenPhrases = onOpenPhrases,
                     onOpenStories = onOpenStories,
                     onOpenSaved = ::openSavedPanel,
+                    onOpenStudySessions = ::openStudySessionsPanel,
                 )
             }
             messages.forEach { message ->
@@ -496,6 +607,7 @@ private fun ChatEmptyState(
     onOpenPhrases: () -> Unit,
     onOpenStories: () -> Unit,
     onOpenSaved: () -> Unit,
+    onOpenStudySessions: () -> Unit,
 ) {
     val strings = Localization.strings
     Div(attrs = { classes(Styles.chatEmptyState) }) {
@@ -507,6 +619,18 @@ private fun ChatEmptyState(
         }
 
         Div(attrs = { classes(Styles.chatEmptyActions) }) {
+            Button(attrs = {
+                classes(Styles.chatExploreCard)
+                attr("type", "button")
+                onClick { onOpenStudySessions() }
+            }) {
+                MaterialSymbol("menu_book")
+                Div {
+                    Span(attrs = { classes(Styles.chatExploreTitle) }) { Text(strings.chatExploreStudy) }
+                    Span(attrs = { classes(Styles.chatExploreSub) }) { Text(strings.chatExploreStudySub) }
+                }
+                MaterialSymbol("north_east")
+            }
             Button(attrs = {
                 classes(Styles.chatExploreCard)
                 attr("type", "button")
@@ -555,6 +679,78 @@ private fun ChatEmptyState(
             }) {
                 Text(suggestion)
                 MaterialSymbol("north_east")
+            }
+        }
+    }
+}
+
+@Composable
+private fun StudySessionsPanel(
+    items: List<SavedStudySession>,
+    loading: Boolean,
+    strings: UiStrings,
+    onClose: () -> Unit,
+    onOpen: (SavedStudySession) -> Unit,
+    onRemove: (SavedStudySession) -> Unit,
+) {
+    Div(attrs = {
+        classes(Styles.savedPanelScrim)
+        onClick { onClose() }
+    })
+    Div(attrs = {
+        classes(Styles.savedPanel)
+        attr("role", "dialog")
+        attr("aria-label", strings.chatStudySessionsTitle)
+    }) {
+        Div(attrs = { classes(Styles.savedPanelHeader) }) {
+            Span(attrs = { classes(Styles.savedPanelTitle) }) { Text(strings.chatStudySessionsTitle) }
+            Span(attrs = {
+                classes(Styles.materialSymbols, Styles.appBarIcon)
+                attr("role", "button")
+                attr("aria-label", strings.close)
+                onClick { onClose() }
+            }) { Text("close") }
+        }
+        Div(attrs = { classes(Styles.savedPanelBody) }) {
+            when {
+                loading && items.isEmpty() -> {
+                    Div(attrs = { classes(Styles.chatStatus) }) {
+                        MaterialSymbol("progress_activity")
+                        Text(strings.chatThinking)
+                    }
+                }
+                items.isEmpty() -> {
+                    Div(attrs = { classes(Styles.savedPanelEmpty) }) {
+                        MaterialSymbol("menu_book")
+                        P { Text(strings.chatStudySessionsEmpty) }
+                    }
+                }
+                else -> items.forEach { item ->
+                    Div(attrs = { classes(Styles.savedItem) }) {
+                        Span(attrs = { classes(Styles.savedItemSender) }) {
+                            Text(strings.chatStudyTitle)
+                        }
+                        P(attrs = { classes(Styles.savedItemText) }) { Text(item.text) }
+                        Div(attrs = { classes(Styles.savedItemActions) }) {
+                            Button(attrs = {
+                                classes(Styles.savedItemAction)
+                                attr("type", "button")
+                                onClick { onOpen(item) }
+                            }) {
+                                MaterialSymbol("menu_book")
+                                Text(strings.chatStudySessionsOpen)
+                            }
+                            Button(attrs = {
+                                classes(Styles.savedItemAction, Styles.savedItemActionDanger)
+                                attr("type", "button")
+                                onClick { onRemove(item) }
+                            }) {
+                                MaterialSymbol("delete")
+                                Text(strings.chatStudySessionsRemove)
+                            }
+                        }
+                    }
+                }
             }
         }
     }
