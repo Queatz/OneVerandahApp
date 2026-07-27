@@ -38,7 +38,7 @@ They simply **name what is already stirring inside them**.
 
 - **A command says:** *Do this for me.*
 - **A question says:** *Will you do this for me?*
-- **An EMP statement says:** *This is what is moving within me right now. The space is open.*
+- **An EMP statement says:** *This is what is moving within me right now. The space is open. It never speaks directly to another person.*
 
 In Vietnamese, the speaker refers to themselves humbly as **con** (child), placing the other person in the position of a benevolent, elder‑like presence — not to plead, but to honour.
 

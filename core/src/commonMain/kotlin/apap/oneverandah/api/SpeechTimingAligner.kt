@@ -3,6 +3,9 @@ package apap.oneverandah.api
 /**
  * Maps study tokens onto TTS word timings so a tapped word can be clipped from
  * full-sentence audio without a second synthesis call.
+ *
+ * When the provider returns no usable word marks, callers should fall back
+ * (e.g. per-token TTS) rather than inventing timings.
  */
 object SpeechTimingAligner {
     /**
@@ -57,37 +60,54 @@ object SpeechTimingAligner {
         words: List<SpeechWordTiming>,
     ): List<SpeechWordTiming>? {
         val token = tokenTexts[tokenIndex]
-        val occurrence = tokenTexts.take(tokenIndex + 1).count { it == token } - 1
-        if (occurrence < 0) return null
-
-        // Exact token match first (one TTS word == one study token).
-        val exact = words.filter { it.text == token }
-        exact.getOrNull(occurrence)?.let { return listOf(it) }
-
-        // Otherwise accumulate consecutive TTS words until their joined text equals the token
-        // (handles character-level timings common for CJK / some multilingual voices).
         val compactToken = compact(token)
         if (compactToken.isEmpty()) return null
-        var seen = 0
+
+        // Occurrence index among equal tokens (handles repeated words).
+        var occurrence = 0
+        for (i in 0 until tokenIndex) {
+            if (compact(tokenTexts[i]) == compactToken) occurrence += 1
+        }
+
+        val matches = mutableListOf<List<SpeechWordTiming>>()
         var i = 0
         while (i < words.size) {
-            var joined = ""
-            var j = i
-            while (j < words.size && joined.length < compactToken.length) {
-                joined += compact(words[j].text)
-                j += 1
-            }
-            if (joined == compactToken) {
-                if (seen == occurrence) {
-                    return words.subList(i, j)
-                }
-                seen += 1
-                i = j
-            } else {
+            val first = words[i]
+            val firstCompact = compact(first.text)
+            if (firstCompact.isEmpty()) {
                 i += 1
+                continue
             }
+            if (compactToken == firstCompact) {
+                matches += listOf(first)
+                i += 1
+                continue
+            }
+            // Join consecutive TTS words until they cover the token (CJK char marks).
+            if (compactToken.startsWith(firstCompact)) {
+                var joined = firstCompact
+                val group = mutableListOf(first)
+                var j = i + 1
+                while (j < words.size && joined.length < compactToken.length) {
+                    val next = compact(words[j].text)
+                    if (next.isEmpty()) {
+                        j += 1
+                        continue
+                    }
+                    if (!compactToken.startsWith(joined + next)) break
+                    joined += next
+                    group += words[j]
+                    j += 1
+                }
+                if (joined == compactToken) {
+                    matches += group
+                    i = j
+                    continue
+                }
+            }
+            i += 1
         }
-        return null
+        return matches.getOrNull(occurrence)
     }
 
     private fun mergeTiming(words: List<SpeechWordTiming>): Pair<Int, Int>? {
@@ -98,12 +118,16 @@ object SpeechTimingAligner {
         return begin to end
     }
 
-    private fun compact(text: String): String =
-        text.filterNot { it.isWhitespace() }
+    private fun looksLikeNonSpeechToken(token: String): Boolean {
+        val t = token.trim()
+        if (t.isEmpty()) return true
+        return t.all { ch ->
+            !ch.isLetterOrDigit() && ch.category != CharCategory.OTHER_LETTER
+        }
+    }
 
-    private fun looksLikeNonSpeechToken(text: String): Boolean {
-        if (text.isEmpty()) return true
-        return text.all { ch ->
+    private fun compact(text: String): String {
+        return text.filterNot { ch ->
             ch.isWhitespace() || (!ch.isLetterOrDigit() && ch.category != CharCategory.OTHER_LETTER)
         }
     }

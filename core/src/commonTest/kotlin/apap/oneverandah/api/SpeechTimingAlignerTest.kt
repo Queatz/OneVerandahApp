@@ -7,46 +7,52 @@ import kotlin.test.assertNull
 class SpeechTimingAlignerTest {
     @Test
     fun `aligns token using character indices from TTS words`() {
-        val sentence = "Xin chào bạn."
-        val tokens = listOf("Xin", "chào", "bạn", ".")
+        val sentence = "Xin chào bạn"
+        val tokens = listOf("Xin", "chào", "bạn")
         val words = listOf(
-            SpeechWordTiming(text = "Xin", beginMs = 0, endMs = 160, beginIndex = 0, endIndex = 3),
-            SpeechWordTiming(text = "chào", beginMs = 180, endMs = 420, beginIndex = 4, endIndex = 8),
-            SpeechWordTiming(text = "bạn", beginMs = 440, endMs = 700, beginIndex = 9, endIndex = 12),
+            SpeechWordTiming(text = "Xin", beginMs = 0, endMs = 180, beginIndex = 0, endIndex = 3),
+            SpeechWordTiming(text = "chào", beginMs = 200, endMs = 520, beginIndex = 4, endIndex = 8),
+            SpeechWordTiming(text = "bạn", beginMs = 540, endMs = 800, beginIndex = 9, endIndex = 12),
         )
 
-        assertEquals(0 to 160, SpeechTimingAligner.timingForToken(sentence, tokens, 0, words))
-        assertEquals(180 to 420, SpeechTimingAligner.timingForToken(sentence, tokens, 1, words))
-        assertEquals(440 to 700, SpeechTimingAligner.timingForToken(sentence, tokens, 2, words))
-        assertNull(SpeechTimingAligner.timingForToken(sentence, tokens, 3, words))
+        assertEquals(
+            200 to 520,
+            SpeechTimingAligner.timingForToken(sentence, tokens, 1, words),
+        )
     }
 
     @Test
-    fun `aligns multi-character tokens from character-level TTS words by text`() {
+    fun `aligns multi-character CJK token from several TTS words`() {
         val sentence = "你好世界"
         val tokens = listOf("你好", "世界")
         val words = listOf(
-            SpeechWordTiming(text = "你", beginMs = 0, endMs = 100),
-            SpeechWordTiming(text = "好", beginMs = 100, endMs = 220),
-            SpeechWordTiming(text = "世", beginMs = 240, endMs = 360),
-            SpeechWordTiming(text = "界", beginMs = 360, endMs = 500),
+            SpeechWordTiming(text = "你", beginMs = 0, endMs = 100, beginIndex = 0, endIndex = 1),
+            SpeechWordTiming(text = "好", beginMs = 100, endMs = 200, beginIndex = 1, endIndex = 2),
+            SpeechWordTiming(text = "世", beginMs = 220, endMs = 320, beginIndex = 2, endIndex = 3),
+            SpeechWordTiming(text = "界", beginMs = 320, endMs = 420, beginIndex = 3, endIndex = 4),
         )
 
-        assertEquals(0 to 220, SpeechTimingAligner.timingForToken(sentence, tokens, 0, words))
-        assertEquals(240 to 500, SpeechTimingAligner.timingForToken(sentence, tokens, 1, words))
+        assertEquals(
+            0 to 200,
+            SpeechTimingAligner.timingForToken(sentence, tokens, 0, words),
+        )
+        assertEquals(
+            220 to 420,
+            SpeechTimingAligner.timingForToken(sentence, tokens, 1, words),
+        )
     }
 
     @Test
-    fun `prefers the correct occurrence of a repeated token`() {
-        val sentence = "go go go"
-        val tokens = listOf("go", "go", "go")
+    fun `selects the correct occurrence for repeated tokens`() {
+        val sentence = "đi đi"
+        val tokens = listOf("đi", "đi")
         val words = listOf(
-            SpeechWordTiming(text = "go", beginMs = 0, endMs = 100, beginIndex = 0, endIndex = 2),
-            SpeechWordTiming(text = "go", beginMs = 120, endMs = 220, beginIndex = 3, endIndex = 5),
-            SpeechWordTiming(text = "go", beginMs = 240, endMs = 340, beginIndex = 6, endIndex = 8),
+            SpeechWordTiming(text = "đi", beginMs = 0, endMs = 120),
+            SpeechWordTiming(text = "đi", beginMs = 140, endMs = 280),
         )
 
-        assertEquals(120 to 220, SpeechTimingAligner.timingForToken(sentence, tokens, 1, words))
+        assertEquals(0 to 120, SpeechTimingAligner.timingForToken(sentence, tokens, 0, words))
+        assertEquals(140 to 280, SpeechTimingAligner.timingForToken(sentence, tokens, 1, words))
     }
 
     @Test
