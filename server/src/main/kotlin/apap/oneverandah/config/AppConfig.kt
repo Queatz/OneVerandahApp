@@ -165,6 +165,11 @@ data class AppConfig(
      * a failed upload without regenerating the image.
      */
     val imageCacheDir: String,
+    /**
+     * Directory for durable Qwen TTS audio cache entries (exact text + language
+     * + voice). Survives restarts so repeated speech requests skip the provider.
+     */
+    val ttsCacheDir: String,
     /** Local file every Qwen/DashScope generation failure is appended to. */
     val qwenErrorLogPath: String,
     val maxConcurrentGenerations: Int,
@@ -293,6 +298,7 @@ data class AppConfig(
                 qwenChat = qwenChat,
                 localStorageDir = source["LOCAL_STORAGE_DIR"] ?: "data/images",
                 imageCacheDir = source["IMAGE_CACHE_DIR"] ?: "data/image-cache",
+                ttsCacheDir = source["TTS_CACHE_DIR"] ?: "data/tts-cache",
                 qwenErrorLogPath = source["QWEN_ERROR_LOG_PATH"] ?: "qwen_errors.txt",
                 maxConcurrentGenerations = source.int("MAX_CONCURRENT_GENERATIONS", 2),
                 generationDelayMs = source.long("GENERATION_DELAY_MS", 1000),

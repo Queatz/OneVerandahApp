@@ -12,6 +12,7 @@ import kotlinx.coroutines.Dispatchers
 import kotlinx.coroutines.SupervisorJob
 import kotlinx.coroutines.cancel
 import org.slf4j.LoggerFactory
+import java.io.File
 
 class ChatSystem(
     val chatService: ChatService,
@@ -102,6 +103,9 @@ class ChatSystem(
                 speechService = SpeechService(
                     client = DashScopeSpeechClient(config.qwenChat, client),
                     voiceResolver = clonedVoicesService,
+                    cache = createTtsCache(File(config.ttsCacheDir)).also {
+                        log.info("TTS speech cache enabled at {}", File(config.ttsCacheDir).absolutePath)
+                    },
                 ),
                 studyService = StudyService(DashScopeStudyAiClient(config.qwenChat, client)),
                 asrRelay = QwenAsrRelay(config.qwenChat, client, scope),

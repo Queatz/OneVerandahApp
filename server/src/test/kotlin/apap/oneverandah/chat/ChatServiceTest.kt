@@ -20,6 +20,7 @@ import io.ktor.http.content.OutgoingContent
 import io.ktor.http.headersOf
 import kotlin.test.Test
 import kotlin.test.assertContains
+import kotlin.test.assertContentEquals
 import kotlin.test.assertEquals
 import kotlin.test.assertFailsWith
 import kotlin.test.assertIs
@@ -179,7 +180,7 @@ class ChatServiceTest {
     @Test
     fun `speech service designs one voice and reuses it for synthesis`() = runBlocking {
         val client = FakeSpeechClient()
-        val service = SpeechService(client)
+        val service = SpeechService(client, cache = NoOpTtsCache)
 
         service.startup()
         val speech = service.synthesize(SpeechRequest(" xin chào ", "vi-VN"))
@@ -191,6 +192,20 @@ class ChatServiceTest {
         assertEquals("vi", client.lastRequests.first().languageTag)
         assertNotNull(speech)
         assertEquals("audio/mpeg", speech.contentType)
+    }
+
+    @Test
+    fun `speech service returns cached audio for exact text language and voice`() = runBlocking {
+        val client = FakeSpeechClient()
+        val service = SpeechService(client, cache = InMemoryTtsCache())
+
+        val first = service.synthesize(SpeechRequest("xin chào", "vi"))
+        val second = service.synthesize(SpeechRequest("xin chào", "vi-VN"))
+
+        assertNotNull(first)
+        assertNotNull(second)
+        assertEquals(1, client.lastRequests.size)
+        assertContentEquals(first!!.bytes, second!!.bytes)
     }
 
     @Test

@@ -165,8 +165,10 @@ interface SpeechClient {
 class SpeechService(
     private val client: SpeechClient,
     private val voiceResolver: VoiceResolver? = null,
+    private val cache: TtsCache = InMemoryTtsCache(),
 ) {
     private val mutex = Mutex()
+    private val synthesisGate = TtsSynthesisGate()
     private var voiceId: String? = null
 
     suspend fun startup() {
@@ -185,6 +187,19 @@ class SpeechService(
             startup()
             requireNotNull(voiceId)
         }
-        return client.synthesize(request, voice)
+        val cacheKey = TtsCacheKey(
+            text = request.text,
+            languageTag = request.languageTag,
+            voiceId = voice,
+        )
+        cache.get(cacheKey.text, cacheKey.languageTag, cacheKey.voiceId)?.let { return it }
+
+        // Single-flight: concurrent identical requests share one upstream TTS call.
+        return synthesisGate.withLock(cacheKey.fingerprint()) {
+            cache.get(cacheKey.text, cacheKey.languageTag, cacheKey.voiceId)?.let { return@withLock it }
+            val speech = client.synthesize(request, voice)
+            cache.put(cacheKey.text, cacheKey.languageTag, cacheKey.voiceId, speech)
+            speech
+        }
     }
 }
