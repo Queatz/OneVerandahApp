@@ -1,6 +1,9 @@
 package apap.oneverandah.routes
 
 import apap.oneverandah.admin.AdminJwt
+import apap.oneverandah.api.ActivateClonedVoiceResponse
+import apap.oneverandah.api.ClonedVoice
+import apap.oneverandah.chat.ClonedVoicesService
 import apap.oneverandah.config.AppConfig
 import apap.oneverandah.images.storage.GeneratedImage
 import apap.oneverandah.phrases.AdminSignInRequest
@@ -52,8 +55,16 @@ import java.util.UUID
  *  - `GET    /api/v1/admin/reference-photos`
  *  - `POST   /api/v1/admin/reference-photos` (multipart: name + file)
  *  - `DELETE /api/v1/admin/reference-photos/{id}`
+ *  - `GET    /api/v1/admin/voices`
+ *  - `POST   /api/v1/admin/voices` (multipart: name + languageTag + file)
+ *  - `POST   /api/v1/admin/voices/{id}/activate`
+ *  - `DELETE /api/v1/admin/voices/{id}`
  */
-fun Route.phraseRoutes(system: PhraseSystem, config: AppConfig) {
+fun Route.phraseRoutes(
+    system: PhraseSystem,
+    config: AppConfig,
+    clonedVoicesService: ClonedVoicesService? = null,
+) {
     val phrases = system.phrases
     val photos = system.referencePhotos
     val storage = system.storage
@@ -294,6 +305,119 @@ fun Route.phraseRoutes(system: PhraseSystem, config: AppConfig) {
             val id = call.parameters["id"].orEmpty()
             if (!photos.delete(id)) {
                 call.respond(HttpStatusCode.NotFound, PhraseApiError("Reference photo '$id' not found"))
+                return@delete
+            }
+            call.respond(HttpStatusCode.NoContent)
+        }
+
+        get("/voices") {
+            if (!requireAdmin(config)) return@get
+            val voices = clonedVoicesService
+            if (voices == null) {
+                call.respond(HttpStatusCode.ServiceUnavailable, PhraseApiError("Cloned voices are unavailable"))
+                return@get
+            }
+            call.respond(voices.list())
+        }
+
+        post("/voices") {
+            if (!requireAdmin(config)) return@post
+            val voices = clonedVoicesService
+            if (voices == null) {
+                call.respond(HttpStatusCode.ServiceUnavailable, PhraseApiError("Cloned voices are unavailable"))
+                return@post
+            }
+            var name = ""
+            var languageTag = ClonedVoice.FALLBACK_LANGUAGE_TAG
+            var bytes: ByteArray? = null
+            var contentType = "audio/wav"
+            var originalFileName: String? = null
+
+            val multipart = call.receiveMultipart()
+            multipart.forEachPart { part ->
+                when (part) {
+                    is PartData.FormItem -> when (part.name) {
+                        "name" -> name = part.value.trim()
+                        "languageTag" -> languageTag = part.value.trim()
+                    }
+                    is PartData.FileItem -> {
+                        originalFileName = part.originalFileName
+                        contentType = part.contentType?.toString() ?: "audio/wav"
+                        @Suppress("DEPRECATION")
+                        bytes = part.streamProvider().readBytes()
+                    }
+                    else -> Unit
+                }
+                part.dispose()
+            }
+
+            if (name.isBlank()) {
+                call.respond(HttpStatusCode.BadRequest, PhraseApiError("A non-blank 'name' is required"))
+                return@post
+            }
+            val audioBytes = bytes
+            if (audioBytes == null || audioBytes.isEmpty()) {
+                call.respond(HttpStatusCode.BadRequest, PhraseApiError("An audio file is required"))
+                return@post
+            }
+            if (ClonedVoice.normalizeLanguageTag(languageTag) == null) {
+                call.respond(HttpStatusCode.BadRequest, PhraseApiError("languageTag is required"))
+                return@post
+            }
+
+            try {
+                val voice = voices.upload(
+                    rawName = name,
+                    rawLanguageTag = languageTag,
+                    bytes = audioBytes,
+                    contentType = contentType,
+                    originalFileName = originalFileName,
+                )
+                call.respond(HttpStatusCode.Created, voice)
+            } catch (e: IllegalArgumentException) {
+                call.respond(HttpStatusCode.BadRequest, PhraseApiError(e.message ?: "Invalid voice payload"))
+            } catch (e: Throwable) {
+                call.respond(
+                    HttpStatusCode.BadGateway,
+                    PhraseApiError(e.message ?: "Voice enrollment failed"),
+                )
+            }
+        }
+
+        post("/voices/{id}/activate") {
+            if (!requireAdmin(config)) return@post
+            val voices = clonedVoicesService
+            if (voices == null) {
+                call.respond(HttpStatusCode.ServiceUnavailable, PhraseApiError("Cloned voices are unavailable"))
+                return@post
+            }
+            val id = call.parameters["id"].orEmpty()
+            if (id.isBlank()) {
+                call.respond(HttpStatusCode.BadRequest, PhraseApiError("Voice id is required"))
+                return@post
+            }
+            try {
+                val voice = voices.activate(id)
+                call.respond(ActivateClonedVoiceResponse(voice = voice))
+            } catch (e: IllegalStateException) {
+                call.respond(HttpStatusCode.NotFound, PhraseApiError(e.message ?: "Voice not found"))
+            }
+        }
+
+        delete("/voices/{id}") {
+            if (!requireAdmin(config)) return@delete
+            val voices = clonedVoicesService
+            if (voices == null) {
+                call.respond(HttpStatusCode.ServiceUnavailable, PhraseApiError("Cloned voices are unavailable"))
+                return@delete
+            }
+            val id = call.parameters["id"].orEmpty()
+            if (id.isBlank()) {
+                call.respond(HttpStatusCode.BadRequest, PhraseApiError("Voice id is required"))
+                return@delete
+            }
+            if (!voices.delete(id)) {
+                call.respond(HttpStatusCode.NotFound, PhraseApiError("Voice '$id' not found"))
                 return@delete
             }
             call.respond(HttpStatusCode.NoContent)

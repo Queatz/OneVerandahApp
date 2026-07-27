@@ -162,7 +162,10 @@ interface SpeechClient {
     suspend fun synthesize(request: SpeechRequest, voiceId: String): GeneratedSpeech
 }
 
-class SpeechService(private val client: SpeechClient) {
+class SpeechService(
+    private val client: SpeechClient,
+    private val voiceResolver: VoiceResolver? = null,
+) {
     private val mutex = Mutex()
     private var voiceId: String? = null
 
@@ -175,7 +178,13 @@ class SpeechService(private val client: SpeechClient) {
 
     suspend fun synthesize(rawRequest: SpeechRequest): GeneratedSpeech? {
         val request = rawRequest.normalizedOrNull() ?: return null
-        startup()
-        return client.synthesize(request, requireNotNull(voiceId))
+        val resolved = voiceResolver?.resolveVoiceId(request.languageTag)
+        val voice = if (!resolved.isNullOrBlank()) {
+            resolved
+        } else {
+            startup()
+            requireNotNull(voiceId)
+        }
+        return client.synthesize(request, voice)
     }
 }

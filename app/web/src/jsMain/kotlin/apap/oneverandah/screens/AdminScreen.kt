@@ -8,6 +8,7 @@ import androidx.compose.runtime.remember
 import androidx.compose.runtime.rememberCoroutineScope
 import androidx.compose.runtime.setValue
 import apap.oneverandah.Styles
+import apap.oneverandah.api.ClonedVoice
 import apap.oneverandah.api.PhraseApi
 import apap.oneverandah.api.PhraseApiException
 import apap.oneverandah.api.firstFileOrNull
@@ -17,6 +18,7 @@ import apap.oneverandah.components.PrimaryButton
 import apap.oneverandah.components.Scaffold
 import apap.oneverandah.components.SectionTitle
 import apap.oneverandah.i18n.Localization
+import apap.oneverandah.model.Language
 import apap.oneverandah.model.LocalizedText
 import apap.oneverandah.phrases.GeneratePhraseImageRequest
 import apap.oneverandah.phrases.Phrase
@@ -29,6 +31,7 @@ import apap.oneverandah.state.Toaster
 import kotlinx.coroutines.launch
 import org.jetbrains.compose.web.attributes.InputType
 import org.jetbrains.compose.web.attributes.placeholder
+import org.jetbrains.compose.web.attributes.selected
 import org.jetbrains.compose.web.attributes.value
 import org.jetbrains.compose.web.dom.Button
 import org.jetbrains.compose.web.dom.Div
@@ -36,11 +39,14 @@ import org.jetbrains.compose.web.dom.H2
 import org.jetbrains.compose.web.dom.Img
 import org.jetbrains.compose.web.dom.Input
 import org.jetbrains.compose.web.dom.Label
+import org.jetbrains.compose.web.dom.Option
 import org.jetbrains.compose.web.dom.P
+import org.jetbrains.compose.web.dom.Select
 import org.jetbrains.compose.web.dom.Span
 import org.jetbrains.compose.web.dom.Text
 import org.jetbrains.compose.web.dom.TextArea
 import org.w3c.dom.HTMLInputElement
+import org.w3c.dom.HTMLSelectElement
 import org.w3c.files.File
 
 @Composable
@@ -54,12 +60,14 @@ fun AdminScreen(onBack: () -> Unit) {
     var tab by remember { mutableStateOf(AdminTab.PHRASES) }
     var phrases by remember { mutableStateOf<List<Phrase>>(emptyList()) }
     var photos by remember { mutableStateOf<List<ReferencePhoto>>(emptyList()) }
+    var voices by remember { mutableStateOf<List<ClonedVoice>>(emptyList()) }
     var coverImageUrl by remember { mutableStateOf<String?>(null) }
     var loading by remember { mutableStateOf(false) }
     var editing by remember { mutableStateOf<Phrase?>(null) }
     var showEditor by remember { mutableStateOf(false) }
     var pendingDeletePhrase by remember { mutableStateOf<Phrase?>(null) }
     var pendingDeletePhoto by remember { mutableStateOf<ReferencePhoto?>(null) }
+    var pendingDeleteVoice by remember { mutableStateOf<ClonedVoice?>(null) }
     var generateTarget by remember { mutableStateOf<GenerateTarget?>(null) }
     /** Latest generated image URL to inject into the open phrase editor. */
     var editorImageOverride by remember { mutableStateOf<String?>(null) }
@@ -73,6 +81,7 @@ fun AdminScreen(onBack: () -> Unit) {
                 phrases = response.phrases
                 coverImageUrl = response.coverImageUrl
                 photos = PhraseApi.fetchReferencePhotos()
+                voices = runCatching { PhraseApi.fetchClonedVoices() }.getOrDefault(emptyList())
             } catch (e: PhraseApiException) {
                 if (e.message?.contains("authentication", ignoreCase = true) == true) {
                     AdminAuth.clear()
@@ -95,7 +104,7 @@ fun AdminScreen(onBack: () -> Unit) {
     }
 
     val anySheetOpen = showPassword || showEditor || pendingDeletePhrase != null ||
-        pendingDeletePhoto != null || generateTarget != null
+        pendingDeletePhoto != null || pendingDeleteVoice != null || generateTarget != null
 
     Scaffold(
         title = strings.adminTitle,
@@ -217,6 +226,25 @@ fun AdminScreen(onBack: () -> Unit) {
                 },
             )
 
+            ConfirmDeleteDialog(
+                visible = pendingDeleteVoice != null,
+                title = strings.adminDeleteVoiceConfirm,
+                onDismiss = { pendingDeleteVoice = null },
+                onConfirm = {
+                    val voice = pendingDeleteVoice ?: return@ConfirmDeleteDialog
+                    pendingDeleteVoice = null
+                    scope.launch {
+                        try {
+                            PhraseApi.deleteClonedVoice(voice.id)
+                            refresh()
+                            Toaster.show(strings.adminSaved)
+                        } catch (e: Throwable) {
+                            Toaster.show(e.message ?: strings.adminError)
+                        }
+                    }
+                },
+            )
+
             GeneratePhotoDialog(
                 visible = generateTarget != null,
                 title = when (generateTarget) {
@@ -303,6 +331,12 @@ fun AdminScreen(onBack: () -> Unit) {
                     attr("type", "button")
                     onClick { tab = AdminTab.PHOTOS }
                 }) { Text(strings.adminPhotosTab) }
+                Button(attrs = {
+                    classes(Styles.chip)
+                    if (tab == AdminTab.VOICES) classes(Styles.chipActive)
+                    attr("type", "button")
+                    onClick { tab = AdminTab.VOICES }
+                }) { Text(strings.adminVoicesTab) }
             }
             Button(attrs = {
                 classes(Styles.btnText)
@@ -312,6 +346,7 @@ fun AdminScreen(onBack: () -> Unit) {
                     showPassword = true
                     phrases = emptyList()
                     photos = emptyList()
+                    voices = emptyList()
                     coverImageUrl = null
                 }
             }) { Text(strings.adminLogout) }
@@ -403,6 +438,14 @@ fun AdminScreen(onBack: () -> Unit) {
                     onDeleteRequest = { pendingDeletePhoto = it },
                 )
             }
+            AdminTab.VOICES -> {
+                ClonedVoicesPanel(
+                    voices = voices,
+                    loading = loading,
+                    onChanged = { refresh() },
+                    onDeleteRequest = { pendingDeleteVoice = it },
+                )
+            }
         }
     }
 }
@@ -425,6 +468,149 @@ private fun knownLocations(phrases: List<Phrase>): List<PhraseLocations.Entry> {
             PhraseLocations.Entry(key, first.location, first.icon)
         }
     return (fromCatalog + fromPhrases).distinctBy { it.key }
+}
+
+@Composable
+private fun ClonedVoicesPanel(
+    voices: List<ClonedVoice>,
+    loading: Boolean,
+    onChanged: () -> Unit,
+    onDeleteRequest: (ClonedVoice) -> Unit,
+) {
+    val strings = Localization.strings
+    val scope = rememberCoroutineScope()
+    var name by remember { mutableStateOf("") }
+    var languageTag by remember { mutableStateOf(ClonedVoice.FALLBACK_LANGUAGE_TAG) }
+    var selectedFile by remember { mutableStateOf<File?>(null) }
+    var uploading by remember { mutableStateOf(false) }
+
+    val languageOptions = listOf(
+        ClonedVoice.FALLBACK_LANGUAGE_TAG to strings.adminVoiceLanguageAll,
+        Language.ENGLISH.tag to "English",
+        Language.VIETNAMESE.tag to "Tiếng Việt",
+        Language.CHINESE.tag to "中文",
+        Language.JAPANESE.tag to "日本語",
+        Language.KOREAN.tag to "한국어",
+        Language.RUSSIAN.tag to "Русский",
+    )
+
+    SectionTitle(strings.adminVoicesTab)
+    P(attrs = { classes(Styles.homePrompt) }) {
+        Text(strings.adminVoicesHint)
+    }
+
+    Div(attrs = { classes(Styles.textField) }) {
+        Label(attrs = { classes(Styles.textLabel) }) { Text(strings.adminVoiceName) }
+        Input(type = InputType.Text) {
+            classes(Styles.textInput)
+            value(name)
+            placeholder(strings.adminVoiceNamePlaceholder)
+            onInput { name = it.value }
+        }
+    }
+
+    Div(attrs = { classes(Styles.textField) }) {
+        Label(attrs = { classes(Styles.textLabel) }) { Text(strings.adminVoiceLanguage) }
+        Select(attrs = {
+            classes(Styles.textInput)
+            onChange {
+                val el = it.nativeEvent.target as? HTMLSelectElement
+                languageTag = el?.value ?: ClonedVoice.FALLBACK_LANGUAGE_TAG
+            }
+        }) {
+            languageOptions.forEach { (tag, label) ->
+                Option(tag, attrs = {
+                    if (tag == languageTag) selected()
+                }) { Text(label) }
+            }
+        }
+    }
+
+    Div(attrs = { classes(Styles.textField) }) {
+        Label(attrs = { classes(Styles.textLabel) }) { Text(strings.adminVoiceFile) }
+        Input(type = InputType.File) {
+            classes(Styles.textInput)
+            attr("accept", "audio/*,.wav,.mp3,.m4a,.ogg,.webm,.flac")
+            onChange {
+                val el = it.nativeEvent.target as? HTMLInputElement
+                selectedFile = el?.firstFileOrNull()
+            }
+        }
+    }
+
+    Div(attrs = { classes(Styles.adminUploadBlock) }) {
+        PrimaryButton(
+            label = if (uploading) strings.adminUploading else strings.adminUploadVoice,
+            icon = "upload",
+            enabled = !uploading && name.isNotBlank() && selectedFile != null,
+        ) {
+            val file = selectedFile ?: return@PrimaryButton
+            scope.launch {
+                uploading = true
+                try {
+                    PhraseApi.uploadClonedVoice(name.trim(), languageTag, file)
+                    name = ""
+                    selectedFile = null
+                    Toaster.show(strings.adminSaved)
+                    onChanged()
+                } catch (e: Throwable) {
+                    Toaster.show(e.message ?: strings.adminError)
+                } finally {
+                    uploading = false
+                }
+            }
+        }
+    }
+
+    if (loading && voices.isEmpty()) {
+        P { Text(strings.phrasesLoading) }
+    } else if (voices.isEmpty()) {
+        P(attrs = { classes(Styles.homePrompt) }) { Text(strings.adminVoiceEmpty) }
+    }
+
+    voices.forEach { voice ->
+        Div(attrs = { classes(Styles.listCard) }) {
+            MaterialSymbol("record_voice_over", extraClass = Styles.listIcon)
+            Div(attrs = { classes(Styles.listDetails) }) {
+                H2 { Text(voice.name) }
+                P {
+                    val languageLabel = languageOptions.firstOrNull { it.first == voice.languageTag }?.second
+                        ?: voice.languageTag
+                    Text(
+                        buildString {
+                            append(languageLabel)
+                            if (voice.active) append(" · ${strings.adminVoiceActive}")
+                            append(" · ${strings.adminVoiceProviderId}: ${voice.providerVoiceId}")
+                        },
+                    )
+                }
+            }
+            Div(attrs = { classes(Styles.adminRowActions) }) {
+                if (!voice.active) {
+                    Button(attrs = {
+                        classes(Styles.btnText)
+                        attr("type", "button")
+                        onClick {
+                            scope.launch {
+                                try {
+                                    PhraseApi.activateClonedVoice(voice.id)
+                                    onChanged()
+                                    Toaster.show(strings.adminSaved)
+                                } catch (e: Throwable) {
+                                    Toaster.show(e.message ?: strings.adminError)
+                                }
+                            }
+                        }
+                    }) { Text(strings.adminVoiceActivate) }
+                }
+                Button(attrs = {
+                    classes(Styles.btnText)
+                    attr("type", "button")
+                    onClick { onDeleteRequest(voice) }
+                }) { Text(strings.adminDelete) }
+            }
+        }
+    }
 }
 
 @Composable
@@ -911,4 +1097,4 @@ private fun AdminArea(label: String, value: String, onChange: (String) -> Unit) 
     }
 }
 
-private enum class AdminTab { PHRASES, PHOTOS }
+private enum class AdminTab { PHRASES, PHOTOS, VOICES }

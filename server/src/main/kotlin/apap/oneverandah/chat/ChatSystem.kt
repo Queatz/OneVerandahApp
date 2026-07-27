@@ -2,6 +2,7 @@ package apap.oneverandah.chat
 
 import apap.oneverandah.config.AppConfig
 import apap.oneverandah.data.Catalog
+import apap.oneverandah.images.storage.StorageService
 import io.ktor.client.HttpClient
 import io.ktor.client.engine.cio.CIO
 import io.ktor.client.plugins.HttpTimeout
@@ -20,6 +21,7 @@ class ChatSystem(
     val deviceService: DeviceService,
     val savedMessagesService: SavedMessagesService,
     val studySessionsService: StudySessionsService,
+    val clonedVoicesService: ClonedVoicesService?,
     private val httpClient: HttpClient,
     private val voiceDesignEnabled: Boolean,
     private val scope: CoroutineScope,
@@ -38,7 +40,10 @@ class ChatSystem(
     companion object {
         private val log = LoggerFactory.getLogger(ChatSystem::class.java)
 
-        suspend fun create(config: AppConfig): ChatSystem {
+        suspend fun create(
+            config: AppConfig,
+            storage: StorageService? = null,
+        ): ChatSystem {
             val scope = CoroutineScope(SupervisorJob() + Dispatchers.IO)
             val client = HttpClient(CIO) {
                 install(HttpTimeout) {
@@ -53,6 +58,7 @@ class ChatSystem(
             val arangoDeviceRepository = ArangoDeviceRepository.connect(config.arango, client)
             val arangoSavedRepository = ArangoSavedMessagesRepository.connect(config.arango, client)
             val arangoStudySessionsRepository = ArangoStudySessionsRepository.connect(config.arango, client)
+            val arangoClonedVoicesRepository = ArangoClonedVoicesRepository.connect(config.arango, client)
             if (arangoRepository == null && config.isProduction) {
                 client.close()
                 scope.cancel()
@@ -62,19 +68,41 @@ class ChatSystem(
             val deviceRepository = arangoDeviceRepository ?: InMemoryDeviceRepository()
             val savedRepository = arangoSavedRepository ?: InMemorySavedMessagesRepository()
             val studySessionsRepository = arangoStudySessionsRepository ?: InMemoryStudySessionsRepository()
+            val clonedVoicesRepository = arangoClonedVoicesRepository ?: InMemoryClonedVoicesRepository()
             if (arangoRepository == null) log.info("Chat persistence is using the in-memory development store")
             if (arangoDeviceRepository == null) log.info("Device identity is using the in-memory development store")
             if (arangoSavedRepository == null) log.info("Saved messages are using the in-memory development store")
             if (arangoStudySessionsRepository == null) log.info("Study sessions are using the in-memory development store")
+            if (arangoClonedVoicesRepository == null) log.info("Cloned voices are using the in-memory development store")
             val residents = Catalog.services.map { it.provider }.distinctBy { it.id }
             val deviceService = DeviceService(deviceRepository)
+            val enrollment: VoiceEnrollmentClient = if (config.qwenChat.enabled) {
+                QwenVoiceEnrollmentClient(config.qwenChat, client)
+            } else {
+                PlaceholderVoiceEnrollmentClient()
+            }
+            val clonedVoicesService = if (storage != null) {
+                ClonedVoicesService(
+                    repository = clonedVoicesRepository,
+                    storage = storage,
+                    enrollment = enrollment,
+                )
+            } else {
+                log.warn(
+                    "Cloned voices admin API disabled: ChatSystem.create() was called without a StorageService",
+                )
+                null
+            }
             return ChatSystem(
                 chatService = ChatService(
                     repository = repository,
                     aiClient = DashScopeChatAiClient(config.qwenChat, client),
                     residentDirectory = ResidentDirectory(residents),
                 ),
-                speechService = SpeechService(DashScopeSpeechClient(config.qwenChat, client)),
+                speechService = SpeechService(
+                    client = DashScopeSpeechClient(config.qwenChat, client),
+                    voiceResolver = clonedVoicesService,
+                ),
                 studyService = StudyService(DashScopeStudyAiClient(config.qwenChat, client)),
                 asrRelay = QwenAsrRelay(config.qwenChat, client, scope),
                 deviceService = deviceService,
@@ -86,6 +114,7 @@ class ChatSystem(
                     repository = studySessionsRepository,
                     deviceService = deviceService,
                 ),
+                clonedVoicesService = clonedVoicesService,
                 httpClient = client,
                 voiceDesignEnabled = config.qwenChat.enabled,
                 scope = scope,

@@ -85,7 +85,9 @@ object ChatApi {
             setBody(json.encodeToString(SpeechRequest.serializer(), request))
         }
         val text = response.bodyAsText()
-        if (!response.status.isSuccess()) throw ChatApiException(errorMessage(text, response.status.value))
+        if (!response.status.isSuccess()) {
+            throw ChatApiException(errorMessage(text, response.status.value), response.status.value)
+        }
         return json.decodeFromString(SpeechResponse.serializer(), text)
     }
 
@@ -154,4 +156,7 @@ object ChatApi {
 
 internal fun chatApiUrl(path: String = ""): String = "${ImageApi.apiBaseUrl}/api/chat$path"
 
-class ChatApiException(message: String) : RuntimeException(message)
+class ChatApiException(
+    message: String,
+    val statusCode: Int = 0,
+) : RuntimeException(message)

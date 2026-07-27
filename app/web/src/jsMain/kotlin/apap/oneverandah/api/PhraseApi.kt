@@ -175,6 +175,54 @@ object PhraseApi {
         }
     }
 
+    suspend fun fetchClonedVoices(): List<ClonedVoice> {
+        val response = client.get("${base()}/api/v1/admin/voices") {
+            authed()
+        }
+        val text = response.bodyAsText()
+        if (!response.status.isSuccess()) throw PhraseApiException(errorMessage(text, response.status.value))
+        return json.decodeFromString(ClonedVoicesResponse.serializer(), text).items
+    }
+
+    /**
+     * Uploads a voice sample for Qwen enrollment (FormData; fetch for reliable multipart).
+     */
+    suspend fun uploadClonedVoice(name: String, languageTag: String, file: File): ClonedVoice {
+        val token = AdminAuth.token ?: throw PhraseApiException("Not signed in")
+        val form = FormData()
+        form.append("name", name)
+        form.append("languageTag", languageTag)
+        form.append("file", file)
+        val init = js("({})")
+        init.method = "POST"
+        val headers = js("({})")
+        headers[HttpHeaders.Authorization] = "Bearer $token"
+        init.headers = headers
+        init.body = form
+        val response = window.fetch("${base()}/api/v1/admin/voices", init.unsafeCast<RequestInit>()).await()
+        val text = response.text().await()
+        if (!response.ok) throw PhraseApiException(errorMessage(text, response.status.toInt()))
+        return json.decodeFromString(ClonedVoice.serializer(), text)
+    }
+
+    suspend fun activateClonedVoice(id: String): ClonedVoice {
+        val response = client.post("${base()}/api/v1/admin/voices/$id/activate") {
+            authed()
+        }
+        val text = response.bodyAsText()
+        if (!response.status.isSuccess()) throw PhraseApiException(errorMessage(text, response.status.value))
+        return json.decodeFromString(ActivateClonedVoiceResponse.serializer(), text).voice
+    }
+
+    suspend fun deleteClonedVoice(id: String) {
+        val response = client.delete("${base()}/api/v1/admin/voices/$id") {
+            authed()
+        }
+        if (!response.status.isSuccess() && response.status.value != 204) {
+            throw PhraseApiException(errorMessage(response.bodyAsText(), response.status.value))
+        }
+    }
+
     private fun io.ktor.client.request.HttpRequestBuilder.authed() {
         val token = AdminAuth.token
         if (!token.isNullOrBlank()) {

@@ -33,6 +33,7 @@ On-demand study sessions are also persisted per device so learners can leave and
 - Dedupes by `sourceMessageId` (the chat message id) so reopening the same message updates one row.
 - Empty-state “Study sessions” card opens an in-chat panel; **Open** resumes the bottom sheet where the learner left off and only refetches missing/failed sentence dissections.
 - Soft per-device cap of 50 newest sessions.
+- The study sheet has **Study** and **Read** tabs. Study keeps progressive dissection; Read shows the full original text as clickable tokens and highlights every exact match of the tapped word.
 
 ## Architecture at a glance
 
@@ -69,7 +70,8 @@ The shared contract lives in `core`, orchestration and AI calls live in `server`
 | Trusted facts | `core/src/commonMain/kotlin/apap/oneverandah/data/FactsCatalog.kt` | Localized apartment fact catalog |
 | Chat orchestration | `server/src/main/kotlin/apap/oneverandah/chat/ChatService.kt` | Persists messages, gathers trusted context, calls AI, validates selections, and builds mini apps |
 | Qwen chat | `server/src/main/kotlin/apap/oneverandah/chat/QwenChatClient.kt` | System prompt, JSON request, wire schema, and structured reply parsing |
-| Speech | `server/src/main/kotlin/apap/oneverandah/chat/QwenSpeechClient.kt` | Qwen-Audio-TTS synthesis with the default system voice |
+| Speech | `server/src/main/kotlin/apap/oneverandah/chat/QwenSpeechClient.kt` | Qwen-Audio-TTS synthesis with system or admin-cloned voice |
+| Cloned voices | `server/src/main/kotlin/apap/oneverandah/chat/ClonedVoicesService.kt` | Admin-managed per-language voice enrollment + resolution |
 | Composition | `server/src/main/kotlin/apap/oneverandah/chat/ChatSystem.kt` | Creates repositories, clients, services, and resident directory |
 | Persistence | `server/src/main/kotlin/apap/oneverandah/chat/ArangoChatRepository.kt` | Stores and retrieves chat messages from ArangoDB |
 | HTTP routes | `server/src/main/kotlin/apap/oneverandah/routes/ChatRoutes.kt` | Send, history, and speech endpoints |
@@ -354,7 +356,9 @@ Response (same token texts/order; lexical tokens become `READY`):
 UI behavior:
 
 - Bottom sheet opens as soon as the skeleton returns (short spinner only for that first call).
-- Sentence blocks with tokens and a TTS play button under each sentence (TTS can start from skeleton sentence text).
+- Top **Study** / **Read** tabs switch modes without losing the session payload.
+- **Study**: sentence blocks with tokens and a TTS play button under each sentence (TTS can start from skeleton sentence text).
+- **Read**: full original text as continuous clickable tokens; tapping a word keeps it highlighted and highlights every exact same token in the passage.
 - Tapping a lexical token selects it and speaks that word. Prefer clipping the already-fetched sentence audio using TTS word timings; only fall back to a per-word TTS call when timings are missing.
 - `PENDING` words are visible and tappable for audio; full dissection panel opens when `READY`.
 - Failed sentence dissections keep the tokenized sentence and offer a local retry; other sentences stay usable.
@@ -398,19 +402,21 @@ The server returns:
 
 Study-session word playback:
 
-1. Fetch one TTS clip per sentence (with word timings when available).
-2. On token tap, map the study token onto TTS words via `SpeechTimingAligner` (char-index overlap, then text occurrence / character join).
-3. Play that slice of the sentence audio in the browser (`currentTime` + stop at `endMs`).
-4. Only if timings cannot be aligned, synthesize the single token as a fallback.
+1. Prefetch TTS clips in batches of 3 sentences (with word timings when available).
+2. On rate-limit / transient TTS errors, wait a few seconds with short exponential backoff and retry.
+3. On token tap, map the study token onto TTS words via `SpeechTimingAligner` (char-index overlap, then text occurrence / character join).
+4. Play that slice of the sentence audio in the browser (`currentTime` + stop at `endMs`).
+5. Only if timings cannot be aligned, synthesize the single token as a fallback (also retry-aware).
 
 Speech implementation rules:
 
 - Use `qwen-audio-3.0-tts-flash`.
-- Use the default designed system voice `longanhuan_v3.6` (overridable with `QWEN_TTS_VOICE`).
+- Prefer an admin-active cloned voice for the request language, then the active **All languages** fallback, then the default designed system voice `longanhuan_v3.6` (overridable with `QWEN_TTS_VOICE`).
+- Admins manage cloned voices at `/admin` → **Cloned voices** via admin-protected `/api/v1/admin/voices` (upload / activate / delete). Samples are enrolled with Qwen voice enrollment against the TTS model.
 - Keep synthesis on the DashScope Beijing WebSocket endpoint.
 - Synthesis uses the official DashScope Java SDK/WebSocket protocol shared with CosyVoice-compatible models.
 - Enable word-level timestamps (`enableWordTimestamp`) and surface them on `SpeechResponse.words`.
-- The resolved voice ID is cached by `SpeechService`.
+- The default system voice ID is cached by `SpeechService`; cloned voices are resolved per language on each request.
 - Voice initialization is launched asynchronously with the Ktor application, so server readiness is not blocked.
 - If startup voice resolution fails, the server stays available and speech retries initialization on demand.
 
@@ -426,6 +432,10 @@ Speech implementation rules:
 | `GET` | `/api/chat/study/sessions` | List progressive study sessions for the device token |
 | `POST` | `/api/chat/study/sessions` | Upsert a progressive study session snapshot for the device |
 | `DELETE` | `/api/chat/study/sessions/{id}` | Delete one study session owned by the device |
+| `GET` | `/api/v1/admin/voices` | List cloned TTS voices (admin JWT) |
+| `POST` | `/api/v1/admin/voices` | Upload + enroll a cloned voice sample (multipart; admin JWT) |
+| `POST` | `/api/v1/admin/voices/{id}/activate` | Make one voice active for its language (admin JWT) |
+| `DELETE` | `/api/v1/admin/voices/{id}` | Delete a cloned voice (admin JWT) |
 
 The send response is:
 

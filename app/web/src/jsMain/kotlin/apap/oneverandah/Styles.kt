@@ -289,6 +289,10 @@ object Styles {
     const val studySessionBody = "study-session-body"
     const val studySessionHint = "study-session-hint"
     const val studySessionError = "study-session-error"
+    const val studyModeTabs = "study-mode-tabs"
+    const val studyReadBlock = "study-read-block"
+    const val studyReadSentence = "study-read-sentence"
+    const val studyReadBreak = "study-read-break"
     const val studySentenceBlock = "study-sentence-block"
     const val studySentenceError = "study-sentence-error"
     const val studyTokenPlain = "study-token-plain"
@@ -2304,6 +2308,27 @@ object Styles {
             flex-direction: column;
             gap: 14px;
             padding-bottom: 8px;
+        }
+        .${studyModeTabs} {
+            display: flex;
+            flex-wrap: wrap;
+            gap: 8px;
+        }
+        .${studyReadBlock} {
+            padding: 12px;
+            border-radius: 16px;
+            border: 1px solid var(--md-sys-color-outline);
+            background: color-mix(in srgb, var(--md-sys-color-primary) 5%, var(--md-sys-color-surface));
+        }
+        .${studyReadSentence} {
+            margin-bottom: 10px;
+            line-height: 1.7;
+        }
+        .${studyReadSentence}:last-child {
+            margin-bottom: 0;
+        }
+        .${studyReadBreak} {
+            display: none;
         }
         .${studySessionHint} {
             font-size: 13px;

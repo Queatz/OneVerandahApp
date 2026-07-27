@@ -55,7 +55,8 @@ private val log = LoggerFactory.getLogger("apap.oneverandah.Application")
 fun main() {
     val config = AppConfig.load()
     val imageSystem = runBlocking { ImageSystem.create(config) }
-    val chatSystem = runBlocking { ChatSystem.create(config) }
+    // Cloned-voice admin uploads need the same storage backend as images.
+    val chatSystem = runBlocking { ChatSystem.create(config, imageSystem.storage) }
     val phraseSystem = runBlocking {
         PhraseSystem.create(config, imageSystem.storage, imageSystem.httpClient)
     }
@@ -100,7 +101,7 @@ fun main() {
 fun Application.module() {
     val config = AppConfig.load()
     val imageSystem = runBlocking { ImageSystem.create(config) }
-    val chatSystem = runBlocking { ChatSystem.create(config) }
+    val chatSystem = runBlocking { ChatSystem.create(config, imageSystem.storage) }
     val phraseSystem = runBlocking {
         PhraseSystem.create(config, imageSystem.storage, imageSystem.httpClient)
     }
@@ -112,7 +113,7 @@ fun Application.module() {
  * seeding and starts no workers (see [ImageSystem.startup]).
  */
 fun Application.module(config: AppConfig, imageSystem: ImageSystem) {
-    val chatSystem = runBlocking { ChatSystem.create(config) }
+    val chatSystem = runBlocking { ChatSystem.create(config, imageSystem.storage) }
     val phraseSystem = runBlocking {
         PhraseSystem.create(config, imageSystem.storage, imageSystem.httpClient)
     }
@@ -191,7 +192,7 @@ fun Application.module(
         )
         asrRoutes(chatSystem.asrRelay)
         deviceRoutes(chatSystem.deviceService)
-        phraseRoutes(phraseSystem, config)
+        phraseRoutes(phraseSystem, config, chatSystem.clonedVoicesService)
     }
 }
 

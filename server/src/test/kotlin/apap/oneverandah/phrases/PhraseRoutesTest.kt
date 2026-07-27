@@ -1,20 +1,25 @@
 package apap.oneverandah.phrases
 
 import apap.oneverandah.admin.AdminJwt
+import apap.oneverandah.api.ClonedVoice
+import apap.oneverandah.api.ClonedVoicesResponse
+import apap.oneverandah.chat.ChatSystem
 import apap.oneverandah.config.AppConfig
 import apap.oneverandah.data.PhrasesCatalog
+import apap.oneverandah.images.ImageSystem
 import apap.oneverandah.images.storage.GeneratedImage
 import apap.oneverandah.images.storage.StorageService
 import apap.oneverandah.module
-import apap.oneverandah.chat.ChatSystem
-import apap.oneverandah.images.ImageSystem
 import io.ktor.client.request.delete
+import io.ktor.client.request.forms.MultiPartFormDataContent
+import io.ktor.client.request.forms.formData
 import io.ktor.client.request.get
 import io.ktor.client.request.header
 import io.ktor.client.request.post
 import io.ktor.client.request.setBody
 import io.ktor.client.statement.bodyAsText
 import io.ktor.http.ContentType
+import io.ktor.http.Headers
 import io.ktor.http.HttpHeaders
 import io.ktor.http.HttpStatusCode
 import io.ktor.http.contentType
@@ -206,6 +211,109 @@ class PhraseRoutesTest {
         assertEquals(HttpStatusCode.OK, cover.status)
         val coverBody = json.decodeFromString(PhrasesCoverResponse.serializer(), cover.bodyAsText())
         assertEquals(body.imageUrl, coverBody.imageUrl)
+    }
+
+    @Test
+    fun adminVoicesUnavailableWithoutStorage() = testApplication {
+        val config = AppConfig.load()
+        val imageSystem = runBlocking { ImageSystem.create(config) }
+        // Mirrors the previous production bug: ChatSystem created without storage.
+        val chatSystem = runBlocking { ChatSystem.create(config) }
+        val phraseSystem = runBlocking {
+            PhraseSystem.create(config, FakeStorage(), null)
+        }
+        application {
+            module(config, imageSystem, chatSystem, phraseSystem)
+        }
+
+        val token = adminToken(client, config)
+        val response = client.get("/api/v1/admin/voices") {
+            header(HttpHeaders.Authorization, "Bearer $token")
+        }
+        assertEquals(HttpStatusCode.ServiceUnavailable, response.status)
+        assertTrue(response.bodyAsText().contains("Cloned voices are unavailable"))
+    }
+
+    @Test
+    fun adminCanUploadListAndActivateClonedVoice() = testApplication {
+        val config = AppConfig.load()
+        val imageSystem = runBlocking { ImageSystem.create(config) }
+        val storage = FakeStorage()
+        val chatSystem = runBlocking { ChatSystem.create(config, storage) }
+        val phraseSystem = runBlocking {
+            PhraseSystem.create(config, storage, null)
+        }
+        application {
+            module(config, imageSystem, chatSystem, phraseSystem)
+        }
+
+        val token = adminToken(client, config)
+
+        val empty = client.get("/api/v1/admin/voices") {
+            header(HttpHeaders.Authorization, "Bearer $token")
+        }
+        assertEquals(HttpStatusCode.OK, empty.status)
+        assertEquals(
+            0,
+            json.decodeFromString(ClonedVoicesResponse.serializer(), empty.bodyAsText()).items.size,
+        )
+
+        val upload = client.post("/api/v1/admin/voices") {
+            header(HttpHeaders.Authorization, "Bearer $token")
+            setBody(
+                MultiPartFormDataContent(
+                    formData {
+                        append("name", "Warm VI")
+                        append("languageTag", "vi")
+                        append(
+                            "file",
+                            byteArrayOf(1, 2, 3, 4),
+                            Headers.build {
+                                append(HttpHeaders.ContentType, "audio/wav")
+                                append(HttpHeaders.ContentDisposition, "filename=\"warm.wav\"")
+                            },
+                        )
+                    },
+                ),
+            )
+        }
+        assertEquals(HttpStatusCode.Created, upload.status)
+        val voice = json.decodeFromString(ClonedVoice.serializer(), upload.bodyAsText())
+        assertEquals("Warm VI", voice.name)
+        assertEquals("vi", voice.languageTag)
+        assertTrue(voice.active)
+        assertTrue(voice.providerVoiceId.isNotBlank())
+        assertTrue(voice.sampleUrl.orEmpty().contains("voices/"))
+
+        val listed = client.get("/api/v1/admin/voices") {
+            header(HttpHeaders.Authorization, "Bearer $token")
+        }
+        assertEquals(HttpStatusCode.OK, listed.status)
+        val items = json.decodeFromString(ClonedVoicesResponse.serializer(), listed.bodyAsText()).items
+        assertEquals(1, items.size)
+        assertEquals(voice.id, items.single().id)
+
+        val activate = client.post("/api/v1/admin/voices/${voice.id}/activate") {
+            header(HttpHeaders.Authorization, "Bearer $token")
+        }
+        assertEquals(HttpStatusCode.OK, activate.status)
+    }
+
+    private suspend fun adminToken(
+        client: io.ktor.client.HttpClient,
+        config: AppConfig,
+    ): String {
+        val signIn = client.post("/api/v1/admin/signin") {
+            contentType(ContentType.Application.Json)
+            setBody(
+                json.encodeToString(
+                    AdminSignInRequest.serializer(),
+                    AdminSignInRequest(config.adminPassword),
+                ),
+            )
+        }
+        assertEquals(HttpStatusCode.OK, signIn.status)
+        return json.decodeFromString(AdminSignInResponse.serializer(), signIn.bodyAsText()).token
     }
 }
 
