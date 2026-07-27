@@ -1002,14 +1002,17 @@ private fun LanguageStudyCard(app: LanguageStudyMiniApp, strings: UiStrings) {
                 }) { Text(token.text) }
             }
         }
+        val sentenceUrl = audio["sentence"]
+        val sentencePlaying = isStudyAudioPlaying(sentenceUrl)
         Button(attrs = {
             classes(Styles.sentencePlay)
             attr("type", "button")
-            if (audio["sentence"] == null) attr("disabled", "")
-            onClick { audio["sentence"]?.let(::playAudio) }
+            if (sentenceUrl == null) attr("disabled", "")
+            attr("aria-label", if (sentencePlaying) strings.chatPauseSentence else strings.chatPlaySentence)
+            onClick { sentenceUrl?.let(::playAudio) }
         }) {
-            MaterialSymbol("play_circle")
-            Text(strings.chatPlaySentence)
+            MaterialSymbol(if (sentencePlaying) "pause_circle" else "play_circle")
+            Text(if (sentencePlaying) strings.chatPauseSentence else strings.chatPlaySentence)
         }
         selectedToken?.let { token ->
             Div(attrs = { classes(Styles.wordDefinition) }) {
@@ -1248,14 +1251,22 @@ private fun StudySessionContent(
                             }
                         }
                     }
+                    val sentenceClipUrl = sentenceAudio["sentence-$sentenceIndex"]?.url
+                    val sentencePlaying = isStudyAudioPlaying(sentenceClipUrl)
                     Button(attrs = {
                         classes(Styles.sentencePlay)
                         attr("type", "button")
-                        if (sentenceAudio["sentence-$sentenceIndex"] == null) attr("disabled", "")
-                        onClick { sentenceAudio["sentence-$sentenceIndex"]?.url?.let(::playAudio) }
+                        if (sentenceClipUrl == null) attr("disabled", "")
+                        attr(
+                            "aria-label",
+                            if (sentencePlaying) strings.chatStudyPauseSentence else strings.chatStudyPlaySentence,
+                        )
+                        onClick { sentenceClipUrl?.let(::playAudio) }
                     }) {
-                        MaterialSymbol("play_circle")
-                        Text(strings.chatStudyPlaySentence)
+                        MaterialSymbol(if (sentencePlaying) "pause_circle" else "play_circle")
+                        Text(
+                            if (sentencePlaying) strings.chatStudyPauseSentence else strings.chatStudyPlaySentence,
+                        )
                     }
                     if (loadState == StudySentenceLoadState.ERROR) {
                         Div(attrs = { classes(Styles.studySentenceError) }) {
@@ -1421,20 +1432,63 @@ private fun sentenceNeedsDissect(sentence: StudySentence): Boolean =
     sentence.tokens.any { it.status == StudyTokenStatus.PENDING }
 
 private var activeStudyAudio: HTMLAudioElement? = null
+private var activeStudyAudioUrl: String? = null
+
+/** URL of the clip currently playing; drives play/pause button state in Compose. */
+private var studyAudioPlayingUrl by mutableStateOf<String?>(null)
+
+private fun isStudyAudioPlaying(url: String?): Boolean =
+    url != null && studyAudioPlayingUrl == url
+
+private fun clearStudyAudioHandlers(element: HTMLAudioElement) {
+    element.asDynamic().ontimeupdate = null
+    element.asDynamic().onloadedmetadata = null
+    element.asDynamic().onended = null
+    element.asDynamic().onpause = null
+    element.asDynamic().onplay = null
+}
 
 private fun stopActiveStudyAudio() {
     activeStudyAudio?.let { current ->
+        clearStudyAudioHandlers(current)
         runCatching { current.pause() }
-        current.asDynamic().ontimeupdate = null
-        current.asDynamic().onloadedmetadata = null
     }
     activeStudyAudio = null
+    activeStudyAudioUrl = null
+    studyAudioPlayingUrl = null
+}
+
+private fun bindStudyAudioPlaybackState(element: HTMLAudioElement, url: String) {
+    element.asDynamic().onplay = {
+        if (activeStudyAudio === element) {
+            studyAudioPlayingUrl = url
+        }
+    }
+    element.asDynamic().onpause = {
+        if (activeStudyAudio === element) {
+            studyAudioPlayingUrl = null
+        }
+    }
+    element.asDynamic().onended = {
+        if (activeStudyAudio === element) {
+            studyAudioPlayingUrl = null
+        }
+    }
 }
 
 private fun playAudio(url: String) {
+    val current = activeStudyAudio
+    // Toggle: tapping the same sentence again pauses instead of restarting.
+    if (current != null && activeStudyAudioUrl == url && !current.paused && !current.ended) {
+        current.pause()
+        return
+    }
     stopActiveStudyAudio()
     val element = document.createElement("audio") as HTMLAudioElement
     activeStudyAudio = element
+    activeStudyAudioUrl = url
+    studyAudioPlayingUrl = url
+    bindStudyAudioPlaybackState(element, url)
     element.src = url
     element.play()
 }
@@ -1449,6 +1503,9 @@ private fun playAudioSegment(url: String, beginMs: Int, endMs: Int) {
     val endSec = (endMs.coerceAtLeast(beginMs + 60) + WORD_AUDIO_END_PAD_MS) / 1000.0
     val element = document.createElement("audio") as HTMLAudioElement
     activeStudyAudio = element
+    activeStudyAudioUrl = url
+    studyAudioPlayingUrl = url
+    bindStudyAudioPlaybackState(element, url)
     element.src = url
     element.asDynamic().onloadedmetadata = {
         // Clamp if metadata duration is shorter than requested end.
