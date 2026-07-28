@@ -9,6 +9,8 @@ import apap.oneverandah.api.StudyPlayScenariosRequest
 import apap.oneverandah.api.StudyPlayScenariosResponse
 import apap.oneverandah.api.StudyPlayTurnRequest
 import apap.oneverandah.api.StudyPlayTurnResponse
+import apap.oneverandah.api.StudyWriteCheckRequest
+import apap.oneverandah.api.StudyWriteCheckResponse
 import apap.oneverandah.api.StudyPlaygroundImageResponse
 import apap.oneverandah.api.StudyPlaygroundImageStatus
 import apap.oneverandah.api.StudySentence
@@ -92,6 +94,17 @@ data class StudyPlayTurnDesign(
     val reply: String,
 )
 
+data class StudyWriteCheckGenerationRequest(
+    val expected: String,
+    val attempt: String,
+    val textLanguageTag: String,
+    val languageTag: String,
+)
+
+data class StudyWriteFeedback(
+    val feedback: String,
+)
+
 /** Designed cast member before portrait jobs are attached. */
 data class StudyCharacterDesign(
     val id: String,
@@ -115,6 +128,7 @@ interface StudyAiClient {
     suspend fun designStoryCharacters(request: StudyCharactersGenerationRequest): List<StudyCharacterDesign>
     suspend fun generatePlayScenarios(request: StudyPlayScenariosGenerationRequest): List<StudyPlayScenarioDesign>
     suspend fun generatePlayTurn(request: StudyPlayTurnGenerationRequest): StudyPlayTurnDesign
+    suspend fun evaluateWriteAttempt(request: StudyWriteCheckGenerationRequest): StudyWriteFeedback
 }
 
 class StudyService(
@@ -364,6 +378,36 @@ class StudyService(
         )
     }
 
+    /**
+     * Explains why a Write-tab attempt is not an exact match of the expected sentence.
+     * Exact-match correctness is decided here with light whitespace normalization.
+     */
+    suspend fun writeCheck(rawRequest: StudyWriteCheckRequest): StudyWriteCheckResponse {
+        val request = requireNotNull(rawRequest.normalizedOrNull()) {
+            "Study write check requires non-blank expected and attempt text"
+        }
+        if (writeAttemptMatches(request.expected, request.attempt)) {
+            return StudyWriteCheckResponse(correct = true, feedback = "")
+        }
+        val designed = runCatching {
+            aiClient.evaluateWriteAttempt(
+                StudyWriteCheckGenerationRequest(
+                    expected = request.expected,
+                    attempt = request.attempt,
+                    textLanguageTag = request.textLanguageTag,
+                    languageTag = request.languageTag,
+                ),
+            )
+        }.getOrElse { error ->
+            log.warn("Study write check failed: {}", error.message)
+            StudyWriteFeedback(feedback = "")
+        }
+        val feedback = designed.feedback.trim().ifBlank {
+            defaultWriteFeedback(request.languageTag)
+        }
+        return StudyWriteCheckResponse(correct = false, feedback = feedback)
+    }
+
     /** Current comic/sentence/character-image job status (shared store). */
     fun playgroundImage(imageId: String): StudyPlaygroundImageResponse? {
         val key = imageId.trim()
@@ -393,23 +437,54 @@ class StudyService(
     ) {
         val generator = imageGenerator
         if (generator == null) {
+            log.warn("Study {} skipped for {}: image generator is not configured", logLabel, imageId)
             studyImages[imageId] = StudyPlaygroundImageResponse(
                 imageId = imageId,
                 status = StudyPlaygroundImageStatus.FAILED,
             )
             return
         }
+        val refs = referenceImageUrls.map { it.trim() }.filter { it.isNotEmpty() }
         studyImages[imageId] = StudyPlaygroundImageResponse(
             imageId = imageId,
             status = StudyPlaygroundImageStatus.PENDING,
         )
         scope.launch {
+            val startedAt = System.currentTimeMillis()
             studyImages[imageId] = StudyPlaygroundImageResponse(
                 imageId = imageId,
                 status = StudyPlaygroundImageStatus.GENERATING,
             )
-            runCatching { generator.generate(prompt, referenceImageUrls) }
+            log.info(
+                "Study {} started for {} (refs={})",
+                logLabel,
+                imageId,
+                refs.size,
+            )
+            val result = runCatching { generator.generate(prompt, refs) }
+                .recoverCatching { error ->
+                    // Reference-to-image is slower/flakier (re-host + multimodal).
+                    // Fall back to text-only so sentence panels still complete.
+                    if (refs.isEmpty()) throw error
+                    log.warn(
+                        "Study {} with {} ref(s) failed for {}: {}. Retrying without references.",
+                        logLabel,
+                        refs.size,
+                        imageId,
+                        error.message,
+                    )
+                    generator.generate(prompt, emptyList())
+                }
+            val elapsedMs = System.currentTimeMillis() - startedAt
+            result
                 .onSuccess { url ->
+                    log.info(
+                        "Study {} completed for {} in {}ms (urlHost={})",
+                        logLabel,
+                        imageId,
+                        elapsedMs,
+                        runCatching { java.net.URI(url).host }.getOrNull() ?: "?",
+                    )
                     studyImages[imageId] = StudyPlaygroundImageResponse(
                         imageId = imageId,
                         status = StudyPlaygroundImageStatus.COMPLETED,
@@ -417,7 +492,14 @@ class StudyService(
                     )
                 }
                 .onFailure { error ->
-                    log.warn("Study {} generation failed for {}: {}", logLabel, imageId, error.message)
+                    log.error(
+                        "Study {} generation failed for {} after {}ms: {}",
+                        logLabel,
+                        imageId,
+                        elapsedMs,
+                        error.message,
+                        error,
+                    )
                     studyImages[imageId] = StudyPlaygroundImageResponse(
                         imageId = imageId,
                         status = StudyPlaygroundImageStatus.FAILED,
@@ -658,6 +740,24 @@ internal fun defaultPlayScenarios(sourceText: String, languageTag: String): List
         )
     }
 }
+
+internal fun writeAttemptMatches(expected: String, actual: String): Boolean {
+    fun normalize(value: String): String =
+        value.trim().replace(Regex("\\s+"), " ")
+    return normalize(expected) == normalize(actual)
+}
+
+internal fun defaultWriteFeedback(languageTag: String): String =
+    when (Language.fromTag(languageTag).tag) {
+        "vi" -> "Chưa khớp câu mẫu. Hãy so lại từng từ và dấu câu."
+        "zh" -> "还没有完全一致。请再核对每个词和标点。"
+        "ja" -> "まだ一致していません。語句と句読点をもう一度確認してください。"
+        "ko" -> "아직 일치하지 않습니다. 단어와 문장 부호를 다시 확인해 보세요."
+        "ru" -> "Пока не совпадает. Сверьте каждое слово и знаки препинания."
+        else -> "Not an exact match yet. Compare each word and the punctuation."
+    }
+
+
 
 internal fun normalizeCharacterDesigns(designs: List<StudyCharacterDesign>): List<StudyCharacterDesign> {
     val cleaned = designs.mapNotNull { design ->

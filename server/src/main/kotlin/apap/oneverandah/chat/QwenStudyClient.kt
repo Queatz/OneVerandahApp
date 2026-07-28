@@ -403,6 +403,28 @@ class DashScopeStudyAiClient(
         return QwenStudyPlayTurnParser.parse(content)
     }
 
+    override suspend fun evaluateWriteAttempt(
+        request: StudyWriteCheckGenerationRequest,
+    ): StudyWriteFeedback {
+        val userContent = buildString {
+            appendLine("Expected sentence (study language ${request.textLanguageTag}):")
+            appendLine(request.expected)
+            appendLine()
+            appendLine("Learner attempt:")
+            appendLine(request.attempt)
+        }
+        val content = complete(
+            systemPrompt = writeCheckSystemPrompt(
+                activeLanguageTag = request.languageTag,
+                textLanguageTag = request.textLanguageTag,
+            ),
+            userContent = userContent,
+            label = "study write check",
+            temperature = 0.2,
+        )
+        return QwenStudyWriteCheckParser.parse(content)
+    }
+
     private suspend fun complete(
         systemPrompt: String,
         userContent: String,
@@ -537,6 +559,20 @@ class DashScopeStudyAiClient(
         - Do not include speaker labels, stage directions inside reply, or markdown.
         - Do not wrap the JSON in markdown. Do not add extra keys.
     """.trimIndent()
+
+    private fun writeCheckSystemPrompt(activeLanguageTag: String, textLanguageTag: String): String = """
+        You are a precise writing coach for One Verandah language study.
+        The learner must type the expected sentence exactly (same words and punctuation).
+        Their attempt did not match. Explain what is wrong so they can fix it.
+        Always return one JSON object and no markdown. The schema is exactly:
+        {"feedback":"short coaching note"}
+        Rules:
+        - The expected sentence and attempt are in the study/source language '$textLanguageTag'.
+        - "feedback" MUST be written in the learner's active language '$activeLanguageTag'.
+        - Compare attempt to expected carefully: missing/extra words, wrong word order, typos, accents/diacritics, capitalization when meaningful, and punctuation.
+        - Keep feedback to 1–2 short sentences. Be specific and kind. Point out the main difference; do not dump the full corrected sentence unless a tiny fix needs showing.
+        - Do not wrap the JSON in markdown. Do not add extra keys.
+    """.trimIndent()
 }
 
 /**
@@ -571,6 +607,28 @@ object QwenStudyPlayScenariosParser {
 /**
  * Lenient parser for Play-tab conversation turn JSON.
  */
+
+object QwenStudyWriteCheckParser {
+    private val json = Json { ignoreUnknownKeys = true; explicitNulls = false; isLenient = true }
+
+    fun parse(content: String): StudyWriteFeedback {
+        val root = parseRootObject(content)
+        val feedback = root.string("feedback")?.trim()?.takeIf { it.isNotEmpty() }
+            ?: root.string("summary")?.trim()?.takeIf { it.isNotEmpty() }
+            ?: root.string("explanation")?.trim()?.takeIf { it.isNotEmpty() }
+            ?: throw IllegalArgumentException("Qwen study write check missing feedback")
+        return StudyWriteFeedback(feedback = feedback)
+    }
+
+    private fun parseRootObject(content: String): JsonObject {
+        val normalized = stripJsonFences(content)
+        val element = runCatching { json.parseToJsonElement(normalized) }
+            .getOrElse { throw IllegalArgumentException("Qwen study write check is not valid JSON", it) }
+        return element as? JsonObject
+            ?: throw IllegalArgumentException("Qwen study write check root must be a JSON object")
+    }
+}
+
 object QwenStudyPlayTurnParser {
     private val json = Json { ignoreUnknownKeys = true; explicitNulls = false; isLenient = true }
 

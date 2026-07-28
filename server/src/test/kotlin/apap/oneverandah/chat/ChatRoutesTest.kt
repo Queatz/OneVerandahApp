@@ -139,6 +139,9 @@ class ChatRoutesTest {
 
                 override suspend fun generatePlayTurn(request: StudyPlayTurnGenerationRequest) =
                     error("not used")
+
+                override suspend fun evaluateWriteAttempt(request: StudyWriteCheckGenerationRequest) =
+                    error("not used")
             },
         )
         application {
@@ -227,6 +230,9 @@ class ChatRoutesTest {
 
                 override suspend fun generatePlayTurn(request: StudyPlayTurnGenerationRequest) =
                     error("not used")
+
+                override suspend fun evaluateWriteAttempt(request: StudyWriteCheckGenerationRequest) =
+                    error("not used")
             },
         )
         application {
@@ -302,6 +308,9 @@ class ChatRoutesTest {
                     error("not used")
 
                 override suspend fun generatePlayTurn(request: StudyPlayTurnGenerationRequest) =
+                    error("not used")
+
+                override suspend fun evaluateWriteAttempt(request: StudyWriteCheckGenerationRequest) =
                     error("not used")
             },
             imageGenerator = StudyPlaygroundImageGenerator { _, _ -> "https://cdn.example/play.png" },
@@ -398,6 +407,9 @@ class ChatRoutesTest {
 
                 override suspend fun generatePlayTurn(request: StudyPlayTurnGenerationRequest) =
                     error("not used")
+
+                override suspend fun evaluateWriteAttempt(request: StudyWriteCheckGenerationRequest) =
+                    error("not used")
             },
             imageGenerator = StudyPlaygroundImageGenerator { _, _ -> "https://cdn.example/sentence.png" },
             idGenerator = { "sentence-image-1" },
@@ -481,6 +493,9 @@ class ChatRoutesTest {
                     error("not used")
 
                 override suspend fun generatePlayTurn(request: StudyPlayTurnGenerationRequest) =
+                    error("not used")
+
+                override suspend fun evaluateWriteAttempt(request: StudyWriteCheckGenerationRequest) =
                     error("not used")
             },
             imageGenerator = StudyPlaygroundImageGenerator { _, _ -> "https://cdn.example/portrait.png" },

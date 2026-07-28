@@ -297,6 +297,8 @@ object Styles {
     const val studyWriteBlock = "study-write-block"
     const val studyWritePrompt = "study-write-prompt"
     const val studyWriteCorrect = "study-write-correct"
+    const val studyWriteFeedback = "study-write-feedback"
+    const val studyWriteChecking = "study-write-checking"
     const val studyPlayBlock = "study-play-block"
     const val studyPlayDescription = "study-play-description"
     const val studyPlayLine = "study-play-line"
@@ -2393,6 +2395,24 @@ object Styles {
             background: color-mix(in srgb, #2e7d32 16%, var(--md-sys-color-surface));
             color: #1b5e20;
         }
+        .${studyWriteFeedback} {
+            margin: 0;
+            font-size: 13px;
+            line-height: 1.45;
+            color: var(--md-sys-color-on-surface-variant);
+            padding: 8px 10px;
+            border-radius: 12px;
+            background: color-mix(in srgb, var(--md-sys-color-tertiary) 10%, var(--md-sys-color-surface));
+            border: 1px solid color-mix(in srgb, var(--md-sys-color-tertiary) 28%, var(--md-sys-color-outline));
+        }
+        .${studyWriteChecking} {
+            display: inline-flex;
+            align-items: center;
+            gap: 8px;
+            font-size: 13px;
+            color: var(--md-sys-color-on-surface-variant);
+        }
+        .${studyWriteChecking} .${materialSymbols} { animation: spin 1.2s linear infinite; }
         .${studyWriteCorrect} .${materialSymbols} {
             font-size: 18px;
             color: #2e7d32;
@@ -2446,6 +2466,7 @@ object Styles {
             font-size: 13px;
             color: var(--md-sys-color-on-surface-variant);
         }
+        .${studyPlayStatus} .${materialSymbols} { animation: spin 1.2s linear infinite; }
         .${studySessionHint} {
             font-size: 13px;
             color: var(--md-sys-color-on-surface-variant);

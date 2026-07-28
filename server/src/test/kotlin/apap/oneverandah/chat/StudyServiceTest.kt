@@ -15,6 +15,7 @@ import apap.oneverandah.api.StudySessionRequest
 import apap.oneverandah.api.StudySessionResponse
 import apap.oneverandah.api.StudyToken
 import apap.oneverandah.api.StudyTokenStatus
+import apap.oneverandah.api.StudyWriteCheckRequest
 import apap.oneverandah.api.StudyWordPlaygroundRequest
 import kotlin.test.Test
 import kotlin.test.assertContains
@@ -595,6 +596,55 @@ class StudyServiceTest {
     }
 
     @Test
+    fun `sentence image falls back to text-only when references fail`() = runBlocking {
+        var calls = 0
+        val service = StudyService(
+            aiClient = FakeStudyAiClient(),
+            imageGenerator = StudyPlaygroundImageGenerator { _, referenceImageUrls ->
+                calls += 1
+                if (referenceImageUrls.isNotEmpty()) {
+                    error("ref boom")
+                }
+                "https://cdn.example/fallback-scene.png"
+            },
+            idGenerator = { "scene-fallback-1" },
+        )
+
+        service.sentenceImage(
+            StudySentenceImageRequest(
+                sentenceText = "Lan mỉm cười.",
+                fullText = "Lan mỉm cười.",
+                sentenceIndex = 0,
+                sentenceCount = 1,
+                characters = listOf(
+                    StudyStoryCharacter(
+                        id = "main",
+                        name = "Lan",
+                        role = "main",
+                        description = "young woman",
+                        imageUrl = "https://cdn.example/lan.png",
+                    ),
+                ),
+            ),
+        )
+
+        var image = service.playgroundImage("scene-fallback-1")
+        var attempts = 0
+        while (
+            image!!.status != StudyPlaygroundImageStatus.COMPLETED &&
+            image.status != StudyPlaygroundImageStatus.FAILED &&
+            attempts < 40
+        ) {
+            delay(25)
+            image = service.playgroundImage("scene-fallback-1")
+            attempts++
+        }
+        assertEquals(StudyPlaygroundImageStatus.COMPLETED, image.status)
+        assertEquals("https://cdn.example/fallback-scene.png", image.imageUrl)
+        assertEquals(2, calls)
+    }
+
+    @Test
     fun `sentence image uses character reference urls`() = runBlocking {
         val capturedRefs = mutableListOf<List<String>>()
         val service = StudyService(
@@ -727,6 +777,42 @@ class StudyServiceTest {
     }
 }
 
+
+    @Test
+    fun `write check returns empty feedback when attempt matches`() = runBlocking {
+        val service = StudyService(FakeStudyAiClient(), idGenerator = { "write-1" })
+        val response = service.writeCheck(
+            StudyWriteCheckRequest(
+                expected = "Xin chào bạn!",
+                attempt = "  Xin   chào bạn! ",
+                textLanguageTag = "vi",
+                languageTag = "en",
+            ),
+        )
+        assertTrue(response.correct)
+        assertEquals("", response.feedback)
+    }
+
+    @Test
+    fun `write check returns AI feedback when attempt differs`() = runBlocking {
+        val fake = FakeStudyAiClient(
+            writeFeedback = StudyWriteFeedback(feedback = "Missing the word bạn."),
+        )
+        val service = StudyService(fake, idGenerator = { "write-2" })
+        val response = service.writeCheck(
+            StudyWriteCheckRequest(
+                expected = "Xin chào bạn!",
+                attempt = "Xin chào!",
+                textLanguageTag = "vi",
+                languageTag = "en",
+            ),
+        )
+        assertFalse(response.correct)
+        assertEquals("Missing the word bạn.", response.feedback)
+        assertEquals("Xin chào bạn!", fake.lastWriteCheckRequest?.expected)
+        assertEquals("Xin chào!", fake.lastWriteCheckRequest?.attempt)
+    }
+
 private class FakeStudyAiClient(
     private val skeleton: StudySessionResponse = StudySessionResponse(
         text = "x",
@@ -764,6 +850,9 @@ private class FakeStudyAiClient(
         description = "They smile and wait for your reply.",
         reply = "Thật sao?",
     ),
+    private val writeFeedback: StudyWriteFeedback = StudyWriteFeedback(
+        feedback = "You dropped the final question mark.",
+    ),
 ) : StudyAiClient {
     var lastSkeletonRequest: StudyGenerationRequest? = null
     var lastDissectRequest: StudyDissectGenerationRequest? = null
@@ -771,6 +860,7 @@ private class FakeStudyAiClient(
     var lastCharactersRequest: StudyCharactersGenerationRequest? = null
     var lastPlayScenariosRequest: StudyPlayScenariosGenerationRequest? = null
     var lastPlayTurnRequest: StudyPlayTurnGenerationRequest? = null
+    var lastWriteCheckRequest: StudyWriteCheckGenerationRequest? = null
 
     override suspend fun generateSkeleton(request: StudyGenerationRequest): StudySessionResponse {
         lastSkeletonRequest = request
@@ -808,5 +898,12 @@ private class FakeStudyAiClient(
     ): StudyPlayTurnDesign {
         lastPlayTurnRequest = request
         return playTurn
+    }
+
+    override suspend fun evaluateWriteAttempt(
+        request: StudyWriteCheckGenerationRequest,
+    ): StudyWriteFeedback {
+        lastWriteCheckRequest = request
+        return writeFeedback
     }
 }

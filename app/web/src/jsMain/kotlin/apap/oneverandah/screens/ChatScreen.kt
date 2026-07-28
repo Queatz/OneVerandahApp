@@ -41,6 +41,7 @@ import apap.oneverandah.api.StudyStoryCharactersRequest
 import apap.oneverandah.api.StudyToken
 import apap.oneverandah.api.StudyTokenStatus
 import apap.oneverandah.api.StudyWordPlaygroundRequest
+import apap.oneverandah.api.StudyWriteCheckRequest
 import apap.oneverandah.api.StudyWordPlaygroundResponse
 import apap.oneverandah.components.BottomDialog
 import apap.oneverandah.components.ChatInput
@@ -455,7 +456,9 @@ fun ChatScreen(
         // Another coroutine may already be designing/polling this cast.
         if (studyCharactersInFlight[messageId] == true) {
             var wait = 0
-            while (studyCharactersInFlight[messageId] == true && wait < STUDY_IMAGE_POLL_MAX_ATTEMPTS) {
+            // Cap wait so scene generation is not blocked for the full image budget.
+            val maxWait = (STUDY_IMAGE_POLL_MAX_ATTEMPTS / 3).coerceAtLeast(30)
+            while (studyCharactersInFlight[messageId] == true && wait < maxWait) {
                 delay(STUDY_IMAGE_POLL_DELAY_MS)
                 wait += 1
                 val latest = studyCache[messageId]?.characters.orEmpty()
@@ -481,53 +484,70 @@ fun ChatScreen(
                 cast = studyCache[messageId]?.characters.orEmpty()
             }
 
-            // Poll each portrait that still lacks a URL.
-            cast.forEach { character ->
-                if (!character.imageUrl.isNullOrBlank()) return@forEach
-                var imageId = character.imageId?.trim().orEmpty()
-                if (imageId.isEmpty()) return@forEach
-                val existingJob = runCatching { ChatApi.studyImage(imageId) }.getOrNull()
-                when {
-                    existingJob == null -> {
-                        // Job lost — leave without URL; sentence scenes still run with description-only cast.
-                        return@forEach
-                    }
-                    existingJob.status == StudyPlaygroundImageStatus.COMPLETED &&
-                        !existingJob.imageUrl.isNullOrBlank() -> {
-                        applyStudyCharacterPortrait(messageId, character.id, imageId, existingJob.imageUrl)
-                        return@forEach
-                    }
-                    existingJob.status == StudyPlaygroundImageStatus.FAILED -> return@forEach
-                    else -> Unit
-                }
-                var attempts = 0
-                while (attempts < STUDY_IMAGE_POLL_MAX_ATTEMPTS) {
-                    val latestUrl = studyCache[messageId]?.characters
-                        ?.firstOrNull { it.id == character.id }
-                        ?.imageUrl
-                    if (!latestUrl.isNullOrBlank()) break
-                    val image = runCatching { ChatApi.studyImage(imageId) }.getOrNull()
-                    if (image != null) {
-                        when (image.status) {
-                            StudyPlaygroundImageStatus.COMPLETED -> {
-                                if (!image.imageUrl.isNullOrBlank()) {
+            // Poll portraits in parallel so a slow secondary does not block the main.
+            val pendingPortraits = cast.filter {
+                it.imageUrl.isNullOrBlank() && !it.imageId.isNullOrBlank()
+            }
+            if (pendingPortraits.isNotEmpty()) {
+                coroutineScope {
+                    pendingPortraits.map { character ->
+                        async {
+                            val imageId = character.imageId?.trim().orEmpty()
+                            if (imageId.isEmpty()) return@async
+                            val existingJob = runCatching { ChatApi.studyImage(imageId) }.getOrNull()
+                            when {
+                                existingJob == null -> return@async
+                                existingJob.status == StudyPlaygroundImageStatus.COMPLETED &&
+                                    !existingJob.imageUrl.isNullOrBlank() -> {
                                     applyStudyCharacterPortrait(
                                         messageId,
                                         character.id,
                                         imageId,
-                                        image.imageUrl,
+                                        existingJob.imageUrl,
                                     )
+                                    return@async
                                 }
-                                break
+                                existingJob.status == StudyPlaygroundImageStatus.FAILED -> return@async
+                                else -> Unit
                             }
-                            StudyPlaygroundImageStatus.FAILED -> break
-                            StudyPlaygroundImageStatus.PENDING,
-                            StudyPlaygroundImageStatus.GENERATING,
-                            -> Unit
+                            var attempts = 0
+                            var missingJobStreak = 0
+                            // Portraits should finish well before scene budget; don't block scenes forever.
+                            val portraitAttempts = (STUDY_IMAGE_POLL_MAX_ATTEMPTS / 2).coerceAtLeast(45)
+                            while (attempts < portraitAttempts) {
+                                val latestUrl = studyCache[messageId]?.characters
+                                    ?.firstOrNull { it.id == character.id }
+                                    ?.imageUrl
+                                if (!latestUrl.isNullOrBlank()) break
+                                val image = runCatching { ChatApi.studyImage(imageId) }.getOrNull()
+                                if (image != null) {
+                                    missingJobStreak = 0
+                                    when (image.status) {
+                                        StudyPlaygroundImageStatus.COMPLETED -> {
+                                            if (!image.imageUrl.isNullOrBlank()) {
+                                                applyStudyCharacterPortrait(
+                                                    messageId,
+                                                    character.id,
+                                                    imageId,
+                                                    image.imageUrl,
+                                                )
+                                            }
+                                            break
+                                        }
+                                        StudyPlaygroundImageStatus.FAILED -> break
+                                        StudyPlaygroundImageStatus.PENDING,
+                                        StudyPlaygroundImageStatus.GENERATING,
+                                        -> Unit
+                                    }
+                                } else {
+                                    missingJobStreak += 1
+                                    if (missingJobStreak >= STUDY_IMAGE_MISSING_JOB_LIMIT) break
+                                }
+                                attempts += 1
+                                delay(STUDY_IMAGE_POLL_DELAY_MS)
+                            }
                         }
-                    }
-                    attempts += 1
-                    delay(STUDY_IMAGE_POLL_DELAY_MS)
+                    }.awaitAll()
                 }
             }
             return studyCache[messageId]?.characters.orEmpty()
@@ -589,12 +609,14 @@ fun ChatScreen(
                 applyStudySentenceImage(messageId, sentenceIndex, imageId, null)
             }
             var attempts = 0
+            var missingJobStreak = 0
             while (attempts < STUDY_IMAGE_POLL_MAX_ATTEMPTS) {
                 // Session may have received the URL from another path.
                 val latest = studyCache[messageId]?.sentences?.getOrNull(sentenceIndex)
                 if (!latest?.imageUrl.isNullOrBlank()) return
                 val image = runCatching { ChatApi.studyImage(imageId) }.getOrNull()
                 if (image != null) {
+                    missingJobStreak = 0
                     when (image.status) {
                         StudyPlaygroundImageStatus.COMPLETED -> {
                             if (!image.imageUrl.isNullOrBlank()) {
@@ -612,14 +634,20 @@ fun ChatScreen(
                         StudyPlaygroundImageStatus.GENERATING,
                         -> Unit
                     }
+                } else {
+                    missingJobStreak += 1
+                    if (missingJobStreak >= STUDY_IMAGE_MISSING_JOB_LIMIT) {
+                        // Job vanished from the in-memory store — do not spin for minutes.
+                        studyImageFailed[key] = true
+                        return
+                    }
                 }
                 attempts += 1
                 delay(STUDY_IMAGE_POLL_DELAY_MS)
             }
             studyImageFailed[key] = true
         } finally {
-            // Keep in-flight true so we do not start a second job while this session is open;
-            // openStudy clears tracking so reopen can resume polling.
+            studyImageInFlight.remove(key)
         }
     }
 
@@ -1771,18 +1799,50 @@ private fun StudyWriteSentenceCard(
     textLanguageTag: String,
     strings: UiStrings,
 ) {
+    val scope = rememberCoroutineScope()
+    val languageTag = Localization.language.tag
     var draft by remember(sentenceText) { mutableStateOf("") }
     var correct by remember(sentenceText) { mutableStateOf(false) }
+    var checking by remember(sentenceText) { mutableStateOf(false) }
+    var feedback by remember(sentenceText) { mutableStateOf<String?>(null) }
 
     fun check(value: String?) {
         val candidate = value?.trim().orEmpty()
-        if (candidate.isEmpty()) return
+        if (candidate.isEmpty() || checking) return
         if (studyWriteMatches(sentenceText, candidate)) {
             correct = true
             draft = sentenceText
-        } else {
-            correct = false
-            draft = candidate
+            feedback = null
+            checking = false
+            return
+        }
+        correct = false
+        draft = candidate
+        feedback = null
+        checking = true
+        scope.launch {
+            runCatching {
+                ChatApi.studyWriteCheck(
+                    StudyWriteCheckRequest(
+                        expected = sentenceText,
+                        attempt = candidate,
+                        textLanguageTag = textLanguageTag,
+                        languageTag = languageTag,
+                    ),
+                )
+            }.onSuccess { response ->
+                if (response.correct || studyWriteMatches(sentenceText, candidate)) {
+                    correct = true
+                    draft = sentenceText
+                    feedback = null
+                } else {
+                    feedback = response.feedback.trim().takeIf { it.isNotEmpty() }
+                        ?: strings.chatWriteFeedbackError
+                }
+            }.onFailure {
+                feedback = strings.chatWriteFeedbackError
+            }
+            checking = false
         }
     }
 
@@ -1799,13 +1859,32 @@ private fun StudyWriteSentenceCard(
         } else {
             ChatInput(
                 value = draft,
-                onValueChange = { draft = it },
+                onValueChange = {
+                    draft = it
+                    if (feedback != null) feedback = null
+                },
                 onSend = { check(it) },
                 placeholder = strings.chatWritePlaceholder,
                 languageTag = textLanguageTag,
                 multiline = sentenceText.length > 48,
                 autoFocus = sentenceIndex == 0,
             )
+            if (checking) {
+                Div(attrs = {
+                    classes(Styles.studyWriteChecking)
+                    attr("role", "status")
+                }) {
+                    MaterialSymbol("progress_activity")
+                    Span { Text(strings.chatWriteChecking) }
+                }
+            } else {
+                feedback?.let { message ->
+                    P(attrs = {
+                        classes(Styles.studyWriteFeedback)
+                        attr("role", "status")
+                    }) { Text(message) }
+                }
+            }
         }
     }
 }
@@ -2115,8 +2194,11 @@ private const val SPEECH_BATCH_SIZE = 3
 private const val SPEECH_RETRY_MAX_ATTEMPTS = 4
 private const val SPEECH_RETRY_INITIAL_DELAY_MS = 2_500L
 private const val STUDY_IMAGE_PARALLELISM = 2
-private const val STUDY_IMAGE_POLL_MAX_ATTEMPTS = 90
-private const val STUDY_IMAGE_POLL_DELAY_MS = 1_500L
+/** ~6 minutes: reference-to-image + optional text-only fallback can exceed 2 minutes. */
+private const val STUDY_IMAGE_POLL_MAX_ATTEMPTS = 180
+private const val STUDY_IMAGE_POLL_DELAY_MS = 2_000L
+/** Consecutive missing job polls before treating the imageId as lost. */
+private const val STUDY_IMAGE_MISSING_JOB_LIMIT = 5
 
 /**
  * Retries TTS calls on rate-limit / transient errors with short exponential backoff.

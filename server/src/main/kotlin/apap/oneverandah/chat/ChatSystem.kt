@@ -52,9 +52,10 @@ class ChatSystem(
             val scope = CoroutineScope(SupervisorJob() + Dispatchers.IO)
             val client = HttpClient(CIO) {
                 install(HttpTimeout) {
-                    requestTimeoutMillis = 120_000
+                    // Multimodal image gen (esp. reference-to-image) regularly exceeds 2 minutes.
+                    requestTimeoutMillis = 300_000
                     connectTimeoutMillis = 30_000
-                    socketTimeoutMillis = 120_000
+                    socketTimeoutMillis = 300_000
                 }
                 install(WebSockets)
                 expectSuccess = false

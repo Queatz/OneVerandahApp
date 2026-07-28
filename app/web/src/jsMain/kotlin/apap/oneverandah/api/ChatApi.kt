@@ -184,6 +184,16 @@ object ChatApi {
         return json.decodeFromString(StudyPlayTurnResponse.serializer(), text)
     }
 
+    suspend fun studyWriteCheck(request: StudyWriteCheckRequest): StudyWriteCheckResponse {
+        val response = client.post(chatApiUrl("/study/write/check")) {
+            contentType(ContentType.Application.Json)
+            setBody(json.encodeToString(StudyWriteCheckRequest.serializer(), request))
+        }
+        val text = response.bodyAsText()
+        if (!response.status.isSuccess()) throw ChatApiException(errorMessage(text, response.status.value))
+        return json.decodeFromString(StudyWriteCheckResponse.serializer(), text)
+    }
+
     /** Poll async study image status (playground comics, portraits, and sentence visuals). */
     suspend fun studyImage(imageId: String): StudyPlaygroundImageResponse = studyPlaygroundImage(imageId)
 

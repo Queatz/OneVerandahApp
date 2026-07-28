@@ -483,4 +483,48 @@ class ChatApiModelsTest {
         )
         assertEquals(emptyList(), legacy.words)
     }
+
+    @Test
+    fun `study write check request normalizes and rejects blanks`() {
+        val normalized = StudyWriteCheckRequest(
+            expected = "  Hello there! ",
+            attempt = " Hello  ",
+            textLanguageTag = "en-US",
+            languageTag = "vi-VN",
+        ).normalizedOrNull()
+        assertEquals("Hello there!", normalized?.expected)
+        assertEquals("Hello", normalized?.attempt)
+        assertEquals("en", normalized?.textLanguageTag)
+        assertEquals("vi", normalized?.languageTag)
+
+        assertNull(
+            StudyWriteCheckRequest(
+                expected = "   ",
+                attempt = "x",
+                textLanguageTag = "en",
+                languageTag = "en",
+            ).normalizedOrNull(),
+        )
+        assertNull(
+            StudyWriteCheckRequest(
+                expected = "x",
+                attempt = "  ",
+                textLanguageTag = "en",
+                languageTag = "en",
+            ).normalizedOrNull(),
+        )
+    }
+
+    @Test
+    fun `study write check response round trips as structured JSON`() {
+        val json = Json { encodeDefaults = true }
+        val original = StudyWriteCheckResponse(
+            correct = false,
+            feedback = "You swapped two words.",
+        )
+        val encoded = json.encodeToString(StudyWriteCheckResponse.serializer(), original)
+        val decoded = json.decodeFromString(StudyWriteCheckResponse.serializer(), encoded)
+        assertEquals(original, decoded)
+    }
+
 }

@@ -561,6 +561,40 @@ data class StudyPlayTurnResponse(
     val imageId: String,
 )
 
+/**
+ * Ask the coach why a Write-tab attempt does not match the expected sentence.
+ *
+ * [languageTag] is the learner UI language for the feedback text.
+ * [textLanguageTag] is the study/source language of [expected] and [attempt].
+ */
+@Serializable
+data class StudyWriteCheckRequest(
+    val expected: String,
+    val attempt: String,
+    val textLanguageTag: String,
+    val languageTag: String,
+) {
+    fun normalizedOrNull(): StudyWriteCheckRequest? {
+        val normalizedExpected = expected.trim().takeIf { it.isNotEmpty() } ?: return null
+        val normalizedAttempt = attempt.trim().takeIf { it.isNotEmpty() } ?: return null
+        return copy(
+            expected = normalizedExpected,
+            attempt = normalizedAttempt,
+            textLanguageTag = Language.fromTag(textLanguageTag).tag,
+            languageTag = Language.fromTag(languageTag).tag,
+        )
+    }
+}
+
+/** Coaching note for an incorrect (or near-miss) Write-tab attempt. */
+@Serializable
+data class StudyWriteCheckResponse(
+    /** True only when attempt matches expected after light normalization. */
+    val correct: Boolean,
+    /** Short explanation in the learner UI language; empty when correct. */
+    val feedback: String = "",
+)
+
 @Serializable
 data class ChatErrorResponse(val error: String)
 

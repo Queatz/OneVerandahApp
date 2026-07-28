@@ -10,6 +10,7 @@ import apap.oneverandah.api.SpeechResponse
 import apap.oneverandah.api.StudyDissectSentenceRequest
 import apap.oneverandah.api.StudyPlayScenariosRequest
 import apap.oneverandah.api.StudyPlayTurnRequest
+import apap.oneverandah.api.StudyWriteCheckRequest
 import apap.oneverandah.api.StudySentenceImageRequest
 import apap.oneverandah.api.StudySessionRequest
 import apap.oneverandah.api.StudyStoryCharactersRequest
@@ -145,6 +146,18 @@ fun Route.chatRoutes(
                 return@post
             }
             call.respond(studyService.playTurn(request))
+        }
+
+        post("/api/chat/study/write/check") {
+            val request = call.receive<StudyWriteCheckRequest>()
+            if (request.normalizedOrNull() == null) {
+                call.respond(
+                    HttpStatusCode.BadRequest,
+                    ChatErrorResponse("Study write check requires non-blank expected and attempt text"),
+                )
+                return@post
+            }
+            call.respond(studyService.writeCheck(request))
         }
 
         get("/api/chat/study/playground/image/{imageId}") {

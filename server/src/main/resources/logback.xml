@@ -9,4 +9,7 @@
     </root>
     <logger name="org.eclipse.jetty" level="INFO"/>
     <logger name="io.netty" level="INFO"/>
+    <!-- Ktor client TRACE floods journald and hides study/image failures. -->
+    <logger name="io.ktor" level="INFO"/>
+    <logger name="io.ktor.client" level="INFO"/>
 </configuration>
