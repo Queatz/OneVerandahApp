@@ -400,6 +400,7 @@ class DashScopeQwenClientTest {
             config = QwenImageConfig(
                 endpoint = "https://dashscope.aliyuncs.com/api/v1/services/aigc/text2image/image-synthesis",
                 apiKey = "test-key",
+                // Classic *-t2i* path still works when explicitly configured.
                 model = "wan2.2-t2i-flash",
                 textToImageSize = "512*512",
                 promptExtend = false,

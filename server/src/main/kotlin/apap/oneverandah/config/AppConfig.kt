@@ -94,11 +94,11 @@ data class OssConfig(
  * Speed knobs:
  * - [promptExtend] runs an extra LLM rewrite (~3–4s). Off by default because our
  *   prompts are already detailed (study story panels, covers).
- * - Prefer `512*512` everywhere the provider allows it (flash T2I / legacy R2I).
+ * - Prefer `512*512` only for classic T2I / legacy R2I contracts when those are used.
  * - [multimodalSize] for wan2.x-image accepts `1K`/`2K` or `width*height`; pixel
  *   sizes must stay in about `[768*768, 2048*2048]`, so 512 is not valid there.
- * - Prefer a flash T2I model via [model] (e.g. `wan2.2-t2i-flash`) for text-only
- *   drafts while keeping [r2iModel] on a quality multimodal model for refs.
+ * - Default [model] and [r2iModel] both use `wan2.7-image` (quality multimodal).
+ *   Text-only calls are auto-routed to the multimodal endpoint.
  */
 data class QwenImageConfig(
     val endpoint: String,
@@ -128,7 +128,7 @@ data class QwenImageConfig(
     val multimodalSize: String = "768*768",
     /**
      * Output size for classic text-to-image models (`width*height`).
-     * `512*512` is the fastest practical square size on flash T2I models.
+     * Only used when [model] is a classic wanx / `*-t2i*` model.
      */
     val textToImageSize: String = "512*512",
     /**
@@ -297,9 +297,8 @@ data class AppConfig(
                 endpoint = source["QWEN_API_ENDPOINT"]
                     ?: "https://dashscope.aliyuncs.com/api/v1/services/aigc/text2image/image-synthesis",
                 apiKey = source["QWEN_API_KEY"] ?: "",
-                // Flash T2I is much faster for text-only (portraits, fallbacks, catalog drafts).
-                // Reference-grounded study scenes still use r2iModel (quality multimodal).
-                model = source["QWEN_MODEL"] ?: "wan2.2-t2i-flash",
+                // Text-only + reference-grounded both default to wan2.7-image (multimodal).
+                model = source["QWEN_MODEL"] ?: "wan2.7-image",
                 r2iEndpoint = source["QWEN_R2I_ENDPOINT"]
                     ?: "https://dashscope.aliyuncs.com/api/v1/services/aigc/multimodal-generation/generation",
                 r2iModel = source["QWEN_R2I_MODEL"] ?: "wan2.7-image",
