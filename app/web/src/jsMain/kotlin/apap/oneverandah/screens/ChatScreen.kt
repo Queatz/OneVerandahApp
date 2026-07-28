@@ -450,19 +450,17 @@ fun ChatScreen(
     suspend fun ensureStudyCharacters(messageId: String): List<StudyStoryCharacter> {
         val session = studyCache[messageId] ?: return emptyList()
         val existing = session.characters
-        val allReady = existing.isNotEmpty() && existing.all { !it.imageUrl.isNullOrBlank() }
-        if (allReady) return existing
+        // Prefer starting scenes once the main portrait is ready; secondary can lag.
+        if (existing.isNotEmpty() && studyCastReadyForScenes(existing)) return existing
 
         // Another coroutine may already be designing/polling this cast.
         if (studyCharactersInFlight[messageId] == true) {
             var wait = 0
-            // Cap wait so scene generation is not blocked for the full image budget.
-            val maxWait = (STUDY_IMAGE_POLL_MAX_ATTEMPTS / 3).coerceAtLeast(30)
-            while (studyCharactersInFlight[messageId] == true && wait < maxWait) {
+            while (studyCharactersInFlight[messageId] == true && wait < STUDY_MAIN_PORTRAIT_WAIT_ATTEMPTS) {
                 delay(STUDY_IMAGE_POLL_DELAY_MS)
                 wait += 1
                 val latest = studyCache[messageId]?.characters.orEmpty()
-                if (latest.isNotEmpty() && latest.all { !it.imageUrl.isNullOrBlank() }) return latest
+                if (latest.isNotEmpty() && studyCastReadyForScenes(latest)) return latest
             }
             return studyCache[messageId]?.characters.orEmpty()
         }
@@ -512,8 +510,14 @@ fun ChatScreen(
                             }
                             var attempts = 0
                             var missingJobStreak = 0
-                            // Portraits should finish well before scene budget; don't block scenes forever.
-                            val portraitAttempts = (STUDY_IMAGE_POLL_MAX_ATTEMPTS / 2).coerceAtLeast(45)
+                            // Main portrait gets a longer wait; secondary is best-effort and shorter.
+                            val isMain = character.role.equals("main", ignoreCase = true) ||
+                                character.id.equals("main", ignoreCase = true)
+                            val portraitAttempts = if (isMain) {
+                                STUDY_MAIN_PORTRAIT_WAIT_ATTEMPTS
+                            } else {
+                                (STUDY_MAIN_PORTRAIT_WAIT_ATTEMPTS / 2).coerceAtLeast(12)
+                            }
                             while (attempts < portraitAttempts) {
                                 val latestUrl = studyCache[messageId]?.characters
                                     ?.firstOrNull { it.id == character.id }
@@ -2193,12 +2197,29 @@ private fun StudyPlayScenarioCard(
 private const val SPEECH_BATCH_SIZE = 3
 private const val SPEECH_RETRY_MAX_ATTEMPTS = 4
 private const val SPEECH_RETRY_INITIAL_DELAY_MS = 2_500L
-private const val STUDY_IMAGE_PARALLELISM = 2
+/** Concurrent scene generations per study session (server handles provider load). */
+private const val STUDY_IMAGE_PARALLELISM = 4
 /** ~6 minutes: reference-to-image + optional text-only fallback can exceed 2 minutes. */
 private const val STUDY_IMAGE_POLL_MAX_ATTEMPTS = 180
-private const val STUDY_IMAGE_POLL_DELAY_MS = 2_000L
+private const val STUDY_IMAGE_POLL_DELAY_MS = 1_500L
 /** Consecutive missing job polls before treating the imageId as lost. */
 private const val STUDY_IMAGE_MISSING_JOB_LIMIT = 5
+/**
+ * How long to wait for the main character portrait before starting scene panels.
+ * Scenes can proceed with description-only cast if portraits are slow.
+ */
+private const val STUDY_MAIN_PORTRAIT_WAIT_ATTEMPTS = 40
+
+/** True when scenes can start: cast exists and main portrait is ready (or no main portrait job). */
+private fun studyCastReadyForScenes(characters: List<StudyStoryCharacter>): Boolean {
+    if (characters.isEmpty()) return false
+    val main = characters.firstOrNull {
+        it.role.equals("main", ignoreCase = true) || it.id.equals("main", ignoreCase = true)
+    } ?: characters.first()
+    if (!main.imageUrl.isNullOrBlank()) return true
+    // No portrait job enqueued — proceed with description-only.
+    return main.imageId.isNullOrBlank()
+}
 
 /**
  * Retries TTS calls on rate-limit / transient errors with short exponential backoff.

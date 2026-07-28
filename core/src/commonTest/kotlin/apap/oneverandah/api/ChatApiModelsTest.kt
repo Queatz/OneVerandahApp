@@ -75,10 +75,10 @@ class ChatApiModelsTest {
     @Test
     fun `fact card payload round trips as structured JSON`() {
         val miniApp: ChatMiniApp = FactMiniApp(
-            factId = "balcony-drains",
-            title = "Keep balcony drains clear",
-            body = "Clear leaves and debris before heavy rain.",
-            icon = "water_drop",
+            factId = "prime-location",
+            title = "Prime riverside location",
+            body = "One Verandah sits at 103 Bat Nan, Thanh My Loi Ward, Thu Duc City.",
+            icon = "location_on",
         )
 
         val decoded = json.decodeFromString<ChatMiniApp>(json.encodeToString(miniApp))

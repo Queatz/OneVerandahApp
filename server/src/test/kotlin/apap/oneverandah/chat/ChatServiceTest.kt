@@ -101,18 +101,18 @@ class ChatServiceTest {
     @Test
     fun `catalog fact reply becomes localized fact mini app`() = runBlocking {
         val ai = FakeChatAiClient(
-            GeneratedChatReply(text = "Here is a useful apartment fact.", factId = "balcony-drains"),
+            GeneratedChatReply(text = "Here is a useful apartment fact.", factId = "prime-location"),
         )
         val service = service(InMemoryChatRepository(), ai)
 
         val response = service.send(
-            ChatRequest(message = "How should I prepare my balcony for rain?", languageTag = "vi"),
+            ChatRequest(message = "Where is One Verandah located?", languageTag = "vi"),
         )
 
         val miniApp = assertIs<FactMiniApp>(response.message.miniApp)
-        assertEquals("balcony-drains", miniApp.factId)
-        assertEquals("Giữ thông thoáng lỗ thoát nước ban công", miniApp.title)
-        assertEquals(true, ai.lastRequest?.facts?.any { it.id == "balcony-drains" })
+        assertEquals("prime-location", miniApp.factId)
+        assertEquals("Vị trí ven sông đắc địa", miniApp.title)
+        assertEquals(true, ai.lastRequest?.facts?.any { it.id == "prime-location" })
     }
 
     @Test
@@ -243,10 +243,10 @@ class ChatServiceTest {
     @Test
     fun `Qwen structured reply parser accepts catalog fact id`() {
         val result = QwenStructuredReplyParser.parse(
-            """{"text":"A useful fact.","languageStudy":null,"factId":"balcony-drains","followUpQuestions":["How often should I check?","What tools do I need?","What else should I know?"]}""",
+            """{"text":"A useful fact.","languageStudy":null,"factId":"prime-location","followUpQuestions":["How close is District 1?","What ward is it in?","What else should I know?"]}""",
         )
 
-        assertEquals("balcony-drains", result.factId)
+        assertEquals("prime-location", result.factId)
     }
 
     @Test
@@ -254,13 +254,13 @@ class ChatServiceTest {
         val result = QwenStructuredReplyParser.parse(
             """
             {
-              "text": "Keep balcony drains clear before heavy rain.",
+              "text": "One Verandah is a prime riverside location in Thanh My Loi.",
               "languageStudy": null,
-              "factId": "balcony-drains",
+              "factId": "prime-location",
               "followUpQuestions": [
-                "  How often should I check?  ",
-                "Show me the right tools",
-                "Help me prepare for heavy rain"
+                "  How close is District 1?  ",
+                "What ward is it in?",
+                "Tell me about the towers"
               ]
             }
             """.trimIndent(),
@@ -268,9 +268,9 @@ class ChatServiceTest {
 
         assertEquals(
             listOf(
-                "How often should I check?",
-                "Show me the right tools",
-                "Help me prepare for heavy rain",
+                "How close is District 1?",
+                "What ward is it in?",
+                "Tell me about the towers",
             ),
             result.followUpQuestions,
         )

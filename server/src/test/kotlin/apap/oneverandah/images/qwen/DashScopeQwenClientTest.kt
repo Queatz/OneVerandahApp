@@ -288,6 +288,231 @@ class DashScopeQwenClientTest {
         }
     }
 
+    @Test
+    fun multimodalRequest_disablesPromptExtendAndUsesConfiguredSize() = runBlocking {
+        var requestBody = ""
+        val engine = MockEngine { request ->
+            val url = request.url.toString()
+            when {
+                url.contains("multimodal-generation") -> {
+                    requestBody = readBodyText(request.body)
+                    respond(
+                        content = """
+                            {
+                              "output": {
+                                "choices": [
+                                  {
+                                    "finish_reason": "stop",
+                                    "message": {
+                                      "role": "assistant",
+                                      "content": [
+                                        {
+                                          "image": "https://dashscope-result.example.test/comic.png",
+                                          "type": "image"
+                                        }
+                                      ]
+                                    }
+                                  }
+                                ]
+                              }
+                            }
+                        """.trimIndent(),
+                        status = HttpStatusCode.OK,
+                        headers = headersOf(HttpHeaders.ContentType, "application/json"),
+                    )
+                }
+                url.contains("dashscope-result.example.test") -> {
+                    respond(
+                        content = ByteReadChannel(byteArrayOf(3, 3, 3)),
+                        status = HttpStatusCode.OK,
+                        headers = headersOf(HttpHeaders.ContentType, "image/png"),
+                    )
+                }
+                else -> error("Unexpected request: $url")
+            }
+        }
+        val client = HttpClient(engine)
+        val qwen = DashScopeQwenClient(
+            config = QwenImageConfig(
+                endpoint = "https://dashscope.aliyuncs.com/api/v1/services/aigc/text2image/image-synthesis",
+                apiKey = "test-key",
+                model = "wan2.7-image",
+                r2iEndpoint = "https://dashscope.aliyuncs.com/api/v1/services/aigc/multimodal-generation/generation",
+                r2iModel = "wan2.7-image",
+                promptExtend = false,
+                multimodalSize = "768*768",
+            ),
+            client = client,
+        )
+        qwen.generate("Detailed study panel prompt already complete")
+        assertTrue(requestBody.contains("\"prompt_extend\":false"), requestBody)
+        assertTrue(requestBody.contains("\"size\":\"768*768\""), requestBody)
+        client.close()
+    }
+
+    @Test
+    fun flashTextToImage_usesClassicAsyncWithConfiguredSize() = runBlocking {
+        var sawSubmit = false
+        var requestBody = ""
+        val engine = MockEngine { request ->
+            val url = request.url.toString()
+            when {
+                url.contains("text2image/image-synthesis") -> {
+                    sawSubmit = true
+                    requestBody = readBodyText(request.body)
+                    respond(
+                        content = """{"output":{"task_id":"task-flash-1","task_status":"PENDING"}}""",
+                        status = HttpStatusCode.OK,
+                        headers = headersOf(HttpHeaders.ContentType, "application/json"),
+                    )
+                }
+                url.contains("/tasks/task-flash-1") -> {
+                    respond(
+                        content = """
+                            {
+                              "output": {
+                                "task_status": "SUCCEEDED",
+                                "results": [ { "url": "https://dashscope-result.example.test/flash.png" } ]
+                              }
+                            }
+                        """.trimIndent(),
+                        status = HttpStatusCode.OK,
+                        headers = headersOf(HttpHeaders.ContentType, "application/json"),
+                    )
+                }
+                url.contains("dashscope-result.example.test") -> {
+                    respond(
+                        content = ByteReadChannel(byteArrayOf(4, 4, 4)),
+                        status = HttpStatusCode.OK,
+                        headers = headersOf(HttpHeaders.ContentType, "image/png"),
+                    )
+                }
+                else -> error("Unexpected request: $url")
+            }
+        }
+        val client = HttpClient(engine)
+        val qwen = DashScopeQwenClient(
+            config = QwenImageConfig(
+                endpoint = "https://dashscope.aliyuncs.com/api/v1/services/aigc/text2image/image-synthesis",
+                apiKey = "test-key",
+                model = "wan2.2-t2i-flash",
+                textToImageSize = "512*512",
+                promptExtend = false,
+            ),
+            client = client,
+        )
+        val image = qwen.generate("Quick portrait of Lan")
+        assertTrue(sawSubmit)
+        assertTrue(requestBody.contains("wan2.2-t2i-flash"), requestBody)
+        assertTrue(requestBody.contains("\"size\":\"512*512\""), requestBody)
+        assertTrue(requestBody.contains("\"prompt_extend\":false"), requestBody)
+        assertTrue(image.bytes.contentEquals(byteArrayOf(4, 4, 4)))
+        client.close()
+    }
+
+    @Test
+    fun referenceRehost_isCachedAcrossGenerations() = runBlocking {
+        val root = Files.createTempDirectory("ov-qwen-cache-").toFile()
+        try {
+            val key = "study/story/lan.png"
+            val file = root.resolve(key)
+            file.parentFile.mkdirs()
+            file.writeBytes(byteArrayOf(0x89.toByte(), 0x50, 0x4E, 0x47))
+
+            var policyCount = 0
+            var uploadCount = 0
+            var generateCount = 0
+
+            val engine = MockEngine { request ->
+                val url = request.url.toString()
+                when {
+                    url.contains("/api/v1/uploads") -> {
+                        policyCount += 1
+                        respond(
+                            content = """
+                                {
+                                  "data": {
+                                    "upload_host": "https://upload.example.test/oss",
+                                    "upload_dir": "dashscope-instant/cache-dir",
+                                    "oss_access_key_id": "AKIATEST",
+                                    "signature": "sig",
+                                    "policy": "pol",
+                                    "x_oss_object_acl": "private",
+                                    "x_oss_forbid_overwrite": "true"
+                                  }
+                                }
+                            """.trimIndent(),
+                            status = HttpStatusCode.OK,
+                            headers = headersOf(HttpHeaders.ContentType, "application/json"),
+                        )
+                    }
+                    url.contains("upload.example.test") -> {
+                        uploadCount += 1
+                        respondOk("OK")
+                    }
+                    url.contains("multimodal-generation") -> {
+                        generateCount += 1
+                        respond(
+                            content = """
+                                {
+                                  "output": {
+                                    "choices": [
+                                      {
+                                        "finish_reason": "stop",
+                                        "message": {
+                                          "role": "assistant",
+                                          "content": [
+                                            {
+                                              "image": "https://dashscope-result.example.test/out.png",
+                                              "type": "image"
+                                            }
+                                          ]
+                                        }
+                                      }
+                                    ]
+                                  }
+                                }
+                            """.trimIndent(),
+                            status = HttpStatusCode.OK,
+                            headers = headersOf(HttpHeaders.ContentType, "application/json"),
+                        )
+                    }
+                    url.contains("dashscope-result.example.test") -> {
+                        respond(
+                            content = ByteReadChannel(byteArrayOf(5, 5, 5)),
+                            status = HttpStatusCode.OK,
+                            headers = headersOf(HttpHeaders.ContentType, "image/png"),
+                        )
+                    }
+                    else -> error("Unexpected request: $url")
+                }
+            }
+
+            val client = HttpClient(engine)
+            val qwen = DashScopeQwenClient(
+                config = QwenImageConfig(
+                    endpoint = "https://dashscope.aliyuncs.com/api/v1/services/aigc/text2image/image-synthesis",
+                    apiKey = "test-key",
+                    model = "wan2.2-t2i-flash",
+                    r2iEndpoint = "https://dashscope.aliyuncs.com/api/v1/services/aigc/multimodal-generation/generation",
+                    r2iModel = "wan2.7-image",
+                ),
+                client = client,
+                localImageRoot = root,
+                publicBaseUrl = "https://api.oneverandah.app:8443",
+            )
+            val localUrl = "https://api.oneverandah.app:8443/images/$key"
+            qwen.generate("panel one", referenceImageUrls = listOf(localUrl))
+            qwen.generate("panel two", referenceImageUrls = listOf(localUrl))
+            assertEquals(1, policyCount, "policy should only run once for cached ref")
+            assertEquals(1, uploadCount, "upload should only run once for cached ref")
+            assertEquals(2, generateCount)
+            client.close()
+        } finally {
+            root.deleteRecursively()
+        }
+    }
+
     private suspend fun readBodyText(body: OutgoingContent): String =
         when (body) {
             is TextContent -> body.text

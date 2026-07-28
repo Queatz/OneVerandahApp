@@ -21,7 +21,7 @@ import kotlin.math.abs
  * the same cover across restarts.
  */
 class PlaceholderQwenClient(
-    private val size: Int = 1024,
+    private val size: Int = 512,
 ) : QwenClient {
 
     override val kind: String = "placeholder"

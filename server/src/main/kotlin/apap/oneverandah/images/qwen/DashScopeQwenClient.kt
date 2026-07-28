@@ -18,6 +18,8 @@ import io.ktor.http.Headers
 import io.ktor.http.HttpHeaders
 import io.ktor.http.contentType
 import io.ktor.http.isSuccess
+import kotlinx.coroutines.async
+import kotlinx.coroutines.coroutineScope
 import kotlinx.coroutines.delay
 import kotlinx.serialization.json.Json
 import kotlinx.serialization.json.JsonArray
@@ -35,6 +37,7 @@ import java.io.File
 import java.net.URI
 import java.util.Base64
 import java.util.UUID
+import java.util.concurrent.ConcurrentHashMap
 
 /**
  * Real Qwen image generation via Alibaba Cloud DashScope.
@@ -59,13 +62,20 @@ class DashScopeQwenClient(
     private val localImageRoot: File? = null,
     /** Public base URL of this server; used to map `/images/{key}` back to disk. */
     private val publicBaseUrl: String? = null,
-    private val pollIntervalMs: Long = 2_000,
-    private val maxPollAttempts: Int = 90,
+    /** Faster poll cadence so completed jobs are noticed sooner under concurrency. */
+    private val pollIntervalMs: Long = 1_000,
+    private val maxPollAttempts: Int = 180,
 ) : QwenClient {
-
     override val kind: String = "qwen"
 
     private val json = Json { ignoreUnknownKeys = true }
+
+    /**
+     * Cache of public/local reference URLs → DashScope temp `oss://` URLs.
+     * Study scenes reuse the same character portraits many times; re-uploading
+     * each portrait per panel was a major latency tax.
+     */
+    private val dashScopeRefCache = ConcurrentHashMap<String, String>()
 
     private val uploadsBaseUrl: String =
         apiRootFromEndpoint(config.endpoint).ifBlank {
@@ -93,7 +103,10 @@ class DashScopeQwenClient(
                 download(imageUrl)
             }
         } else {
-            val accessible = refs.map { ensureDashScopeAccessible(it) }
+            // Re-host refs in parallel and reuse cached oss:// URLs across panels.
+            val accessible = coroutineScope {
+                refs.map { url -> async { ensureDashScopeAccessible(url) } }.map { it.await() }
+            }
             generateWithReferences(prompt, accessible)
         }
     }
@@ -106,8 +119,9 @@ class DashScopeQwenClient(
             put(
                 "parameters",
                 buildJsonObject {
-                    put("size", "1024*1024")
+                    put("size", config.textToImageSize)
                     put("n", 1)
+                    put("prompt_extend", config.promptExtend)
                 },
             )
         }
@@ -157,8 +171,8 @@ class DashScopeQwenClient(
                         "obj_or_bg",
                         buildJsonArray { repeat(referenceImageUrls.size) { add("bg") } },
                     )
-                    put("prompt_extend", true)
-                    put("size", "1280*1280")
+                    put("prompt_extend", config.promptExtend)
+                    put("size", config.r2iSize)
                     put("n", 1)
                 },
             )
@@ -211,11 +225,12 @@ class DashScopeQwenClient(
             put(
                 "parameters",
                 buildJsonObject {
-                    put("prompt_extend", true)
+                    // Detailed study/cover prompts do not need LLM rewrite latency.
+                    put("prompt_extend", config.promptExtend)
                     put("watermark", false)
                     put("n", 1)
                     put("enable_interleave", false)
-                    put("size", "1K")
+                    put("size", config.multimodalSize)
                 },
             )
         }
@@ -363,6 +378,11 @@ class DashScopeQwenClient(
         val trimmed = url.trim()
         if (trimmed.startsWith("oss://")) return trimmed
 
+        dashScopeRefCache[trimmed]?.let { cached ->
+            log.debug("Using cached DashScope reference for {}", trimmed)
+            return cached
+        }
+
         val image = loadReferenceImage(trimmed)
             ?: throw QwenException(
                 "Cannot load reference image for Qwen R2I: $trimmed. " +
@@ -370,6 +390,7 @@ class DashScopeQwenClient(
             )
         val fileName = guessFileName(trimmed, image.extension)
         val ossUrl = uploadToDashScopeTemp(image, fileName)
+        dashScopeRefCache[trimmed] = ossUrl
         log.info("Re-hosted reference image for DashScope: {} → {}", trimmed, ossUrl)
         return ossUrl
     }

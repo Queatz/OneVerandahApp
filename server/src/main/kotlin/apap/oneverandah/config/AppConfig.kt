@@ -90,6 +90,15 @@ data class OssConfig(
  * classic `text2image/image-synthesis` — DashScope rejects that with
  * `InvalidParameter: url error`. The client auto-routes those models through
  * [r2iEndpoint] (multimodal-generation) when needed.
+ *
+ * Speed knobs:
+ * - [promptExtend] runs an extra LLM rewrite (~3–4s). Off by default because our
+ *   prompts are already detailed (study story panels, covers).
+ * - Prefer `512*512` everywhere the provider allows it (flash T2I / legacy R2I).
+ * - [multimodalSize] for wan2.x-image accepts `1K`/`2K` or `width*height`; pixel
+ *   sizes must stay in about `[768*768, 2048*2048]`, so 512 is not valid there.
+ * - Prefer a flash T2I model via [model] (e.g. `wan2.2-t2i-flash`) for text-only
+ *   drafts while keeping [r2iModel] on a quality multimodal model for refs.
  */
 data class QwenImageConfig(
     val endpoint: String,
@@ -107,6 +116,25 @@ data class QwenImageConfig(
      * wan2.x-image accepts multiple reference images + a text prompt.
      */
     val r2iModel: String = "wan2.7-image",
+    /**
+     * When true, DashScope rewrites the prompt with an LLM before generating.
+     * Improves short prompts but adds ~3–4s latency per image.
+     */
+    val promptExtend: Boolean = false,
+    /**
+     * Output size for multimodal still models (`wan2.x-image`): `1K`/`2K` or
+     * `width*height`. Pixel sizes must be at least ~`768*768` on DashScope.
+     */
+    val multimodalSize: String = "768*768",
+    /**
+     * Output size for classic text-to-image models (`width*height`).
+     * `512*512` is the fastest practical square size on flash T2I models.
+     */
+    val textToImageSize: String = "512*512",
+    /**
+     * Output size for legacy VACE / image2image reference contracts (`width*height`).
+     */
+    val r2iSize: String = "512*512",
 ) {
     val enabled: Boolean get() = apiKey.isNotBlank()
 }
@@ -269,10 +297,16 @@ data class AppConfig(
                 endpoint = source["QWEN_API_ENDPOINT"]
                     ?: "https://dashscope.aliyuncs.com/api/v1/services/aigc/text2image/image-synthesis",
                 apiKey = source["QWEN_API_KEY"] ?: "",
-                model = source["QWEN_MODEL"] ?: "wan2.7-image",
+                // Flash T2I is much faster for text-only (portraits, fallbacks, catalog drafts).
+                // Reference-grounded study scenes still use r2iModel (quality multimodal).
+                model = source["QWEN_MODEL"] ?: "wan2.2-t2i-flash",
                 r2iEndpoint = source["QWEN_R2I_ENDPOINT"]
                     ?: "https://dashscope.aliyuncs.com/api/v1/services/aigc/multimodal-generation/generation",
                 r2iModel = source["QWEN_R2I_MODEL"] ?: "wan2.7-image",
+                promptExtend = source.bool("QWEN_PROMPT_EXTEND", false),
+                multimodalSize = source["QWEN_MULTIMODAL_SIZE"]?.takeIf { it.isNotBlank() } ?: "768*768",
+                textToImageSize = source["QWEN_T2I_SIZE"]?.takeIf { it.isNotBlank() } ?: "512*512",
+                r2iSize = source["QWEN_R2I_SIZE"]?.takeIf { it.isNotBlank() } ?: "512*512",
             )
 
             val qwenChat = QwenChatConfig(
