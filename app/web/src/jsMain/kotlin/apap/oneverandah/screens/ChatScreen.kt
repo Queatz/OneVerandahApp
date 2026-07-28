@@ -29,6 +29,7 @@ import apap.oneverandah.api.SpeechWordTiming
 import apap.oneverandah.api.StudyDissectSentenceRequest
 import apap.oneverandah.api.StudyPlaygroundImageStatus
 import apap.oneverandah.api.StudySentence
+import apap.oneverandah.api.StudySentenceImageRequest
 import apap.oneverandah.api.StudySessionRequest
 import apap.oneverandah.api.StudySessionResponse
 import apap.oneverandah.api.StudyToken
@@ -98,6 +99,10 @@ fun ChatScreen(
     var studySession by remember { mutableStateOf<StudySessionResponse?>(null) }
     val studySentenceStatus = remember { mutableStateMapOf<Int, StudySentenceLoadState>() }
     val studyCache = remember { mutableStateMapOf<String, StudySessionResponse>() }
+    // "$messageId#$sentenceIndex" -> in-flight / settled sentence-image job
+    val studyImageInFlight = remember { mutableStateMapOf<String, Boolean>() }
+    // "$messageId#$sentenceIndex" -> generation failed (no URL)
+    val studyImageFailed = remember { mutableStateMapOf<String, Boolean>() }
     // sourceMessageId (or session id fallback) -> persisted study row id
     val studyPersistedBySourceId = remember { mutableStateMapOf<String, String>() }
     var studySessionsPanelOpen by remember { mutableStateOf(false) }
@@ -302,10 +307,14 @@ fun ChatScreen(
         }.onSuccess { response ->
             val current = studyCache[messageId] ?: return@onSuccess
             if (sentenceIndex !in current.sentences.indices) return@onSuccess
+            val existingSentence = current.sentences[sentenceIndex]
             val updatedSentences = current.sentences.toMutableList()
             updatedSentences[sentenceIndex] = StudySentence(
-                text = response.sentenceText.ifBlank { sentence.text },
+                text = response.sentenceText.ifBlank { existingSentence.text },
                 tokens = response.tokens,
+                // Keep Study-tab visuals across dissection merges.
+                imageId = existingSentence.imageId,
+                imageUrl = existingSentence.imageUrl,
             )
             val updated = current.copy(sentences = updatedSentences)
             studyCache[messageId] = updated
@@ -340,18 +349,151 @@ fun ChatScreen(
         }
     }
 
+    fun studyImageKey(messageId: String, sentenceIndex: Int): String = "$messageId#$sentenceIndex"
+
+    fun clearStudyImageTracking(messageId: String) {
+        val prefix = "$messageId#"
+        studyImageInFlight.keys.filter { it.startsWith(prefix) }.forEach { studyImageInFlight.remove(it) }
+        studyImageFailed.keys.filter { it.startsWith(prefix) }.forEach { studyImageFailed.remove(it) }
+    }
+
+    fun applyStudySentenceImage(
+        messageId: String,
+        sentenceIndex: Int,
+        imageId: String?,
+        imageUrl: String?,
+    ) {
+        val current = studyCache[messageId] ?: return
+        if (sentenceIndex !in current.sentences.indices) return
+        val sentence = current.sentences[sentenceIndex]
+        // Never regenerate or clobber a completed visual.
+        if (!sentence.imageUrl.isNullOrBlank()) return
+        val nextId = imageId?.trim()?.takeIf { it.isNotEmpty() } ?: sentence.imageId
+        val nextUrl = imageUrl?.trim()?.takeIf { it.isNotEmpty() }
+        if (sentence.imageId == nextId && sentence.imageUrl == nextUrl) return
+        val updatedSentences = current.sentences.toMutableList()
+        updatedSentences[sentenceIndex] = sentence.copy(imageId = nextId, imageUrl = nextUrl)
+        val updated = current.copy(sentences = updatedSentences)
+        studyCache[messageId] = updated
+        if (studyTarget?.id == messageId) {
+            studySession = updated
+        }
+        persistStudySession(messageId, updated)
+    }
+
+    suspend fun ensureStudySentenceImage(messageId: String, sentenceIndex: Int) {
+        val key = studyImageKey(messageId, sentenceIndex)
+        if (studyImageInFlight[key] == true) return
+        val session = studyCache[messageId] ?: return
+        val sentence = session.sentences.getOrNull(sentenceIndex) ?: return
+        if (!sentence.imageUrl.isNullOrBlank()) {
+            studyImageFailed.remove(key)
+            return
+        }
+        studyImageInFlight[key] = true
+        studyImageFailed.remove(key)
+        try {
+            var imageId = sentence.imageId?.trim().orEmpty()
+            if (imageId.isNotEmpty()) {
+                val existing = runCatching { ChatApi.studyImage(imageId) }.getOrNull()
+                when {
+                    existing == null -> {
+                        // Job lost (e.g. server restart) — start a fresh one.
+                        imageId = ""
+                    }
+                    existing.status == StudyPlaygroundImageStatus.COMPLETED &&
+                        !existing.imageUrl.isNullOrBlank() -> {
+                        applyStudySentenceImage(messageId, sentenceIndex, imageId, existing.imageUrl)
+                        return
+                    }
+                    existing.status == StudyPlaygroundImageStatus.FAILED -> {
+                        studyImageFailed[key] = true
+                        return
+                    }
+                    else -> Unit // PENDING / GENERATING — fall through to poll
+                }
+            }
+            if (imageId.isEmpty()) {
+                val started = runCatching {
+                    ChatApi.studySentenceImage(StudySentenceImageRequest(sentenceText = sentence.text))
+                }.getOrNull()
+                if (started == null) {
+                    studyImageFailed[key] = true
+                    return
+                }
+                imageId = started.imageId
+                applyStudySentenceImage(messageId, sentenceIndex, imageId, null)
+            }
+            var attempts = 0
+            while (attempts < STUDY_IMAGE_POLL_MAX_ATTEMPTS) {
+                // Session may have received the URL from another path.
+                val latest = studyCache[messageId]?.sentences?.getOrNull(sentenceIndex)
+                if (!latest?.imageUrl.isNullOrBlank()) return
+                val image = runCatching { ChatApi.studyImage(imageId) }.getOrNull()
+                if (image != null) {
+                    when (image.status) {
+                        StudyPlaygroundImageStatus.COMPLETED -> {
+                            if (!image.imageUrl.isNullOrBlank()) {
+                                applyStudySentenceImage(messageId, sentenceIndex, imageId, image.imageUrl)
+                            } else {
+                                studyImageFailed[key] = true
+                            }
+                            return
+                        }
+                        StudyPlaygroundImageStatus.FAILED -> {
+                            studyImageFailed[key] = true
+                            return
+                        }
+                        StudyPlaygroundImageStatus.PENDING,
+                        StudyPlaygroundImageStatus.GENERATING,
+                        -> Unit
+                    }
+                }
+                attempts += 1
+                delay(STUDY_IMAGE_POLL_DELAY_MS)
+            }
+            studyImageFailed[key] = true
+        } finally {
+            // Keep in-flight true so we do not start a second job while this session is open;
+            // openStudy clears tracking so reopen can resume polling.
+        }
+    }
+
+    fun loadMissingStudyImages(messageId: String, session: StudySessionResponse) {
+        val pendingIndices = session.sentences.indices.filter { index ->
+            val sentence = session.sentences[index]
+            sentence.imageUrl.isNullOrBlank() &&
+                studyImageFailed[studyImageKey(messageId, index)] != true
+        }
+        if (pendingIndices.isEmpty()) return
+        scope.launch {
+            val semaphore = Semaphore(permits = STUDY_IMAGE_PARALLELISM)
+            coroutineScope {
+                pendingIndices.map { index ->
+                    async {
+                        semaphore.withPermit {
+                            ensureStudySentenceImage(messageId, index)
+                        }
+                    }
+                }.awaitAll()
+            }
+        }
+    }
+
     fun openStudy(message: ChatMessage) {
         val text = message.text.trim()
         if (text.isEmpty()) return
         studyTarget = message
         studySessionVisible = true
         studyError = null
+        clearStudyImageTracking(message.id)
         val cached = studyCache[message.id]
         if (cached != null) {
             studySession = cached
             studyLoading = false
             syncStudySentenceStatuses(cached)
             loadMissingStudyDissections(message.id, cached)
+            loadMissingStudyImages(message.id, cached)
             return
         }
         studySession = null
@@ -369,6 +511,7 @@ fun ChatScreen(
                     studyLoading = false
                     syncStudySentenceStatuses(session)
                     loadMissingStudyDissections(message.id, session)
+                    loadMissingStudyImages(message.id, session)
                 }
             }.onFailure {
                 if (studyTarget?.id == message.id) {
@@ -551,6 +694,8 @@ fun ChatScreen(
                 error = studyError,
                 session = studySession,
                 sentenceStatus = studySentenceStatus.toMap(),
+                messageId = studyTarget?.id,
+                imageFailed = studyImageFailed.toMap(),
                 strings = strings,
                 onDismiss = ::closeStudy,
                 onRetry = { studyTarget?.let(::openStudy) },
@@ -1056,6 +1201,8 @@ private fun StudySessionDialog(
     error: String?,
     session: StudySessionResponse?,
     sentenceStatus: Map<Int, StudySentenceLoadState>,
+    messageId: String?,
+    imageFailed: Map<String, Boolean>,
     strings: UiStrings,
     onDismiss: () -> Unit,
     onRetry: () -> Unit,
@@ -1094,6 +1241,8 @@ private fun StudySessionDialog(
                 session != null -> StudySessionContent(
                     session = session,
                     sentenceStatus = sentenceStatus,
+                    messageId = messageId,
+                    imageFailed = imageFailed,
                     strings = strings,
                     onRetrySentence = onRetrySentence,
                 )
@@ -1112,6 +1261,8 @@ private fun StudySessionDialog(
 private fun StudySessionContent(
     session: StudySessionResponse,
     sentenceStatus: Map<Int, StudySentenceLoadState>,
+    messageId: String?,
+    imageFailed: Map<String, Boolean>,
     strings: UiStrings,
     onRetrySentence: (Int) -> Unit,
 ) {
@@ -1221,7 +1372,14 @@ private fun StudySessionContent(
                 val selectedToken = selectedRef
                     ?.takeIf { it.sentenceIndex == sentenceIndex }
                     ?.let { ref -> sentence.tokens.getOrNull(ref.tokenIndex) }
+                val imageFailKey = messageId?.let { "$it#$sentenceIndex" }
+                val visualFailed = imageFailKey != null && imageFailed[imageFailKey] == true
                 Div(attrs = { classes(Styles.studySentenceBlock) }) {
+                    StudySentenceVisual(
+                        imageUrl = sentence.imageUrl,
+                        failed = visualFailed,
+                        strings = strings,
+                    )
                     Div(attrs = { classes(Styles.languageSentence) }) {
                         sentence.tokens.forEachIndexed { tokenIndex, token ->
                             when {
@@ -1301,6 +1459,26 @@ private fun StudySessionContent(
             }
         }
         StudySessionMode.READ -> {
+            val readClipUrls = speechItems.mapNotNull { (key, _) -> sentenceAudio[key]?.url }
+            val readAudioReady = speechItems.isNotEmpty() && readClipUrls.size == speechItems.size
+            val readPlaying = isStudyAudioPlaylistPlaying()
+            Button(attrs = {
+                classes(Styles.sentencePlay, Styles.studyReadPlay)
+                attr("type", "button")
+                if (!readAudioReady) attr("disabled", "")
+                attr(
+                    "aria-label",
+                    if (readPlaying) strings.chatReadPauseText else strings.chatReadPlayText,
+                )
+                onClick {
+                    if (readAudioReady) {
+                        playAudioSequence(readClipUrls)
+                    }
+                }
+            }) {
+                MaterialSymbol(if (readPlaying) "pause_circle" else "play_circle")
+                Text(if (readPlaying) strings.chatReadPauseText else strings.chatReadPlayText)
+            }
             Span(attrs = { classes(Styles.studySessionHint) }) { Text(strings.chatReadTapHint) }
             Div(attrs = { classes(Styles.studyReadBlock) }) {
                 // One flex row per sentence so passages keep a light gap between sentences.
@@ -1339,11 +1517,44 @@ private fun StudySessionContent(
     }
 }
 
+@Composable
+private fun StudySentenceVisual(
+    imageUrl: String?,
+    failed: Boolean,
+    strings: UiStrings,
+) {
+    val url = imageUrl?.trim()?.takeIf { it.isNotEmpty() }
+    when {
+        url != null -> {
+            Img(src = url, alt = strings.chatStudySentenceImageAlt, attrs = {
+                classes(Styles.studySentenceImage)
+            })
+        }
+        failed -> {
+            Div(attrs = { classes(Styles.studySentenceImageStatus) }) {
+                MaterialSymbol("image_not_supported")
+                Span { Text(strings.chatStudySentenceImageError) }
+            }
+        }
+        else -> {
+            Div(attrs = {
+                classes(Styles.studySentenceImagePlaceholder, Styles.studySentenceImageStatusBusy)
+            }) {
+                MaterialSymbol("progress_activity")
+                Span { Text(strings.chatStudySentenceImageLoading) }
+            }
+        }
+    }
+}
+
 private enum class StudySessionMode { STUDY, READ }
 
 private const val SPEECH_BATCH_SIZE = 3
 private const val SPEECH_RETRY_MAX_ATTEMPTS = 4
 private const val SPEECH_RETRY_INITIAL_DELAY_MS = 2_500L
+private const val STUDY_IMAGE_PARALLELISM = 2
+private const val STUDY_IMAGE_POLL_MAX_ATTEMPTS = 90
+private const val STUDY_IMAGE_POLL_DELAY_MS = 1_500L
 
 /**
  * Retries TTS calls on rate-limit / transient errors with short exponential backoff.
@@ -1615,8 +1826,22 @@ private var activeStudyAudioUrl: String? = null
 /** URL of the clip currently playing; drives play/pause button state in Compose. */
 private var studyAudioPlayingUrl by mutableStateOf<String?>(null)
 
+/** True while a multi-clip playlist (full Read-tab text) is active. */
+private var studyAudioPlaylistActive by mutableStateOf(false)
+private var studyAudioPlaylistUrls: List<String> = emptyList()
+private var studyAudioPlaylistIndex: Int = 0
+
 private fun isStudyAudioPlaying(url: String?): Boolean =
     url != null && studyAudioPlayingUrl == url
+
+private fun isStudyAudioPlaylistPlaying(): Boolean =
+    studyAudioPlaylistActive && studyAudioPlayingUrl != null
+
+private fun clearStudyAudioPlaylist() {
+    studyAudioPlaylistActive = false
+    studyAudioPlaylistUrls = emptyList()
+    studyAudioPlaylistIndex = 0
+}
 
 private fun clearStudyAudioHandlers(element: HTMLAudioElement) {
     element.asDynamic().ontimeupdate = null
@@ -1626,7 +1851,7 @@ private fun clearStudyAudioHandlers(element: HTMLAudioElement) {
     element.asDynamic().onplay = null
 }
 
-private fun stopActiveStudyAudio() {
+private fun stopActiveStudyAudio(clearPlaylist: Boolean = true) {
     activeStudyAudio?.let { current ->
         clearStudyAudioHandlers(current)
         runCatching { current.pause() }
@@ -1634,9 +1859,16 @@ private fun stopActiveStudyAudio() {
     activeStudyAudio = null
     activeStudyAudioUrl = null
     studyAudioPlayingUrl = null
+    if (clearPlaylist) {
+        clearStudyAudioPlaylist()
+    }
 }
 
-private fun bindStudyAudioPlaybackState(element: HTMLAudioElement, url: String) {
+private fun bindStudyAudioPlaybackState(
+    element: HTMLAudioElement,
+    url: String,
+    onEnded: (() -> Unit)? = null,
+) {
     element.asDynamic().onplay = {
         if (activeStudyAudio === element) {
             studyAudioPlayingUrl = url
@@ -1650,6 +1882,9 @@ private fun bindStudyAudioPlaybackState(element: HTMLAudioElement, url: String) 
     element.asDynamic().onended = {
         if (activeStudyAudio === element) {
             studyAudioPlayingUrl = null
+            if (onEnded != null) {
+                onEnded()
+            }
         }
     }
 }
@@ -1657,7 +1892,13 @@ private fun bindStudyAudioPlaybackState(element: HTMLAudioElement, url: String) 
 private fun playAudio(url: String) {
     val current = activeStudyAudio
     // Toggle: tapping the same sentence again pauses instead of restarting.
-    if (current != null && activeStudyAudioUrl == url && !current.paused && !current.ended) {
+    if (
+        current != null &&
+        activeStudyAudioUrl == url &&
+        !studyAudioPlaylistActive &&
+        !current.paused &&
+        !current.ended
+    ) {
         current.pause()
         return
     }
@@ -1667,6 +1908,55 @@ private fun playAudio(url: String) {
     activeStudyAudioUrl = url
     studyAudioPlayingUrl = url
     bindStudyAudioPlaybackState(element, url)
+    element.src = url
+    element.play()
+}
+
+/**
+ * Plays sentence clips back-to-back (used by the Read tab full-text control).
+ * Tapping again while the playlist is playing stops playback.
+ */
+private fun playAudioSequence(urls: List<String>) {
+    if (urls.isEmpty()) return
+    val current = activeStudyAudio
+    if (
+        studyAudioPlaylistActive &&
+        current != null &&
+        !current.paused &&
+        !current.ended
+    ) {
+        stopActiveStudyAudio()
+        return
+    }
+    stopActiveStudyAudio()
+    studyAudioPlaylistUrls = urls
+    studyAudioPlaylistIndex = 0
+    studyAudioPlaylistActive = true
+    playStudyAudioPlaylistItem(0)
+}
+
+private fun playStudyAudioPlaylistItem(index: Int) {
+    val urls = studyAudioPlaylistUrls
+    if (!studyAudioPlaylistActive || index !in urls.indices) {
+        stopActiveStudyAudio()
+        return
+    }
+    studyAudioPlaylistIndex = index
+    val url = urls[index]
+    stopActiveStudyAudio(clearPlaylist = false)
+    val element = document.createElement("audio") as HTMLAudioElement
+    activeStudyAudio = element
+    activeStudyAudioUrl = url
+    studyAudioPlayingUrl = url
+    bindStudyAudioPlaybackState(element, url) {
+        if (!studyAudioPlaylistActive) return@bindStudyAudioPlaybackState
+        val next = studyAudioPlaylistIndex + 1
+        if (next in studyAudioPlaylistUrls.indices) {
+            playStudyAudioPlaylistItem(next)
+        } else {
+            stopActiveStudyAudio()
+        }
+    }
     element.src = url
     element.play()
 }

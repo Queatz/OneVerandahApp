@@ -8,6 +8,7 @@ import apap.oneverandah.api.SaveStudySessionRequest
 import apap.oneverandah.api.SpeechRequest
 import apap.oneverandah.api.SpeechResponse
 import apap.oneverandah.api.StudyDissectSentenceRequest
+import apap.oneverandah.api.StudySentenceImageRequest
 import apap.oneverandah.api.StudySessionRequest
 import apap.oneverandah.api.StudyWordPlaygroundRequest
 import apap.oneverandah.chat.ChatService
@@ -93,6 +94,18 @@ fun Route.chatRoutes(
                 return@post
             }
             call.respond(studyService.playground(request))
+        }
+
+        post("/api/chat/study/sentence-image") {
+            val request = call.receive<StudySentenceImageRequest>()
+            if (request.normalizedOrNull() == null) {
+                call.respond(
+                    HttpStatusCode.BadRequest,
+                    ChatErrorResponse("Study sentence image requires non-blank sentence text"),
+                )
+                return@post
+            }
+            call.respond(studyService.sentenceImage(request))
         }
 
         get("/api/chat/study/playground/image/{imageId}") {

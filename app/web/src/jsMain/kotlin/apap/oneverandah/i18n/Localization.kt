@@ -233,6 +233,8 @@ data class UiStrings(
     val chatStudyTab: String,
     val chatReadTab: String,
     val chatReadTapHint: String,
+    val chatReadPlayText: String,
+    val chatReadPauseText: String,
     val chatStudyLoading: String,
     val chatStudyError: String,
     val chatStudyLiteral: String,
@@ -257,6 +259,9 @@ data class UiStrings(
     val chatStudyPlaygroundImageLoading: String,
     val chatStudyPlaygroundImageError: String,
     val chatStudyPlaygroundImageAlt: String,
+    val chatStudySentenceImageLoading: String,
+    val chatStudySentenceImageError: String,
+    val chatStudySentenceImageAlt: String,
 )
 
 private val English = UiStrings(
@@ -480,6 +485,8 @@ private val English = UiStrings(
     chatStudyTab = "Study",
     chatReadTab = "Read",
     chatReadTapHint = "Tap a word to highlight every matching word in the text",
+    chatReadPlayText = "Play full text",
+    chatReadPauseText = "Pause full text",
     chatStudyLoading = "Preparing your study session…",
     chatStudyError = "Couldn't start the study session. Try again.",
     chatStudyLiteral = "Literal meaning",
@@ -504,6 +511,9 @@ private val English = UiStrings(
     chatStudyPlaygroundImageLoading = "Drawing a comic scene…",
     chatStudyPlaygroundImageError = "Couldn't generate the comic image.",
     chatStudyPlaygroundImageAlt = "Comic scene for this word",
+    chatStudySentenceImageLoading = "Creating a scene…",
+    chatStudySentenceImageError = "Couldn't create the scene image.",
+    chatStudySentenceImageAlt = "Illustration for this sentence",
 )
 
 private val Vietnamese = UiStrings(
@@ -727,6 +737,8 @@ private val Vietnamese = UiStrings(
     chatStudyTab = "Học",
     chatReadTab = "Đọc",
     chatReadTapHint = "Chạm một từ để tô sáng mọi chỗ xuất hiện giống hệt trong văn bản",
+    chatReadPlayText = "Phát toàn bộ văn bản",
+    chatReadPauseText = "Tạm dừng toàn bộ văn bản",
     chatStudyLoading = "Đang chuẩn bị phiên học…",
     chatStudyError = "Không mở được phiên học. Thử lại.",
     chatStudyLiteral = "Nghĩa đen",
@@ -751,6 +763,9 @@ private val Vietnamese = UiStrings(
     chatStudyPlaygroundImageLoading = "Đang vẽ cảnh truyện tranh…",
     chatStudyPlaygroundImageError = "Không tạo được ảnh truyện tranh.",
     chatStudyPlaygroundImageAlt = "Cảnh truyện tranh cho từ này",
+    chatStudySentenceImageLoading = "Đang tạo cảnh…",
+    chatStudySentenceImageError = "Không tạo được ảnh minh họa.",
+    chatStudySentenceImageAlt = "Minh họa cho câu này",
 )
 
 private val Chinese = UiStrings(
@@ -973,6 +988,8 @@ private val Chinese = UiStrings(
     chatStudyTab = "学习",
     chatReadTab = "阅读",
     chatReadTapHint = "点按词语以高亮全文中所有相同词语",
+    chatReadPlayText = "播放全文",
+    chatReadPauseText = "暂停全文",
     chatStudyLoading = "正在准备学习会话…",
     chatStudyError = "无法开始学习会话，请重试。",
     chatStudyLiteral = "字面意思",
@@ -997,6 +1014,9 @@ private val Chinese = UiStrings(
     chatStudyPlaygroundImageLoading = "正在绘制漫画场景…",
     chatStudyPlaygroundImageError = "无法生成漫画图片。",
     chatStudyPlaygroundImageAlt = "这个词的漫画场景",
+    chatStudySentenceImageLoading = "正在创建场景…",
+    chatStudySentenceImageError = "无法创建场景图片。",
+    chatStudySentenceImageAlt = "这句话的插图",
 )
 
 private val Japanese = UiStrings(
@@ -1219,6 +1239,8 @@ private val Japanese = UiStrings(
     chatStudyTab = "学習",
     chatReadTab = "読む",
     chatReadTapHint = "単語をタップすると、本文中の同じ語がすべてハイライトされます",
+    chatReadPlayText = "全文を再生",
+    chatReadPauseText = "全文を一時停止",
     chatStudyLoading = "学習セッションを準備しています…",
     chatStudyError = "学習セッションを開始できませんでした。もう一度お試しください。",
     chatStudyLiteral = "字義",
@@ -1243,6 +1265,9 @@ private val Japanese = UiStrings(
     chatStudyPlaygroundImageLoading = "漫画シーンを描いています…",
     chatStudyPlaygroundImageError = "漫画画像を生成できませんでした。",
     chatStudyPlaygroundImageAlt = "この語の漫画シーン",
+    chatStudySentenceImageLoading = "シーンを作成しています…",
+    chatStudySentenceImageError = "シーン画像を作成できませんでした。",
+    chatStudySentenceImageAlt = "この文のイラスト",
 )
 
 private val Korean = UiStrings(
@@ -1465,6 +1490,8 @@ private val Korean = UiStrings(
     chatStudyTab = "학습",
     chatReadTab = "읽기",
     chatReadTapHint = "단어를 탭하면 본문에서 같은 단어가 모두 강조됩니다",
+    chatReadPlayText = "전체 텍스트 재생",
+    chatReadPauseText = "전체 텍스트 일시정지",
     chatStudyLoading = "학습 세션을 준비하는 중…",
     chatStudyError = "학습 세션을 시작할 수 없습니다. 다시 시도하세요.",
     chatStudyLiteral = "문자 그대로의 의미",
@@ -1489,6 +1516,9 @@ private val Korean = UiStrings(
     chatStudyPlaygroundImageLoading = "만화 장면을 그리는 중…",
     chatStudyPlaygroundImageError = "만화 이미지를 만들지 못했습니다.",
     chatStudyPlaygroundImageAlt = "이 단어의 만화 장면",
+    chatStudySentenceImageLoading = "장면을 만드는 중…",
+    chatStudySentenceImageError = "장면 이미지를 만들지 못했습니다.",
+    chatStudySentenceImageAlt = "이 문장의 일러스트",
 )
 
 private val Russian = UiStrings(
@@ -1711,6 +1741,8 @@ private val Russian = UiStrings(
     chatStudyTab = "Учёба",
     chatReadTab = "Чтение",
     chatReadTapHint = "Нажмите слово, чтобы подсветить все такие же слова в тексте",
+    chatReadPlayText = "Прослушать весь текст",
+    chatReadPauseText = "Пауза всего текста",
     chatStudyLoading = "Готовим учебную сессию…",
     chatStudyError = "Не удалось начать учебную сессию. Попробуйте снова.",
     chatStudyLiteral = "Буквальное значение",
@@ -1735,6 +1767,9 @@ private val Russian = UiStrings(
     chatStudyPlaygroundImageLoading = "Рисуем комикс-сцену…",
     chatStudyPlaygroundImageError = "Не удалось создать комикс-изображение.",
     chatStudyPlaygroundImageAlt = "Комикс-сцена для этого слова",
+    chatStudySentenceImageLoading = "Создаём сцену…",
+    chatStudySentenceImageError = "Не удалось создать изображение сцены.",
+    chatStudySentenceImageAlt = "Иллюстрация к этому предложению",
 )
 
 fun stringsFor(language: Language): UiStrings = when (language) {

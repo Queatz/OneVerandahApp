@@ -4,6 +4,7 @@ import apap.oneverandah.api.StudyDissectSentenceRequest
 import apap.oneverandah.api.StudyExampleSentence
 import apap.oneverandah.api.StudyPlaygroundImageStatus
 import apap.oneverandah.api.StudySentence
+import apap.oneverandah.api.StudySentenceImageRequest
 import apap.oneverandah.api.StudySessionRequest
 import apap.oneverandah.api.StudySessionResponse
 import apap.oneverandah.api.StudyToken
@@ -452,6 +453,52 @@ class StudyServiceTest {
         assertContains(prompt, "comic-style")
         assertContains(prompt, "chào")
         assertContains(prompt, "Xin chào!")
+    }
+
+    @Test
+    fun `sentence image starts async expressive visual`() = runBlocking {
+        val service = StudyService(
+            aiClient = FakeStudyAiClient(),
+            imageGenerator = StudyPlaygroundImageGenerator { "https://cdn.example/sentence.png" },
+            idGenerator = { "sentence-image-1" },
+        )
+
+        val response = service.sentenceImage(
+            StudySentenceImageRequest(sentenceText = "  Xin chào bạn.  "),
+        )
+        assertEquals("sentence-image-1", response.imageId)
+
+        var image = service.playgroundImage("sentence-image-1")
+        assertNotNull(image)
+        var attempts = 0
+        while (
+            image!!.status != StudyPlaygroundImageStatus.COMPLETED &&
+            image.status != StudyPlaygroundImageStatus.FAILED &&
+            attempts < 40
+        ) {
+            delay(25)
+            image = service.playgroundImage("sentence-image-1")
+            attempts++
+        }
+        assertEquals(StudyPlaygroundImageStatus.COMPLETED, image.status)
+        assertEquals("https://cdn.example/sentence.png", image.imageUrl)
+    }
+
+    @Test
+    fun `sentence image rejects blank text`() = runBlocking {
+        val service = StudyService(FakeStudyAiClient())
+        assertFailsWith<IllegalArgumentException> {
+            service.sentenceImage(StudySentenceImageRequest(sentenceText = "   "))
+        }
+        Unit
+    }
+
+    @Test
+    fun `sentence visual prompt mentions sentence and no speech bubbles`() {
+        val prompt = sentenceVisualPrompt("Tôi đang học.")
+        assertContains(prompt, "Tôi đang học.")
+        assertContains(prompt, "no speech bubbles")
+        assertContains(prompt, "language learners")
     }
 }
 

@@ -6,6 +6,8 @@ import apap.oneverandah.api.StudyExampleSentence
 import apap.oneverandah.api.StudyPlaygroundImageResponse
 import apap.oneverandah.api.StudyPlaygroundImageStatus
 import apap.oneverandah.api.StudySentence
+import apap.oneverandah.api.StudySentenceImageRequest
+import apap.oneverandah.api.StudySentenceImageResponse
 import apap.oneverandah.api.StudySessionRequest
 import apap.oneverandah.api.StudySessionResponse
 import apap.oneverandah.api.StudyToken
@@ -66,7 +68,8 @@ class StudyService(
     private val idGenerator: () -> String = { UUID.randomUUID().toString() },
 ) {
     private val log = LoggerFactory.getLogger(StudyService::class.java)
-    private val playgroundImages = ConcurrentHashMap<String, StudyPlaygroundImageResponse>()
+    /** Shared async job store for playground comics and Study-tab sentence visuals. */
+    private val studyImages = ConcurrentHashMap<String, StudyPlaygroundImageResponse>()
 
     /** Fast skeleton: language + sentences + tokens (no full dissections). */
     suspend fun skeleton(rawRequest: StudySessionRequest): StudySessionResponse {
@@ -140,11 +143,28 @@ class StudyService(
         )
     }
 
-    /** Current comic-image job status for a playground attempt. */
+    /**
+     * Starts an async expressive visual for one study sentence.
+     * Poll [playgroundImage] (shared job store) with the returned image id.
+     */
+    suspend fun sentenceImage(rawRequest: StudySentenceImageRequest): StudySentenceImageResponse {
+        val request = requireNotNull(rawRequest.normalizedOrNull()) {
+            "Study sentence image requires non-blank sentence text"
+        }
+        val imageId = idGenerator().trim().ifBlank { UUID.randomUUID().toString() }
+        enqueueStudyImage(
+            imageId = imageId,
+            prompt = sentenceVisualPrompt(request.sentenceText),
+            logLabel = "sentence visual",
+        )
+        return StudySentenceImageResponse(imageId = imageId)
+    }
+
+    /** Current comic/sentence-image job status (shared store for playground + Study tab). */
     fun playgroundImage(imageId: String): StudyPlaygroundImageResponse? {
         val key = imageId.trim()
         if (key.isEmpty()) return null
-        return playgroundImages[key]
+        return studyImages[key]
     }
 
     private fun enqueuePlaygroundImage(
@@ -153,35 +173,46 @@ class StudyService(
         sentence: String,
         natural: Boolean,
     ) {
+        enqueueStudyImage(
+            imageId = imageId,
+            prompt = playgroundComicPrompt(word = word, sentence = sentence, natural = natural),
+            logLabel = "playground comic",
+        )
+    }
+
+    private fun enqueueStudyImage(
+        imageId: String,
+        prompt: String,
+        logLabel: String,
+    ) {
         val generator = imageGenerator
         if (generator == null) {
-            playgroundImages[imageId] = StudyPlaygroundImageResponse(
+            studyImages[imageId] = StudyPlaygroundImageResponse(
                 imageId = imageId,
                 status = StudyPlaygroundImageStatus.FAILED,
             )
             return
         }
-        playgroundImages[imageId] = StudyPlaygroundImageResponse(
+        studyImages[imageId] = StudyPlaygroundImageResponse(
             imageId = imageId,
             status = StudyPlaygroundImageStatus.PENDING,
         )
         scope.launch {
-            playgroundImages[imageId] = StudyPlaygroundImageResponse(
+            studyImages[imageId] = StudyPlaygroundImageResponse(
                 imageId = imageId,
                 status = StudyPlaygroundImageStatus.GENERATING,
             )
-            val prompt = playgroundComicPrompt(word = word, sentence = sentence, natural = natural)
             runCatching { generator.generate(prompt) }
                 .onSuccess { url ->
-                    playgroundImages[imageId] = StudyPlaygroundImageResponse(
+                    studyImages[imageId] = StudyPlaygroundImageResponse(
                         imageId = imageId,
                         status = StudyPlaygroundImageStatus.COMPLETED,
                         imageUrl = url,
                     )
                 }
                 .onFailure { error ->
-                    log.warn("Playground comic generation failed for {}: {}", imageId, error.message)
-                    playgroundImages[imageId] = StudyPlaygroundImageResponse(
+                    log.warn("Study {} generation failed for {}: {}", logLabel, imageId, error.message)
+                    studyImages[imageId] = StudyPlaygroundImageResponse(
                         imageId = imageId,
                         status = StudyPlaygroundImageStatus.FAILED,
                     )
@@ -197,16 +228,29 @@ internal fun playgroundComicPrompt(word: String, sentence: String, natural: Bool
         "Interpret the intended meaning of the learner's attempt and depict a corrected, natural everyday moment that uses the word correctly."
     }
     return buildString {
-        append("Expressive comic-style single panel illustration for language learning. ")
+        append("Expressive comic-style single or double panel illustration for language learning. ")
         append("Focus word/phrase: \"$word\". ")
         append("Learner sentence: \"$sentence\". ")
         append(sceneGuidance)
         append(' ')
         append(
-            "Warm apartment-community storytelling vibe, clear character emotion, soft ink wash with bold comic outlines, " +
-                "dynamic composition, no speech bubbles with readable text, no captions or letters, no watermark, high quality square image.",
+            "Warm natural scene in Vietnam or Russian (whichever country is most suitable)," +
+                "storytelling vibe, clear character emotion, soft ink wash with bold comic outlines, " +
+                "dynamic composition, no captions or letters, no border, no watermark, high quality square image." +
+                "Use speech bubbles with readable text using the focus word/phrase if it makes sense to.",
         )
     }
+}
+
+/** Prompt for the Study-tab expressive visual attached to each source sentence. */
+internal fun sentenceVisualPrompt(sentence: String): String = buildString {
+    append("Expressive single-panel illustration that vividly captures the meaning of this sentence for language learners. ")
+    append("Sentence: \"$sentence\". ")
+    append(
+        "Warm natural everyday scene (Vietnam or Russia, whichever fits best), clear character emotion, " +
+            "storytelling vibe, soft ink wash with bold outlines, dynamic composition, " +
+            "no captions, no letters, no speech bubbles, no border, no watermark, high quality square image.",
+    )
 }
 
 internal fun StudySessionResponse.normalizedSkeleton(sourceText: String): StudySessionResponse {
@@ -222,7 +266,12 @@ internal fun StudySessionResponse.normalizedSkeleton(sourceText: String): StudyS
             )
         }
         if (tokens.isEmpty()) return@mapNotNull null
-        StudySentence(text = sentenceText, tokens = tokens)
+        StudySentence(
+            text = sentenceText,
+            tokens = tokens,
+            imageId = sentence.imageId?.trim()?.takeIf { it.isNotEmpty() },
+            imageUrl = sentence.imageUrl?.trim()?.takeIf { it.isNotEmpty() },
+        )
     }
     require(sentences.isNotEmpty()) { "Study session must contain at least one sentence" }
     return StudySessionResponse(

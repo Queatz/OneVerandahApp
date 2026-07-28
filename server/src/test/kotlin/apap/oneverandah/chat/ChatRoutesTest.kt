@@ -9,6 +9,8 @@ import apap.oneverandah.api.StudyExampleSentence
 import apap.oneverandah.api.StudyPlaygroundImageResponse
 import apap.oneverandah.api.StudyPlaygroundImageStatus
 import apap.oneverandah.api.StudySentence
+import apap.oneverandah.api.StudySentenceImageRequest
+import apap.oneverandah.api.StudySentenceImageResponse
 import apap.oneverandah.api.StudySessionRequest
 import apap.oneverandah.api.StudySessionResponse
 import apap.oneverandah.api.StudyToken
@@ -335,6 +337,74 @@ class ChatRoutesTest {
 
         val missing = client.get("/api/chat/study/playground/image/missing")
         assertEquals(HttpStatusCode.NotFound, missing.status)
+    }
+
+    @Test
+    fun `study sentence image endpoint validates and exposes shared image status`() = testApplication {
+        val chatService = ChatService(
+            repository = InMemoryChatRepository(),
+            aiClient = object : ChatAiClient {
+                override suspend fun generate(request: ChatGenerationRequest) = GeneratedChatReply("unused")
+            },
+            residentDirectory = ResidentDirectory(emptyList()),
+        )
+        val studyService = StudyService(
+            aiClient = object : StudyAiClient {
+                override suspend fun generateSkeleton(request: StudyGenerationRequest) =
+                    error("not used")
+
+                override suspend fun dissectSentence(request: StudyDissectGenerationRequest) =
+                    error("not used")
+
+                override suspend fun evaluateWordUsage(request: StudyWordPlaygroundGenerationRequest) =
+                    error("not used")
+            },
+            imageGenerator = StudyPlaygroundImageGenerator { "https://cdn.example/sentence.png" },
+            idGenerator = { "sentence-image-1" },
+        )
+        application {
+            install(ContentNegotiation) { json() }
+            routing {
+                chatRoutes(
+                    chatService = chatService,
+                    speechService = SpeechService(RouteSpeechClient()),
+                    studyService = studyService,
+                )
+            }
+        }
+
+        val invalid = client.post("/api/chat/study/sentence-image") {
+            contentType(ContentType.Application.Json)
+            setBody("""{"sentenceText":"   "}""")
+        }
+        assertEquals(HttpStatusCode.BadRequest, invalid.status)
+
+        val response = client.post("/api/chat/study/sentence-image") {
+            contentType(ContentType.Application.Json)
+            setBody(json.encodeToString(StudySentenceImageRequest(sentenceText = "Xin chào.")))
+        }
+        assertEquals(HttpStatusCode.OK, response.status)
+        val started = json.decodeFromString<StudySentenceImageResponse>(response.bodyAsText())
+        assertEquals("sentence-image-1", started.imageId)
+
+        var imageStatus = StudyPlaygroundImageStatus.PENDING
+        var imageUrl: String? = null
+        repeat(40) {
+            val imageResponse = client.get("/api/chat/study/playground/image/sentence-image-1")
+            assertEquals(HttpStatusCode.OK, imageResponse.status)
+            val image = json.decodeFromString<StudyPlaygroundImageResponse>(imageResponse.bodyAsText())
+            imageStatus = image.status
+            imageUrl = image.imageUrl
+            if (
+                imageStatus == StudyPlaygroundImageStatus.COMPLETED ||
+                imageStatus == StudyPlaygroundImageStatus.FAILED
+            ) {
+                return@repeat
+            }
+            delay(25)
+        }
+        assertEquals(StudyPlaygroundImageStatus.COMPLETED, imageStatus)
+        assertEquals("https://cdn.example/sentence.png", imageUrl)
     }
 }
 

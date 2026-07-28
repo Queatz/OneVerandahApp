@@ -137,6 +137,20 @@ object ChatApi {
         return json.decodeFromString(StudyPlaygroundImageResponse.serializer(), text)
     }
 
+    /** Start async expressive visual for one Study-tab sentence. */
+    suspend fun studySentenceImage(request: StudySentenceImageRequest): StudySentenceImageResponse {
+        val response = client.post(chatApiUrl("/study/sentence-image")) {
+            contentType(ContentType.Application.Json)
+            setBody(json.encodeToString(StudySentenceImageRequest.serializer(), request))
+        }
+        val text = response.bodyAsText()
+        if (!response.status.isSuccess()) throw ChatApiException(errorMessage(text, response.status.value))
+        return json.decodeFromString(StudySentenceImageResponse.serializer(), text)
+    }
+
+    /** Poll async study image status (playground comics and sentence visuals share this store). */
+    suspend fun studyImage(imageId: String): StudyPlaygroundImageResponse = studyPlaygroundImage(imageId)
+
     suspend fun listStudySessions(): SavedStudySessionsResponse {
         val token = DeviceTokenStore.ensureToken()
         val response = client.get(chatApiUrl("/study/sessions")) {

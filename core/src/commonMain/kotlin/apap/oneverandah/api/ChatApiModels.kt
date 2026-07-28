@@ -178,6 +178,16 @@ data class StudySessionResponse(
 data class StudySentence(
     val text: String,
     val tokens: List<StudyToken>,
+    /**
+     * Async job id for the expressive Study-tab visual.
+     * Poll [StudyPlaygroundImageResponse] until ready; persisted so reopen can resume.
+     */
+    val imageId: String? = null,
+    /**
+     * Public URL of the completed Study-tab visual. When set, the client must not
+     * regenerate the image for this sentence.
+     */
+    val imageUrl: String? = null,
 )
 
 /**
@@ -312,6 +322,28 @@ data class StudyPlaygroundImageResponse(
     val imageId: String,
     val status: StudyPlaygroundImageStatus,
     val imageUrl: String? = null,
+)
+
+/**
+ * Request an expressive Study-tab visual for one skeleton sentence.
+ *
+ * Returns an [imageId] immediately; poll [StudyPlaygroundImageResponse] until
+ * the image is ready, then persist [StudySentence.imageUrl] on the session.
+ */
+@Serializable
+data class StudySentenceImageRequest(
+    val sentenceText: String,
+) {
+    fun normalizedOrNull(): StudySentenceImageRequest? {
+        val normalized = sentenceText.trim().takeIf { it.isNotEmpty() } ?: return null
+        return copy(sentenceText = normalized)
+    }
+}
+
+/** Immediate ack for a Study-tab sentence visual job. */
+@Serializable
+data class StudySentenceImageResponse(
+    val imageId: String,
 )
 
 @Serializable

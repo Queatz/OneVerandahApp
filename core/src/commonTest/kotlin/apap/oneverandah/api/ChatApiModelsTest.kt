@@ -161,6 +161,8 @@ class ChatApiModelsTest {
                         StudyToken(text = ".", status = StudyTokenStatus.PLAIN),
                         StudyToken(text = "đang", status = StudyTokenStatus.PENDING),
                     ),
+                    imageId = "img-1",
+                    imageUrl = "https://cdn.example/study.png",
                 ),
             ),
         )
@@ -172,6 +174,15 @@ class ChatApiModelsTest {
         assertEquals(false, decoded.sentences.single().tokens[1].isDissectable)
         assertEquals(false, decoded.sentences.single().tokens[2].isDissectable)
         assertEquals(StudyTokenStatus.PENDING, decoded.sentences.single().tokens[2].status)
+        assertEquals("img-1", decoded.sentences.single().imageId)
+        assertEquals("https://cdn.example/study.png", decoded.sentences.single().imageUrl)
+    }
+
+    @Test
+    fun `study sentence image request normalizes and rejects blanks`() {
+        val normalized = StudySentenceImageRequest(sentenceText = "  Xin chào.  ").normalizedOrNull()
+        assertEquals("Xin chào.", normalized?.sentenceText)
+        assertNull(StudySentenceImageRequest(sentenceText = "   ").normalizedOrNull())
     }
 
     @Test

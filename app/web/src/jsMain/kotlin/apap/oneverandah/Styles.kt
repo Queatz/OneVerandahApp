@@ -293,7 +293,12 @@ object Styles {
     const val studyReadBlock = "study-read-block"
     const val studyReadSentence = "study-read-sentence"
     const val studyReadBreak = "study-read-break"
+    const val studyReadPlay = "study-read-play"
     const val studySentenceBlock = "study-sentence-block"
+    const val studySentenceImage = "study-sentence-image"
+    const val studySentenceImagePlaceholder = "study-sentence-image-placeholder"
+    const val studySentenceImageStatus = "study-sentence-image-status"
+    const val studySentenceImageStatusBusy = "study-sentence-image-status-busy"
     const val studySentenceError = "study-sentence-error"
     const val studyTokenPlain = "study-token-plain"
     const val studyTokenPending = "study-token-pending"
@@ -2329,6 +2334,12 @@ object Styles {
             flex-wrap: wrap;
             gap: 8px;
         }
+        .${studyReadPlay} {
+            align-self: stretch;
+            justify-content: center;
+            width: 100%;
+            box-sizing: border-box;
+        }
         .${studyReadBlock} {
             padding: 12px;
             border-radius: 16px;
@@ -2372,6 +2383,40 @@ object Styles {
         }
         .${studySentenceBlock} .${languageSentence} {
             margin-bottom: 0;
+        }
+        .${studySentenceImage} {
+            display: block;
+            width: 100%;
+            max-width: 420px;
+            border-radius: 14px;
+            border: 1px solid var(--md-sys-color-outline);
+            background: var(--md-sys-color-surface-variant);
+            aspect-ratio: 1 / 1;
+            object-fit: cover;
+        }
+        .${studySentenceImagePlaceholder} {
+            display: flex;
+            align-items: center;
+            justify-content: center;
+            gap: 10px;
+            width: 100%;
+            max-width: 420px;
+            min-height: 160px;
+            border-radius: 14px;
+            border: 1px dashed color-mix(in srgb, var(--md-sys-color-outline) 70%, transparent);
+            background: color-mix(in srgb, var(--md-sys-color-surface-variant) 55%, transparent);
+            color: var(--md-sys-color-on-surface-variant);
+            font-size: 13px;
+        }
+        .${studySentenceImageStatus} {
+            display: inline-flex;
+            align-items: center;
+            gap: 8px;
+            font-size: 13px;
+            color: var(--md-sys-color-on-surface-variant);
+        }
+        .${studySentenceImageStatusBusy} .${materialSymbols} {
+            animation: spin 1.2s linear infinite;
         }
         .${studyTokenPlain} {
             display: inline-flex;
