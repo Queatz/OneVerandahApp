@@ -3,6 +3,12 @@ package apap.oneverandah.chat
 import apap.oneverandah.api.StudyDissectSentenceRequest
 import apap.oneverandah.api.StudyDissectSentenceResponse
 import apap.oneverandah.api.StudyExampleSentence
+import apap.oneverandah.api.StudyPlayHistoryMessage
+import apap.oneverandah.api.StudyPlayScenario
+import apap.oneverandah.api.StudyPlayScenariosRequest
+import apap.oneverandah.api.StudyPlayScenariosResponse
+import apap.oneverandah.api.StudyPlayTurnRequest
+import apap.oneverandah.api.StudyPlayTurnResponse
 import apap.oneverandah.api.StudyPlaygroundImageResponse
 import apap.oneverandah.api.StudyPlaygroundImageStatus
 import apap.oneverandah.api.StudySentence
@@ -58,6 +64,34 @@ data class StudyCharactersGenerationRequest(
     val textLanguageTag: String,
 )
 
+data class StudyPlayScenariosGenerationRequest(
+    val text: String,
+    val textLanguageTag: String,
+    val languageTag: String,
+    val characters: List<StudyStoryCharacter> = emptyList(),
+)
+
+/** Scenario design from the model before image jobs are attached. */
+data class StudyPlayScenarioDesign(
+    val description: String,
+    val openingLine: String? = null,
+)
+
+data class StudyPlayTurnGenerationRequest(
+    val text: String,
+    val textLanguageTag: String,
+    val languageTag: String,
+    val scenarioDescription: String,
+    val userMessage: String,
+    val history: List<StudyPlayHistoryMessage> = emptyList(),
+    val characters: List<StudyStoryCharacter> = emptyList(),
+)
+
+data class StudyPlayTurnDesign(
+    val description: String,
+    val reply: String,
+)
+
 /** Designed cast member before portrait jobs are attached. */
 data class StudyCharacterDesign(
     val id: String,
@@ -79,6 +113,8 @@ interface StudyAiClient {
     suspend fun dissectSentence(request: StudyDissectGenerationRequest): StudySentence
     suspend fun evaluateWordUsage(request: StudyWordPlaygroundGenerationRequest): StudyWordPlaygroundJudgment
     suspend fun designStoryCharacters(request: StudyCharactersGenerationRequest): List<StudyCharacterDesign>
+    suspend fun generatePlayScenarios(request: StudyPlayScenariosGenerationRequest): List<StudyPlayScenarioDesign>
+    suspend fun generatePlayTurn(request: StudyPlayTurnGenerationRequest): StudyPlayTurnDesign
 }
 
 class StudyService(
@@ -227,6 +263,105 @@ class StudyService(
             logLabel = "sentence visual",
         )
         return StudySentenceImageResponse(imageId = imageId)
+    }
+
+    /**
+     * Generates four related role-play scenario starters and starts async cover images.
+     * Poll [playgroundImage] for each scenario's [StudyPlayScenario.imageId].
+     */
+    suspend fun playScenarios(rawRequest: StudyPlayScenariosRequest): StudyPlayScenariosResponse {
+        val request = requireNotNull(rawRequest.normalizedOrNull()) {
+            "Study play scenarios require non-blank text"
+        }
+        val designed = runCatching {
+            aiClient.generatePlayScenarios(
+                StudyPlayScenariosGenerationRequest(
+                    text = request.text,
+                    textLanguageTag = request.textLanguageTag,
+                    languageTag = request.languageTag,
+                    characters = request.characters,
+                ),
+            )
+        }.getOrElse { error ->
+            log.warn("Study play scenario generation failed: {}", error.message)
+            emptyList()
+        }
+        val cleaned = normalizePlayScenarioDesigns(designed)
+        val defaults = defaultPlayScenarios(request.text, request.languageTag)
+        val designs = (cleaned + defaults)
+            .distinctBy { it.description.trim().lowercase() }
+            .take(4)
+            .let { merged -> if (merged.size < 4) defaults.take(4) else merged }
+        val scenarios = designs.map { design ->
+            val imageId = idGenerator().trim().ifBlank { UUID.randomUUID().toString() }
+            val referenceUrls = request.characters.mapNotNull {
+                it.imageUrl?.trim()?.takeIf(String::isNotEmpty)
+            }
+            enqueueStudyImage(
+                imageId = imageId,
+                prompt = playScenarioVisualPrompt(
+                    description = design.description,
+                    openingLine = design.openingLine,
+                    fullText = request.text,
+                    characters = request.characters,
+                ),
+                referenceImageUrls = referenceUrls,
+                logLabel = "play scenario cover",
+            )
+            StudyPlayScenario(
+                id = imageId,
+                description = design.description,
+                openingLine = design.openingLine,
+                imageId = imageId,
+                imageUrl = null,
+            )
+        }
+        require(scenarios.size == 4) { "Play tab requires exactly four scenarios" }
+        return StudyPlayScenariosResponse(scenarios = scenarios)
+    }
+
+    /**
+     * Continues a Play-tab conversation: AI reply + async cover image for the new beat.
+     */
+    suspend fun playTurn(rawRequest: StudyPlayTurnRequest): StudyPlayTurnResponse {
+        val request = requireNotNull(rawRequest.normalizedOrNull()) {
+            "Study play turn requires non-blank text, scenario, and user message"
+        }
+        val designed = aiClient.generatePlayTurn(
+            StudyPlayTurnGenerationRequest(
+                text = request.text,
+                textLanguageTag = request.textLanguageTag,
+                languageTag = request.languageTag,
+                scenarioDescription = request.scenarioDescription,
+                userMessage = request.userMessage,
+                history = request.history,
+                characters = request.characters,
+            ),
+        )
+        val description = designed.description.trim().ifBlank { request.scenarioDescription }
+        val reply = designed.reply.trim().ifBlank {
+            throw IllegalArgumentException("Play turn reply must not be blank")
+        }
+        val imageId = idGenerator().trim().ifBlank { UUID.randomUUID().toString() }
+        val referenceUrls = request.characters.mapNotNull {
+            it.imageUrl?.trim()?.takeIf(String::isNotEmpty)
+        }
+        enqueueStudyImage(
+            imageId = imageId,
+            prompt = playScenarioVisualPrompt(
+                description = description,
+                openingLine = reply,
+                fullText = request.text,
+                characters = request.characters,
+            ),
+            referenceImageUrls = referenceUrls,
+            logLabel = "play turn cover",
+        )
+        return StudyPlayTurnResponse(
+            description = description,
+            reply = reply,
+            imageId = imageId,
+        )
     }
 
     /** Current comic/sentence/character-image job status (shared store). */
@@ -400,6 +535,129 @@ internal fun sentenceVisualPrompt(sentence: String): String =
         sentenceCount = 1,
         characters = emptyList(),
     )
+
+/** Cover image for a Play-tab scenario starter or conversation beat. */
+internal fun playScenarioVisualPrompt(
+    description: String,
+    openingLine: String? = null,
+    fullText: String = "",
+    characters: List<StudyStoryCharacter> = emptyList(),
+): String = buildString {
+    append("Expressive single-panel story illustration for an interactive language role-play. ")
+    append("This is a continuous short story world — keep the same people, wardrobe, and art style. ")
+    if (fullText.isNotBlank()) {
+        append("Source study text for continuity: \"$fullText\". ")
+    }
+    append("Scene setup to depict: \"$description\". ")
+    if (!openingLine.isNullOrBlank()) {
+        append("Spoken moment / dialogue vibe (do not render text): \"$openingLine\". ")
+    }
+    val refCharacters = characters.filter { !it.imageUrl.isNullOrBlank() }
+    if (refCharacters.isNotEmpty()) {
+        append("Named character reference images are attached in order. Match their identity exactly: ")
+        refCharacters.forEachIndexed { index, character ->
+            val roleLabel = if (character.role.equals("secondary", ignoreCase = true)) "secondary" else "main"
+            append("Image ${index + 1} is $roleLabel character \"${character.name}\"")
+            if (character.description.isNotBlank()) {
+                append(" (${character.description})")
+            }
+            append(". ")
+        }
+        append("Keep face, age, hair, skin, body type, and clothing consistent with those references. ")
+    } else if (characters.isNotEmpty()) {
+        append("Feature these named characters consistently: ")
+        characters.forEach { character ->
+            val roleLabel = if (character.role.equals("secondary", ignoreCase = true)) "secondary" else "main"
+            append("$roleLabel character \"${character.name}\"")
+            if (character.description.isNotBlank()) {
+                append(" — ${character.description}")
+            }
+            append(". ")
+        }
+    } else {
+        append("Invent clear characters that fit the scene and keep them emotionally readable. ")
+    }
+    append("Show a vivid conversational moment with clear emotion and natural body language. ")
+    append("Setting: warm everyday life in Vietnam or Russia, whichever fits the text best. ")
+    append("Art style: $STUDY_STORY_ART_STYLE. ")
+    append(
+        "Absolutely no text, no letters, no numbers, no captions, no signs with writing, no logos, " +
+            "no speech bubbles, no border, no watermark, high quality square image.",
+    )
+}
+
+internal fun normalizePlayScenarioDesigns(designs: List<StudyPlayScenarioDesign>): List<StudyPlayScenarioDesign> {
+    val cleaned = designs.mapNotNull { design ->
+        val description = design.description.trim().takeIf { it.isNotEmpty() } ?: return@mapNotNull null
+        val opening = design.openingLine?.trim()?.takeIf { it.isNotEmpty() }
+        StudyPlayScenarioDesign(description = description, openingLine = opening)
+    }
+    return cleaned.take(4)
+}
+
+internal fun defaultPlayScenarios(sourceText: String, languageTag: String): List<StudyPlayScenarioDesign> {
+    val looksVietnamese = sourceText.any { it in '\u00C0'..'\u1EF9' } ||
+        sourceText.contains("Tôi", ignoreCase = true) ||
+        sourceText.contains("bạn", ignoreCase = true)
+    val looksRussian = sourceText.any { it in '\u0400'..'\u04FF' }
+    val ui = Language.fromTag(languageTag).tag
+    return when {
+        looksVietnamese || ui == "vi" -> listOf(
+            StudyPlayScenarioDesign(
+                description = "A friendly neighbor greets you near the elevator.",
+                openingLine = "Chào bạn, hôm nay bạn đi đâu vậy?",
+            ),
+            StudyPlayScenarioDesign(
+                description = "A market vendor offers you something fresh.",
+                openingLine = null,
+            ),
+            StudyPlayScenarioDesign(
+                description = "A classmate sits down and starts a short chat.",
+                openingLine = "Mình hỏi chút được không?",
+            ),
+            StudyPlayScenarioDesign(
+                description = "You meet someone on a quiet evening walk.",
+                openingLine = null,
+            ),
+        )
+        looksRussian || ui == "ru" -> listOf(
+            StudyPlayScenarioDesign(
+                description = "A neighbor greets you by the building entrance.",
+                openingLine = "Здравствуйте! Как ваши дела?",
+            ),
+            StudyPlayScenarioDesign(
+                description = "A shop assistant offers quick help.",
+                openingLine = null,
+            ),
+            StudyPlayScenarioDesign(
+                description = "A classmate starts a short conversation after class.",
+                openingLine = "Можно вас спросить?",
+            ),
+            StudyPlayScenarioDesign(
+                description = "Someone approaches you on a park path.",
+                openingLine = null,
+            ),
+        )
+        else -> listOf(
+            StudyPlayScenarioDesign(
+                description = "A neighbor greets you near the lobby.",
+                openingLine = "Hi there — heading out?",
+            ),
+            StudyPlayScenarioDesign(
+                description = "A shopkeeper offers a friendly suggestion.",
+                openingLine = null,
+            ),
+            StudyPlayScenarioDesign(
+                description = "A classmate sits nearby and starts chatting.",
+                openingLine = "Mind if I ask something quick?",
+            ),
+            StudyPlayScenarioDesign(
+                description = "Someone approaches you on a quiet trail.",
+                openingLine = null,
+            ),
+        )
+    }
+}
 
 internal fun normalizeCharacterDesigns(designs: List<StudyCharacterDesign>): List<StudyCharacterDesign> {
     val cleaned = designs.mapNotNull { design ->

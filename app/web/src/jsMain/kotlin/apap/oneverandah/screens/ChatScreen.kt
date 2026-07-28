@@ -27,6 +27,10 @@ import apap.oneverandah.api.SpeechRequest
 import apap.oneverandah.api.SpeechTimingAligner
 import apap.oneverandah.api.SpeechWordTiming
 import apap.oneverandah.api.StudyDissectSentenceRequest
+import apap.oneverandah.api.StudyPlayHistoryMessage
+import apap.oneverandah.api.StudyPlayScenariosRequest
+import apap.oneverandah.api.StudyPlaySpeaker
+import apap.oneverandah.api.StudyPlayTurnRequest
 import apap.oneverandah.api.StudyPlaygroundImageStatus
 import apap.oneverandah.api.StudySentence
 import apap.oneverandah.api.StudySentenceImageRequest
@@ -1524,6 +1528,24 @@ private fun StudySessionContent(
                 selectedRef = null
             }
         }) { Text(strings.chatReadTab) }
+        Button(attrs = {
+            classes(Styles.chip)
+            if (mode == StudySessionMode.WRITE) classes(Styles.chipActive)
+            attr("type", "button")
+            onClick {
+                mode = StudySessionMode.WRITE
+                selectedRef = null
+            }
+        }) { Text(strings.chatWriteTab) }
+        Button(attrs = {
+            classes(Styles.chip)
+            if (mode == StudySessionMode.PLAY) classes(Styles.chipActive)
+            attr("type", "button")
+            onClick {
+                mode = StudySessionMode.PLAY
+                selectedRef = null
+            }
+        }) { Text(strings.chatPlayTab) }
     }
 
     when (mode) {
@@ -1683,6 +1705,23 @@ private fun StudySessionContent(
                 }
             }
         }
+        StudySessionMode.WRITE -> {
+            Span(attrs = { classes(Styles.studySessionHint) }) { Text(strings.chatWriteHint) }
+            session.sentences.forEachIndexed { sentenceIndex, sentence ->
+                StudyWriteSentenceCard(
+                    sentenceIndex = sentenceIndex,
+                    sentenceText = sentence.text,
+                    textLanguageTag = session.textLanguageTag,
+                    strings = strings,
+                )
+            }
+        }
+        StudySessionMode.PLAY -> {
+            StudyPlayTab(
+                session = session,
+                strings = strings,
+            )
+        }
     }
 }
 
@@ -1716,7 +1755,361 @@ private fun StudySentenceVisual(
     }
 }
 
-private enum class StudySessionMode { STUDY, READ }
+private enum class StudySessionMode { STUDY, READ, WRITE, PLAY }
+
+/** Compares learner input to a study sentence after light whitespace normalization. */
+internal fun studyWriteMatches(expected: String, actual: String): Boolean {
+    fun normalize(value: String): String =
+        value.trim().replace(Regex("\\s+"), " ")
+    return normalize(expected) == normalize(actual)
+}
+
+@Composable
+private fun StudyWriteSentenceCard(
+    sentenceIndex: Int,
+    sentenceText: String,
+    textLanguageTag: String,
+    strings: UiStrings,
+) {
+    var draft by remember(sentenceText) { mutableStateOf("") }
+    var correct by remember(sentenceText) { mutableStateOf(false) }
+
+    fun check(value: String?) {
+        val candidate = value?.trim().orEmpty()
+        if (candidate.isEmpty()) return
+        if (studyWriteMatches(sentenceText, candidate)) {
+            correct = true
+            draft = sentenceText
+        } else {
+            correct = false
+            draft = candidate
+        }
+    }
+
+    Div(attrs = { classes(Styles.studyWriteBlock) }) {
+        P(attrs = { classes(Styles.studyWritePrompt) }) { Text(sentenceText) }
+        if (correct) {
+            Div(attrs = {
+                classes(Styles.studyWriteCorrect)
+                attr("role", "status")
+            }) {
+                MaterialSymbol("check_circle")
+                Span { Text(strings.chatWriteCorrect) }
+            }
+        } else {
+            ChatInput(
+                value = draft,
+                onValueChange = { draft = it },
+                onSend = { check(it) },
+                placeholder = strings.chatWritePlaceholder,
+                languageTag = textLanguageTag,
+                multiline = sentenceText.length > 48,
+                autoFocus = sentenceIndex == 0,
+            )
+        }
+    }
+}
+
+private data class StudyPlayUiMessage(
+    val speaker: StudyPlaySpeaker,
+    val text: String,
+    val description: String = "",
+    val imageUrl: String? = null,
+    val imageFailed: Boolean = false,
+)
+
+private data class StudyPlayUiScenario(
+    val id: String,
+    val rootDescription: String,
+    val messages: List<StudyPlayUiMessage>,
+    val draft: String = "",
+    val sending: Boolean = false,
+    val error: String? = null,
+)
+
+@Composable
+private fun StudyPlayTab(
+    session: StudySessionResponse,
+    strings: UiStrings,
+) {
+    val scope = rememberCoroutineScope()
+    val languageTag = Localization.language.tag
+    var loading by remember(session.text) { mutableStateOf(true) }
+    var error by remember(session.text) { mutableStateOf<String?>(null) }
+    var scenarios by remember(session.text) { mutableStateOf<List<StudyPlayUiScenario>>(emptyList()) }
+    var loadToken by remember(session.text) { mutableStateOf(0) }
+
+    fun updateScenario(id: String, transform: (StudyPlayUiScenario) -> StudyPlayUiScenario) {
+        scenarios = scenarios.map { if (it.id == id) transform(it) else it }
+    }
+
+    fun pollImage(imageId: String, onResult: (String?, Boolean) -> Unit) {
+        scope.launch {
+            var attempts = 0
+            var url: String? = null
+            var failed = false
+            while (attempts < STUDY_IMAGE_POLL_MAX_ATTEMPTS) {
+                val image = runCatching { ChatApi.studyImage(imageId) }.getOrNull()
+                if (image != null) {
+                    when (image.status) {
+                        StudyPlaygroundImageStatus.COMPLETED -> {
+                            url = image.imageUrl?.trim()?.takeIf { it.isNotEmpty() }
+                            failed = url == null
+                            break
+                        }
+                        StudyPlaygroundImageStatus.FAILED -> {
+                            failed = true
+                            break
+                        }
+                        StudyPlaygroundImageStatus.PENDING,
+                        StudyPlaygroundImageStatus.GENERATING,
+                        -> Unit
+                    }
+                }
+                attempts += 1
+                delay(STUDY_IMAGE_POLL_DELAY_MS)
+            }
+            if (url == null && !failed) failed = true
+            onResult(url, failed)
+        }
+    }
+
+    fun loadScenarios() {
+        loading = true
+        error = null
+        scenarios = emptyList()
+        scope.launch {
+            runCatching {
+                ChatApi.studyPlayScenarios(
+                    StudyPlayScenariosRequest(
+                        text = session.text,
+                        textLanguageTag = session.textLanguageTag,
+                        languageTag = languageTag,
+                        characters = session.characters,
+                    ),
+                )
+            }.onSuccess { response ->
+                val built = response.scenarios.map { scenario ->
+                    val opening = scenario.openingLine?.trim()?.takeIf { it.isNotEmpty() }
+                    StudyPlayUiScenario(
+                        id = scenario.id,
+                        rootDescription = scenario.description,
+                        messages = listOf(
+                            StudyPlayUiMessage(
+                                speaker = StudyPlaySpeaker.OTHER,
+                                text = opening.orEmpty(),
+                                description = scenario.description,
+                                imageUrl = scenario.imageUrl,
+                            ),
+                        ),
+                    )
+                }
+                scenarios = built
+                loading = false
+                response.scenarios.forEach { scenario ->
+                    val imageId = scenario.imageId?.trim()?.takeIf { it.isNotEmpty() } ?: return@forEach
+                    if (!scenario.imageUrl.isNullOrBlank()) return@forEach
+                    pollImage(imageId) { url, failed ->
+                        updateScenario(scenario.id) { current ->
+                            val messages = current.messages.toMutableList()
+                            if (messages.isNotEmpty()) {
+                                messages[0] = messages[0].copy(imageUrl = url, imageFailed = failed)
+                            }
+                            current.copy(messages = messages)
+                        }
+                    }
+                }
+            }.onFailure {
+                error = strings.chatPlayError
+                loading = false
+            }
+        }
+    }
+
+    LaunchedEffect(session.text, loadToken) {
+        loadScenarios()
+    }
+
+    Span(attrs = { classes(Styles.studySessionHint) }) { Text(strings.chatPlayHint) }
+
+    when {
+        loading && scenarios.isEmpty() -> {
+            Div(attrs = { classes(Styles.studyPlayStatus) }) {
+                MaterialSymbol("progress_activity")
+                Span { Text(strings.chatPlayLoading) }
+            }
+        }
+        error != null && scenarios.isEmpty() -> {
+            Div(attrs = { classes(Styles.studySessionError) }) {
+                MaterialSymbol("error")
+                P { Text(error!!) }
+                Button(attrs = {
+                    classes(Styles.savedItemAction)
+                    attr("type", "button")
+                    onClick { loadToken += 1 }
+                }) {
+                    MaterialSymbol("refresh")
+                    Text(strings.chatPlayRetry)
+                }
+            }
+        }
+        else -> {
+            scenarios.forEach { scenario ->
+                StudyPlayScenarioCard(
+                    scenario = scenario,
+                    textLanguageTag = session.textLanguageTag,
+                    strings = strings,
+                    onDraftChange = { value ->
+                        updateScenario(scenario.id) { it.copy(draft = value, error = null) }
+                    },
+                    onSend = { raw ->
+                        val message = raw?.trim().orEmpty()
+                        if (message.isEmpty() || scenario.sending) return@StudyPlayScenarioCard
+                        updateScenario(scenario.id) {
+                            it.copy(
+                                draft = "",
+                                sending = true,
+                                error = null,
+                                messages = it.messages + StudyPlayUiMessage(
+                                    speaker = StudyPlaySpeaker.USER,
+                                    text = message,
+                                ),
+                            )
+                        }
+                        scope.launch {
+                            val history = scenario.messages.mapNotNull { item ->
+                                val text = item.text.trim().takeIf { it.isNotEmpty() } ?: return@mapNotNull null
+                                StudyPlayHistoryMessage(
+                                    speaker = item.speaker,
+                                    text = text,
+                                    description = item.description,
+                                )
+                            }
+                            runCatching {
+                                ChatApi.studyPlayTurn(
+                                    StudyPlayTurnRequest(
+                                        text = session.text,
+                                        textLanguageTag = session.textLanguageTag,
+                                        languageTag = languageTag,
+                                        scenarioDescription = scenario.rootDescription,
+                                        userMessage = message,
+                                        history = history,
+                                        characters = session.characters,
+                                    ),
+                                )
+                            }.onSuccess { response ->
+                                val replyMessage = StudyPlayUiMessage(
+                                    speaker = StudyPlaySpeaker.OTHER,
+                                    text = response.reply,
+                                    description = response.description,
+                                )
+                                updateScenario(scenario.id) {
+                                    it.copy(
+                                        sending = false,
+                                        messages = it.messages + replyMessage,
+                                    )
+                                }
+                                pollImage(response.imageId) { url, failed ->
+                                    updateScenario(scenario.id) { current ->
+                                        val messages = current.messages.toMutableList()
+                                        val index = messages.indexOfLast {
+                                            it.speaker == StudyPlaySpeaker.OTHER &&
+                                                it.text == response.reply &&
+                                                it.description == response.description
+                                        }
+                                        if (index >= 0) {
+                                            messages[index] = messages[index].copy(
+                                                imageUrl = url,
+                                                imageFailed = failed,
+                                            )
+                                        }
+                                        current.copy(messages = messages)
+                                    }
+                                }
+                            }.onFailure {
+                                updateScenario(scenario.id) {
+                                    it.copy(
+                                        sending = false,
+                                        draft = message,
+                                        error = strings.chatPlayError,
+                                    )
+                                }
+                            }
+                        }
+                    },
+                )
+            }
+        }
+    }
+}
+
+@Composable
+private fun StudyPlayScenarioCard(
+    scenario: StudyPlayUiScenario,
+    textLanguageTag: String,
+    strings: UiStrings,
+    onDraftChange: (String) -> Unit,
+    onSend: (String?) -> Unit,
+) {
+    Div(attrs = { classes(Styles.studyPlayBlock) }) {
+        scenario.messages.forEach { message ->
+            val showVisual = message.speaker == StudyPlaySpeaker.OTHER &&
+                (message.description.isNotBlank() || message.imageUrl != null || message.imageFailed || message.text.isNotBlank())
+            if (showVisual) {
+                if (message.description.isNotBlank()) {
+                    P(attrs = { classes(Styles.studyPlayDescription) }) { Text(message.description) }
+                }
+                StudySentenceVisual(
+                    imageUrl = message.imageUrl,
+                    failed = message.imageFailed,
+                    strings = strings,
+                )
+            }
+            if (message.text.isNotBlank()) {
+                Div(attrs = {
+                    classes(Styles.studyPlayLine)
+                    if (message.speaker == StudyPlaySpeaker.USER) {
+                        classes(Styles.studyPlayLineYou)
+                    } else {
+                        classes(Styles.studyPlayLineOther)
+                    }
+                }) {
+                    Span(attrs = { classes(Styles.studyPlaySpeaker) }) {
+                        Text(
+                            if (message.speaker == StudyPlaySpeaker.USER) {
+                                strings.chatPlayYouLabel
+                            } else {
+                                strings.chatPlayOtherLabel
+                            },
+                        )
+                    }
+                    P { Text(message.text) }
+                }
+            }
+        }
+        if (scenario.sending) {
+            Div(attrs = { classes(Styles.studyPlayStatus) }) {
+                MaterialSymbol("progress_activity")
+                Span { Text(strings.chatPlaySending) }
+            }
+        } else {
+            ChatInput(
+                value = scenario.draft,
+                onValueChange = onDraftChange,
+                onSend = onSend,
+                placeholder = strings.chatPlayPlaceholder,
+                languageTag = textLanguageTag,
+                multiline = true,
+            )
+        }
+        scenario.error?.let { message ->
+            Div(attrs = { classes(Styles.studyPlaygroundError) }) {
+                MaterialSymbol("error")
+                Span { Text(message) }
+            }
+        }
+    }
+}
 
 private const val SPEECH_BATCH_SIZE = 3
 private const val SPEECH_RETRY_MAX_ATTEMPTS = 4

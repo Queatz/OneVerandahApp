@@ -133,6 +133,12 @@ class ChatRoutesTest {
 
                 override suspend fun designStoryCharacters(request: StudyCharactersGenerationRequest) =
                     error("not used")
+
+                override suspend fun generatePlayScenarios(request: StudyPlayScenariosGenerationRequest) =
+                    error("not used")
+
+                override suspend fun generatePlayTurn(request: StudyPlayTurnGenerationRequest) =
+                    error("not used")
             },
         )
         application {
@@ -215,6 +221,12 @@ class ChatRoutesTest {
 
                 override suspend fun designStoryCharacters(request: StudyCharactersGenerationRequest) =
                     error("not used")
+
+                override suspend fun generatePlayScenarios(request: StudyPlayScenariosGenerationRequest) =
+                    error("not used")
+
+                override suspend fun generatePlayTurn(request: StudyPlayTurnGenerationRequest) =
+                    error("not used")
             },
         )
         application {
@@ -284,6 +296,12 @@ class ChatRoutesTest {
                     )
 
                 override suspend fun designStoryCharacters(request: StudyCharactersGenerationRequest) =
+                    error("not used")
+
+                override suspend fun generatePlayScenarios(request: StudyPlayScenariosGenerationRequest) =
+                    error("not used")
+
+                override suspend fun generatePlayTurn(request: StudyPlayTurnGenerationRequest) =
                     error("not used")
             },
             imageGenerator = StudyPlaygroundImageGenerator { _, _ -> "https://cdn.example/play.png" },
@@ -374,6 +392,12 @@ class ChatRoutesTest {
 
                 override suspend fun designStoryCharacters(request: StudyCharactersGenerationRequest) =
                     error("not used")
+
+                override suspend fun generatePlayScenarios(request: StudyPlayScenariosGenerationRequest) =
+                    error("not used")
+
+                override suspend fun generatePlayTurn(request: StudyPlayTurnGenerationRequest) =
+                    error("not used")
             },
             imageGenerator = StudyPlaygroundImageGenerator { _, _ -> "https://cdn.example/sentence.png" },
             idGenerator = { "sentence-image-1" },
@@ -452,6 +476,12 @@ class ChatRoutesTest {
                             description = "Young woman with dark hair",
                         ),
                     )
+
+                override suspend fun generatePlayScenarios(request: StudyPlayScenariosGenerationRequest) =
+                    error("not used")
+
+                override suspend fun generatePlayTurn(request: StudyPlayTurnGenerationRequest) =
+                    error("not used")
             },
             imageGenerator = StudyPlaygroundImageGenerator { _, _ -> "https://cdn.example/portrait.png" },
             idGenerator = { "portrait-1" },

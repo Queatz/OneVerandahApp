@@ -294,6 +294,16 @@ object Styles {
     const val studyReadSentence = "study-read-sentence"
     const val studyReadBreak = "study-read-break"
     const val studyReadPlay = "study-read-play"
+    const val studyWriteBlock = "study-write-block"
+    const val studyWritePrompt = "study-write-prompt"
+    const val studyWriteCorrect = "study-write-correct"
+    const val studyPlayBlock = "study-play-block"
+    const val studyPlayDescription = "study-play-description"
+    const val studyPlayLine = "study-play-line"
+    const val studyPlayLineYou = "study-play-line-you"
+    const val studyPlayLineOther = "study-play-line-other"
+    const val studyPlaySpeaker = "study-play-speaker"
+    const val studyPlayStatus = "study-play-status"
     const val studySentenceBlock = "study-sentence-block"
     const val studySentenceImage = "study-sentence-image"
     const val studySentenceImagePlaceholder = "study-sentence-image-placeholder"
@@ -2355,6 +2365,86 @@ object Styles {
         }
         .${studyReadBreak} {
             display: none;
+        }
+        .${studyWriteBlock} {
+            display: flex;
+            flex-direction: column;
+            gap: 10px;
+            padding: 12px;
+            border-radius: 16px;
+            border: 1px solid var(--md-sys-color-outline);
+            background: color-mix(in srgb, var(--md-sys-color-primary) 5%, var(--md-sys-color-surface));
+        }
+        .${studyWritePrompt} {
+            margin: 0;
+            font-size: 18px;
+            line-height: 1.45;
+            font-weight: 600;
+        }
+        .${studyWriteCorrect} {
+            display: inline-flex;
+            align-items: center;
+            gap: 8px;
+            align-self: flex-start;
+            border-radius: 999px;
+            padding: 6px 12px;
+            font-size: 14px;
+            font-weight: 700;
+            background: color-mix(in srgb, #2e7d32 16%, var(--md-sys-color-surface));
+            color: #1b5e20;
+        }
+        .${studyWriteCorrect} .${materialSymbols} {
+            font-size: 18px;
+            color: #2e7d32;
+        }
+        .${studyPlayBlock} {
+            display: flex;
+            flex-direction: column;
+            gap: 10px;
+            padding: 12px;
+            border-radius: 16px;
+            border: 1px solid var(--md-sys-color-outline);
+            background: color-mix(in srgb, var(--md-sys-color-primary) 5%, var(--md-sys-color-surface));
+        }
+        .${studyPlayDescription} {
+            margin: 0;
+            font-size: 14px;
+            line-height: 1.45;
+            font-style: italic;
+            color: var(--md-sys-color-on-surface-variant);
+        }
+        .${studyPlayLine} {
+            display: flex;
+            flex-direction: column;
+            gap: 4px;
+            padding: 10px 12px;
+            border-radius: 14px;
+            background: color-mix(in srgb, var(--md-sys-color-surface-variant) 55%, transparent);
+        }
+        .${studyPlayLineYou} {
+            background: color-mix(in srgb, var(--md-sys-color-primary) 12%, var(--md-sys-color-surface));
+        }
+        .${studyPlayLineOther} {
+            background: color-mix(in srgb, var(--md-sys-color-surface-variant) 70%, transparent);
+        }
+        .${studyPlaySpeaker} {
+            font-size: 12px;
+            font-weight: 700;
+            letter-spacing: 0.02em;
+            text-transform: uppercase;
+            color: var(--md-sys-color-on-surface-variant);
+        }
+        .${studyPlayLine} p {
+            margin: 0;
+            font-size: 15px;
+            line-height: 1.45;
+        }
+        .${studyPlayStatus} {
+            display: inline-flex;
+            align-items: center;
+            gap: 8px;
+            font-size: 13px;
+            color: var(--md-sys-color-on-surface-variant);
         }
         .${studySessionHint} {
             font-size: 13px;

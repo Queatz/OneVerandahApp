@@ -68,6 +68,9 @@ internal fun installHoldListeners(element: Element, gesture: HoldToSpeakGesture)
  *   or the send button).
  * @param placeholder placeholder text shown while the field is empty.
  * @param autoFocus when `true`, the field grabs focus once it is mounted.
+ * @param languageTag BCP-47 / app language tag used for hold-to-speak ASR.
+ *   Defaults to the active UI language; pass the study text language when the
+ *   learner should speak the language being practiced.
  */
 @Composable
 fun ChatInput(
@@ -77,13 +80,15 @@ fun ChatInput(
     placeholder: String = "Hold to speak...",
     autoFocus: Boolean = false,
     multiline: Boolean = false,
+    languageTag: String? = null,
 ) {
     val hasText = value.isNotEmpty()
     var textAreaRef by remember { mutableStateOf<HTMLTextAreaElement?>(null) }
     var voiceState by remember { mutableStateOf(VoiceInputUiState.Idle) }
     val currentValue = rememberUpdatedState(value)
     val currentOnValueChange = rememberUpdatedState(onValueChange)
-    val currentLanguage = rememberUpdatedState(Localization.language.tag)
+    val resolvedLanguage = languageTag?.trim()?.takeIf { it.isNotEmpty() } ?: Localization.language.tag
+    val currentLanguage = rememberUpdatedState(resolvedLanguage)
     val voiceSession = remember {
         VoiceSessionController(
             onValueChange = { currentOnValueChange.value(it) },
@@ -213,6 +218,7 @@ private class VoiceSessionController(
     private val onError: (String) -> Unit,
 ) {
     private var session: BrowserVoiceInput? = null
+    private var sessionLanguage: String? = null
 
     fun warmUp(language: String) {
         ensure(language).warmUp(language)
@@ -233,16 +239,26 @@ private class VoiceSessionController(
     fun dispose() {
         session?.dispose()
         session = null
+        sessionLanguage = null
     }
 
     private fun ensure(language: String): BrowserVoiceInput {
         val existing = session
-        if (existing != null) return existing
+        if (existing != null) {
+            // Language can change when study inputs override the UI language.
+            if (sessionLanguage == language) return existing
+            existing.dispose()
+            session = null
+            sessionLanguage = null
+        }
         return BrowserVoiceInput(
             language = language,
             onValueChange = onValueChange,
             onStateChange = onStateChange,
             onError = onError,
-        ).also { session = it }
+        ).also {
+            session = it
+            sessionLanguage = language
+        }
     }
 }

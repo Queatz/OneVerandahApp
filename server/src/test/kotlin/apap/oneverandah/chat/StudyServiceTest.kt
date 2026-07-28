@@ -2,6 +2,10 @@ package apap.oneverandah.chat
 
 import apap.oneverandah.api.StudyDissectSentenceRequest
 import apap.oneverandah.api.StudyExampleSentence
+import apap.oneverandah.api.StudyPlayHistoryMessage
+import apap.oneverandah.api.StudyPlayScenariosRequest
+import apap.oneverandah.api.StudyPlaySpeaker
+import apap.oneverandah.api.StudyPlayTurnRequest
 import apap.oneverandah.api.StudyPlaygroundImageStatus
 import apap.oneverandah.api.StudySentence
 import apap.oneverandah.api.StudySentenceImageRequest
@@ -648,6 +652,79 @@ class StudyServiceTest {
         assertEquals("Lan", normalized[0].name)
         assertEquals("Minh", normalized[1].name)
     }
+
+    @Test
+    fun `play scenarios returns four starters and enqueues cover images`() = runBlocking {
+        var nextId = 0
+        val service = StudyService(
+            aiClient = FakeStudyAiClient(),
+            imageGenerator = StudyPlaygroundImageGenerator { _, _ -> "https://cdn.example/play.png" },
+            idGenerator = { "play-${++nextId}" },
+        )
+
+        val response = service.playScenarios(
+            StudyPlayScenariosRequest(
+                text = "Xin chào bạn.",
+                textLanguageTag = "vi",
+                languageTag = "en",
+            ),
+        )
+
+        assertEquals(4, response.scenarios.size)
+        assertTrue(response.scenarios.any { !it.openingLine.isNullOrBlank() })
+        assertTrue(response.scenarios.any { it.openingLine == null })
+        assertEquals(listOf("play-1", "play-2", "play-3", "play-4"), response.scenarios.map { it.imageId })
+    }
+
+    @Test
+    fun `play turn returns reply and starts cover image job`() = runBlocking {
+        val service = StudyService(
+            aiClient = FakeStudyAiClient(),
+            imageGenerator = StudyPlaygroundImageGenerator { _, _ -> "https://cdn.example/turn.png" },
+            idGenerator = { "turn-1" },
+        )
+
+        val response = service.playTurn(
+            StudyPlayTurnRequest(
+                text = "Xin chào bạn.",
+                textLanguageTag = "vi",
+                languageTag = "en",
+                scenarioDescription = "A neighbor greets you.",
+                userMessage = "Chào bạn!",
+                history = listOf(
+                    StudyPlayHistoryMessage(
+                        speaker = StudyPlaySpeaker.OTHER,
+                        text = "Xin chào!",
+                        description = "A neighbor greets you.",
+                    ),
+                ),
+            ),
+        )
+
+        assertEquals("They smile and wait for your reply.", response.description)
+        assertEquals("Thật sao?", response.reply)
+        assertEquals("turn-1", response.imageId)
+        assertNotNull(service.playgroundImage("turn-1"))
+        Unit
+    }
+
+    @Test
+    fun `play scenarios falls back when AI returns nothing`() = runBlocking {
+        val service = StudyService(
+            aiClient = FakeStudyAiClient(playScenarios = emptyList()),
+            imageGenerator = StudyPlaygroundImageGenerator { _, _ -> "https://cdn.example/play.png" },
+            idGenerator = { java.util.UUID.randomUUID().toString() },
+        )
+        val response = service.playScenarios(
+            StudyPlayScenariosRequest(
+                text = "Hello friend.",
+                textLanguageTag = "en",
+                languageTag = "en",
+            ),
+        )
+        assertEquals(4, response.scenarios.size)
+        assertTrue(response.scenarios.all { it.description.isNotBlank() })
+    }
 }
 
 private class FakeStudyAiClient(
@@ -677,11 +754,23 @@ private class FakeStudyAiClient(
             description = "Young Vietnamese woman with long dark hair and a linen blouse",
         ),
     ),
+    private val playScenarios: List<StudyPlayScenarioDesign> = listOf(
+        StudyPlayScenarioDesign("A neighbor greets you.", "Xin chào!"),
+        StudyPlayScenarioDesign("A vendor offers fruit.", null),
+        StudyPlayScenarioDesign("A classmate asks a question.", "Bạn rảnh không?"),
+        StudyPlayScenarioDesign("Someone waves from across the courtyard.", null),
+    ),
+    private val playTurn: StudyPlayTurnDesign = StudyPlayTurnDesign(
+        description = "They smile and wait for your reply.",
+        reply = "Thật sao?",
+    ),
 ) : StudyAiClient {
     var lastSkeletonRequest: StudyGenerationRequest? = null
     var lastDissectRequest: StudyDissectGenerationRequest? = null
     var lastPlaygroundRequest: StudyWordPlaygroundGenerationRequest? = null
     var lastCharactersRequest: StudyCharactersGenerationRequest? = null
+    var lastPlayScenariosRequest: StudyPlayScenariosGenerationRequest? = null
+    var lastPlayTurnRequest: StudyPlayTurnGenerationRequest? = null
 
     override suspend fun generateSkeleton(request: StudyGenerationRequest): StudySessionResponse {
         lastSkeletonRequest = request
@@ -705,5 +794,19 @@ private class FakeStudyAiClient(
     ): List<StudyCharacterDesign> {
         lastCharactersRequest = request
         return characters
+    }
+
+    override suspend fun generatePlayScenarios(
+        request: StudyPlayScenariosGenerationRequest,
+    ): List<StudyPlayScenarioDesign> {
+        lastPlayScenariosRequest = request
+        return playScenarios
+    }
+
+    override suspend fun generatePlayTurn(
+        request: StudyPlayTurnGenerationRequest,
+    ): StudyPlayTurnDesign {
+        lastPlayTurnRequest = request
+        return playTurn
     }
 }

@@ -162,6 +162,28 @@ object ChatApi {
         return json.decodeFromString(StudySentenceImageResponse.serializer(), text)
     }
 
+    /** Generate four related Play-tab scenario starters (covers are async image jobs). */
+    suspend fun studyPlayScenarios(request: StudyPlayScenariosRequest): StudyPlayScenariosResponse {
+        val response = client.post(chatApiUrl("/study/play/scenarios")) {
+            contentType(ContentType.Application.Json)
+            setBody(json.encodeToString(StudyPlayScenariosRequest.serializer(), request))
+        }
+        val text = response.bodyAsText()
+        if (!response.status.isSuccess()) throw ChatApiException(errorMessage(text, response.status.value))
+        return json.decodeFromString(StudyPlayScenariosResponse.serializer(), text)
+    }
+
+    /** Continue a Play-tab conversation after the learner sends a message. */
+    suspend fun studyPlayTurn(request: StudyPlayTurnRequest): StudyPlayTurnResponse {
+        val response = client.post(chatApiUrl("/study/play/turn")) {
+            contentType(ContentType.Application.Json)
+            setBody(json.encodeToString(StudyPlayTurnRequest.serializer(), request))
+        }
+        val text = response.bodyAsText()
+        if (!response.status.isSuccess()) throw ChatApiException(errorMessage(text, response.status.value))
+        return json.decodeFromString(StudyPlayTurnResponse.serializer(), text)
+    }
+
     /** Poll async study image status (playground comics, portraits, and sentence visuals). */
     suspend fun studyImage(imageId: String): StudyPlaygroundImageResponse = studyPlaygroundImage(imageId)
 

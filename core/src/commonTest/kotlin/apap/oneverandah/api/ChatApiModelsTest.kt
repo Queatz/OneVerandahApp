@@ -304,6 +304,106 @@ class ChatApiModelsTest {
     }
 
     @Test
+    fun `study play scenarios request normalizes and rejects blank text`() {
+        val request = StudyPlayScenariosRequest(
+            text = "  Xin chào.  ",
+            textLanguageTag = "vi-VN",
+            languageTag = "en-US",
+            characters = listOf(
+                StudyStoryCharacter(
+                    id = " main ",
+                    name = " Lan ",
+                    role = " main ",
+                    description = " young woman ",
+                    imageUrl = " https://cdn.example/lan.png ",
+                ),
+            ),
+        )
+        val normalized = request.normalizedOrNull()
+        assertEquals("Xin chào.", normalized?.text)
+        assertEquals("vi", normalized?.textLanguageTag)
+        assertEquals("en", normalized?.languageTag)
+        assertEquals("Lan", normalized?.characters?.single()?.name)
+        assertEquals("https://cdn.example/lan.png", normalized?.characters?.single()?.imageUrl)
+        assertNull(
+            StudyPlayScenariosRequest(
+                text = "  ",
+                textLanguageTag = "vi",
+                languageTag = "en",
+            ).normalizedOrNull(),
+        )
+    }
+
+    @Test
+    fun `study play turn request normalizes history and rejects blanks`() {
+        val request = StudyPlayTurnRequest(
+            text = "  Hello.  ",
+            textLanguageTag = "en-US",
+            languageTag = "vi-VN",
+            scenarioDescription = "  A neighbor greets you.  ",
+            userMessage = "  Hi there!  ",
+            history = listOf(
+                StudyPlayHistoryMessage(
+                    speaker = StudyPlaySpeaker.OTHER,
+                    text = "  Hello!  ",
+                    description = "  Opening  ",
+                ),
+                StudyPlayHistoryMessage(
+                    speaker = StudyPlaySpeaker.USER,
+                    text = "   ",
+                ),
+            ),
+        )
+        val normalized = request.normalizedOrNull()
+        assertEquals("Hello.", normalized?.text)
+        assertEquals("en", normalized?.textLanguageTag)
+        assertEquals("vi", normalized?.languageTag)
+        assertEquals("A neighbor greets you.", normalized?.scenarioDescription)
+        assertEquals("Hi there!", normalized?.userMessage)
+        assertEquals(1, normalized?.history?.size)
+        assertEquals("Hello!", normalized?.history?.single()?.text)
+        assertEquals("Opening", normalized?.history?.single()?.description)
+
+        assertNull(
+            StudyPlayTurnRequest(
+                text = "Hello",
+                textLanguageTag = "en",
+                languageTag = "en",
+                scenarioDescription = " ",
+                userMessage = "Hi",
+            ).normalizedOrNull(),
+        )
+    }
+
+    @Test
+    fun `study play payloads round trip as structured JSON`() {
+        val scenarios = StudyPlayScenariosResponse(
+            scenarios = listOf(
+                StudyPlayScenario(
+                    id = "s1",
+                    description = "A girl approaches you on the forest trail.",
+                    openingLine = "Chào bạn!",
+                    imageId = "img-1",
+                ),
+                StudyPlayScenario(
+                    id = "s2",
+                    description = "A vendor waves from a stall.",
+                    openingLine = null,
+                    imageId = "img-2",
+                ),
+            ),
+        )
+        assertEquals(scenarios, json.decodeFromString(json.encodeToString(scenarios)))
+
+        val turn = StudyPlayTurnResponse(
+            description = "They wait for your answer.",
+            reply = "Thật sao?",
+            imageId = "img-3",
+        )
+        assertEquals(turn, json.decodeFromString(json.encodeToString(turn)))
+    }
+
+    @Test
     fun `save study session request normalizes language and rejects blank text`() {
         val session = StudySessionResponse(
             text = "  Xin chào.  ",

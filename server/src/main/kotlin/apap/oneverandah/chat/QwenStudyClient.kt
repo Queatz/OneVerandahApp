@@ -324,7 +324,91 @@ class DashScopeStudyAiClient(
         return QwenStudyCharactersParser.parse(content)
     }
 
-    private suspend fun complete(systemPrompt: String, userContent: String, label: String): String {
+    override suspend fun generatePlayScenarios(
+        request: StudyPlayScenariosGenerationRequest,
+    ): List<StudyPlayScenarioDesign> {
+        val userContent = buildString {
+            appendLine("Source language tag: ${request.textLanguageTag}")
+            appendLine("Learner UI language tag: ${request.languageTag}")
+            if (request.characters.isNotEmpty()) {
+                appendLine()
+                appendLine("Known cast:")
+                request.characters.forEach { character ->
+                    append("- ${character.role} ${character.name}")
+                    if (character.description.isNotBlank()) append(": ${character.description}")
+                    appendLine()
+                }
+            }
+            appendLine()
+            appendLine("Full source text:")
+            append(request.text)
+        }
+        val content = complete(
+            systemPrompt = playScenariosSystemPrompt(
+                activeLanguageTag = request.languageTag,
+                textLanguageTag = request.textLanguageTag,
+            ),
+            userContent = userContent,
+            label = "study play scenarios",
+            temperature = 0.7,
+        )
+        return QwenStudyPlayScenariosParser.parse(content)
+    }
+
+    override suspend fun generatePlayTurn(
+        request: StudyPlayTurnGenerationRequest,
+    ): StudyPlayTurnDesign {
+        val userContent = buildString {
+            appendLine("Source language tag: ${request.textLanguageTag}")
+            appendLine("Learner UI language tag: ${request.languageTag}")
+            appendLine()
+            appendLine("Scenario setup:")
+            appendLine(request.scenarioDescription)
+            if (request.characters.isNotEmpty()) {
+                appendLine()
+                appendLine("Known cast:")
+                request.characters.forEach { character ->
+                    append("- ${character.role} ${character.name}")
+                    if (character.description.isNotBlank()) append(": ${character.description}")
+                    appendLine()
+                }
+            }
+            if (request.history.isNotEmpty()) {
+                appendLine()
+                appendLine("Conversation so far:")
+                request.history.forEach { item ->
+                    val who = if (item.speaker.name == "USER") "Learner" else "Other"
+                    if (item.description.isNotBlank()) {
+                        appendLine("($who scene) ${item.description}")
+                    }
+                    appendLine("$who: ${item.text}")
+                }
+            }
+            appendLine()
+            appendLine("Learner's latest message:")
+            appendLine(request.userMessage)
+            appendLine()
+            appendLine("Full source text for vocabulary continuity:")
+            append(request.text)
+        }
+        val content = complete(
+            systemPrompt = playTurnSystemPrompt(
+                activeLanguageTag = request.languageTag,
+                textLanguageTag = request.textLanguageTag,
+            ),
+            userContent = userContent,
+            label = "study play turn",
+            temperature = 0.7,
+        )
+        return QwenStudyPlayTurnParser.parse(content)
+    }
+
+    private suspend fun complete(
+        systemPrompt: String,
+        userContent: String,
+        label: String,
+        temperature: Double = 0.2,
+    ): String {
         check(config.enabled) { "Qwen study requires QWEN_API_KEY" }
         val body = buildJsonObject {
             put("model", config.chatModel)
@@ -346,7 +430,7 @@ class DashScopeStudyAiClient(
                 },
             )
             put("response_format", buildJsonObject { put("type", "json_object") })
-            put("temperature", 0.2)
+            put("temperature", temperature)
         }
         val response = client.post(config.chatEndpoint) {
             header(HttpHeaders.Authorization, "Bearer ${config.apiKey}")
@@ -426,6 +510,87 @@ class DashScopeStudyAiClient(
         - Do not invent a huge cast. Maximum two characters.
         - Do not wrap the JSON in markdown. Do not add extra keys.
     """.trimIndent()
+
+    private fun playScenariosSystemPrompt(activeLanguageTag: String, textLanguageTag: String): String = """
+        You invent short role-play starters for language learners based on study text.
+        Always return one JSON object and no markdown. The schema is exactly:
+        {"scenarios":[{"description":"scene setup","openingLine":"optional first line from the other person or null"},{"description":"...","openingLine":null},{"description":"...","openingLine":"..."},{"description":"...","openingLine":null}]}
+        Rules:
+        - Return EXACTLY 4 scenarios related to the themes, setting, and vocabulary of the source text.
+        - "description" is a single short italic-ready scene setup written in the learner's UI language '$activeLanguageTag' (e.g. "A girl approaches you on the forest trail."). Second person ("you") is preferred.
+        - "openingLine" is optional spoken text from the other person in the study/source language '$textLanguageTag'. Roughly half of the scenarios should include an openingLine, and half should set openingLine to null so the learner starts.
+        - Keep opening lines short, natural, and easy to reply to. Do not include speaker labels.
+        - Scenarios should feel varied (place, mood, relationship) but stay grounded in the source text world.
+        - Prefer everyday warm interactions suitable for language practice.
+        - Do not wrap the JSON in markdown. Do not add extra keys.
+    """.trimIndent()
+
+    private fun playTurnSystemPrompt(activeLanguageTag: String, textLanguageTag: String): String = """
+        You continue a language-learning role-play as the other character.
+        Always return one JSON object and no markdown. The schema is exactly:
+        {"description":"short scene beat","reply":"what the other person says next"}
+        Rules:
+        - "description" is a brief scene update written in the learner's UI language '$activeLanguageTag' (one short sentence, second person when natural).
+        - "reply" is the other person's spoken line written in the study/source language '$textLanguageTag'. Keep it natural, concise, and easy to answer.
+        - Stay consistent with the scenario, cast, and conversation history.
+        - Gently reuse or invite vocabulary from the source study text when it fits, without forcing unnatural phrases.
+        - Do not include speaker labels, stage directions inside reply, or markdown.
+        - Do not wrap the JSON in markdown. Do not add extra keys.
+    """.trimIndent()
+}
+
+/**
+ * Lenient parser for Play-tab scenario starter JSON.
+ */
+object QwenStudyPlayScenariosParser {
+    private val json = Json { ignoreUnknownKeys = true; explicitNulls = false; isLenient = true }
+
+    fun parse(content: String): List<StudyPlayScenarioDesign> {
+        val root = parseRootObject(content)
+        val scenarios = root["scenarios"]?.jsonArray
+            ?: throw IllegalArgumentException("Qwen study play scenarios missing scenarios array")
+        return scenarios.mapNotNull { element ->
+            val obj = element as? JsonObject ?: return@mapNotNull null
+            val description = obj.string("description")?.trim()?.takeIf { it.isNotEmpty() }
+                ?: return@mapNotNull null
+            val opening = obj.string("openingLine")?.trim()?.takeIf { it.isNotEmpty() }
+                ?: obj.string("opening_line")?.trim()?.takeIf { it.isNotEmpty() }
+            StudyPlayScenarioDesign(description = description, openingLine = opening)
+        }
+    }
+
+    private fun parseRootObject(content: String): JsonObject {
+        val normalized = stripJsonFences(content)
+        val element = runCatching { json.parseToJsonElement(normalized) }
+            .getOrElse { throw IllegalArgumentException("Qwen study play scenarios is not valid JSON", it) }
+        return element as? JsonObject
+            ?: throw IllegalArgumentException("Qwen study play scenarios root must be a JSON object")
+    }
+}
+
+/**
+ * Lenient parser for Play-tab conversation turn JSON.
+ */
+object QwenStudyPlayTurnParser {
+    private val json = Json { ignoreUnknownKeys = true; explicitNulls = false; isLenient = true }
+
+    fun parse(content: String): StudyPlayTurnDesign {
+        val root = parseRootObject(content)
+        val description = root.string("description")?.trim().orEmpty()
+        val reply = root.string("reply")?.trim()?.takeIf { it.isNotEmpty() }
+            ?: root.string("message")?.trim()?.takeIf { it.isNotEmpty() }
+            ?: root.string("text")?.trim()?.takeIf { it.isNotEmpty() }
+            ?: throw IllegalArgumentException("Qwen study play turn missing reply")
+        return StudyPlayTurnDesign(description = description, reply = reply)
+    }
+
+    private fun parseRootObject(content: String): JsonObject {
+        val normalized = stripJsonFences(content)
+        val element = runCatching { json.parseToJsonElement(normalized) }
+            .getOrElse { throw IllegalArgumentException("Qwen study play turn is not valid JSON", it) }
+        return element as? JsonObject
+            ?: throw IllegalArgumentException("Qwen study play turn root must be a JSON object")
+    }
 }
 
 /**

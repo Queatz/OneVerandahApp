@@ -8,6 +8,8 @@ import apap.oneverandah.api.SaveStudySessionRequest
 import apap.oneverandah.api.SpeechRequest
 import apap.oneverandah.api.SpeechResponse
 import apap.oneverandah.api.StudyDissectSentenceRequest
+import apap.oneverandah.api.StudyPlayScenariosRequest
+import apap.oneverandah.api.StudyPlayTurnRequest
 import apap.oneverandah.api.StudySentenceImageRequest
 import apap.oneverandah.api.StudySessionRequest
 import apap.oneverandah.api.StudyStoryCharactersRequest
@@ -119,6 +121,30 @@ fun Route.chatRoutes(
                 return@post
             }
             call.respond(studyService.sentenceImage(request))
+        }
+
+        post("/api/chat/study/play/scenarios") {
+            val request = call.receive<StudyPlayScenariosRequest>()
+            if (request.normalizedOrNull() == null) {
+                call.respond(
+                    HttpStatusCode.BadRequest,
+                    ChatErrorResponse("Study play scenarios require non-blank text"),
+                )
+                return@post
+            }
+            call.respond(studyService.playScenarios(request))
+        }
+
+        post("/api/chat/study/play/turn") {
+            val request = call.receive<StudyPlayTurnRequest>()
+            if (request.normalizedOrNull() == null) {
+                call.respond(
+                    HttpStatusCode.BadRequest,
+                    ChatErrorResponse("Study play turn requires non-blank text, scenario, and user message"),
+                )
+                return@post
+            }
+            call.respond(studyService.playTurn(request))
         }
 
         get("/api/chat/study/playground/image/{imageId}") {

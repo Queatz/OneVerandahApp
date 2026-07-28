@@ -430,6 +430,137 @@ data class StudySentenceImageResponse(
     val imageId: String,
 )
 
+/**
+ * Request four related role-play scenario starters for the Play tab.
+ *
+ * [languageTag] is the learner's UI language (scenario setup text).
+ * Dialogue lines are written in the study/source language ([textLanguageTag]).
+ */
+@Serializable
+data class StudyPlayScenariosRequest(
+    val text: String,
+    val textLanguageTag: String,
+    val languageTag: String,
+    val characters: List<StudyStoryCharacter> = emptyList(),
+) {
+    fun normalizedOrNull(): StudyPlayScenariosRequest? {
+        val normalizedText = text.trim().takeIf { it.isNotEmpty() } ?: return null
+        val cast = characters.mapNotNull { character ->
+            val name = character.name.trim().takeIf { it.isNotEmpty() } ?: return@mapNotNull null
+            val role = character.role.trim().ifEmpty { "main" }
+            StudyStoryCharacter(
+                id = character.id.trim().ifEmpty { role },
+                name = name,
+                role = role,
+                description = character.description.trim(),
+                imageId = character.imageId?.trim()?.takeIf { it.isNotEmpty() },
+                imageUrl = character.imageUrl?.trim()?.takeIf { it.isNotEmpty() },
+            )
+        }
+        return copy(
+            text = normalizedText,
+            textLanguageTag = Language.fromTag(textLanguageTag).tag,
+            languageTag = Language.fromTag(languageTag).tag,
+            characters = cast,
+        )
+    }
+}
+
+/** One Play-tab scenario starter with an optional opening line from the other person. */
+@Serializable
+data class StudyPlayScenario(
+    val id: String,
+    /** Short scene setup for the learner (UI language). */
+    val description: String,
+    /** Optional first line spoken by the other person (study language). */
+    val openingLine: String? = null,
+    /** Async cover-image job id; poll [StudyPlaygroundImageResponse]. */
+    val imageId: String? = null,
+    /** Public URL once the cover image is ready. */
+    val imageUrl: String? = null,
+)
+
+@Serializable
+data class StudyPlayScenariosResponse(
+    val scenarios: List<StudyPlayScenario>,
+)
+
+/** Speaker in a Play-tab conversation history. */
+@Serializable
+enum class StudyPlaySpeaker {
+    USER,
+    OTHER,
+}
+
+/** One prior turn used when generating the next Play-tab reply. */
+@Serializable
+data class StudyPlayHistoryMessage(
+    val speaker: StudyPlaySpeaker,
+    val text: String,
+    val description: String = "",
+)
+
+/**
+ * Continue a Play-tab conversation after the learner sends a message.
+ *
+ * Returns the other character's reply plus a fresh async cover image job.
+ */
+@Serializable
+data class StudyPlayTurnRequest(
+    val text: String,
+    val textLanguageTag: String,
+    val languageTag: String,
+    val scenarioDescription: String,
+    val userMessage: String,
+    val history: List<StudyPlayHistoryMessage> = emptyList(),
+    val characters: List<StudyStoryCharacter> = emptyList(),
+) {
+    fun normalizedOrNull(): StudyPlayTurnRequest? {
+        val normalizedText = text.trim().takeIf { it.isNotEmpty() } ?: return null
+        val normalizedScenario = scenarioDescription.trim().takeIf { it.isNotEmpty() } ?: return null
+        val normalizedUser = userMessage.trim().takeIf { it.isNotEmpty() } ?: return null
+        val cast = characters.mapNotNull { character ->
+            val name = character.name.trim().takeIf { it.isNotEmpty() } ?: return@mapNotNull null
+            val role = character.role.trim().ifEmpty { "main" }
+            StudyStoryCharacter(
+                id = character.id.trim().ifEmpty { role },
+                name = name,
+                role = role,
+                description = character.description.trim(),
+                imageId = character.imageId?.trim()?.takeIf { it.isNotEmpty() },
+                imageUrl = character.imageUrl?.trim()?.takeIf { it.isNotEmpty() },
+            )
+        }
+        val cleanedHistory = history.mapNotNull { item ->
+            val line = item.text.trim().takeIf { it.isNotEmpty() } ?: return@mapNotNull null
+            StudyPlayHistoryMessage(
+                speaker = item.speaker,
+                text = line,
+                description = item.description.trim(),
+            )
+        }
+        return copy(
+            text = normalizedText,
+            textLanguageTag = Language.fromTag(textLanguageTag).tag,
+            languageTag = Language.fromTag(languageTag).tag,
+            scenarioDescription = normalizedScenario,
+            userMessage = normalizedUser,
+            history = cleanedHistory,
+            characters = cast,
+        )
+    }
+}
+
+/** Immediate Play-tab turn payload; poll [imageId] for the cover image. */
+@Serializable
+data class StudyPlayTurnResponse(
+    /** Short scene beat for this reply (UI language). */
+    val description: String,
+    /** Other character dialogue in the study language. */
+    val reply: String,
+    val imageId: String,
+)
+
 @Serializable
 data class ChatErrorResponse(val error: String)
 
