@@ -109,9 +109,10 @@ class ChatSystem(
                 } else {
                     PlaceholderQwenClient()
                 }
-                StudyPlaygroundImageGenerator { prompt ->
-                    val generated = qwen.generate(prompt)
-                    val objectKey = "study/playground/${UUID.randomUUID()}.${generated.extension}"
+                StudyPlaygroundImageGenerator { prompt, referenceImageUrls ->
+                    val generated = qwen.generate(prompt, referenceImageUrls)
+                    val folder = if (referenceImageUrls.isEmpty()) "study/playground" else "study/story"
+                    val objectKey = "$folder/${UUID.randomUUID()}.${generated.extension}"
                     storage.upload(objectKey, generated)
                 }
             } else {

@@ -10,6 +10,7 @@ import apap.oneverandah.api.SpeechResponse
 import apap.oneverandah.api.StudyDissectSentenceRequest
 import apap.oneverandah.api.StudySentenceImageRequest
 import apap.oneverandah.api.StudySessionRequest
+import apap.oneverandah.api.StudyStoryCharactersRequest
 import apap.oneverandah.api.StudyWordPlaygroundRequest
 import apap.oneverandah.chat.ChatService
 import apap.oneverandah.chat.QwenAsrRelay
@@ -94,6 +95,18 @@ fun Route.chatRoutes(
                 return@post
             }
             call.respond(studyService.playground(request))
+        }
+
+        post("/api/chat/study/characters") {
+            val request = call.receive<StudyStoryCharactersRequest>()
+            if (request.normalizedOrNull() == null) {
+                call.respond(
+                    HttpStatusCode.BadRequest,
+                    ChatErrorResponse("Study story characters require non-blank text"),
+                )
+                return@post
+            }
+            call.respond(studyService.storyCharacters(request))
         }
 
         post("/api/chat/study/sentence-image") {

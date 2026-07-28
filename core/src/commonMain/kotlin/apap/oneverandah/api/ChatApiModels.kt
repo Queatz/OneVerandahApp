@@ -165,12 +165,39 @@ data class StudySessionRequest(
     }
 }
 
+/**
+ * Named cast member for Study-tab story visuals.
+ *
+ * Designed once per session, then used as a reference portrait so every sentence
+ * panel keeps the same main (and optional secondary) character.
+ */
+@Serializable
+data class StudyStoryCharacter(
+    /** Stable id within the session (e.g. "main", "secondary"). */
+    val id: String,
+    /** Short given name used in prompts ("Lan", "Minh"). */
+    val name: String,
+    /** "main" or "secondary". */
+    val role: String,
+    /** Visual appearance description for portraits and scene prompts. */
+    val description: String,
+    /** Async job id for the character reference portrait. */
+    val imageId: String? = null,
+    /** Public URL of the completed reference portrait. */
+    val imageUrl: String? = null,
+)
+
 /** Study-session payload returned by `POST /api/chat/study` (skeleton or merged). */
 @Serializable
 data class StudySessionResponse(
     val text: String,
     val textLanguageTag: String,
     val sentences: List<StudySentence>,
+    /**
+     * Story cast for Study-tab visuals. Empty on fresh skeletons; filled after
+     * character design and persisted so portraits are not regenerated.
+     */
+    val characters: List<StudyStoryCharacter> = emptyList(),
 )
 
 /** One sentence from the source text, tokenized for interactive study. */
@@ -325,18 +352,75 @@ data class StudyPlaygroundImageResponse(
 )
 
 /**
+ * Design a main (and optional secondary) story character for Study-tab visuals.
+ *
+ * Returns cast members with portrait [StudyStoryCharacter.imageId] jobs started;
+ * poll [StudyPlaygroundImageResponse] until each [StudyStoryCharacter.imageUrl] is ready.
+ */
+@Serializable
+data class StudyStoryCharactersRequest(
+    val text: String,
+    val textLanguageTag: String = "",
+) {
+    fun normalizedOrNull(): StudyStoryCharactersRequest? {
+        val normalizedText = text.trim().takeIf { it.isNotEmpty() } ?: return null
+        return copy(
+            text = normalizedText,
+            textLanguageTag = textLanguageTag.trim().takeIf { it.isNotEmpty() }
+                ?.let { Language.fromTag(it).tag }
+                .orEmpty(),
+        )
+    }
+}
+
+/** Cast designed for a study text, with portrait jobs already enqueued. */
+@Serializable
+data class StudyStoryCharactersResponse(
+    val characters: List<StudyStoryCharacter>,
+)
+
+/**
  * Request an expressive Study-tab visual for one skeleton sentence.
  *
  * Returns an [imageId] immediately; poll [StudyPlaygroundImageResponse] until
  * the image is ready, then persist [StudySentence.imageUrl] on the session.
+ * When [characters] include portrait URLs, the generator uses them as named
+ * identity references so panels feel like one continuous story.
  */
 @Serializable
 data class StudySentenceImageRequest(
     val sentenceText: String,
+    /** Full source text for story continuity across panels. */
+    val fullText: String = "",
+    /** Zero-based index of this sentence in the session. */
+    val sentenceIndex: Int = 0,
+    /** Total sentence count in the session (for "panel N of M" guidance). */
+    val sentenceCount: Int = 1,
+    /** Named cast with optional reference portrait URLs. */
+    val characters: List<StudyStoryCharacter> = emptyList(),
 ) {
     fun normalizedOrNull(): StudySentenceImageRequest? {
         val normalized = sentenceText.trim().takeIf { it.isNotEmpty() } ?: return null
-        return copy(sentenceText = normalized)
+        val cast = characters.mapNotNull { character ->
+            val name = character.name.trim().takeIf { it.isNotEmpty() } ?: return@mapNotNull null
+            val role = character.role.trim().ifEmpty { "main" }
+            val description = character.description.trim()
+            StudyStoryCharacter(
+                id = character.id.trim().ifEmpty { role },
+                name = name,
+                role = role,
+                description = description,
+                imageId = character.imageId?.trim()?.takeIf { it.isNotEmpty() },
+                imageUrl = character.imageUrl?.trim()?.takeIf { it.isNotEmpty() },
+            )
+        }
+        return copy(
+            sentenceText = normalized,
+            fullText = fullText.trim(),
+            sentenceIndex = sentenceIndex.coerceAtLeast(0),
+            sentenceCount = sentenceCount.coerceAtLeast(1),
+            characters = cast,
+        )
     }
 }
 

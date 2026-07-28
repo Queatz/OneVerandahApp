@@ -32,6 +32,8 @@ import apap.oneverandah.api.StudySentence
 import apap.oneverandah.api.StudySentenceImageRequest
 import apap.oneverandah.api.StudySessionRequest
 import apap.oneverandah.api.StudySessionResponse
+import apap.oneverandah.api.StudyStoryCharacter
+import apap.oneverandah.api.StudyStoryCharactersRequest
 import apap.oneverandah.api.StudyToken
 import apap.oneverandah.api.StudyTokenStatus
 import apap.oneverandah.api.StudyWordPlaygroundRequest
@@ -103,6 +105,8 @@ fun ChatScreen(
     val studyImageInFlight = remember { mutableStateMapOf<String, Boolean>() }
     // "$messageId#$sentenceIndex" -> generation failed (no URL)
     val studyImageFailed = remember { mutableStateMapOf<String, Boolean>() }
+    // messageId -> story cast design / portrait polling in flight
+    val studyCharactersInFlight = remember { mutableStateMapOf<String, Boolean>() }
     // sourceMessageId (or session id fallback) -> persisted study row id
     val studyPersistedBySourceId = remember { mutableStateMapOf<String, String>() }
     var studySessionsPanelOpen by remember { mutableStateOf(false) }
@@ -355,6 +359,58 @@ fun ChatScreen(
         val prefix = "$messageId#"
         studyImageInFlight.keys.filter { it.startsWith(prefix) }.forEach { studyImageInFlight.remove(it) }
         studyImageFailed.keys.filter { it.startsWith(prefix) }.forEach { studyImageFailed.remove(it) }
+        studyCharactersInFlight.remove(messageId)
+    }
+
+    fun applyStudyCharacters(messageId: String, characters: List<StudyStoryCharacter>) {
+        val current = studyCache[messageId] ?: return
+        if (characters.isEmpty()) return
+        // Merge by id so completed portrait URLs are never clobbered by older snapshots.
+        val byId = linkedMapOf<String, StudyStoryCharacter>()
+        current.characters.forEach { byId[it.id] = it }
+        characters.forEach { incoming ->
+            val existing = byId[incoming.id]
+            if (existing == null) {
+                byId[incoming.id] = incoming
+                return@forEach
+            }
+            byId[incoming.id] = existing.copy(
+                name = incoming.name.ifBlank { existing.name },
+                role = incoming.role.ifBlank { existing.role },
+                description = incoming.description.ifBlank { existing.description },
+                imageId = incoming.imageId?.takeIf { it.isNotBlank() } ?: existing.imageId,
+                // Never drop a completed portrait URL.
+                imageUrl = existing.imageUrl?.takeIf { it.isNotBlank() }
+                    ?: incoming.imageUrl?.takeIf { it.isNotBlank() },
+            )
+        }
+        val merged = byId.values.toList()
+        if (merged == current.characters) return
+        val updated = current.copy(characters = merged)
+        studyCache[messageId] = updated
+        if (studyTarget?.id == messageId) {
+            studySession = updated
+        }
+        persistStudySession(messageId, updated)
+    }
+
+    fun applyStudyCharacterPortrait(messageId: String, characterId: String, imageId: String?, imageUrl: String?) {
+        val current = studyCache[messageId] ?: return
+        val index = current.characters.indexOfFirst { it.id == characterId }
+        if (index < 0) return
+        val character = current.characters[index]
+        if (!character.imageUrl.isNullOrBlank()) return
+        val nextId = imageId?.trim()?.takeIf { it.isNotEmpty() } ?: character.imageId
+        val nextUrl = imageUrl?.trim()?.takeIf { it.isNotEmpty() }
+        if (character.imageId == nextId && character.imageUrl == nextUrl) return
+        val updatedCharacters = current.characters.toMutableList()
+        updatedCharacters[index] = character.copy(imageId = nextId, imageUrl = nextUrl)
+        val updated = current.copy(characters = updatedCharacters)
+        studyCache[messageId] = updated
+        if (studyTarget?.id == messageId) {
+            studySession = updated
+        }
+        persistStudySession(messageId, updated)
     }
 
     fun applyStudySentenceImage(
@@ -379,6 +435,101 @@ fun ChatScreen(
             studySession = updated
         }
         persistStudySession(messageId, updated)
+    }
+
+    /**
+     * Ensures the study session has a designed cast and waits for portrait URLs
+     * (or portrait failure) so sentence panels can use named reference images.
+     * Returns the latest cast from the cache (may be empty if design failed).
+     */
+    suspend fun ensureStudyCharacters(messageId: String): List<StudyStoryCharacter> {
+        val session = studyCache[messageId] ?: return emptyList()
+        val existing = session.characters
+        val allReady = existing.isNotEmpty() && existing.all { !it.imageUrl.isNullOrBlank() }
+        if (allReady) return existing
+
+        // Another coroutine may already be designing/polling this cast.
+        if (studyCharactersInFlight[messageId] == true) {
+            var wait = 0
+            while (studyCharactersInFlight[messageId] == true && wait < STUDY_IMAGE_POLL_MAX_ATTEMPTS) {
+                delay(STUDY_IMAGE_POLL_DELAY_MS)
+                wait += 1
+                val latest = studyCache[messageId]?.characters.orEmpty()
+                if (latest.isNotEmpty() && latest.all { !it.imageUrl.isNullOrBlank() }) return latest
+            }
+            return studyCache[messageId]?.characters.orEmpty()
+        }
+
+        studyCharactersInFlight[messageId] = true
+        try {
+            var cast = studyCache[messageId]?.characters.orEmpty()
+            if (cast.isEmpty()) {
+                val designed = runCatching {
+                    ChatApi.studyStoryCharacters(
+                        StudyStoryCharactersRequest(
+                            text = session.text,
+                            textLanguageTag = session.textLanguageTag,
+                        ),
+                    )
+                }.getOrNull()?.characters.orEmpty()
+                if (designed.isEmpty()) return emptyList()
+                applyStudyCharacters(messageId, designed)
+                cast = studyCache[messageId]?.characters.orEmpty()
+            }
+
+            // Poll each portrait that still lacks a URL.
+            cast.forEach { character ->
+                if (!character.imageUrl.isNullOrBlank()) return@forEach
+                var imageId = character.imageId?.trim().orEmpty()
+                if (imageId.isEmpty()) return@forEach
+                val existingJob = runCatching { ChatApi.studyImage(imageId) }.getOrNull()
+                when {
+                    existingJob == null -> {
+                        // Job lost — leave without URL; sentence scenes still run with description-only cast.
+                        return@forEach
+                    }
+                    existingJob.status == StudyPlaygroundImageStatus.COMPLETED &&
+                        !existingJob.imageUrl.isNullOrBlank() -> {
+                        applyStudyCharacterPortrait(messageId, character.id, imageId, existingJob.imageUrl)
+                        return@forEach
+                    }
+                    existingJob.status == StudyPlaygroundImageStatus.FAILED -> return@forEach
+                    else -> Unit
+                }
+                var attempts = 0
+                while (attempts < STUDY_IMAGE_POLL_MAX_ATTEMPTS) {
+                    val latestUrl = studyCache[messageId]?.characters
+                        ?.firstOrNull { it.id == character.id }
+                        ?.imageUrl
+                    if (!latestUrl.isNullOrBlank()) break
+                    val image = runCatching { ChatApi.studyImage(imageId) }.getOrNull()
+                    if (image != null) {
+                        when (image.status) {
+                            StudyPlaygroundImageStatus.COMPLETED -> {
+                                if (!image.imageUrl.isNullOrBlank()) {
+                                    applyStudyCharacterPortrait(
+                                        messageId,
+                                        character.id,
+                                        imageId,
+                                        image.imageUrl,
+                                    )
+                                }
+                                break
+                            }
+                            StudyPlaygroundImageStatus.FAILED -> break
+                            StudyPlaygroundImageStatus.PENDING,
+                            StudyPlaygroundImageStatus.GENERATING,
+                            -> Unit
+                        }
+                    }
+                    attempts += 1
+                    delay(STUDY_IMAGE_POLL_DELAY_MS)
+                }
+            }
+            return studyCache[messageId]?.characters.orEmpty()
+        } finally {
+            studyCharactersInFlight.remove(messageId)
+        }
     }
 
     suspend fun ensureStudySentenceImage(messageId: String, sentenceIndex: Int) {
@@ -414,8 +565,17 @@ fun ChatScreen(
                 }
             }
             if (imageId.isEmpty()) {
+                val latestSession = studyCache[messageId] ?: session
                 val started = runCatching {
-                    ChatApi.studySentenceImage(StudySentenceImageRequest(sentenceText = sentence.text))
+                    ChatApi.studySentenceImage(
+                        StudySentenceImageRequest(
+                            sentenceText = sentence.text,
+                            fullText = latestSession.text,
+                            sentenceIndex = sentenceIndex,
+                            sentenceCount = latestSession.sentences.size,
+                            characters = latestSession.characters,
+                        ),
+                    )
                 }.getOrNull()
                 if (started == null) {
                     studyImageFailed[key] = true
@@ -467,9 +627,18 @@ fun ChatScreen(
         }
         if (pendingIndices.isEmpty()) return
         scope.launch {
+            // Design + portrait references first so sentence panels share one cast.
+            ensureStudyCharacters(messageId)
+            val latest = studyCache[messageId] ?: return@launch
+            val indices = latest.sentences.indices.filter { index ->
+                val sentence = latest.sentences[index]
+                sentence.imageUrl.isNullOrBlank() &&
+                    studyImageFailed[studyImageKey(messageId, index)] != true
+            }
+            if (indices.isEmpty()) return@launch
             val semaphore = Semaphore(permits = STUDY_IMAGE_PARALLELISM)
             coroutineScope {
-                pendingIndices.map { index ->
+                indices.map { index ->
                     async {
                         semaphore.withPermit {
                             ensureStudySentenceImage(messageId, index)

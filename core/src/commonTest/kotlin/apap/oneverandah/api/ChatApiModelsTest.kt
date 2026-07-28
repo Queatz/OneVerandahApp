@@ -165,6 +165,16 @@ class ChatApiModelsTest {
                     imageUrl = "https://cdn.example/study.png",
                 ),
             ),
+            characters = listOf(
+                StudyStoryCharacter(
+                    id = "main",
+                    name = "Lan",
+                    role = "main",
+                    description = "Young woman with long dark hair",
+                    imageId = "char-img-1",
+                    imageUrl = "https://cdn.example/lan.png",
+                ),
+            ),
         )
 
         val decoded = json.decodeFromString<StudySessionResponse>(json.encodeToString(response))
@@ -176,13 +186,40 @@ class ChatApiModelsTest {
         assertEquals(StudyTokenStatus.PENDING, decoded.sentences.single().tokens[2].status)
         assertEquals("img-1", decoded.sentences.single().imageId)
         assertEquals("https://cdn.example/study.png", decoded.sentences.single().imageUrl)
+        assertEquals("Lan", decoded.characters.single().name)
+        assertEquals("https://cdn.example/lan.png", decoded.characters.single().imageUrl)
     }
 
     @Test
     fun `study sentence image request normalizes and rejects blanks`() {
-        val normalized = StudySentenceImageRequest(sentenceText = "  Xin chào.  ").normalizedOrNull()
+        val normalized = StudySentenceImageRequest(
+            sentenceText = "  Xin chào.  ",
+            fullText = "  Xin chào.  ",
+            sentenceIndex = 0,
+            sentenceCount = 1,
+            characters = listOf(
+                StudyStoryCharacter(
+                    id = " main ",
+                    name = " Lan ",
+                    role = " main ",
+                    description = " young ",
+                    imageUrl = " https://cdn.example/lan.png ",
+                ),
+            ),
+        ).normalizedOrNull()
         assertEquals("Xin chào.", normalized?.sentenceText)
+        assertEquals("Xin chào.", normalized?.fullText)
+        assertEquals("Lan", normalized?.characters?.single()?.name)
+        assertEquals("https://cdn.example/lan.png", normalized?.characters?.single()?.imageUrl)
         assertNull(StudySentenceImageRequest(sentenceText = "   ").normalizedOrNull())
+    }
+
+    @Test
+    fun `study story characters request normalizes and rejects blanks`() {
+        val normalized = StudyStoryCharactersRequest(text = "  Hello.  ", textLanguageTag = "en-US").normalizedOrNull()
+        assertEquals("Hello.", normalized?.text)
+        assertEquals("en", normalized?.textLanguageTag)
+        assertNull(StudyStoryCharactersRequest(text = "   ").normalizedOrNull())
     }
 
     @Test

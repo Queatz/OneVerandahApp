@@ -305,6 +305,25 @@ class DashScopeStudyAiClient(
         return QwenStudyPlaygroundParser.parse(content)
     }
 
+    override suspend fun designStoryCharacters(
+        request: StudyCharactersGenerationRequest,
+    ): List<StudyCharacterDesign> {
+        val userContent = buildString {
+            if (request.textLanguageTag.isNotBlank()) {
+                appendLine("Source language tag: ${request.textLanguageTag}")
+                appendLine()
+            }
+            appendLine("Full source text:")
+            append(request.text)
+        }
+        val content = complete(
+            systemPrompt = storyCharactersSystemPrompt(),
+            userContent = userContent,
+            label = "study story characters",
+        )
+        return QwenStudyCharactersParser.parse(content)
+    }
+
     private suspend fun complete(systemPrompt: String, userContent: String, label: String): String {
         check(config.enabled) { "Qwen study requires QWEN_API_KEY" }
         val body = buildJsonObject {
@@ -393,4 +412,53 @@ class DashScopeStudyAiClient(
         - Keep summary to 1–2 short sentences. Explain why the usage is natural or not, and when false give a brief tip or corrected feel (without a long lecture).
         - Do not wrap the JSON in markdown. Do not add extra keys.
     """.trimIndent()
+
+    private fun storyCharactersSystemPrompt(): String = """
+        You design a tiny cast for an illustrated short story that accompanies language-study text.
+        Always return one JSON object and no markdown. The schema is exactly:
+        {"characters":[{"id":"main","name":"ShortGivenName","role":"main","description":"visual appearance for illustration continuity"},{"id":"secondary","name":"OtherName","role":"secondary","description":"..."}]}
+        Rules:
+        - Always include exactly one character with role "main" and id "main".
+        - Include a secondary character (role "secondary", id "secondary") only when the text clearly involves another person, dialogue partner, family member, friend, or counterpart. Otherwise return only the main character.
+        - Names must be short given names that fit the culture/setting of the source text (e.g. Vietnamese names for Vietnamese text, Russian names for Russian text).
+        - "description" must be a concrete visual appearance in English: age range, gender presentation, ethnicity/region cues, hair, face, body type, and signature clothing/colors. Keep it under 40 words. No personality essays.
+        - Prefer everyday, warm, approachable people suitable for a language-learning storybook — not celebrities or copyrighted characters.
+        - Do not invent a huge cast. Maximum two characters.
+        - Do not wrap the JSON in markdown. Do not add extra keys.
+    """.trimIndent()
+}
+
+/**
+ * Lenient parser for story-cast design JSON.
+ */
+object QwenStudyCharactersParser {
+    private val json = Json { ignoreUnknownKeys = true; explicitNulls = false; isLenient = true }
+
+    fun parse(content: String): List<StudyCharacterDesign> {
+        val root = parseRootObject(content)
+        val array = root["characters"] as? JsonArray
+            ?: throw IllegalArgumentException("Qwen study characters missing characters array")
+        val designs = array.mapNotNull { element ->
+            val obj = element as? JsonObject ?: return@mapNotNull null
+            val name = obj.string("name")?.trim()?.takeIf { it.isNotEmpty() } ?: return@mapNotNull null
+            val roleRaw = obj.string("role")?.trim().orEmpty()
+            val role = when {
+                roleRaw.equals("secondary", ignoreCase = true) -> "secondary"
+                else -> "main"
+            }
+            val id = obj.string("id")?.trim()?.takeIf { it.isNotEmpty() } ?: role
+            val description = obj.string("description")?.trim().orEmpty()
+            StudyCharacterDesign(id = id, name = name, role = role, description = description)
+        }
+        require(designs.isNotEmpty()) { "Qwen study characters must include at least one character" }
+        return designs
+    }
+
+    private fun parseRootObject(content: String): JsonObject {
+        val normalized = stripJsonFences(content)
+        val element = runCatching { json.parseToJsonElement(normalized) }
+            .getOrElse { throw IllegalArgumentException("Qwen study characters is not valid JSON", it) }
+        return element as? JsonObject
+            ?: throw IllegalArgumentException("Qwen study characters root must be a JSON object")
+    }
 }

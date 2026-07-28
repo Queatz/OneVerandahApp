@@ -137,6 +137,20 @@ object ChatApi {
         return json.decodeFromString(StudyPlaygroundImageResponse.serializer(), text)
     }
 
+    /**
+     * Design main/secondary story characters and start reference-portrait jobs.
+     * Persist the returned cast on the study session; poll each imageId via [studyImage].
+     */
+    suspend fun studyStoryCharacters(request: StudyStoryCharactersRequest): StudyStoryCharactersResponse {
+        val response = client.post(chatApiUrl("/study/characters")) {
+            contentType(ContentType.Application.Json)
+            setBody(json.encodeToString(StudyStoryCharactersRequest.serializer(), request))
+        }
+        val text = response.bodyAsText()
+        if (!response.status.isSuccess()) throw ChatApiException(errorMessage(text, response.status.value))
+        return json.decodeFromString(StudyStoryCharactersResponse.serializer(), text)
+    }
+
     /** Start async expressive visual for one Study-tab sentence. */
     suspend fun studySentenceImage(request: StudySentenceImageRequest): StudySentenceImageResponse {
         val response = client.post(chatApiUrl("/study/sentence-image")) {
@@ -148,7 +162,7 @@ object ChatApi {
         return json.decodeFromString(StudySentenceImageResponse.serializer(), text)
     }
 
-    /** Poll async study image status (playground comics and sentence visuals share this store). */
+    /** Poll async study image status (playground comics, portraits, and sentence visuals). */
     suspend fun studyImage(imageId: String): StudyPlaygroundImageResponse = studyPlaygroundImage(imageId)
 
     suspend fun listStudySessions(): SavedStudySessionsResponse {

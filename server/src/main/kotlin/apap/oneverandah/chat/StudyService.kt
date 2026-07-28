@@ -10,6 +10,9 @@ import apap.oneverandah.api.StudySentenceImageRequest
 import apap.oneverandah.api.StudySentenceImageResponse
 import apap.oneverandah.api.StudySessionRequest
 import apap.oneverandah.api.StudySessionResponse
+import apap.oneverandah.api.StudyStoryCharacter
+import apap.oneverandah.api.StudyStoryCharactersRequest
+import apap.oneverandah.api.StudyStoryCharactersResponse
 import apap.oneverandah.api.StudyToken
 import apap.oneverandah.api.StudyTokenStatus
 import apap.oneverandah.api.StudyWordPlaygroundRequest
@@ -50,15 +53,32 @@ data class StudyWordPlaygroundJudgment(
     val summary: String,
 )
 
-/** Generates and stores a comic-style playground image; returns a public URL. */
+data class StudyCharactersGenerationRequest(
+    val text: String,
+    val textLanguageTag: String,
+)
+
+/** Designed cast member before portrait jobs are attached. */
+data class StudyCharacterDesign(
+    val id: String,
+    val name: String,
+    val role: String,
+    val description: String,
+)
+
+/**
+ * Generates and stores a study image; returns a public URL.
+ * [referenceImageUrls] are optional character (or other) identity references for R2I.
+ */
 fun interface StudyPlaygroundImageGenerator {
-    suspend fun generate(prompt: String): String
+    suspend fun generate(prompt: String, referenceImageUrls: List<String>): String
 }
 
 interface StudyAiClient {
     suspend fun generateSkeleton(request: StudyGenerationRequest): StudySessionResponse
     suspend fun dissectSentence(request: StudyDissectGenerationRequest): StudySentence
     suspend fun evaluateWordUsage(request: StudyWordPlaygroundGenerationRequest): StudyWordPlaygroundJudgment
+    suspend fun designStoryCharacters(request: StudyCharactersGenerationRequest): List<StudyCharacterDesign>
 }
 
 class StudyService(
@@ -68,7 +88,7 @@ class StudyService(
     private val idGenerator: () -> String = { UUID.randomUUID().toString() },
 ) {
     private val log = LoggerFactory.getLogger(StudyService::class.java)
-    /** Shared async job store for playground comics and Study-tab sentence visuals. */
+    /** Shared async job store for playground comics, character portraits, and sentence visuals. */
     private val studyImages = ConcurrentHashMap<String, StudyPlaygroundImageResponse>()
 
     /** Fast skeleton: language + sentences + tokens (no full dissections). */
@@ -126,7 +146,7 @@ class StudyService(
             if (judgment.natural) {
                 "Natural usage."
             } else {
-                "This usage does not sound natural."
+                "This usage does not sound natural yet."
             }
         }
         val imageId = idGenerator().trim().ifBlank { UUID.randomUUID().toString() }
@@ -144,23 +164,72 @@ class StudyService(
     }
 
     /**
+     * Designs a main (and optional secondary) character for the full study text,
+     * starts async reference-portrait jobs, and returns the cast for session persistence.
+     */
+    suspend fun storyCharacters(rawRequest: StudyStoryCharactersRequest): StudyStoryCharactersResponse {
+        val request = requireNotNull(rawRequest.normalizedOrNull()) {
+            "Study story characters require non-blank text"
+        }
+        val designed = runCatching {
+            aiClient.designStoryCharacters(
+                StudyCharactersGenerationRequest(
+                    text = request.text,
+                    textLanguageTag = request.textLanguageTag,
+                ),
+            )
+        }.getOrElse { error ->
+            log.warn("Study character design failed: {}", error.message)
+            emptyList()
+        }
+        val cast = normalizeCharacterDesigns(designed).ifEmpty { defaultStoryCharacters(request.text) }
+        val withJobs = cast.map { character ->
+            val imageId = idGenerator().trim().ifBlank { UUID.randomUUID().toString() }
+            enqueueStudyImage(
+                imageId = imageId,
+                prompt = characterPortraitPrompt(character),
+                referenceImageUrls = emptyList(),
+                logLabel = "character portrait (${character.name})",
+            )
+            StudyStoryCharacter(
+                id = character.id,
+                name = character.name,
+                role = character.role,
+                description = character.description,
+                imageId = imageId,
+                imageUrl = null,
+            )
+        }
+        return StudyStoryCharactersResponse(characters = withJobs)
+    }
+
+    /**
      * Starts an async expressive visual for one study sentence.
      * Poll [playgroundImage] (shared job store) with the returned image id.
+     * Pass character portrait URLs on [StudySentenceImageRequest.characters] for story continuity.
      */
     suspend fun sentenceImage(rawRequest: StudySentenceImageRequest): StudySentenceImageResponse {
         val request = requireNotNull(rawRequest.normalizedOrNull()) {
             "Study sentence image requires non-blank sentence text"
         }
         val imageId = idGenerator().trim().ifBlank { UUID.randomUUID().toString() }
+        val referenceUrls = request.characters.mapNotNull { it.imageUrl?.trim()?.takeIf(String::isNotEmpty) }
         enqueueStudyImage(
             imageId = imageId,
-            prompt = sentenceVisualPrompt(request.sentenceText),
+            prompt = sentenceVisualPrompt(
+                sentence = request.sentenceText,
+                fullText = request.fullText,
+                sentenceIndex = request.sentenceIndex,
+                sentenceCount = request.sentenceCount,
+                characters = request.characters,
+            ),
+            referenceImageUrls = referenceUrls,
             logLabel = "sentence visual",
         )
         return StudySentenceImageResponse(imageId = imageId)
     }
 
-    /** Current comic/sentence-image job status (shared store for playground + Study tab). */
+    /** Current comic/sentence/character-image job status (shared store). */
     fun playgroundImage(imageId: String): StudyPlaygroundImageResponse? {
         val key = imageId.trim()
         if (key.isEmpty()) return null
@@ -176,6 +245,7 @@ class StudyService(
         enqueueStudyImage(
             imageId = imageId,
             prompt = playgroundComicPrompt(word = word, sentence = sentence, natural = natural),
+            referenceImageUrls = emptyList(),
             logLabel = "playground comic",
         )
     }
@@ -183,6 +253,7 @@ class StudyService(
     private fun enqueueStudyImage(
         imageId: String,
         prompt: String,
+        referenceImageUrls: List<String>,
         logLabel: String,
     ) {
         val generator = imageGenerator
@@ -202,7 +273,7 @@ class StudyService(
                 imageId = imageId,
                 status = StudyPlaygroundImageStatus.GENERATING,
             )
-            runCatching { generator.generate(prompt) }
+            runCatching { generator.generate(prompt, referenceImageUrls) }
                 .onSuccess { url ->
                     studyImages[imageId] = StudyPlaygroundImageResponse(
                         imageId = imageId,
@@ -242,15 +313,165 @@ internal fun playgroundComicPrompt(word: String, sentence: String, natural: Bool
     }
 }
 
-/** Prompt for the Study-tab expressive visual attached to each source sentence. */
-internal fun sentenceVisualPrompt(sentence: String): String = buildString {
-    append("Expressive single-panel illustration that vividly captures the meaning of this sentence for language learners. ")
-    append("Sentence: \"$sentence\". ")
+/** Shared art direction so portraits and sentence panels stay in one story world. */
+internal const val STUDY_STORY_ART_STYLE: String =
+    "consistent soft ink-wash storybook illustration with bold clean outlines, " +
+        "warm natural lighting, expressive faces and body language, cohesive muted-then-warm color palette, " +
+        "gentle everyday realism with a touch of whimsy, cinematic framing"
+
+/** Character reference portrait used as a named identity anchor for later panels. */
+internal fun characterPortraitPrompt(character: StudyCharacterDesign): String = buildString {
+    val roleLabel = when (character.role.lowercase()) {
+        "secondary" -> "secondary supporting character"
+        else -> "main protagonist"
+    }
+    append("Character reference portrait for a continuous illustrated short story. ")
+    append("This image is ONLY a clean identity reference of one person. ")
+    append("Name: ${character.name}. Role: $roleLabel. ")
+    append("Appearance: ${character.description}. ")
+    append("Show a clear front three-quarter view, head-to-waist or full body, plain soft neutral background, ")
+    append("face and clothing highly readable, natural standing or gentle pose, no props that hide the face. ")
+    append("Art style: $STUDY_STORY_ART_STYLE. ")
     append(
-        "Warm natural everyday scene (Vietnam or Russia, whichever fits best), clear character emotion, " +
-            "storytelling vibe, soft ink wash with bold outlines, dynamic composition, " +
-            "no captions, no letters, no speech bubbles, no border, no watermark, high quality square image.",
+        "Absolutely no text, no letters, no numbers, no captions, no name labels, no speech bubbles, " +
+            "no watermark, no border, no collage, high quality square image.",
     )
+}
+
+/** Prompt for the Study-tab expressive visual attached to each source sentence. */
+internal fun sentenceVisualPrompt(
+    sentence: String,
+    fullText: String = "",
+    sentenceIndex: Int = 0,
+    sentenceCount: Int = 1,
+    characters: List<StudyStoryCharacter> = emptyList(),
+): String = buildString {
+    val panelNumber = sentenceIndex.coerceAtLeast(0) + 1
+    val totalPanels = sentenceCount.coerceAtLeast(1)
+    append("Expressive single-panel story illustration for language learners. ")
+    append("This is panel $panelNumber of $totalPanels in one continuous short story — keep the same people, wardrobe, and art style as the rest of the story. ")
+    if (fullText.isNotBlank()) {
+        append("Full story text for continuity: \"$fullText\". ")
+    }
+    append("This panel's beat / sentence to depict: \"$sentence\". ")
+
+    // Only characters with portrait URLs are attached as reference images (same order).
+    val refCharacters = characters.filter { !it.imageUrl.isNullOrBlank() }
+    if (refCharacters.isNotEmpty()) {
+        append("Named character reference images are attached in order. Match their identity exactly: ")
+        refCharacters.forEachIndexed { index, character ->
+            val roleLabel = if (character.role.equals("secondary", ignoreCase = true)) "secondary" else "main"
+            append("Image ${index + 1} is $roleLabel character \"${character.name}\"")
+            if (character.description.isNotBlank()) {
+                append(" (${character.description})")
+            }
+            append(". ")
+        }
+        append("Keep face, age, hair, skin, body type, and clothing consistent with those references. ")
+    } else if (characters.isNotEmpty()) {
+        append("Feature these named characters consistently: ")
+        characters.forEach { character ->
+            val roleLabel = if (character.role.equals("secondary", ignoreCase = true)) "secondary" else "main"
+            append("$roleLabel character \"${character.name}\"")
+            if (character.description.isNotBlank()) {
+                append(" — ${character.description}")
+            }
+            append(". ")
+        }
+    } else {
+        append("Invent one clear main character and keep them emotionally readable. ")
+    }
+
+    append("Show a vivid story moment that captures the meaning of this sentence with clear emotion and natural body language. ")
+    append("Setting: warm everyday life in Vietnam or Russia, whichever fits the text best. ")
+    append("Art style: $STUDY_STORY_ART_STYLE. ")
+    append(
+        "Absolutely no text, no letters, no numbers, no captions, no signs with writing, no logos, " +
+            "no speech bubbles, no border, no watermark, high quality square image.",
+    )
+}
+
+/** Backward-compatible overload used by older call sites/tests. */
+internal fun sentenceVisualPrompt(sentence: String): String =
+    sentenceVisualPrompt(
+        sentence = sentence,
+        fullText = "",
+        sentenceIndex = 0,
+        sentenceCount = 1,
+        characters = emptyList(),
+    )
+
+internal fun normalizeCharacterDesigns(designs: List<StudyCharacterDesign>): List<StudyCharacterDesign> {
+    val cleaned = designs.mapNotNull { design ->
+        val name = design.name.trim().takeIf { it.isNotEmpty() } ?: return@mapNotNull null
+        val role = when {
+            design.role.equals("secondary", ignoreCase = true) -> "secondary"
+            else -> "main"
+        }
+        val description = design.description.trim().ifEmpty {
+            "Expressive everyday person with distinctive hair, clothing, and face"
+        }
+        StudyCharacterDesign(id = role, name = name, role = role, description = description)
+    }
+    if (cleaned.isEmpty()) return emptyList()
+
+    val main = (cleaned.firstOrNull { it.role == "main" } ?: cleaned.first())
+        .copy(id = "main", role = "main")
+    val secondary = cleaned
+        .firstOrNull { it.role == "secondary" && !it.name.equals(main.name, ignoreCase = true) }
+        ?.copy(id = "secondary", role = "secondary")
+        ?: cleaned.firstOrNull {
+            it.role != "main" && !it.name.equals(main.name, ignoreCase = true) && it !== cleaned.firstOrNull { c -> c.role == "main" }
+        }?.copy(id = "secondary", role = "secondary")
+        ?: cleaned.drop(1).firstOrNull { !it.name.equals(main.name, ignoreCase = true) }
+            ?.copy(id = "secondary", role = "secondary")
+
+    return listOfNotNull(main, secondary)
+}
+
+internal fun defaultStoryCharacters(sourceText: String): List<StudyCharacterDesign> {
+    val looksVietnamese = sourceText.any { it in '\u00C0'..'\u1EF9' } ||
+        sourceText.contains("Tôi", ignoreCase = true) ||
+        sourceText.contains("bạn", ignoreCase = true)
+    val looksRussian = sourceText.any { it in '\u0400'..'\u04FF' }
+    return when {
+        looksVietnamese -> listOf(
+            StudyCharacterDesign(
+                id = "main",
+                name = "Lan",
+                role = "main",
+                description = "Young Vietnamese woman in her mid-20s, warm brown eyes, long dark hair loosely tied, simple linen blouse and soft earth-tone trousers, kind expressive face",
+            ),
+            StudyCharacterDesign(
+                id = "secondary",
+                name = "Minh",
+                role = "secondary",
+                description = "Young Vietnamese man around 30, short neat black hair, friendly open face, light shirt and dark trousers, slightly taller companion",
+            ),
+        )
+        looksRussian -> listOf(
+            StudyCharacterDesign(
+                id = "main",
+                name = "Anya",
+                role = "main",
+                description = "Young Russian woman in her mid-20s, light brown hair in a soft braid, fair freckled skin, knit sweater and simple coat, bright curious eyes",
+            ),
+            StudyCharacterDesign(
+                id = "secondary",
+                name = "Ivan",
+                role = "secondary",
+                description = "Young Russian man around 30, short sandy hair, gentle smile, wool scarf and practical jacket, calm supportive presence",
+            ),
+        )
+        else -> listOf(
+            StudyCharacterDesign(
+                id = "main",
+                name = "Alex",
+                role = "main",
+                description = "Approachable young adult with medium skin tone, short wavy dark hair, cozy sweater and jeans, open expressive face that reads clearly in every panel",
+            ),
+        )
+    }
 }
 
 internal fun StudySessionResponse.normalizedSkeleton(sourceText: String): StudySessionResponse {
@@ -274,10 +495,22 @@ internal fun StudySessionResponse.normalizedSkeleton(sourceText: String): StudyS
         )
     }
     require(sentences.isNotEmpty()) { "Study session must contain at least one sentence" }
+    val cast = characters.mapNotNull { character ->
+        val name = character.name.trim().takeIf { it.isNotEmpty() } ?: return@mapNotNull null
+        StudyStoryCharacter(
+            id = character.id.trim().ifEmpty { character.role.trim().ifEmpty { "main" } },
+            name = name,
+            role = character.role.trim().ifEmpty { "main" },
+            description = character.description.trim(),
+            imageId = character.imageId?.trim()?.takeIf { it.isNotEmpty() },
+            imageUrl = character.imageUrl?.trim()?.takeIf { it.isNotEmpty() },
+        )
+    }
     return StudySessionResponse(
         text = sourceText,
         textLanguageTag = languageTag,
         sentences = sentences,
+        characters = cast,
     )
 }
 

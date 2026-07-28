@@ -5,6 +5,8 @@ import apap.oneverandah.api.StudyExampleSentence
 import apap.oneverandah.api.StudyPlaygroundImageStatus
 import apap.oneverandah.api.StudySentence
 import apap.oneverandah.api.StudySentenceImageRequest
+import apap.oneverandah.api.StudyStoryCharacter
+import apap.oneverandah.api.StudyStoryCharactersRequest
 import apap.oneverandah.api.StudySessionRequest
 import apap.oneverandah.api.StudySessionResponse
 import apap.oneverandah.api.StudyToken
@@ -356,7 +358,7 @@ class StudyServiceTest {
         )
         val service = StudyService(
             aiClient = ai,
-            imageGenerator = StudyPlaygroundImageGenerator { "https://cdn.example/comic.png" },
+            imageGenerator = StudyPlaygroundImageGenerator { _, _ -> "https://cdn.example/comic.png" },
             idGenerator = { "image-1" },
         )
 
@@ -459,7 +461,7 @@ class StudyServiceTest {
     fun `sentence image starts async expressive visual`() = runBlocking {
         val service = StudyService(
             aiClient = FakeStudyAiClient(),
-            imageGenerator = StudyPlaygroundImageGenerator { "https://cdn.example/sentence.png" },
+            imageGenerator = StudyPlaygroundImageGenerator { _, _ -> "https://cdn.example/sentence.png" },
             idGenerator = { "sentence-image-1" },
         )
 
@@ -499,6 +501,152 @@ class StudyServiceTest {
         assertContains(prompt, "Tôi đang học.")
         assertContains(prompt, "no speech bubbles")
         assertContains(prompt, "language learners")
+        assertContains(prompt, "Absolutely no text")
+    }
+
+    @Test
+    fun `sentence visual prompt names characters and reference images`() {
+        val prompt = sentenceVisualPrompt(
+            sentence = "Lan mỉm cười.",
+            fullText = "Lan mỉm cười. Minh vẫy tay.",
+            sentenceIndex = 0,
+            sentenceCount = 2,
+            characters = listOf(
+                StudyStoryCharacter(
+                    id = "main",
+                    name = "Lan",
+                    role = "main",
+                    description = "young woman, long dark hair",
+                    imageUrl = "https://cdn.example/lan.png",
+                ),
+                StudyStoryCharacter(
+                    id = "secondary",
+                    name = "Minh",
+                    role = "secondary",
+                    description = "young man, short hair",
+                    imageUrl = "https://cdn.example/minh.png",
+                ),
+            ),
+        )
+        assertContains(prompt, "panel 1 of 2")
+        assertContains(prompt, "Image 1 is main character \"Lan\"")
+        assertContains(prompt, "Image 2 is secondary character \"Minh\"")
+        assertContains(prompt, "Lan mỉm cười.")
+        assertContains(prompt, STUDY_STORY_ART_STYLE.take(20))
+    }
+
+    @Test
+    fun `story characters design starts portrait jobs`() = runBlocking {
+        val ids = mutableListOf("char-1", "char-2")
+        val prompts = mutableListOf<String>()
+        val refs = mutableListOf<List<String>>()
+        val service = StudyService(
+            aiClient = FakeStudyAiClient(
+                characters = listOf(
+                    StudyCharacterDesign(
+                        id = "main",
+                        name = "Lan",
+                        role = "main",
+                        description = "Young Vietnamese woman",
+                    ),
+                    StudyCharacterDesign(
+                        id = "secondary",
+                        name = "Minh",
+                        role = "secondary",
+                        description = "Young Vietnamese man",
+                    ),
+                ),
+            ),
+            imageGenerator = StudyPlaygroundImageGenerator { prompt, referenceImageUrls ->
+                prompts += prompt
+                refs += referenceImageUrls
+                "https://cdn.example/portrait.png"
+            },
+            idGenerator = { ids.removeFirst() },
+        )
+
+        val response = service.storyCharacters(
+            StudyStoryCharactersRequest(text = "Lan chào Minh.", textLanguageTag = "vi"),
+        )
+        assertEquals(2, response.characters.size)
+        assertEquals("Lan", response.characters[0].name)
+        assertEquals("main", response.characters[0].role)
+        assertEquals("char-1", response.characters[0].imageId)
+        assertEquals("char-2", response.characters[1].imageId)
+
+        var image = service.playgroundImage("char-1")
+        var attempts = 0
+        while (
+            image!!.status != StudyPlaygroundImageStatus.COMPLETED &&
+            image.status != StudyPlaygroundImageStatus.FAILED &&
+            attempts < 40
+        ) {
+            delay(25)
+            image = service.playgroundImage("char-1")
+            attempts++
+        }
+        assertEquals(StudyPlaygroundImageStatus.COMPLETED, image.status)
+        assertTrue(prompts.any { it.contains("Lan") && it.contains("Character reference portrait") })
+        assertTrue(refs.all { it.isEmpty() })
+    }
+
+    @Test
+    fun `sentence image uses character reference urls`() = runBlocking {
+        val capturedRefs = mutableListOf<List<String>>()
+        val service = StudyService(
+            aiClient = FakeStudyAiClient(),
+            imageGenerator = StudyPlaygroundImageGenerator { _, referenceImageUrls ->
+                capturedRefs += referenceImageUrls
+                "https://cdn.example/scene.png"
+            },
+            idGenerator = { "scene-1" },
+        )
+
+        service.sentenceImage(
+            StudySentenceImageRequest(
+                sentenceText = "Lan mỉm cười.",
+                fullText = "Lan mỉm cười.",
+                sentenceIndex = 0,
+                sentenceCount = 1,
+                characters = listOf(
+                    StudyStoryCharacter(
+                        id = "main",
+                        name = "Lan",
+                        role = "main",
+                        description = "young woman",
+                        imageUrl = "https://cdn.example/lan.png",
+                    ),
+                ),
+            ),
+        )
+
+        var image = service.playgroundImage("scene-1")
+        var attempts = 0
+        while (
+            image!!.status != StudyPlaygroundImageStatus.COMPLETED &&
+            image.status != StudyPlaygroundImageStatus.FAILED &&
+            attempts < 40
+        ) {
+            delay(25)
+            image = service.playgroundImage("scene-1")
+            attempts++
+        }
+        assertEquals(StudyPlaygroundImageStatus.COMPLETED, image.status)
+        assertEquals(listOf("https://cdn.example/lan.png"), capturedRefs.single())
+    }
+
+    @Test
+    fun `normalize character designs keeps one main and optional secondary`() {
+        val normalized = normalizeCharacterDesigns(
+            listOf(
+                StudyCharacterDesign("x", "Lan", "main", "desc1"),
+                StudyCharacterDesign("y", "Minh", "secondary", "desc2"),
+                StudyCharacterDesign("z", "Extra", "main", "desc3"),
+            ),
+        )
+        assertEquals(listOf("main", "secondary"), normalized.map { it.role })
+        assertEquals("Lan", normalized[0].name)
+        assertEquals("Minh", normalized[1].name)
     }
 }
 
@@ -521,10 +669,19 @@ private class FakeStudyAiClient(
         natural = true,
         summary = "Natural.",
     ),
+    private val characters: List<StudyCharacterDesign> = listOf(
+        StudyCharacterDesign(
+            id = "main",
+            name = "Lan",
+            role = "main",
+            description = "Young Vietnamese woman with long dark hair and a linen blouse",
+        ),
+    ),
 ) : StudyAiClient {
     var lastSkeletonRequest: StudyGenerationRequest? = null
     var lastDissectRequest: StudyDissectGenerationRequest? = null
     var lastPlaygroundRequest: StudyWordPlaygroundGenerationRequest? = null
+    var lastCharactersRequest: StudyCharactersGenerationRequest? = null
 
     override suspend fun generateSkeleton(request: StudyGenerationRequest): StudySessionResponse {
         lastSkeletonRequest = request
@@ -541,5 +698,12 @@ private class FakeStudyAiClient(
     ): StudyWordPlaygroundJudgment {
         lastPlaygroundRequest = request
         return playground
+    }
+
+    override suspend fun designStoryCharacters(
+        request: StudyCharactersGenerationRequest,
+    ): List<StudyCharacterDesign> {
+        lastCharactersRequest = request
+        return characters
     }
 }
