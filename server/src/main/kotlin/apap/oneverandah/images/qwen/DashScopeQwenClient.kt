@@ -21,6 +21,8 @@ import io.ktor.http.isSuccess
 import kotlinx.coroutines.async
 import kotlinx.coroutines.coroutineScope
 import kotlinx.coroutines.delay
+import kotlinx.coroutines.sync.Mutex
+import kotlinx.coroutines.sync.withLock
 import kotlinx.serialization.json.Json
 import kotlinx.serialization.json.JsonArray
 import kotlinx.serialization.json.JsonObject
@@ -74,8 +76,12 @@ class DashScopeQwenClient(
      * Cache of public/local reference URLs → DashScope temp `oss://` URLs.
      * Study scenes reuse the same character portraits many times; re-uploading
      * each portrait per panel was a major latency tax.
+     *
+     * Paired with [dashScopeRefLocks] so concurrent scene jobs single-flight the
+     * same portrait upload instead of racing past a get-then-put cache.
      */
     private val dashScopeRefCache = ConcurrentHashMap<String, String>()
+    private val dashScopeRefLocks = ConcurrentHashMap<String, Mutex>()
 
     private val uploadsBaseUrl: String =
         apiRootFromEndpoint(config.endpoint).ifBlank {
@@ -373,6 +379,9 @@ class DashScopeQwenClient(
      * Already-hosted `oss://` temporary URLs are returned as-is. Everything else
      * is loaded (HTTP, data-URL, or local `/images/` file) and re-uploaded into
      * DashScope temporary storage so R2I never sees localhost / private URLs.
+     *
+     * Concurrent callers for the same source URL share one upload (study panels
+     * often start in parallel with the same character portraits).
      */
     internal suspend fun ensureDashScopeAccessible(url: String): String {
         val trimmed = url.trim()
@@ -383,16 +392,24 @@ class DashScopeQwenClient(
             return cached
         }
 
-        val image = loadReferenceImage(trimmed)
-            ?: throw QwenException(
-                "Cannot load reference image for Qwen R2I: $trimmed. " +
-                    "Upload failed or the file is not reachable from the server.",
-            )
-        val fileName = guessFileName(trimmed, image.extension)
-        val ossUrl = uploadToDashScopeTemp(image, fileName)
-        dashScopeRefCache[trimmed] = ossUrl
-        log.info("Re-hosted reference image for DashScope: {} → {}", trimmed, ossUrl)
-        return ossUrl
+        val lock = dashScopeRefLocks.getOrPut(trimmed) { Mutex() }
+        return lock.withLock {
+            dashScopeRefCache[trimmed]?.let { cached ->
+                log.debug("Using cached DashScope reference for {}", trimmed)
+                return@withLock cached
+            }
+
+            val image = loadReferenceImage(trimmed)
+                ?: throw QwenException(
+                    "Cannot load reference image for Qwen R2I: $trimmed. " +
+                        "Upload failed or the file is not reachable from the server.",
+                )
+            val fileName = guessFileName(trimmed, image.extension)
+            val ossUrl = uploadToDashScopeTemp(image, fileName)
+            dashScopeRefCache[trimmed] = ossUrl
+            log.info("Re-hosted reference image for DashScope: {} → {}", trimmed, ossUrl)
+            ossUrl
+        }
     }
 
     private suspend fun loadReferenceImage(url: String): GeneratedImage? {

@@ -13,10 +13,15 @@ import io.ktor.http.headersOf
 import io.ktor.utils.io.ByteChannel
 import io.ktor.utils.io.ByteReadChannel
 import io.ktor.utils.io.readRemaining
+import kotlinx.coroutines.async
+import kotlinx.coroutines.awaitAll
+import kotlinx.coroutines.coroutineScope
+import kotlinx.coroutines.delay
 import kotlinx.coroutines.runBlocking
 import kotlinx.io.readByteArray
 import java.nio.file.Files
 import java.util.Base64
+import java.util.concurrent.atomic.AtomicInteger
 import kotlin.test.Test
 import kotlin.test.assertEquals
 import kotlin.test.assertNotNull
@@ -507,6 +512,118 @@ class DashScopeQwenClientTest {
             assertEquals(1, policyCount, "policy should only run once for cached ref")
             assertEquals(1, uploadCount, "upload should only run once for cached ref")
             assertEquals(2, generateCount)
+            client.close()
+        } finally {
+            root.deleteRecursively()
+        }
+    }
+
+    @Test
+    fun referenceRehost_singleFlightsConcurrentGenerations() = runBlocking {
+        val root = Files.createTempDirectory("ov-qwen-singleflight-").toFile()
+        try {
+            val key = "study/story/main.png"
+            val file = root.resolve(key)
+            file.parentFile.mkdirs()
+            file.writeBytes(byteArrayOf(0x89.toByte(), 0x50, 0x4E, 0x47))
+
+            val policyCount = AtomicInteger(0)
+            val uploadCount = AtomicInteger(0)
+            val generateCount = AtomicInteger(0)
+
+            val engine = MockEngine { request ->
+                val url = request.url.toString()
+                when {
+                    url.contains("/api/v1/uploads") -> {
+                        policyCount.incrementAndGet()
+                        // Stretch the race window so concurrent callers would
+                        // double-upload without single-flight locking.
+                        delay(40)
+                        respond(
+                            content = """
+                                {
+                                  "data": {
+                                    "upload_host": "https://upload.example.test/oss",
+                                    "upload_dir": "dashscope-instant/singleflight-dir",
+                                    "oss_access_key_id": "AKIATEST",
+                                    "signature": "sig",
+                                    "policy": "pol",
+                                    "x_oss_object_acl": "private",
+                                    "x_oss_forbid_overwrite": "true"
+                                  }
+                                }
+                            """.trimIndent(),
+                            status = HttpStatusCode.OK,
+                            headers = headersOf(HttpHeaders.ContentType, "application/json"),
+                        )
+                    }
+                    url.contains("upload.example.test") -> {
+                        uploadCount.incrementAndGet()
+                        delay(40)
+                        respondOk("OK")
+                    }
+                    url.contains("multimodal-generation") -> {
+                        generateCount.incrementAndGet()
+                        respond(
+                            content = """
+                                {
+                                  "output": {
+                                    "choices": [
+                                      {
+                                        "finish_reason": "stop",
+                                        "message": {
+                                          "role": "assistant",
+                                          "content": [
+                                            {
+                                              "image": "https://dashscope-result.example.test/out.png",
+                                              "type": "image"
+                                            }
+                                          ]
+                                        }
+                                      }
+                                    ]
+                                  }
+                                }
+                            """.trimIndent(),
+                            status = HttpStatusCode.OK,
+                            headers = headersOf(HttpHeaders.ContentType, "application/json"),
+                        )
+                    }
+                    url.contains("dashscope-result.example.test") -> {
+                        respond(
+                            content = ByteReadChannel(byteArrayOf(6, 6, 6)),
+                            status = HttpStatusCode.OK,
+                            headers = headersOf(HttpHeaders.ContentType, "image/png"),
+                        )
+                    }
+                    else -> error("Unexpected request: $url")
+                }
+            }
+
+            val client = HttpClient(engine)
+            val qwen = DashScopeQwenClient(
+                config = QwenImageConfig(
+                    endpoint = "https://dashscope.aliyuncs.com/api/v1/services/aigc/text2image/image-synthesis",
+                    apiKey = "test-key",
+                    model = "wan2.2-t2i-flash",
+                    r2iEndpoint = "https://dashscope.aliyuncs.com/api/v1/services/aigc/multimodal-generation/generation",
+                    r2iModel = "wan2.7-image",
+                ),
+                client = client,
+                localImageRoot = root,
+                publicBaseUrl = "https://api.oneverandah.app",
+            )
+            val localUrl = "https://api.oneverandah.app/images/$key"
+            coroutineScope {
+                (1..4).map { i ->
+                    async {
+                        qwen.generate("panel $i", referenceImageUrls = listOf(localUrl))
+                    }
+                }.awaitAll()
+            }
+            assertEquals(1, policyCount.get(), "concurrent panels must single-flight policy")
+            assertEquals(1, uploadCount.get(), "concurrent panels must single-flight rehost upload")
+            assertEquals(4, generateCount.get())
             client.close()
         } finally {
             root.deleteRecursively()
