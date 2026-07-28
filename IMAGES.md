@@ -106,15 +106,22 @@ The backend calls Alibaba Cloud **Model Studio / DashScope** text-to-image
    QWEN_API_KEY=sk-xxxxxxxxxxxxxxxxxxxxxxxx
    # Optional overrides:
    QWEN_MODEL=wan2.7-image
+   # Classic synthesis URL is fine for wanx / *-t2i* models. For wan2.x-image
+   # the client auto-routes text-only generation to multimodal-generation
+   # (otherwise DashScope returns InvalidParameter "url error").
    QWEN_API_ENDPOINT=https://dashscope.aliyuncs.com/api/v1/services/aigc/text2image/image-synthesis
+   QWEN_R2I_ENDPOINT=https://dashscope.aliyuncs.com/api/v1/services/aigc/multimodal-generation/generation
+   QWEN_R2I_MODEL=wan2.7-image
    # For the international endpoint use dashscope-intl.aliyuncs.com
    ```
 
-The client uses the documented **asynchronous** flow: submit a task, poll it to
-completion, then download the produced image. Failures are retried with
-exponential backoff; after `GENERATION_MAX_RETRIES` the image is marked `FAILED`
-and re-queued later by the scheduler. If `QWEN_API_KEY` is empty the offline
-placeholder generator is used instead, so the pipeline always works.
+The client picks the right DashScope contract per model: classic async
+`text2image/image-synthesis` for `wanx` / `*-t2i*`, and multimodal-generation
+(messages payload, sync or async) for `wan2.x-image` text-only and
+reference-grounded stills. Failures are retried with exponential backoff; after
+`GENERATION_MAX_RETRIES` the image is marked `FAILED` and re-queued later by the
+scheduler. If `QWEN_API_KEY` is empty the offline placeholder generator is used
+instead, so the pipeline always works.
 
 ---
 

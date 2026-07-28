@@ -6,11 +6,15 @@ import apap.oneverandah.api.SpeechResponse
 import apap.oneverandah.api.StudyDissectSentenceRequest
 import apap.oneverandah.api.StudyDissectSentenceResponse
 import apap.oneverandah.api.StudyExampleSentence
+import apap.oneverandah.api.StudyPlaygroundImageResponse
+import apap.oneverandah.api.StudyPlaygroundImageStatus
 import apap.oneverandah.api.StudySentence
 import apap.oneverandah.api.StudySessionRequest
 import apap.oneverandah.api.StudySessionResponse
 import apap.oneverandah.api.StudyToken
 import apap.oneverandah.api.StudyTokenStatus
+import apap.oneverandah.api.StudyWordPlaygroundRequest
+import apap.oneverandah.api.StudyWordPlaygroundResponse
 import apap.oneverandah.routes.chatRoutes
 import io.ktor.client.request.get
 import io.ktor.client.request.post
@@ -26,6 +30,7 @@ import io.ktor.server.routing.routing
 import io.ktor.server.testing.testApplication
 import kotlin.test.Test
 import kotlin.test.assertEquals
+import kotlinx.coroutines.delay
 import kotlinx.serialization.json.Json
 
 class ChatRoutesTest {
@@ -116,6 +121,9 @@ class ChatRoutesTest {
 
                 override suspend fun dissectSentence(request: StudyDissectGenerationRequest) =
                     error("not used")
+
+                override suspend fun evaluateWordUsage(request: StudyWordPlaygroundGenerationRequest) =
+                    error("not used")
             },
         )
         application {
@@ -192,6 +200,9 @@ class ChatRoutesTest {
                             }
                         },
                     )
+
+                override suspend fun evaluateWordUsage(request: StudyWordPlaygroundGenerationRequest) =
+                    error("not used")
             },
         )
         application {
@@ -235,6 +246,95 @@ class ChatRoutesTest {
         assertEquals("greeting", dissected.tokens.first().literalMeaning)
         assertEquals(StudyTokenStatus.READY, dissected.tokens.first().status)
         assertEquals(StudyTokenStatus.PLAIN, dissected.tokens.last().status)
+    }
+
+    @Test
+    fun `study playground endpoint validates judges and exposes image status`() = testApplication {
+        val chatService = ChatService(
+            repository = InMemoryChatRepository(),
+            aiClient = object : ChatAiClient {
+                override suspend fun generate(request: ChatGenerationRequest) = GeneratedChatReply("unused")
+            },
+            residentDirectory = ResidentDirectory(emptyList()),
+        )
+        val studyService = StudyService(
+            aiClient = object : StudyAiClient {
+                override suspend fun generateSkeleton(request: StudyGenerationRequest) =
+                    error("not used")
+
+                override suspend fun dissectSentence(request: StudyDissectGenerationRequest) =
+                    error("not used")
+
+                override suspend fun evaluateWordUsage(request: StudyWordPlaygroundGenerationRequest) =
+                    StudyWordPlaygroundJudgment(
+                        natural = true,
+                        summary = "Natural greeting.",
+                    )
+            },
+            imageGenerator = StudyPlaygroundImageGenerator { "https://cdn.example/play.png" },
+            idGenerator = { "play-image-1" },
+        )
+        application {
+            install(ContentNegotiation) { json() }
+            routing {
+                chatRoutes(
+                    chatService = chatService,
+                    speechService = SpeechService(RouteSpeechClient()),
+                    studyService = studyService,
+                )
+            }
+        }
+
+        val invalid = client.post("/api/chat/study/playground") {
+            contentType(ContentType.Application.Json)
+            setBody(
+                """
+                {"word":"","sentence":"Hello","textLanguageTag":"en","languageTag":"en"}
+                """.trimIndent(),
+            )
+        }
+        assertEquals(HttpStatusCode.BadRequest, invalid.status)
+
+        val response = client.post("/api/chat/study/playground") {
+            contentType(ContentType.Application.Json)
+            setBody(
+                json.encodeToString(
+                    StudyWordPlaygroundRequest(
+                        word = "Hello",
+                        sentence = "Hello friend.",
+                        textLanguageTag = "en",
+                        languageTag = "en",
+                    ),
+                ),
+            )
+        }
+        assertEquals(HttpStatusCode.OK, response.status)
+        val playground = json.decodeFromString<StudyWordPlaygroundResponse>(response.bodyAsText())
+        assertEquals(true, playground.natural)
+        assertEquals("Natural greeting.", playground.summary)
+        assertEquals("play-image-1", playground.imageId)
+
+        var imageStatus = StudyPlaygroundImageStatus.PENDING
+        var imageUrl: String? = null
+        repeat(40) {
+            val imageResponse = client.get("/api/chat/study/playground/image/play-image-1")
+            assertEquals(HttpStatusCode.OK, imageResponse.status)
+            val image = json.decodeFromString<StudyPlaygroundImageResponse>(imageResponse.bodyAsText())
+            imageStatus = image.status
+            imageUrl = image.imageUrl
+            if (
+                imageStatus == StudyPlaygroundImageStatus.COMPLETED ||
+                imageStatus == StudyPlaygroundImageStatus.FAILED
+            ) {
+                return@repeat
+            }
+            delay(25)
+        }
+        assertEquals(StudyPlaygroundImageStatus.COMPLETED, imageStatus)
+        assertEquals("https://cdn.example/play.png", imageUrl)
+
+        val missing = client.get("/api/chat/study/playground/image/missing")
+        assertEquals(HttpStatusCode.NotFound, missing.status)
     }
 }
 

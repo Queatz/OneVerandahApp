@@ -45,6 +45,120 @@ class DashScopeQwenClientTest {
     }
 
     @Test
+    fun requiresMultimodalTextToImage_detectsWanImageModels() {
+        assertTrue(
+            DashScopeQwenClient.requiresMultimodalTextToImage(
+                model = "wan2.7-image",
+                endpoint = "https://dashscope.aliyuncs.com/api/v1/services/aigc/text2image/image-synthesis",
+            ),
+        )
+        assertTrue(
+            DashScopeQwenClient.requiresMultimodalTextToImage(
+                model = "wan2.7-image-pro",
+                endpoint = "https://dashscope.aliyuncs.com/api/v1/services/aigc/text2image/image-synthesis",
+            ),
+        )
+        assertTrue(
+            !DashScopeQwenClient.requiresMultimodalTextToImage(
+                model = "wan2.6-t2i",
+                endpoint = "https://dashscope.aliyuncs.com/api/v1/services/aigc/text2image/image-synthesis",
+            ),
+        )
+        assertTrue(
+            !DashScopeQwenClient.requiresMultimodalTextToImage(
+                model = "wanx-v1",
+                endpoint = "https://dashscope.aliyuncs.com/api/v1/services/aigc/text2image/image-synthesis",
+            ),
+        )
+    }
+
+    @Test
+    fun textOnlyWan27Image_usesMultimodalEndpointNotClassicSynthesis() = runBlocking {
+        var sawMultimodal = false
+        var sawClassicSynthesis = false
+        var requestBody = ""
+        var requestUrl = ""
+
+        val engine = MockEngine { request ->
+            val url = request.url.toString()
+            when {
+                url.contains("multimodal-generation") -> {
+                    sawMultimodal = true
+                    requestUrl = url
+                    requestBody = readBodyText(request.body)
+                    respond(
+                        content = """
+                            {
+                              "output": {
+                                "choices": [
+                                  {
+                                    "finish_reason": "stop",
+                                    "message": {
+                                      "role": "assistant",
+                                      "content": [
+                                        {
+                                          "image": "https://dashscope-result.example.test/comic.png",
+                                          "type": "image"
+                                        }
+                                      ]
+                                    }
+                                  }
+                                ]
+                              }
+                            }
+                        """.trimIndent(),
+                        status = HttpStatusCode.OK,
+                        headers = headersOf(HttpHeaders.ContentType, "application/json"),
+                    )
+                }
+
+                url.contains("text2image/image-synthesis") -> {
+                    sawClassicSynthesis = true
+                    respond(
+                        content = """{"code":"InvalidParameter","message":"url error, please check url！"}""",
+                        status = HttpStatusCode.BadRequest,
+                        headers = headersOf(HttpHeaders.ContentType, "application/json"),
+                    )
+                }
+
+                url.contains("dashscope-result.example.test") -> {
+                    respond(
+                        content = ByteReadChannel(byteArrayOf(7, 7, 7)),
+                        status = HttpStatusCode.OK,
+                        headers = headersOf(HttpHeaders.ContentType, "image/png"),
+                    )
+                }
+
+                else -> error("Unexpected request: $url")
+            }
+        }
+
+        val client = HttpClient(engine)
+        val qwen = DashScopeQwenClient(
+            config = QwenImageConfig(
+                endpoint = "https://dashscope.aliyuncs.com/api/v1/services/aigc/text2image/image-synthesis",
+                apiKey = "test-key",
+                model = "wan2.7-image",
+                r2iEndpoint = "https://dashscope.aliyuncs.com/api/v1/services/aigc/multimodal-generation/generation",
+                r2iModel = "wan2.7-image",
+            ),
+            client = client,
+        )
+
+        val image = qwen.generate("Expressive comic-style single panel of a learner saying xin chao")
+
+        assertTrue(sawMultimodal, "expected multimodal generation call")
+        assertTrue(!sawClassicSynthesis, "must not hit classic text2image synthesis for wan2.7-image")
+        assertTrue(requestUrl.contains("multimodal-generation"), requestUrl)
+        assertTrue(requestBody.contains("\"model\":\"wan2.7-image\"") || requestBody.contains("wan2.7-image"), requestBody)
+        assertTrue(requestBody.contains("messages"), requestBody)
+        assertTrue(requestBody.contains("xin chao"), requestBody)
+        assertTrue(!requestBody.contains("\"image\""), "text-only request must not send reference images: $requestBody")
+        assertTrue(image.bytes.contentEquals(byteArrayOf(7, 7, 7)))
+        client.close()
+    }
+
+    @Test
     fun decodeDataUrl_readsBase64Png() {
         val bytes = byteArrayOf(1, 2, 3, 4)
         val dataUrl = "data:image/png;base64," + Base64.getEncoder().encodeToString(bytes)

@@ -247,6 +247,16 @@ data class UiStrings(
     val chatStudySentenceError: String,
     val chatStudyRetrySentence: String,
     val chatStudyMeaningLoading: String,
+    val chatStudyPlayground: String,
+    val chatStudyPlaygroundHint: String,
+    val chatStudyPlaygroundPlaceholder: String,
+    val chatStudyPlaygroundSubmit: String,
+    val chatStudyPlaygroundNatural: String,
+    val chatStudyPlaygroundUnnatural: String,
+    val chatStudyPlaygroundError: String,
+    val chatStudyPlaygroundImageLoading: String,
+    val chatStudyPlaygroundImageError: String,
+    val chatStudyPlaygroundImageAlt: String,
 )
 
 private val English = UiStrings(
@@ -484,6 +494,16 @@ private val English = UiStrings(
     chatStudySentenceError = "Couldn't load meanings for this sentence.",
     chatStudyRetrySentence = "Retry",
     chatStudyMeaningLoading = "Loading meaning…",
+    chatStudyPlayground = "Try it yourself",
+    chatStudyPlaygroundHint = "Write a sentence using this word to test if it feels natural.",
+    chatStudyPlaygroundPlaceholder = "Type a sentence with this word…",
+    chatStudyPlaygroundSubmit = "Check sentence",
+    chatStudyPlaygroundNatural = "Natural",
+    chatStudyPlaygroundUnnatural = "Not natural",
+    chatStudyPlaygroundError = "Couldn't check that sentence. Try again.",
+    chatStudyPlaygroundImageLoading = "Drawing a comic scene…",
+    chatStudyPlaygroundImageError = "Couldn't generate the comic image.",
+    chatStudyPlaygroundImageAlt = "Comic scene for this word",
 )
 
 private val Vietnamese = UiStrings(
@@ -721,6 +741,16 @@ private val Vietnamese = UiStrings(
     chatStudySentenceError = "Không tải được nghĩa cho câu này.",
     chatStudyRetrySentence = "Thử lại",
     chatStudyMeaningLoading = "Đang tải nghĩa…",
+    chatStudyPlayground = "Tự thử dùng từ",
+    chatStudyPlaygroundHint = "Viết một câu dùng từ này để kiểm tra độ tự nhiên.",
+    chatStudyPlaygroundPlaceholder = "Nhập một câu có từ này…",
+    chatStudyPlaygroundSubmit = "Kiểm tra câu",
+    chatStudyPlaygroundNatural = "Tự nhiên",
+    chatStudyPlaygroundUnnatural = "Chưa tự nhiên",
+    chatStudyPlaygroundError = "Không kiểm tra được câu này. Thử lại.",
+    chatStudyPlaygroundImageLoading = "Đang vẽ cảnh truyện tranh…",
+    chatStudyPlaygroundImageError = "Không tạo được ảnh truyện tranh.",
+    chatStudyPlaygroundImageAlt = "Cảnh truyện tranh cho từ này",
 )
 
 private val Chinese = UiStrings(
@@ -957,6 +987,16 @@ private val Chinese = UiStrings(
     chatStudySentenceError = "无法加载此句的词义。",
     chatStudyRetrySentence = "重试",
     chatStudyMeaningLoading = "正在加载含义…",
+    chatStudyPlayground = "自己试一试",
+    chatStudyPlaygroundHint = "用这个词写一句话，测试用法是否自然。",
+    chatStudyPlaygroundPlaceholder = "输入包含这个词的句子…",
+    chatStudyPlaygroundSubmit = "检查句子",
+    chatStudyPlaygroundNatural = "自然",
+    chatStudyPlaygroundUnnatural = "不自然",
+    chatStudyPlaygroundError = "无法检查这句话。请再试一次。",
+    chatStudyPlaygroundImageLoading = "正在绘制漫画场景…",
+    chatStudyPlaygroundImageError = "无法生成漫画图片。",
+    chatStudyPlaygroundImageAlt = "这个词的漫画场景",
 )
 
 private val Japanese = UiStrings(
@@ -1193,6 +1233,16 @@ private val Japanese = UiStrings(
     chatStudySentenceError = "この文の意味を読み込めませんでした。",
     chatStudyRetrySentence = "再試行",
     chatStudyMeaningLoading = "意味を読み込み中…",
+    chatStudyPlayground = "自分で使ってみる",
+    chatStudyPlaygroundHint = "この語を使った文を書いて、自然かどうかを試しましょう。",
+    chatStudyPlaygroundPlaceholder = "この語を含む文を入力…",
+    chatStudyPlaygroundSubmit = "文を確認",
+    chatStudyPlaygroundNatural = "自然",
+    chatStudyPlaygroundUnnatural = "不自然",
+    chatStudyPlaygroundError = "この文を確認できませんでした。もう一度お試しください。",
+    chatStudyPlaygroundImageLoading = "漫画シーンを描いています…",
+    chatStudyPlaygroundImageError = "漫画画像を生成できませんでした。",
+    chatStudyPlaygroundImageAlt = "この語の漫画シーン",
 )
 
 private val Korean = UiStrings(
@@ -1429,6 +1479,16 @@ private val Korean = UiStrings(
     chatStudySentenceError = "이 문장의 의미를 불러오지 못했습니다.",
     chatStudyRetrySentence = "다시 시도",
     chatStudyMeaningLoading = "의미를 불러오는 중…",
+    chatStudyPlayground = "직접 써 보기",
+    chatStudyPlaygroundHint = "이 단어를 쓴 문장을 적어 자연스러운지 확인해 보세요.",
+    chatStudyPlaygroundPlaceholder = "이 단어가 들어간 문장을 입력…",
+    chatStudyPlaygroundSubmit = "문장 확인",
+    chatStudyPlaygroundNatural = "자연스러움",
+    chatStudyPlaygroundUnnatural = "부자연스러움",
+    chatStudyPlaygroundError = "문장을 확인할 수 없습니다. 다시 시도하세요.",
+    chatStudyPlaygroundImageLoading = "만화 장면을 그리는 중…",
+    chatStudyPlaygroundImageError = "만화 이미지를 만들지 못했습니다.",
+    chatStudyPlaygroundImageAlt = "이 단어의 만화 장면",
 )
 
 private val Russian = UiStrings(
@@ -1665,6 +1725,16 @@ private val Russian = UiStrings(
     chatStudySentenceError = "Не удалось загрузить значения для этого предложения.",
     chatStudyRetrySentence = "Повторить",
     chatStudyMeaningLoading = "Загружаем значение…",
+    chatStudyPlayground = "Попробуйте сами",
+    chatStudyPlaygroundHint = "Напишите предложение с этим словом, чтобы проверить, звучит ли оно естественно.",
+    chatStudyPlaygroundPlaceholder = "Введите предложение с этим словом…",
+    chatStudyPlaygroundSubmit = "Проверить предложение",
+    chatStudyPlaygroundNatural = "Естественно",
+    chatStudyPlaygroundUnnatural = "Неестественно",
+    chatStudyPlaygroundError = "Не удалось проверить предложение. Попробуйте снова.",
+    chatStudyPlaygroundImageLoading = "Рисуем комикс-сцену…",
+    chatStudyPlaygroundImageError = "Не удалось создать комикс-изображение.",
+    chatStudyPlaygroundImageAlt = "Комикс-сцена для этого слова",
 )
 
 fun stringsFor(language: Language): UiStrings = when (language) {

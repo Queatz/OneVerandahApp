@@ -82,22 +82,31 @@ data class OssConfig(
     }
 }
 
-/** Qwen (DashScope) image-synthesis settings. [enabled] requires an API key. */
+/**
+ * Qwen (DashScope) image-generation settings. [enabled] requires an API key.
+ *
+ * [model] / [endpoint] drive text-only generation (catalog covers, study playground
+ * comics). Multimodal still models such as `wan2.7-image` must not be paired with
+ * classic `text2image/image-synthesis` — DashScope rejects that with
+ * `InvalidParameter: url error`. The client auto-routes those models through
+ * [r2iEndpoint] (multimodal-generation) when needed.
+ */
 data class QwenImageConfig(
     val endpoint: String,
     val apiKey: String,
     val model: String,
     /**
-     * DashScope endpoint for reference-grounded still-image generation.
-     * Default is the multimodal generation API used by wan2.6-image.
+     * DashScope endpoint for multimodal still-image generation (text-only or
+     * reference-grounded). Default is the multimodal generation API used by
+     * wan2.x-image models.
      */
     val r2iEndpoint: String =
         "https://dashscope.aliyuncs.com/api/v1/services/aigc/multimodal-generation/generation",
     /**
      * Model used when apartment reference photos are supplied.
-     * wan2.6-image accepts multiple reference images + a text prompt.
+     * wan2.x-image accepts multiple reference images + a text prompt.
      */
-    val r2iModel: String = "wan2.6-image",
+    val r2iModel: String = "wan2.7-image",
 ) {
     val enabled: Boolean get() = apiKey.isNotBlank()
 }
@@ -263,7 +272,7 @@ data class AppConfig(
                 model = source["QWEN_MODEL"] ?: "wan2.7-image",
                 r2iEndpoint = source["QWEN_R2I_ENDPOINT"]
                     ?: "https://dashscope.aliyuncs.com/api/v1/services/aigc/multimodal-generation/generation",
-                r2iModel = source["QWEN_R2I_MODEL"] ?: "wan2.6-image",
+                r2iModel = source["QWEN_R2I_MODEL"] ?: "wan2.7-image",
             )
 
             val qwenChat = QwenChatConfig(

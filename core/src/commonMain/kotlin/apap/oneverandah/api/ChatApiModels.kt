@@ -256,6 +256,64 @@ data class StudyDissectSentenceResponse(
     val tokens: List<StudyToken>,
 )
 
+/**
+ * Request to test a dissected word inside a learner-authored sentence.
+ *
+ * [sentence] should be written in the source/study language ([textLanguageTag]).
+ * [summary] feedback is written in the learner's active UI language ([languageTag]).
+ */
+@Serializable
+data class StudyWordPlaygroundRequest(
+    val word: String,
+    val sentence: String,
+    val textLanguageTag: String,
+    val languageTag: String,
+    val literalMeaning: String = "",
+    val contextualMeaning: String = "",
+) {
+    fun normalizedOrNull(): StudyWordPlaygroundRequest? {
+        val normalizedWord = word.trim().takeIf { it.isNotEmpty() } ?: return null
+        val normalizedSentence = sentence.trim().takeIf { it.isNotEmpty() } ?: return null
+        return copy(
+            word = normalizedWord,
+            sentence = normalizedSentence,
+            textLanguageTag = Language.fromTag(textLanguageTag).tag,
+            languageTag = Language.fromTag(languageTag).tag,
+            literalMeaning = literalMeaning.trim(),
+            contextualMeaning = contextualMeaning.trim(),
+        )
+    }
+}
+
+/**
+ * Immediate playground judgment plus an async comic-image job id.
+ *
+ * Poll [StudyPlaygroundImageResponse] with [imageId] until the comic is ready.
+ */
+@Serializable
+data class StudyWordPlaygroundResponse(
+    val natural: Boolean,
+    val summary: String,
+    val imageId: String,
+)
+
+/** Lifecycle of a study-playground comic image job. */
+@Serializable
+enum class StudyPlaygroundImageStatus {
+    PENDING,
+    GENERATING,
+    COMPLETED,
+    FAILED,
+}
+
+/** Status payload for `GET /api/chat/study/playground/image/{imageId}`. */
+@Serializable
+data class StudyPlaygroundImageResponse(
+    val imageId: String,
+    val status: StudyPlaygroundImageStatus,
+    val imageUrl: String? = null,
+)
+
 @Serializable
 data class ChatErrorResponse(val error: String)
 

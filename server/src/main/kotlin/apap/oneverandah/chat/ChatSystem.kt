@@ -2,6 +2,9 @@ package apap.oneverandah.chat
 
 import apap.oneverandah.config.AppConfig
 import apap.oneverandah.data.Catalog
+import apap.oneverandah.images.qwen.DashScopeQwenClient
+import apap.oneverandah.images.qwen.PlaceholderQwenClient
+import apap.oneverandah.images.qwen.QwenClient
 import apap.oneverandah.images.storage.StorageService
 import io.ktor.client.HttpClient
 import io.ktor.client.engine.cio.CIO
@@ -13,6 +16,7 @@ import kotlinx.coroutines.SupervisorJob
 import kotlinx.coroutines.cancel
 import org.slf4j.LoggerFactory
 import java.io.File
+import java.util.UUID
 
 class ChatSystem(
     val chatService: ChatService,
@@ -94,6 +98,28 @@ class ChatSystem(
                 )
                 null
             }
+            val playgroundImageGenerator = if (storage != null) {
+                val qwen: QwenClient = if (config.qwen.enabled) {
+                    DashScopeQwenClient(
+                        config = config.qwen,
+                        client = client,
+                        localImageRoot = File(config.localStorageDir),
+                        publicBaseUrl = config.publicBaseUrl,
+                    )
+                } else {
+                    PlaceholderQwenClient()
+                }
+                StudyPlaygroundImageGenerator { prompt ->
+                    val generated = qwen.generate(prompt)
+                    val objectKey = "study/playground/${UUID.randomUUID()}.${generated.extension}"
+                    storage.upload(objectKey, generated)
+                }
+            } else {
+                log.warn(
+                    "Study playground comics disabled: ChatSystem.create() was called without a StorageService",
+                )
+                null
+            }
             return ChatSystem(
                 chatService = ChatService(
                     repository = repository,
@@ -107,7 +133,11 @@ class ChatSystem(
                         log.info("TTS speech cache enabled at {}", File(config.ttsCacheDir).absolutePath)
                     },
                 ),
-                studyService = StudyService(DashScopeStudyAiClient(config.qwenChat, client)),
+                studyService = StudyService(
+                    aiClient = DashScopeStudyAiClient(config.qwenChat, client),
+                    imageGenerator = playgroundImageGenerator,
+                    scope = scope,
+                ),
                 asrRelay = QwenAsrRelay(config.qwenChat, client, scope),
                 deviceService = deviceService,
                 savedMessagesService = SavedMessagesService(

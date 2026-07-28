@@ -2,17 +2,21 @@ package apap.oneverandah.chat
 
 import apap.oneverandah.api.StudyDissectSentenceRequest
 import apap.oneverandah.api.StudyExampleSentence
+import apap.oneverandah.api.StudyPlaygroundImageStatus
 import apap.oneverandah.api.StudySentence
 import apap.oneverandah.api.StudySessionRequest
 import apap.oneverandah.api.StudySessionResponse
 import apap.oneverandah.api.StudyToken
 import apap.oneverandah.api.StudyTokenStatus
+import apap.oneverandah.api.StudyWordPlaygroundRequest
 import kotlin.test.Test
 import kotlin.test.assertContains
 import kotlin.test.assertEquals
 import kotlin.test.assertFailsWith
 import kotlin.test.assertFalse
+import kotlin.test.assertNotNull
 import kotlin.test.assertTrue
+import kotlinx.coroutines.delay
 import kotlinx.coroutines.runBlocking
 
 class StudyServiceTest {
@@ -340,6 +344,115 @@ class StudyServiceTest {
         }
         assertContains(error.message.orEmpty(), "at least one valid token")
     }
+
+    @Test
+    fun `playground judges usage and starts async comic image`() = runBlocking {
+        val ai = FakeStudyAiClient(
+            playground = StudyWordPlaygroundJudgment(
+                natural = true,
+                summary = "  Sounds natural and friendly.  ",
+            ),
+        )
+        val service = StudyService(
+            aiClient = ai,
+            imageGenerator = StudyPlaygroundImageGenerator { "https://cdn.example/comic.png" },
+            idGenerator = { "image-1" },
+        )
+
+        val response = service.playground(
+            StudyWordPlaygroundRequest(
+                word = "  chào  ",
+                sentence = "  Xin chào bạn.  ",
+                textLanguageTag = "vi-VN",
+                languageTag = "en-US",
+                literalMeaning = " hello ",
+                contextualMeaning = " greeting ",
+            ),
+        )
+
+        assertEquals(true, response.natural)
+        assertEquals("Sounds natural and friendly.", response.summary)
+        assertEquals("image-1", response.imageId)
+        assertEquals("chào", ai.lastPlaygroundRequest?.word)
+        assertEquals("Xin chào bạn.", ai.lastPlaygroundRequest?.sentence)
+        assertEquals("vi", ai.lastPlaygroundRequest?.textLanguageTag)
+        assertEquals("en", ai.lastPlaygroundRequest?.languageTag)
+        assertEquals("hello", ai.lastPlaygroundRequest?.literalMeaning)
+
+        var image = service.playgroundImage("image-1")
+        assertNotNull(image)
+        // Async generation may still be in flight for a moment.
+        var attempts = 0
+        while (
+            image!!.status != StudyPlaygroundImageStatus.COMPLETED &&
+            image.status != StudyPlaygroundImageStatus.FAILED &&
+            attempts < 40
+        ) {
+            delay(25)
+            image = service.playgroundImage("image-1")
+            attempts++
+        }
+        assertEquals(StudyPlaygroundImageStatus.COMPLETED, image.status)
+        assertEquals("https://cdn.example/comic.png", image.imageUrl)
+    }
+
+    @Test
+    fun `playground rejects blank sentence`() = runBlocking {
+        val service = StudyService(FakeStudyAiClient())
+        assertFailsWith<IllegalArgumentException> {
+            service.playground(
+                StudyWordPlaygroundRequest(
+                    word = "hello",
+                    sentence = "   ",
+                    textLanguageTag = "en",
+                    languageTag = "en",
+                ),
+            )
+        }
+        Unit
+    }
+
+    @Test
+    fun `playground image marks failed when generator is absent`() = runBlocking {
+        val service = StudyService(
+            aiClient = FakeStudyAiClient(
+                playground = StudyWordPlaygroundJudgment(natural = false, summary = "Awkward collocation."),
+            ),
+            imageGenerator = null,
+            idGenerator = { "no-gen" },
+        )
+        val response = service.playground(
+            StudyWordPlaygroundRequest(
+                word = "hello",
+                sentence = "Hello the morning.",
+                textLanguageTag = "en",
+                languageTag = "en",
+            ),
+        )
+        assertEquals(false, response.natural)
+        assertEquals(StudyPlaygroundImageStatus.FAILED, service.playgroundImage(response.imageId)?.status)
+    }
+
+    @Test
+    fun `playground parser accepts aliases and fences`() {
+        val result = QwenStudyPlaygroundParser.parse(
+            """
+            ```json
+            {"isNatural":"true","feedback":"Natural everyday greeting."}
+            ```
+            """.trimIndent(),
+        )
+        assertTrue(result.natural)
+        assertEquals("Natural everyday greeting.", result.summary)
+    }
+
+    @Test
+    fun `playground comic prompt mentions word and comic style`() {
+        val prompt = playgroundComicPrompt(word = "chào", sentence = "Xin chào!", natural = true)
+        assertContains(prompt, "comic-style")
+        assertContains(prompt, "chào")
+        assertContains(prompt, "Xin chào!")
+    }
 }
 
 private class FakeStudyAiClient(
@@ -357,9 +470,14 @@ private class FakeStudyAiClient(
         text = "x",
         tokens = listOf(StudyToken(text = "x", status = StudyTokenStatus.READY, literalMeaning = "x")),
     ),
+    private val playground: StudyWordPlaygroundJudgment = StudyWordPlaygroundJudgment(
+        natural = true,
+        summary = "Natural.",
+    ),
 ) : StudyAiClient {
     var lastSkeletonRequest: StudyGenerationRequest? = null
     var lastDissectRequest: StudyDissectGenerationRequest? = null
+    var lastPlaygroundRequest: StudyWordPlaygroundGenerationRequest? = null
 
     override suspend fun generateSkeleton(request: StudyGenerationRequest): StudySessionResponse {
         lastSkeletonRequest = request
@@ -369,5 +487,12 @@ private class FakeStudyAiClient(
     override suspend fun dissectSentence(request: StudyDissectGenerationRequest): StudySentence {
         lastDissectRequest = request
         return dissect
+    }
+
+    override suspend fun evaluateWordUsage(
+        request: StudyWordPlaygroundGenerationRequest,
+    ): StudyWordPlaygroundJudgment {
+        lastPlaygroundRequest = request
+        return playground
     }
 }

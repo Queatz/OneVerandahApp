@@ -202,6 +202,60 @@ class ChatApiModelsTest {
     }
 
     @Test
+    fun `study playground request normalizes and rejects blanks`() {
+        val request = StudyWordPlaygroundRequest(
+            word = "  chào  ",
+            sentence = "  Xin chào bạn.  ",
+            textLanguageTag = "vi-VN",
+            languageTag = "en-US",
+            literalMeaning = " hello ",
+            contextualMeaning = " greeting ",
+        )
+        val normalized = request.normalizedOrNull()
+        assertEquals("chào", normalized?.word)
+        assertEquals("Xin chào bạn.", normalized?.sentence)
+        assertEquals("vi", normalized?.textLanguageTag)
+        assertEquals("en", normalized?.languageTag)
+        assertEquals("hello", normalized?.literalMeaning)
+        assertEquals("greeting", normalized?.contextualMeaning)
+
+        assertNull(
+            StudyWordPlaygroundRequest(
+                word = " ",
+                sentence = "Hello",
+                textLanguageTag = "en",
+                languageTag = "en",
+            ).normalizedOrNull(),
+        )
+        assertNull(
+            StudyWordPlaygroundRequest(
+                word = "hello",
+                sentence = "  ",
+                textLanguageTag = "en",
+                languageTag = "en",
+            ).normalizedOrNull(),
+        )
+    }
+
+    @Test
+    fun `study playground response round trips as structured JSON`() {
+        val response = StudyWordPlaygroundResponse(
+            natural = false,
+            summary = "The collocation sounds off.",
+            imageId = "img-1",
+        )
+        val decoded = json.decodeFromString<StudyWordPlaygroundResponse>(json.encodeToString(response))
+        assertEquals(response, decoded)
+
+        val image = StudyPlaygroundImageResponse(
+            imageId = "img-1",
+            status = StudyPlaygroundImageStatus.COMPLETED,
+            imageUrl = "https://cdn.example/comic.png",
+        )
+        assertEquals(image, json.decodeFromString<StudyPlaygroundImageResponse>(json.encodeToString(image)))
+    }
+
+    @Test
     fun `save study session request normalizes language and rejects blank text`() {
         val session = StudySessionResponse(
             text = "  Xin chào.  ",

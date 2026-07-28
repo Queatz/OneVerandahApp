@@ -20,6 +20,7 @@ import kotlinx.serialization.json.JsonArray
 import kotlinx.serialization.json.JsonElement
 import kotlinx.serialization.json.JsonObject
 import kotlinx.serialization.json.JsonPrimitive
+import kotlinx.serialization.json.boolean
 import kotlinx.serialization.json.buildJsonArray
 import kotlinx.serialization.json.buildJsonObject
 import kotlinx.serialization.json.contentOrNull
@@ -160,6 +161,17 @@ object QwenStudyReplyParser {
 private fun JsonObject.string(key: String): String? =
     this[key]?.jsonPrimitive?.contentOrNull
 
+private fun JsonObject.boolean(key: String): Boolean? {
+    val primitive = this[key]?.jsonPrimitive ?: return null
+    primitive.contentOrNull?.trim()?.lowercase()?.let { text ->
+        when (text) {
+            "true", "yes", "y", "1" -> return true
+            "false", "no", "n", "0" -> return false
+        }
+    }
+    return runCatching { primitive.boolean }.getOrNull()
+}
+
 private fun JsonObject.stringList(key: String): List<String> {
     val el = this[key] ?: return emptyList()
     val array = el as? JsonArray ?: return emptyList()
@@ -190,6 +202,37 @@ private fun JsonObject.exampleSentenceList(key: String): List<StudyExampleSenten
             }
             else -> null
         }
+    }
+}
+
+/**
+ * Lenient playground judgment parser.
+ *
+ * Accepts common aliases (`isNatural`, `feedback`) so minor model drift does not
+ * fail the learner's try-it sentence.
+ */
+object QwenStudyPlaygroundParser {
+    private val json = Json { ignoreUnknownKeys = true; explicitNulls = false; isLenient = true }
+
+    fun parse(content: String): StudyWordPlaygroundJudgment {
+        val root = parseRootObject(content)
+        val natural = root.boolean("natural")
+            ?: root.boolean("isNatural")
+            ?: root.boolean("naturalUsage")
+            ?: throw IllegalArgumentException("Qwen study playground missing natural boolean")
+        val summary = root.string("summary")?.trim()?.takeIf { it.isNotEmpty() }
+            ?: root.string("feedback")?.trim()?.takeIf { it.isNotEmpty() }
+            ?: root.string("explanation")?.trim()?.takeIf { it.isNotEmpty() }
+            ?: throw IllegalArgumentException("Qwen study playground missing summary")
+        return StudyWordPlaygroundJudgment(natural = natural, summary = summary)
+    }
+
+    private fun parseRootObject(content: String): JsonObject {
+        val normalized = stripJsonFences(content)
+        val element = runCatching { json.parseToJsonElement(normalized) }
+            .getOrElse { throw IllegalArgumentException("Qwen study playground is not valid JSON", it) }
+        return element as? JsonObject
+            ?: throw IllegalArgumentException("Qwen study playground root must be a JSON object")
     }
 }
 
@@ -229,6 +272,37 @@ class DashScopeStudyAiClient(
             label = "study dissect",
         )
         return QwenStudyDissectParser.parse(content)
+    }
+
+    override suspend fun evaluateWordUsage(
+        request: StudyWordPlaygroundGenerationRequest,
+    ): StudyWordPlaygroundJudgment {
+        val userContent = buildString {
+            appendLine("Target word/phrase:")
+            appendLine(request.word)
+            appendLine()
+            appendLine("Learner sentence to judge:")
+            appendLine(request.sentence)
+            if (request.literalMeaning.isNotBlank() || request.contextualMeaning.isNotBlank()) {
+                appendLine()
+                appendLine("Optional study context:")
+                if (request.literalMeaning.isNotBlank()) {
+                    appendLine("literalMeaning: ${request.literalMeaning}")
+                }
+                if (request.contextualMeaning.isNotBlank()) {
+                    appendLine("contextualMeaning: ${request.contextualMeaning}")
+                }
+            }
+        }
+        val content = complete(
+            systemPrompt = playgroundSystemPrompt(
+                activeLanguageTag = request.languageTag,
+                textLanguageTag = request.textLanguageTag,
+            ),
+            userContent = userContent,
+            label = "study playground",
+        )
+        return QwenStudyPlaygroundParser.parse(content)
     }
 
     private suspend fun complete(systemPrompt: String, userContent: String, label: String): String {
@@ -304,5 +378,19 @@ class DashScopeStudyAiClient(
         - nearSynonyms: provide 2–5 near synonyms or close alternatives when natural; otherwise an empty array is allowed only for punctuation.
         - exampleSentences: for every dissectable word/phrase provide exactly 3 short, natural example objects. Each object MUST include "text" written in the source language (tag '$textLanguageTag') and "translation" written in the learner's active language '$activeLanguageTag'. Never leave translation blank for a non-empty example. Do not put plain strings in exampleSentences.
         - Do not invent content unrelated to the sentence. Do not wrap the JSON in markdown.
+    """.trimIndent()
+
+    private fun playgroundSystemPrompt(activeLanguageTag: String, textLanguageTag: String): String = """
+        You are a precise language-study coach for One Verandah residents.
+        The learner is testing one target word/phrase inside their own sentence.
+        Always return one JSON object and no markdown. The schema is exactly:
+        {"natural":true,"summary":"short coaching note"}
+        Rules:
+        - The sentence is written in the study/source language '$textLanguageTag'. Judge naturalness in that language.
+        - "natural" must be a boolean. true only when the target word/phrase is used in a natural, idiomatic way for native speakers (grammar, collocation, register, and meaning all fit).
+        - If the target word is missing, forced awkwardly, or used with the wrong meaning/register, set "natural":false.
+        - "summary" MUST be written in the learner's active language '$activeLanguageTag'.
+        - Keep summary to 1–2 short sentences. Explain why the usage is natural or not, and when false give a brief tip or corrected feel (without a long lecture).
+        - Do not wrap the JSON in markdown. Do not add extra keys.
     """.trimIndent()
 }

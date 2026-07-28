@@ -27,11 +27,14 @@ import apap.oneverandah.api.SpeechRequest
 import apap.oneverandah.api.SpeechTimingAligner
 import apap.oneverandah.api.SpeechWordTiming
 import apap.oneverandah.api.StudyDissectSentenceRequest
+import apap.oneverandah.api.StudyPlaygroundImageStatus
 import apap.oneverandah.api.StudySentence
 import apap.oneverandah.api.StudySessionRequest
 import apap.oneverandah.api.StudySessionResponse
 import apap.oneverandah.api.StudyToken
 import apap.oneverandah.api.StudyTokenStatus
+import apap.oneverandah.api.StudyWordPlaygroundRequest
+import apap.oneverandah.api.StudyWordPlaygroundResponse
 import apap.oneverandah.components.BottomDialog
 import apap.oneverandah.components.ChatInput
 import apap.oneverandah.components.MaterialSymbol
@@ -50,8 +53,11 @@ import kotlinx.coroutines.delay
 import kotlinx.coroutines.launch
 import kotlinx.coroutines.sync.Semaphore
 import kotlinx.coroutines.sync.withPermit
+import org.jetbrains.compose.web.attributes.InputType
 import org.jetbrains.compose.web.dom.Button
 import org.jetbrains.compose.web.dom.Div
+import org.jetbrains.compose.web.dom.Img
+import org.jetbrains.compose.web.dom.Input
 import org.jetbrains.compose.web.dom.P
 import org.jetbrains.compose.web.dom.Span
 import org.jetbrains.compose.web.dom.Text
@@ -1285,7 +1291,11 @@ private fun StudySessionContent(
                     // Keep the dissection panel under this sentence so learners don't scroll
                     // past later sentences to read meanings for a word above.
                     selectedToken?.let { token ->
-                        StudyTokenDetail(token = token, strings = strings)
+                        StudyTokenDetail(
+                            token = token,
+                            textLanguageTag = session.textLanguageTag,
+                            strings = strings,
+                        )
                     }
                 }
             }
@@ -1365,7 +1375,11 @@ private suspend fun <T> withSpeechRetry(
 }
 
 @Composable
-private fun StudyTokenDetail(token: StudyToken, strings: UiStrings) {
+private fun StudyTokenDetail(
+    token: StudyToken,
+    textLanguageTag: String,
+    strings: UiStrings,
+) {
     Div(attrs = { classes(Styles.wordDefinition, Styles.studyTokenDetail) }) {
         Span(attrs = { classes(Styles.wordDefinitionTitle) }) { Text(token.text) }
         when {
@@ -1389,8 +1403,8 @@ private fun StudyTokenDetail(token: StudyToken, strings: UiStrings) {
                     Span(attrs = { classes(Styles.wordDefinitionLabel) }) { Text(strings.chatStudySynonyms) }
                     P { Text(token.nearSynonyms.joinToString(separator = " · ")) }
                 }
+                Span(attrs = { classes(Styles.wordDefinitionLabel) }) { Text(strings.chatStudyExamples) }
                 if (token.exampleSentences.isNotEmpty()) {
-                    Span(attrs = { classes(Styles.wordDefinitionLabel) }) { Text(strings.chatStudyExamples) }
                     token.exampleSentences.forEach { example ->
                         Div(attrs = { classes(Styles.studyExampleSentence) }) {
                             P { Text(example.text) }
@@ -1399,6 +1413,170 @@ private fun StudyTokenDetail(token: StudyToken, strings: UiStrings) {
                                     Text(example.translation)
                                 }
                             }
+                        }
+                    }
+                }
+                StudyWordPlayground(
+                    token = token,
+                    textLanguageTag = textLanguageTag,
+                    strings = strings,
+                )
+            }
+        }
+    }
+}
+
+@Composable
+private fun StudyWordPlayground(
+    token: StudyToken,
+    textLanguageTag: String,
+    strings: UiStrings,
+) {
+    val scope = rememberCoroutineScope()
+    val languageTag = Localization.language.tag
+    var draft by remember(token.text, textLanguageTag) { mutableStateOf("") }
+    var submitting by remember(token.text, textLanguageTag) { mutableStateOf(false) }
+    var error by remember(token.text, textLanguageTag) { mutableStateOf<String?>(null) }
+    var result by remember(token.text, textLanguageTag) { mutableStateOf<StudyWordPlaygroundResponse?>(null) }
+    var imageStatus by remember(token.text, textLanguageTag) {
+        mutableStateOf<StudyPlaygroundImageStatus?>(null)
+    }
+    var imageUrl by remember(token.text, textLanguageTag) { mutableStateOf<String?>(null) }
+
+    fun submitPlayground() {
+        val sentence = draft.trim()
+        if (sentence.isEmpty() || submitting) return
+        submitting = true
+        error = null
+        result = null
+        imageStatus = StudyPlaygroundImageStatus.PENDING
+        imageUrl = null
+        scope.launch {
+            runCatching {
+                ChatApi.studyPlayground(
+                    StudyWordPlaygroundRequest(
+                        word = token.text,
+                        sentence = sentence,
+                        textLanguageTag = textLanguageTag,
+                        languageTag = languageTag,
+                        literalMeaning = token.literalMeaning,
+                        contextualMeaning = token.contextualMeaning,
+                    ),
+                )
+            }.onSuccess { response ->
+                result = response
+                imageStatus = StudyPlaygroundImageStatus.GENERATING
+                submitting = false
+                // Poll comic generation until it settles; keep judgment visible immediately.
+                var attempts = 0
+                while (attempts < 60) {
+                    val image = runCatching { ChatApi.studyPlaygroundImage(response.imageId) }.getOrNull()
+                    if (image != null) {
+                        imageStatus = image.status
+                        imageUrl = image.imageUrl
+                        if (
+                            image.status == StudyPlaygroundImageStatus.COMPLETED ||
+                            image.status == StudyPlaygroundImageStatus.FAILED
+                        ) {
+                            break
+                        }
+                    }
+                    attempts += 1
+                    delay(1_500)
+                }
+                if (
+                    imageStatus != StudyPlaygroundImageStatus.COMPLETED &&
+                    imageStatus != StudyPlaygroundImageStatus.FAILED
+                ) {
+                    imageStatus = StudyPlaygroundImageStatus.FAILED
+                }
+            }.onFailure {
+                error = strings.chatStudyPlaygroundError
+                imageStatus = null
+                submitting = false
+            }
+        }
+    }
+
+    Div(attrs = { classes(Styles.studyPlayground) }) {
+        Span(attrs = { classes(Styles.wordDefinitionLabel) }) { Text(strings.chatStudyPlayground) }
+        P(attrs = { classes(Styles.studyPlaygroundHint) }) { Text(strings.chatStudyPlaygroundHint) }
+        Div(attrs = { classes(Styles.studyPlaygroundRow) }) {
+            Input(type = InputType.Text) {
+                classes(Styles.studyPlaygroundInput)
+                value(draft)
+                attr("placeholder", strings.chatStudyPlaygroundPlaceholder)
+                attr("aria-label", strings.chatStudyPlayground)
+                if (submitting) attr("disabled", "")
+                onInput { event -> draft = event.value }
+                onKeyDown { event ->
+                    if (event.key == "Enter") {
+                        event.preventDefault()
+                        submitPlayground()
+                    }
+                }
+            }
+            Button(attrs = {
+                classes(Styles.studyPlaygroundSend)
+                if (submitting) classes(Styles.studyPlaygroundSendBusy)
+                attr("type", "button")
+                attr("aria-label", strings.chatStudyPlaygroundSubmit)
+                if (submitting || draft.trim().isEmpty()) attr("disabled", "")
+                onClick { submitPlayground() }
+            }) {
+                MaterialSymbol(if (submitting) "progress_activity" else "send")
+            }
+        }
+        error?.let {
+            Div(attrs = { classes(Styles.studyPlaygroundError) }) {
+                MaterialSymbol("error")
+                Span { Text(it) }
+            }
+        }
+        result?.let { judgment ->
+            Div(attrs = { classes(Styles.studyPlaygroundResult) }) {
+                Div(attrs = {
+                    classes(Styles.studyPlaygroundBadge)
+                    if (judgment.natural) {
+                        classes(Styles.studyPlaygroundBadgeNatural)
+                    } else {
+                        classes(Styles.studyPlaygroundBadgeUnnatural)
+                    }
+                }) {
+                    MaterialSymbol(if (judgment.natural) "check_circle" else "cancel")
+                    Text(
+                        if (judgment.natural) {
+                            strings.chatStudyPlaygroundNatural
+                        } else {
+                            strings.chatStudyPlaygroundUnnatural
+                        },
+                    )
+                }
+                P(attrs = { classes(Styles.studyPlaygroundSummary) }) { Text(judgment.summary) }
+                when (imageStatus) {
+                    StudyPlaygroundImageStatus.COMPLETED -> {
+                        val url = imageUrl
+                        if (!url.isNullOrBlank()) {
+                            Img(src = url, alt = strings.chatStudyPlaygroundImageAlt, attrs = {
+                                classes(Styles.studyPlaygroundImage)
+                            })
+                        }
+                    }
+                    StudyPlaygroundImageStatus.FAILED -> {
+                        Div(attrs = { classes(Styles.studyPlaygroundImageStatus) }) {
+                            MaterialSymbol("image_not_supported")
+                            Span { Text(strings.chatStudyPlaygroundImageError) }
+                        }
+                    }
+                    StudyPlaygroundImageStatus.PENDING,
+                    StudyPlaygroundImageStatus.GENERATING,
+                    null,
+                    -> {
+                        Div(attrs = {
+                            classes(Styles.studyPlaygroundImageStatus, Styles.studyPlaygroundImageStatusBusy)
+                        }) {
+                            MaterialSymbol("progress_activity")
+                            Span { Text(strings.chatStudyPlaygroundImageLoading) }
                         }
                     }
                 }

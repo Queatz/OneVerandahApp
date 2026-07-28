@@ -118,6 +118,25 @@ object ChatApi {
         return json.decodeFromString(StudyDissectSentenceResponse.serializer(), text)
     }
 
+    /** Judge a learner sentence using a dissected word and start comic image generation. */
+    suspend fun studyPlayground(request: StudyWordPlaygroundRequest): StudyWordPlaygroundResponse {
+        val response = client.post(chatApiUrl("/study/playground")) {
+            contentType(ContentType.Application.Json)
+            setBody(json.encodeToString(StudyWordPlaygroundRequest.serializer(), request))
+        }
+        val text = response.bodyAsText()
+        if (!response.status.isSuccess()) throw ChatApiException(errorMessage(text, response.status.value))
+        return json.decodeFromString(StudyWordPlaygroundResponse.serializer(), text)
+    }
+
+    /** Poll async playground comic image status. */
+    suspend fun studyPlaygroundImage(imageId: String): StudyPlaygroundImageResponse {
+        val response = client.get(chatApiUrl("/study/playground/image/$imageId"))
+        val text = response.bodyAsText()
+        if (!response.status.isSuccess()) throw ChatApiException(errorMessage(text, response.status.value))
+        return json.decodeFromString(StudyPlaygroundImageResponse.serializer(), text)
+    }
+
     suspend fun listStudySessions(): SavedStudySessionsResponse {
         val token = DeviceTokenStore.ensureToken()
         val response = client.get(chatApiUrl("/study/sessions")) {

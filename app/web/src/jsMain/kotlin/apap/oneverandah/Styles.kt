@@ -300,6 +300,21 @@ object Styles {
     const val studyTokenDetail = "study-token-detail"
     const val studyExampleSentence = "study-example-sentence"
     const val studyExampleTranslation = "study-example-translation"
+    const val studyPlayground = "study-playground"
+    const val studyPlaygroundHint = "study-playground-hint"
+    const val studyPlaygroundRow = "study-playground-row"
+    const val studyPlaygroundInput = "study-playground-input"
+    const val studyPlaygroundSend = "study-playground-send"
+    const val studyPlaygroundError = "study-playground-error"
+    const val studyPlaygroundResult = "study-playground-result"
+    const val studyPlaygroundBadge = "study-playground-badge"
+    const val studyPlaygroundBadgeNatural = "study-playground-badge-natural"
+    const val studyPlaygroundBadgeUnnatural = "study-playground-badge-unnatural"
+    const val studyPlaygroundSummary = "study-playground-summary"
+    const val studyPlaygroundImage = "study-playground-image"
+    const val studyPlaygroundImageStatus = "study-playground-image-status"
+    const val studyPlaygroundImageStatusBusy = "study-playground-image-status-busy"
+    const val studyPlaygroundSendBusy = "study-playground-send-busy"
     const val studyPreparingMeanings = "study-preparing-meanings"
     const val storiesSoon = "stories-soon"
     const val hiddenAdminWrap = "hidden-admin-wrap"
@@ -2413,6 +2428,123 @@ object Styles {
             margin-top: 2px !important;
             font-size: 13px;
             color: var(--md-sys-color-on-surface-variant);
+        }
+        .${studyPlayground} {
+            display: flex;
+            flex-direction: column;
+            gap: 8px;
+            margin-top: 12px;
+            padding-top: 10px;
+            border-top: 1px dashed color-mix(in srgb, var(--md-sys-color-outline) 55%, transparent);
+        }
+        .${studyPlaygroundHint} {
+            margin: 0 !important;
+            font-size: 13px;
+            line-height: 1.4;
+            color: var(--md-sys-color-on-surface-variant);
+        }
+        .${studyPlaygroundRow} {
+            display: flex;
+            align-items: center;
+            gap: 8px;
+        }
+        .${studyPlaygroundInput} {
+            flex: 1;
+            min-width: 0;
+            box-sizing: border-box;
+            border: 1px solid var(--md-sys-color-outline);
+            border-radius: 12px;
+            background: var(--md-sys-color-surface);
+            color: var(--md-sys-color-on-surface);
+            padding: 10px 12px;
+            font: inherit;
+            font-size: 14px;
+        }
+        .${studyPlaygroundInput}:focus {
+            outline: 2px solid var(--md-sys-color-primary);
+            border-color: transparent;
+        }
+        .${studyPlaygroundInput}:disabled {
+            opacity: 0.7;
+        }
+        .${studyPlaygroundSend} {
+            display: inline-flex;
+            align-items: center;
+            justify-content: center;
+            width: 40px;
+            height: 40px;
+            border: none;
+            border-radius: 999px;
+            background: var(--md-sys-color-primary);
+            color: var(--md-sys-color-on-primary);
+            cursor: pointer;
+            flex-shrink: 0;
+        }
+        .${studyPlaygroundSend}:disabled {
+            opacity: 0.45;
+            cursor: default;
+        }
+        .${studyPlaygroundSend} .${materialSymbols} {
+            font-size: 20px;
+        }
+        .${studyPlaygroundError} {
+            display: inline-flex;
+            align-items: center;
+            gap: 6px;
+            font-size: 13px;
+            color: var(--md-sys-color-error, #b3261e);
+        }
+        .${studyPlaygroundResult} {
+            display: flex;
+            flex-direction: column;
+            gap: 8px;
+        }
+        .${studyPlaygroundBadge} {
+            display: inline-flex;
+            align-items: center;
+            gap: 6px;
+            align-self: flex-start;
+            border-radius: 999px;
+            padding: 4px 10px;
+            font-size: 13px;
+            font-weight: 700;
+        }
+        .${studyPlaygroundBadge} .${materialSymbols} {
+            font-size: 16px;
+        }
+        .${studyPlaygroundBadgeNatural} {
+            background: color-mix(in srgb, #2e7d32 16%, var(--md-sys-color-surface));
+            color: #1b5e20;
+        }
+        .${studyPlaygroundBadgeUnnatural} {
+            background: color-mix(in srgb, var(--md-sys-color-error, #b3261e) 14%, var(--md-sys-color-surface));
+            color: var(--md-sys-color-error, #b3261e);
+        }
+        .${studyPlaygroundSummary} {
+            margin: 0 !important;
+            font-size: 14px;
+            line-height: 1.45;
+        }
+        .${studyPlaygroundImage} {
+            display: block;
+            width: 100%;
+            max-width: 360px;
+            border-radius: 14px;
+            border: 1px solid var(--md-sys-color-outline);
+            background: var(--md-sys-color-surface-variant);
+            aspect-ratio: 1 / 1;
+            object-fit: cover;
+        }
+        .${studyPlaygroundImageStatus} {
+            display: inline-flex;
+            align-items: center;
+            gap: 8px;
+            font-size: 13px;
+            color: var(--md-sys-color-on-surface-variant);
+        }
+        .${studyPlaygroundImageStatusBusy} .${materialSymbols},
+        .${studyPlaygroundSendBusy} .${materialSymbols} {
+            animation: spin 1.2s linear infinite;
         }
         .${storiesSoon} {
             display: flex;

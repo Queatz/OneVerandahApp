@@ -39,13 +39,18 @@ import java.util.UUID
 /**
  * Real Qwen image generation via Alibaba Cloud DashScope.
  *
- * - Text-to-image uses the async synthesis API ([QwenImageConfig.endpoint]).
+ * - Text-to-image for classic `wanx` / `*-t2i*` models uses the async synthesis
+ *   API ([QwenImageConfig.endpoint]) with `{ input: { prompt } }`.
+ * - Text-to-image for multimodal still-image models (`wan2.x-image`, including
+ *   `wan2.7-image`) uses the multimodal generation protocol. Sending those
+ *   models to classic `text2image/image-synthesis` yields DashScope
+ *   `InvalidParameter: url error` (model/endpoint mismatch).
  * - Reference-to-image (apartment photos) uses the multimodal image model
  *   ([QwenImageConfig.r2iEndpoint] / [QwenImageConfig.r2iModel]), after first
  *   re-hosting any non-DashScope-reachable reference URLs into DashScope's
  *   temporary OSS (`oss://…`). Local storage URLs (localhost / private hosts /
- *   our own `/images/…` files) are unreadable by DashScope and were the cause
- *   of `InvalidParameter: url error`.
+ *   our own `/images/…` files) are unreadable by DashScope and were another
+ *   cause of `InvalidParameter: url error`.
  */
 class DashScopeQwenClient(
     private val config: QwenImageConfig,
@@ -62,11 +67,10 @@ class DashScopeQwenClient(
 
     private val json = Json { ignoreUnknownKeys = true }
 
-    private val tasksBaseUrl: String =
-        config.endpoint.substringBefore("/api/").trimEnd('/') + "/api/v1/tasks/"
-
     private val uploadsBaseUrl: String =
-        config.endpoint.substringBefore("/api/").trimEnd('/') + "/api/v1/uploads"
+        apiRootFromEndpoint(config.endpoint).ifBlank {
+            apiRootFromEndpoint(config.r2iEndpoint)
+        } + "/uploads"
 
     override suspend fun generate(
         prompt: String,
@@ -74,16 +78,27 @@ class DashScopeQwenClient(
     ): GeneratedImage {
         val refs = referenceImageUrls.map { it.trim() }.filter { it.isNotEmpty() }
         return if (refs.isEmpty()) {
-            val taskId = submitTextToImage(prompt)
-            val imageUrl = pollForResult(taskId)
-            download(imageUrl)
+            // wan2.x-image (and similar multimodal still models) cannot use the
+            // classic text2image contract; route them through multimodal.
+            if (requiresMultimodalTextToImage(config.model, config.endpoint)) {
+                generateMultimodal(
+                    prompt = prompt,
+                    referenceImageUrls = emptyList(),
+                    model = config.model,
+                    endpoint = multimodalEndpointFor(config),
+                )
+            } else {
+                val taskId = submitTextToImage(prompt)
+                val imageUrl = pollForResult(taskId, config.endpoint)
+                download(imageUrl)
+            }
         } else {
             val accessible = refs.map { ensureDashScopeAccessible(it) }
             generateWithReferences(prompt, accessible)
         }
     }
 
-    /** Classic async text-to-image submit. */
+    /** Classic async text-to-image submit (`wanx` / `*-t2i*` style models). */
     private suspend fun submitTextToImage(prompt: String): String {
         val requestBody = buildJsonObject {
             put("model", config.model)
@@ -109,73 +124,18 @@ class DashScopeQwenClient(
         prompt: String,
         referenceImageUrls: List<String>,
     ): GeneratedImage {
-        val usesOss = referenceImageUrls.any { it.startsWith("oss://") }
-        val multimodal = config.r2iEndpoint.contains("multimodal-generation")
-
+        val multimodal = isMultimodalGenerationEndpoint(config.r2iEndpoint)
         if (multimodal) {
-            val requestBody = buildJsonObject {
-                put("model", config.r2iModel)
-                put(
-                    "input",
-                    buildJsonObject {
-                        put(
-                            "messages",
-                            buildJsonArray {
-                                add(
-                                    buildJsonObject {
-                                        put("role", "user")
-                                        put(
-                                            "content",
-                                            buildJsonArray {
-                                                add(buildJsonObject { put("text", prompt) })
-                                                referenceImageUrls.forEach { url ->
-                                                    add(buildJsonObject { put("image", url) })
-                                                }
-                                            },
-                                        )
-                                    },
-                                )
-                            },
-                        )
-                    },
-                )
-                put(
-                    "parameters",
-                    buildJsonObject {
-                        put("prompt_extend", true)
-                        put("watermark", false)
-                        put("n", 1)
-                        put("enable_interleave", false)
-                        put("size", "1K")
-                    },
-                )
-            }
-
-            val response: HttpResponse = client.post(config.r2iEndpoint) {
-                header(HttpHeaders.Authorization, "Bearer ${config.apiKey}")
-                if (usesOss) header(HEADER_OSS_RESOLVE, "enable")
-                contentType(ContentType.Application.Json)
-                setBody(json.encodeToString(JsonObject.serializer(), requestBody))
-            }
-            val text = response.bodyAsText()
-            if (!response.status.isSuccess()) {
-                throw QwenException("Qwen R2I submit failed (${response.status}): $text")
-            }
-
-            // Sync multimodal response: output.choices[].message.content[].image
-            extractMultimodalImageUrl(text)?.let { return download(it) }
-
-            // Some regions return an async task instead.
-            val taskId = json.parseToJsonElement(text).jsonObject["output"]
-                ?.jsonObject?.get("task_id")?.jsonPrimitive?.contentOrNull
-            if (taskId != null) {
-                val imageUrl = pollForResult(taskId)
-                return download(imageUrl)
-            }
-            throw QwenException("Qwen R2I returned no image url: $text")
+            return generateMultimodal(
+                prompt = prompt,
+                referenceImageUrls = referenceImageUrls,
+                model = config.r2iModel,
+                endpoint = config.r2iEndpoint,
+            )
         }
 
         // Legacy VACE / image2image reference-to-image (async).
+        val usesOss = referenceImageUrls.any { it.startsWith("oss://") }
         val requestBody = buildJsonObject {
             put("model", config.r2iModel)
             put(
@@ -204,8 +164,84 @@ class DashScopeQwenClient(
             )
         }
         val taskId = submitAsyncTask(config.r2iEndpoint, requestBody, usesOssUrls = usesOss)
-        val imageUrl = pollForResult(taskId)
+        val imageUrl = pollForResult(taskId, config.r2iEndpoint)
         return download(imageUrl)
+    }
+
+    /**
+     * Multimodal still-image generation (text-only or reference-grounded).
+     *
+     * Shared by playground/catalog comics (`wan2.7-image` text-to-image) and
+     * phrase/cover R2I. Handles both synchronous choices payloads and async
+     * task_id responses.
+     */
+    private suspend fun generateMultimodal(
+        prompt: String,
+        referenceImageUrls: List<String>,
+        model: String,
+        endpoint: String,
+    ): GeneratedImage {
+        val usesOss = referenceImageUrls.any { it.startsWith("oss://") }
+        val requestBody = buildJsonObject {
+            put("model", model)
+            put(
+                "input",
+                buildJsonObject {
+                    put(
+                        "messages",
+                        buildJsonArray {
+                            add(
+                                buildJsonObject {
+                                    put("role", "user")
+                                    put(
+                                        "content",
+                                        buildJsonArray {
+                                            add(buildJsonObject { put("text", prompt) })
+                                            referenceImageUrls.forEach { url ->
+                                                add(buildJsonObject { put("image", url) })
+                                            }
+                                        },
+                                    )
+                                },
+                            )
+                        },
+                    )
+                },
+            )
+            put(
+                "parameters",
+                buildJsonObject {
+                    put("prompt_extend", true)
+                    put("watermark", false)
+                    put("n", 1)
+                    put("enable_interleave", false)
+                    put("size", "1K")
+                },
+            )
+        }
+
+        val response: HttpResponse = client.post(endpoint) {
+            header(HttpHeaders.Authorization, "Bearer ${config.apiKey}")
+            if (usesOss) header(HEADER_OSS_RESOLVE, "enable")
+            contentType(ContentType.Application.Json)
+            setBody(json.encodeToString(JsonObject.serializer(), requestBody))
+        }
+        val text = response.bodyAsText()
+        if (!response.status.isSuccess()) {
+            throw QwenException("Qwen multimodal submit failed (${response.status}): $text")
+        }
+
+        // Sync multimodal response: output.choices[].message.content[].image
+        extractMultimodalImageUrl(text)?.let { return download(it) }
+
+        // Some regions / models return an async task instead.
+        val taskId = json.parseToJsonElement(text).jsonObject["output"]
+            ?.jsonObject?.get("task_id")?.jsonPrimitive?.contentOrNull
+        if (taskId != null) {
+            val imageUrl = pollForResult(taskId, endpoint)
+            return download(imageUrl)
+        }
+        throw QwenException("Qwen multimodal returned no image url: $text")
     }
 
     private suspend fun submitAsyncTask(
@@ -231,7 +267,8 @@ class DashScopeQwenClient(
             ?: throw QwenException("Qwen submit returned no task_id: $text")
     }
 
-    private suspend fun pollForResult(taskId: String): String {
+    private suspend fun pollForResult(taskId: String, submitEndpoint: String): String {
+        val tasksBaseUrl = apiRootFromEndpoint(submitEndpoint) + "/tasks/"
         repeat(maxPollAttempts) {
             val response: HttpResponse = client.get(tasksBaseUrl + taskId) {
                 header(HttpHeaders.Authorization, "Bearer ${config.apiKey}")
@@ -440,6 +477,50 @@ class DashScopeQwenClient(
     companion object {
         private val log = LoggerFactory.getLogger(DashScopeQwenClient::class.java)
         private const val HEADER_OSS_RESOLVE = "X-DashScope-OssResourceResolve"
+        private const val DEFAULT_MULTIMODAL_ENDPOINT =
+            "https://dashscope.aliyuncs.com/api/v1/services/aigc/multimodal-generation/generation"
+
+        /**
+         * True when [model]/[endpoint] need the multimodal still-image protocol
+         * instead of classic `text2image/image-synthesis` `{prompt}` submits.
+         *
+         * DashScope returns `InvalidParameter: url error` when a multimodal
+         * model such as `wan2.7-image` is sent to the classic endpoint.
+         */
+        internal fun requiresMultimodalTextToImage(model: String, endpoint: String): Boolean {
+            if (isMultimodalGenerationEndpoint(endpoint)) return true
+            val normalized = model.trim().lowercase()
+            if (normalized.isEmpty()) return false
+            // Classic text-to-image family keeps the legacy contract.
+            if (normalized.contains("-t2i") || normalized.startsWith("wanx")) return false
+            // wan2.x-image / wan2.x-image-pro and similar still models.
+            return normalized.contains("-image")
+        }
+
+        internal fun isMultimodalGenerationEndpoint(endpoint: String): Boolean {
+            val value = endpoint.lowercase()
+            return value.contains("multimodal-generation") ||
+                value.contains("image-generation/generation")
+        }
+
+        /**
+         * Endpoint used for multimodal text-to-image when [QwenImageConfig.endpoint]
+         * still points at the classic synthesis URL (common misconfiguration).
+         */
+        internal fun multimodalEndpointFor(config: QwenImageConfig): String {
+            if (isMultimodalGenerationEndpoint(config.endpoint)) return config.endpoint
+            if (isMultimodalGenerationEndpoint(config.r2iEndpoint)) return config.r2iEndpoint
+            return DEFAULT_MULTIMODAL_ENDPOINT
+        }
+
+        /** `https://host/api/v1` root derived from a full service endpoint URL. */
+        internal fun apiRootFromEndpoint(endpoint: String): String {
+            val trimmed = endpoint.trim()
+            if (trimmed.isEmpty()) return ""
+            val beforeApi = trimmed.substringBefore("/api/")
+            if (beforeApi != trimmed) return beforeApi.trimEnd('/') + "/api/v1"
+            return trimmed.trimEnd('/').substringBeforeLast("/services", missingDelimiterValue = trimmed.trimEnd('/'))
+        }
 
         /**
          * Maps a public or relative `/images/{objectKey}` URL back to the object key.
