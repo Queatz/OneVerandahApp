@@ -747,6 +747,20 @@ fun ChatScreen(
         )
     }
 
+    fun startStudyFromText(raw: String?) {
+        val text = raw?.trim().orEmpty()
+        if (text.isEmpty()) return
+        studySessionsPanelOpen = false
+        openStudy(
+            ChatMessage(
+                id = "study-${Date.now().toLong()}",
+                sender = ChatSender.YOU,
+                text = text,
+                createdAt = Date.now().toLong(),
+            ),
+        )
+    }
+
     fun removeStudySession(item: SavedStudySession) {
         scope.launch {
             runCatching { ChatApi.deleteStudySession(item.id) }
@@ -889,6 +903,7 @@ fun ChatScreen(
                     loading = studySessionsLoading,
                     strings = strings,
                     onClose = { studySessionsPanelOpen = false },
+                    onStart = ::startStudyFromText,
                     onOpen = ::openSavedStudySession,
                     onRemove = ::removeStudySession,
                 )
@@ -1047,9 +1062,11 @@ private fun StudySessionsPanel(
     loading: Boolean,
     strings: UiStrings,
     onClose: () -> Unit,
+    onStart: (String?) -> Unit,
     onOpen: (SavedStudySession) -> Unit,
     onRemove: (SavedStudySession) -> Unit,
 ) {
+    var draft by remember { mutableStateOf("") }
     Div(attrs = {
         classes(Styles.savedPanelScrim)
         onClick { onClose() }
@@ -1069,6 +1086,19 @@ private fun StudySessionsPanel(
             }) { Text("close") }
         }
         Div(attrs = { classes(Styles.savedPanelBody) }) {
+            ChatInput(
+                value = draft,
+                onValueChange = { draft = it },
+                onSend = { value ->
+                    val text = value?.trim().orEmpty()
+                    if (text.isEmpty()) return@ChatInput
+                    draft = ""
+                    onStart(text)
+                },
+                placeholder = strings.chatStudySessionsPlaceholder,
+                multiline = true,
+                autoFocus = true,
+            )
             when {
                 loading && items.isEmpty() -> {
                     Div(attrs = { classes(Styles.chatStatus) }) {

@@ -142,7 +142,13 @@ data class QwenImageConfig(
 /** Qwen chat, speech synthesis, and speech recognition settings. */
 data class QwenChatConfig(
     val chatEndpoint: String,
+    /** Fast default model for chat and lighter study tasks. */
     val chatModel: String,
+    /**
+     * Stronger model reserved for heavy study-session breakdown work
+     * (skeleton + per-sentence dissection).
+     */
+    val chatHeavyModel: String,
     val ttsEndpoint: String,
     val ttsModel: String,
     /** Built-in Qwen-Audio-TTS system voice used as the app default. */
@@ -311,7 +317,9 @@ data class AppConfig(
             val qwenChat = QwenChatConfig(
                 chatEndpoint = source["QWEN_CHAT_ENDPOINT"]
                     ?: "https://dashscope.aliyuncs.com/compatible-mode/v1/chat/completions",
-                chatModel = source["QWEN_CHAT_MODEL"] ?: "qwen3-max-preview",
+                // Fast default for chat and lighter study tasks; heavy breakdown uses chatHeavyModel.
+                chatModel = source["QWEN_CHAT_MODEL"] ?: "qwen3.7-flash",
+                chatHeavyModel = source["QWEN_CHAT_HEAVY_MODEL"] ?: "qwen3-max-preview",
                 // Qwen-Audio-TTS shares the CosyVoice-compatible WebSocket synthesis protocol.
                 ttsEndpoint = "wss://dashscope.aliyuncs.com/api-ws/v1/inference/",
                 ttsModel = source["QWEN_TTS_MODEL"] ?: "qwen-audio-3.0-tts-flash",

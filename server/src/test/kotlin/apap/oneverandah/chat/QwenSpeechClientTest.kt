@@ -45,6 +45,19 @@ class QwenSpeechClientTest {
     }
 
     @Test
+    fun `default chat models use flash by default and max for heavy study work`() {
+        val emptyEnvFile = Files.createTempFile("one-verandah", ".env").toFile()
+
+        try {
+            val config = AppConfig.load(emptyEnvFile).qwenChat
+            assertEquals("qwen3.7-flash", config.chatModel)
+            assertEquals("qwen3-max-preview", config.chatHeavyModel)
+        } finally {
+            emptyEnvFile.delete()
+        }
+    }
+
+    @Test
     fun `speech endpoints cannot be overridden into incompatible regions or protocols`() {
         val envFile = Files.createTempFile("one-verandah", ".env").toFile().apply {
             writeText(
@@ -193,7 +206,8 @@ class QwenSpeechClientTest {
         ttsVoice: String = "longanhuan_v3.6",
     ) = QwenChatConfig(
         chatEndpoint = "https://example.test/chat",
-        chatModel = "qwen3-max-preview",
+        chatModel = "qwen3.7-flash",
+        chatHeavyModel = "qwen3-max-preview",
         ttsEndpoint = "https://example.test/tts",
         ttsModel = "qwen-audio-3.0-tts-flash",
         ttsVoice = ttsVoice,

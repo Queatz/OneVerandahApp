@@ -1,0 +1,148 @@
+package apap.oneverandah.chat
+
+import apap.oneverandah.config.QwenChatConfig
+import io.ktor.client.HttpClient
+import io.ktor.client.engine.mock.MockEngine
+import io.ktor.client.engine.mock.respond
+import io.ktor.http.HttpHeaders
+import io.ktor.http.HttpStatusCode
+import io.ktor.http.content.OutgoingContent
+import io.ktor.http.headersOf
+import kotlin.test.Test
+import kotlin.test.assertEquals
+import kotlinx.coroutines.runBlocking
+import kotlinx.serialization.json.Json
+import kotlinx.serialization.json.jsonObject
+import kotlinx.serialization.json.jsonPrimitive
+
+class QwenStudyClientTest {
+    @Test
+    fun `study skeleton and dissect use the heavy chat model`() = runBlocking {
+        val models = mutableListOf<String>()
+        val engine = MockEngine { request ->
+            val body = (request.body as OutgoingContent.ByteArrayContent).bytes().decodeToString()
+            models += Json.parseToJsonElement(body).jsonObject["model"]?.jsonPrimitive?.content.orEmpty()
+            val content = when (models.size) {
+                1 -> """{"textLanguageTag":"vi","sentences":[{"text":"Xin chào.","tokens":[{"text":"Xin chào","status":"PENDING"},{"text":".","status":"PLAIN"}]}]}"""
+                else -> """{"sentenceText":"Xin chào.","tokens":[{"text":"Xin chào","literalMeaning":"Hello","register":"neutral","contextualMeaning":"Greeting","nearSynonyms":["chào"],"exampleSentences":[{"text":"Xin chào bạn.","translation":"Hello friend."},{"text":"Chào buổi sáng.","translation":"Good morning."},{"text":"Xin chào mọi người.","translation":"Hello everyone."}]},{"text":".","literalMeaning":"","register":"","contextualMeaning":"","nearSynonyms":[],"exampleSentences":[]}]}"""
+            }
+            respond(
+                content = qwenChatResponse(content),
+                status = HttpStatusCode.OK,
+                headers = headersOf(HttpHeaders.ContentType, "application/json"),
+            )
+        }
+        val client = HttpClient(engine)
+        val ai = DashScopeStudyAiClient(qwenConfig(), client)
+
+        ai.generateSkeleton(StudyGenerationRequest(text = "Xin chào.", languageTag = "en"))
+        ai.dissectSentence(
+            StudyDissectGenerationRequest(
+                text = "Xin chào.",
+                sentenceText = "Xin chào.",
+                tokens = listOf("Xin chào", "."),
+                textLanguageTag = "vi",
+                languageTag = "en",
+            ),
+        )
+
+        assertEquals(listOf("qwen3-max-preview", "qwen3-max-preview"), models)
+        client.close()
+    }
+
+    @Test
+    fun `lighter study tasks use the default flash chat model`() = runBlocking {
+        val models = mutableListOf<String>()
+        val engine = MockEngine { request ->
+            val body = (request.body as OutgoingContent.ByteArrayContent).bytes().decodeToString()
+            models += Json.parseToJsonElement(body).jsonObject["model"]?.jsonPrimitive?.content.orEmpty()
+            val content = when (models.size) {
+                1 -> """{"natural":true,"summary":"Natural usage."}"""
+                2 -> """{"characters":[{"id":"main","name":"Lan","role":"main","description":"Young woman in linen"}]}"""
+                3 -> """{"scenarios":[{"description":"A neighbor greets you.","openingLine":"Xin chào!"},{"description":"A vendor offers fruit.","openingLine":null},{"description":"A classmate asks a question.","openingLine":"Bạn rảnh không?"},{"description":"Someone waves from across the courtyard.","openingLine":null}]}"""
+                4 -> """{"description":"They smile.","reply":"Thật sao?"}"""
+                else -> """{"feedback":"Add the missing word."}"""
+            }
+            respond(
+                content = qwenChatResponse(content),
+                status = HttpStatusCode.OK,
+                headers = headersOf(HttpHeaders.ContentType, "application/json"),
+            )
+        }
+        val client = HttpClient(engine)
+        val ai = DashScopeStudyAiClient(qwenConfig(), client)
+
+        ai.evaluateWordUsage(
+            StudyWordPlaygroundGenerationRequest(
+                word = "chào",
+                sentence = "Xin chào.",
+                textLanguageTag = "vi",
+                languageTag = "en",
+            ),
+        )
+        ai.designStoryCharacters(
+            StudyCharactersGenerationRequest(text = "Xin chào.", textLanguageTag = "vi"),
+        )
+        ai.generatePlayScenarios(
+            StudyPlayScenariosGenerationRequest(
+                text = "Xin chào.",
+                textLanguageTag = "vi",
+                languageTag = "en",
+                characters = emptyList(),
+            ),
+        )
+        ai.generatePlayTurn(
+            StudyPlayTurnGenerationRequest(
+                text = "Xin chào.",
+                textLanguageTag = "vi",
+                languageTag = "en",
+                scenarioDescription = "A neighbor greets you.",
+                characters = emptyList(),
+                history = emptyList(),
+                userMessage = "Chào bạn!",
+            ),
+        )
+        ai.evaluateWriteAttempt(
+            StudyWriteCheckGenerationRequest(
+                expected = "Xin chào.",
+                attempt = "Xin chao.",
+                textLanguageTag = "vi",
+                languageTag = "en",
+            ),
+        )
+
+        assertEquals(
+            listOf(
+                "qwen3.7-flash",
+                "qwen3.7-flash",
+                "qwen3.7-flash",
+                "qwen3.7-flash",
+                "qwen3.7-flash",
+            ),
+            models,
+        )
+        client.close()
+    }
+
+    private fun qwenConfig() = QwenChatConfig(
+        chatEndpoint = "https://example.test/chat",
+        chatModel = "qwen3.7-flash",
+        chatHeavyModel = "qwen3-max-preview",
+        ttsEndpoint = "https://example.test/tts",
+        ttsModel = "qwen-audio-3.0-tts-flash",
+        ttsVoice = "longanhuan_v3.6",
+        voiceDesignEndpoint = "https://example.test/customization",
+        voiceDesignModel = "voice-enrollment",
+        asrEndpoint = "wss://example.test/realtime",
+        asrModel = "qwen3-asr-flash-realtime",
+        apiKey = "test-key",
+    )
+
+    private fun qwenChatResponse(content: String): String {
+        val escaped = content
+            .replace("\\", "\\\\")
+            .replace("\"", "\\\"")
+            .replace("\n", "\\n")
+        return """{"choices":[{"message":{"content":"$escaped"}}]}"""
+    }
+}

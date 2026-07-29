@@ -247,6 +247,7 @@ class DashScopeStudyAiClient(
             systemPrompt = skeletonSystemPrompt(),
             userContent = request.text,
             label = "study skeleton",
+            model = config.chatHeavyModel,
         )
         return QwenStudySkeletonParser.parse(content)
     }
@@ -270,6 +271,7 @@ class DashScopeStudyAiClient(
             ),
             userContent = userContent,
             label = "study dissect",
+            model = config.chatHeavyModel,
         )
         return QwenStudyDissectParser.parse(content)
     }
@@ -430,10 +432,11 @@ class DashScopeStudyAiClient(
         userContent: String,
         label: String,
         temperature: Double = 0.2,
+        model: String = config.chatModel,
     ): String {
         check(config.enabled) { "Qwen study requires QWEN_API_KEY" }
         val body = buildJsonObject {
-            put("model", config.chatModel)
+            put("model", model)
             put(
                 "messages",
                 buildJsonArray {
