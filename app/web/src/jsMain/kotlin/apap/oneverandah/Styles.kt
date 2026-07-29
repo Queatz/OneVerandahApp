@@ -316,6 +316,7 @@ object Styles {
     const val studyTokenPending = "study-token-pending"
     const val studyTokenDetail = "study-token-detail"
     const val studyExampleSentence = "study-example-sentence"
+    const val studyExampleWord = "study-example-word"
     const val studyExampleTranslation = "study-example-translation"
     const val studyPlayground = "study-playground"
     const val studyPlaygroundHint = "study-playground-hint"
@@ -2579,6 +2580,9 @@ object Styles {
         .${studyExampleSentence} p {
             margin: 0 !important;
             line-height: 1.4;
+        }
+        .${studyExampleWord} {
+            font-weight: 700;
         }
         .${studyExampleTranslation} {
             margin-top: 2px !important;

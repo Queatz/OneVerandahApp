@@ -64,6 +64,7 @@ import kotlinx.coroutines.launch
 import kotlinx.coroutines.sync.Semaphore
 import kotlinx.coroutines.sync.withPermit
 import org.jetbrains.compose.web.attributes.InputType
+import org.jetbrains.compose.web.dom.B
 import org.jetbrains.compose.web.dom.Button
 import org.jetbrains.compose.web.dom.Div
 import org.jetbrains.compose.web.dom.Img
@@ -2119,6 +2120,51 @@ internal fun studyWriteMatches(expected: String, actual: String): Boolean {
     return normalize(expected) == normalize(actual)
 }
 
+/**
+ * Case-insensitive ranges of [word] inside [sentence] for example-sentence highlighting.
+ * Non-overlapping left-to-right matches; empty when either side is blank or nothing matches.
+ */
+internal fun studyExampleHighlightRanges(sentence: String, word: String): List<IntRange> {
+    val needle = word.trim()
+    if (needle.isEmpty() || sentence.isEmpty()) return emptyList()
+    val ranges = mutableListOf<IntRange>()
+    var start = 0
+    while (start <= sentence.length - needle.length) {
+        val idx = sentence.indexOf(needle, startIndex = start, ignoreCase = true)
+        if (idx < 0) break
+        ranges += idx until (idx + needle.length)
+        start = idx + needle.length
+    }
+    return ranges
+}
+
+@Composable
+private fun StudyExampleSentenceText(
+    sentence: String,
+    word: String,
+) {
+    P {
+        val ranges = studyExampleHighlightRanges(sentence, word)
+        if (ranges.isEmpty()) {
+            Text(sentence)
+            return@P
+        }
+        var cursor = 0
+        ranges.forEach { range ->
+            if (cursor < range.first) {
+                Text(sentence.substring(cursor, range.first))
+            }
+            B(attrs = { classes(Styles.studyExampleWord) }) {
+                Text(sentence.substring(range.first, range.last + 1))
+            }
+            cursor = range.last + 1
+        }
+        if (cursor < sentence.length) {
+            Text(sentence.substring(cursor))
+        }
+    }
+}
+
 @Composable
 private fun StudyWriteSentenceCard(
     sentenceIndex: Int,
@@ -2602,7 +2648,10 @@ private fun StudyTokenDetail(
                 if (token.exampleSentences.isNotEmpty()) {
                     token.exampleSentences.forEach { example ->
                         Div(attrs = { classes(Styles.studyExampleSentence) }) {
-                            P { Text(example.text) }
+                            StudyExampleSentenceText(
+                                sentence = example.text,
+                                word = token.text,
+                            )
                             if (example.translation.isNotBlank()) {
                                 P(attrs = { classes(Styles.studyExampleTranslation) }) {
                                     Text(example.translation)
