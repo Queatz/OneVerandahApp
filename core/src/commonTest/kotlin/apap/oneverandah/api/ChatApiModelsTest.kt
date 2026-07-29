@@ -175,6 +175,35 @@ class ChatApiModelsTest {
                     imageUrl = "https://cdn.example/lan.png",
                 ),
             ),
+            playScenarios = listOf(
+                StudyPlayScenario(
+                    id = "play-1",
+                    description = "A neighbor greets you.",
+                    openingLine = "Xin chào!",
+                    imageId = "play-img-1",
+                    imageUrl = "https://cdn.example/play.png",
+                    messages = listOf(
+                        StudyPlayChatMessage(
+                            speaker = StudyPlaySpeaker.OTHER,
+                            text = "Xin chào!",
+                            description = "A neighbor greets you.",
+                            imageId = "play-img-1",
+                            imageUrl = "https://cdn.example/play.png",
+                        ),
+                        StudyPlayChatMessage(
+                            speaker = StudyPlaySpeaker.USER,
+                            text = "Chào bạn!",
+                        ),
+                        StudyPlayChatMessage(
+                            speaker = StudyPlaySpeaker.OTHER,
+                            text = "Bạn khỏe không?",
+                            description = "They smile and wait.",
+                            imageId = "play-img-2",
+                            imageUrl = "https://cdn.example/play2.png",
+                        ),
+                    ),
+                ),
+            ),
         )
 
         val decoded = json.decodeFromString<StudySessionResponse>(json.encodeToString(response))
@@ -188,6 +217,10 @@ class ChatApiModelsTest {
         assertEquals("https://cdn.example/study.png", decoded.sentences.single().imageUrl)
         assertEquals("Lan", decoded.characters.single().name)
         assertEquals("https://cdn.example/lan.png", decoded.characters.single().imageUrl)
+        assertEquals(1, decoded.playScenarios.size)
+        assertEquals(3, decoded.playScenarios.single().messages.size)
+        assertEquals(StudyPlaySpeaker.USER, decoded.playScenarios.single().messages[1].speaker)
+        assertEquals("https://cdn.example/play2.png", decoded.playScenarios.single().messages[2].imageUrl)
     }
 
     @Test

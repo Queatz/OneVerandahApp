@@ -3,6 +3,7 @@ package apap.oneverandah.chat
 import apap.oneverandah.api.StudyDissectSentenceRequest
 import apap.oneverandah.api.StudyDissectSentenceResponse
 import apap.oneverandah.api.StudyExampleSentence
+import apap.oneverandah.api.StudyPlayChatMessage
 import apap.oneverandah.api.StudyPlayHistoryMessage
 import apap.oneverandah.api.StudyPlayScenario
 import apap.oneverandah.api.StudyPlayScenariosRequest
@@ -864,11 +865,42 @@ internal fun StudySessionResponse.normalizedSkeleton(sourceText: String): StudyS
             imageUrl = character.imageUrl?.trim()?.takeIf { it.isNotEmpty() },
         )
     }
+    val play = playScenarios.mapNotNull { scenario ->
+        val description = scenario.description.trim().takeIf { it.isNotEmpty() } ?: return@mapNotNull null
+        val opening = scenario.openingLine?.trim()?.takeIf { it.isNotEmpty() }
+        val imageId = scenario.imageId?.trim()?.takeIf { it.isNotEmpty() }
+        val imageUrl = scenario.imageUrl?.trim()?.takeIf { it.isNotEmpty() }
+        val messages = scenario.messages.mapNotNull { message ->
+            val text = message.text.trim()
+            val msgDescription = message.description.trim()
+            val msgImageId = message.imageId?.trim()?.takeIf { it.isNotEmpty() }
+            val msgImageUrl = message.imageUrl?.trim()?.takeIf { it.isNotEmpty() }
+            if (text.isEmpty() && msgDescription.isEmpty() && msgImageId == null && msgImageUrl == null) {
+                return@mapNotNull null
+            }
+            StudyPlayChatMessage(
+                speaker = message.speaker,
+                text = text,
+                description = msgDescription,
+                imageId = msgImageId,
+                imageUrl = msgImageUrl,
+            )
+        }
+        StudyPlayScenario(
+            id = scenario.id.trim().ifEmpty { imageId.orEmpty() }.ifEmpty { return@mapNotNull null },
+            description = description,
+            openingLine = opening,
+            imageId = imageId,
+            imageUrl = imageUrl,
+            messages = messages,
+        )
+    }
     return StudySessionResponse(
         text = sourceText,
         textLanguageTag = languageTag,
         sentences = sentences,
         characters = cast,
+        playScenarios = play,
     )
 }
 

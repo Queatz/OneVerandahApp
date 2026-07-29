@@ -198,6 +198,12 @@ data class StudySessionResponse(
      * character design and persisted so portraits are not regenerated.
      */
     val characters: List<StudyStoryCharacter> = emptyList(),
+    /**
+     * Play-tab role-play scenarios with full conversation history and images.
+     * Empty on fresh skeletons; filled once (and updated on each turn) so reopen
+     * can resume without regenerating scenarios or chats.
+     */
+    val playScenarios: List<StudyPlayScenario> = emptyList(),
 )
 
 /** One sentence from the source text, tokenized for interactive study. */
@@ -466,7 +472,22 @@ data class StudyPlayScenariosRequest(
     }
 }
 
-/** One Play-tab scenario starter with an optional opening line from the other person. */
+/**
+ * One turn in a persisted Play-tab conversation (opening beat or later reply).
+ *
+ * [text] may be empty for an opening beat that only has a scene description.
+ * [imageId]/[imageUrl] attach the cover/beat visual when present.
+ */
+@Serializable
+data class StudyPlayChatMessage(
+    val speaker: StudyPlaySpeaker,
+    val text: String = "",
+    val description: String = "",
+    val imageId: String? = null,
+    val imageUrl: String? = null,
+)
+
+/** One Play-tab scenario starter with optional opening line and full chat history. */
 @Serializable
 data class StudyPlayScenario(
     val id: String,
@@ -478,6 +499,11 @@ data class StudyPlayScenario(
     val imageId: String? = null,
     /** Public URL once the cover image is ready. */
     val imageUrl: String? = null,
+    /**
+     * Full conversation for this scenario, including the opening beat.
+     * Persisted so follow-up chats and images survive reopen.
+     */
+    val messages: List<StudyPlayChatMessage> = emptyList(),
 )
 
 @Serializable

@@ -1,6 +1,9 @@
 package apap.oneverandah.chat
 
 import apap.oneverandah.api.SaveStudySessionRequest
+import apap.oneverandah.api.StudyPlayChatMessage
+import apap.oneverandah.api.StudyPlayScenario
+import apap.oneverandah.api.StudyPlaySpeaker
 import apap.oneverandah.api.StudySentence
 import apap.oneverandah.api.StudySessionResponse
 import apap.oneverandah.api.StudyToken
@@ -121,6 +124,71 @@ class StudySessionsServiceTest {
         assertEquals(2, items.size)
         assertEquals(listOf("three", "two"), items.map { it.text })
         assertNull(items.find { it.id == first.id })
+        Unit
+    }
+
+    @Test
+    fun `play scenarios and follow-up chats are persisted on the session`() = runBlocking {
+        val deviceService = DeviceService(
+            repository = InMemoryDeviceRepository(),
+            tokenGenerator = { "play-study-token-abcdefghijklmnopqrstuvw" },
+        )
+        val service = StudySessionsService(
+            repository = InMemoryStudySessionsRepository(),
+            deviceService = deviceService,
+            idGenerator = { "study-play-1" },
+        )
+        val token = deviceService.issueToken().deviceToken
+
+        val session = sampleSession("Xin chào.").copy(
+            playScenarios = listOf(
+                StudyPlayScenario(
+                    id = "scenario-1",
+                    description = "A neighbor greets you.",
+                    openingLine = "Xin chào!",
+                    imageId = "img-1",
+                    imageUrl = "https://cdn.example/play.png",
+                    messages = listOf(
+                        StudyPlayChatMessage(
+                            speaker = StudyPlaySpeaker.OTHER,
+                            text = "Xin chào!",
+                            description = "A neighbor greets you.",
+                            imageId = "img-1",
+                            imageUrl = "https://cdn.example/play.png",
+                        ),
+                        StudyPlayChatMessage(
+                            speaker = StudyPlaySpeaker.USER,
+                            text = "Chào bạn!",
+                        ),
+                        StudyPlayChatMessage(
+                            speaker = StudyPlaySpeaker.OTHER,
+                            text = "Bạn khỏe không?",
+                            description = "They smile.",
+                            imageId = "img-2",
+                            imageUrl = "https://cdn.example/play2.png",
+                        ),
+                    ),
+                ),
+            ),
+        )
+        val saved = service.save(
+            token,
+            SaveStudySessionRequest(
+                sourceMessageId = "msg-play",
+                languageTag = "en",
+                session = session,
+            ),
+        )
+
+        val listed = service.list(token).items.single()
+        assertEquals(saved.id, listed.id)
+        assertEquals(1, listed.session.playScenarios.size)
+        val scenario = listed.session.playScenarios.single()
+        assertEquals("scenario-1", scenario.id)
+        assertEquals(3, scenario.messages.size)
+        assertEquals(StudyPlaySpeaker.USER, scenario.messages[1].speaker)
+        assertEquals("Chào bạn!", scenario.messages[1].text)
+        assertEquals("https://cdn.example/play2.png", scenario.messages[2].imageUrl)
         Unit
     }
 
