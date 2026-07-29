@@ -27,6 +27,9 @@ import apap.oneverandah.api.SpeechRequest
 import apap.oneverandah.api.SpeechTimingAligner
 import apap.oneverandah.api.SpeechWordTiming
 import apap.oneverandah.api.StudyDissectSentenceRequest
+import apap.oneverandah.api.StudyExampleSentence
+import apap.oneverandah.api.StudyExpressCheckRequest
+import apap.oneverandah.api.StudyExpressGenerateRequest
 import apap.oneverandah.api.StudyPlayChatMessage
 import apap.oneverandah.api.StudyPlayHistoryMessage
 import apap.oneverandah.api.StudyPlayScenario
@@ -1890,6 +1893,15 @@ private fun StudySessionContent(
         }) { Text(strings.chatWriteTab) }
         Button(attrs = {
             classes(Styles.chip)
+            if (mode == StudySessionMode.EXPRESS) classes(Styles.chipActive)
+            attr("type", "button")
+            onClick {
+                mode = StudySessionMode.EXPRESS
+                selectedRef = null
+            }
+        }) { Text(strings.chatExpressTab) }
+        Button(attrs = {
+            classes(Styles.chip)
             if (mode == StudySessionMode.PLAY) classes(Styles.chipActive)
             attr("type", "button")
             onClick {
@@ -2067,6 +2079,13 @@ private fun StudySessionContent(
                 )
             }
         }
+        StudySessionMode.EXPRESS -> {
+            StudyExpressTab(
+                session = session,
+                anyLoading = anyLoading,
+                strings = strings,
+            )
+        }
         StudySessionMode.PLAY -> {
             StudyPlayTab(
                 session = session,
@@ -2111,7 +2130,7 @@ private fun StudySentenceVisual(
     }
 }
 
-private enum class StudySessionMode { STUDY, READ, WRITE, PLAY }
+private enum class StudySessionMode { STUDY, READ, WRITE, EXPRESS, PLAY }
 
 /** Compares learner input to a study sentence after light whitespace normalization. */
 internal fun studyWriteMatches(expected: String, actual: String): Boolean {
@@ -2161,6 +2180,273 @@ private fun StudyExampleSentenceText(
         }
         if (cursor < sentence.length) {
             Text(sentence.substring(cursor))
+        }
+    }
+}
+
+/**
+ * Collects Express prompts from dissected token example sentences.
+ * Prefer [StudyExampleSentence.translation] (learner language) as the shown meaning.
+ */
+internal fun collectExpressPracticeSentences(session: StudySessionResponse): List<StudyExampleSentence> {
+    val seen = linkedSetOf<String>()
+    val result = mutableListOf<StudyExampleSentence>()
+    session.sentences.forEach { sentence ->
+        sentence.tokens.forEach { token ->
+            token.exampleSentences.forEach { example ->
+                val text = example.text.trim()
+                val translation = example.translation.trim()
+                if (text.isEmpty() && translation.isEmpty()) return@forEach
+                // Prompt must be in the learner language when possible.
+                val meaning = translation.ifEmpty { text }
+                val reference = text
+                val key = "${meaning.lowercase()}|${reference.lowercase()}"
+                if (!seen.add(key)) return@forEach
+                result += StudyExampleSentence(text = reference, translation = meaning)
+            }
+        }
+    }
+    return result
+}
+
+internal fun collectExpressVocabulary(session: StudySessionResponse): List<String> =
+    session.sentences
+        .flatMap { it.tokens }
+        .filter { it.status != StudyTokenStatus.PLAIN && it.text.isNotBlank() }
+        .map { it.text.trim() }
+        .filter { it.isNotEmpty() }
+        .distinct()
+
+@Composable
+private fun StudyExpressTab(
+    session: StudySessionResponse,
+    anyLoading: Boolean,
+    strings: UiStrings,
+) {
+    val scope = rememberCoroutineScope()
+    val languageTag = Localization.language.tag
+    val sessionExamples = remember(session) { collectExpressPracticeSentences(session) }
+    val vocabulary = remember(session) { collectExpressVocabulary(session) }
+
+    var queue by remember(session.text) { mutableStateOf(sessionExamples) }
+    var index by remember(session.text) { mutableStateOf(0) }
+    var draft by remember(session.text, index) { mutableStateOf("") }
+    var checking by remember(session.text, index) { mutableStateOf(false) }
+    var feedback by remember(session.text, index) { mutableStateOf<String?>(null) }
+    var justCorrect by remember(session.text, index) { mutableStateOf(false) }
+    var generating by remember(session.text) { mutableStateOf(false) }
+    var generateError by remember(session.text) { mutableStateOf<String?>(null) }
+    var seededFromSession by remember(session.text) { mutableStateOf(false) }
+
+    val meaningsStillLoading = anyLoading || session.sentences.any { sentence ->
+        sentence.tokens.any { it.status == StudyTokenStatus.PENDING }
+    }
+
+    // Merge newly dissected examples as they arrive (without resetting progress).
+    LaunchedEffect(sessionExamples) {
+        if (sessionExamples.isEmpty()) return@LaunchedEffect
+        if (!seededFromSession && queue.isEmpty()) {
+            queue = sessionExamples
+            index = 0
+            seededFromSession = true
+            return@LaunchedEffect
+        }
+        val existingKeys = queue.map {
+            "${it.translation.trim().lowercase()}|${it.text.trim().lowercase()}"
+        }.toMutableSet()
+        val additions = sessionExamples.filter { example ->
+            val key = "${example.translation.trim().lowercase()}|${example.text.trim().lowercase()}"
+            existingKeys.add(key)
+        }
+        if (additions.isNotEmpty()) {
+            queue = queue + additions
+            seededFromSession = true
+        }
+    }
+
+    fun generateMore(resumeAt: Int) {
+        if (generating) return
+        generating = true
+        generateError = null
+        scope.launch {
+            runCatching {
+                ChatApi.studyExpressGenerate(
+                    StudyExpressGenerateRequest(
+                        text = session.text,
+                        textLanguageTag = session.textLanguageTag,
+                        languageTag = languageTag,
+                        vocabulary = vocabulary,
+                        previousSentences = queue.map { it.text }.filter { it.isNotBlank() },
+                    ),
+                )
+            }.onSuccess { response ->
+                val fresh = response.sentences.mapNotNull { item ->
+                    val text = item.text.trim().takeIf { it.isNotEmpty() } ?: return@mapNotNull null
+                    val translation = item.translation.trim().takeIf { it.isNotEmpty() }
+                        ?: return@mapNotNull null
+                    StudyExampleSentence(text = text, translation = translation)
+                }
+                if (fresh.isNotEmpty()) {
+                    queue = queue + fresh
+                    index = resumeAt.coerceIn(0, queue.lastIndex)
+                    justCorrect = false
+                    feedback = null
+                    draft = ""
+                } else {
+                    generateError = strings.chatExpressFeedbackError
+                }
+            }.onFailure {
+                generateError = strings.chatExpressFeedbackError
+            }
+            generating = false
+        }
+    }
+
+    fun advanceAfterCorrect() {
+        justCorrect = false
+        feedback = null
+        draft = ""
+        val next = index + 1
+        if (next < queue.size) {
+            index = next
+        } else {
+            // Exhausted local queue — request a fresh batch and resume at the first new item.
+            generateMore(resumeAt = queue.size)
+        }
+    }
+
+    // When nothing is available and meanings are done, generate the first endless batch.
+    LaunchedEffect(session.text, queue.size, meaningsStillLoading, generating, generateError) {
+        if (queue.isEmpty() && !meaningsStillLoading && !generating && generateError == null) {
+            generateMore(resumeAt = 0)
+        }
+    }
+
+    fun check(value: String?) {
+        val candidate = value?.trim().orEmpty()
+        val currentItem = queue.getOrNull(index) ?: return
+        if (candidate.isEmpty() || checking || generating || justCorrect) return
+        checking = true
+        feedback = null
+        draft = candidate
+        scope.launch {
+            runCatching {
+                ChatApi.studyExpressCheck(
+                    StudyExpressCheckRequest(
+                        meaning = currentItem.translation.ifBlank { currentItem.text },
+                        attempt = candidate,
+                        textLanguageTag = session.textLanguageTag,
+                        languageTag = languageTag,
+                        referenceText = currentItem.text,
+                    ),
+                )
+            }.onSuccess { response ->
+                if (response.correct) {
+                    justCorrect = true
+                    feedback = null
+                    // Brief success beat, then advance.
+                    delay(650)
+                    advanceAfterCorrect()
+                } else {
+                    justCorrect = false
+                    feedback = response.feedback.trim().takeIf { it.isNotEmpty() }
+                        ?: strings.chatExpressFeedbackError
+                }
+            }.onFailure {
+                justCorrect = false
+                feedback = strings.chatExpressFeedbackError
+            }
+            checking = false
+        }
+    }
+
+    Span(attrs = { classes(Styles.studySessionHint) }) { Text(strings.chatExpressHint) }
+
+    val current = queue.getOrNull(index)
+    when {
+        current != null -> {
+            Div(attrs = { classes(Styles.studyWriteBlock) }) {
+                if (queue.isNotEmpty()) {
+                    Span(attrs = { classes(Styles.studySessionHint) }) {
+                        Text("${(index + 1).coerceAtMost(queue.size)} / ${queue.size}")
+                    }
+                }
+                P(attrs = { classes(Styles.studyWritePrompt) }) {
+                    Text(current.translation.ifBlank { current.text })
+                }
+                if (justCorrect) {
+                    Div(attrs = {
+                        classes(Styles.studyWriteCorrect)
+                        attr("role", "status")
+                    }) {
+                        MaterialSymbol("check_circle")
+                        Span { Text(strings.chatExpressCorrect) }
+                    }
+                } else {
+                    ChatInput(
+                        value = draft,
+                        onValueChange = {
+                            draft = it
+                            if (feedback != null) feedback = null
+                        },
+                        onSend = { check(it) },
+                        placeholder = strings.chatExpressPlaceholder,
+                        languageTag = session.textLanguageTag,
+                        multiline = (current.translation.ifBlank { current.text }).length > 48,
+                        autoFocus = true,
+                    )
+                    when {
+                        checking -> {
+                            Div(attrs = {
+                                classes(Styles.studyWriteChecking)
+                                attr("role", "status")
+                            }) {
+                                MaterialSymbol("progress_activity")
+                                Span { Text(strings.chatExpressChecking) }
+                            }
+                        }
+                        feedback != null -> {
+                            P(attrs = {
+                                classes(Styles.studyWriteFeedback)
+                                attr("role", "status")
+                            }) { Text(feedback!!) }
+                        }
+                    }
+                }
+            }
+        }
+        generating || meaningsStillLoading -> {
+            Div(attrs = { classes(Styles.studyPreparingMeanings) }) {
+                MaterialSymbol("progress_activity")
+                Text(
+                    when {
+                        generating -> strings.chatExpressGenerating
+                        else -> strings.chatExpressLoading
+                    },
+                )
+            }
+        }
+        generateError != null -> {
+            Div(attrs = { classes(Styles.studyWriteBlock) }) {
+                P(attrs = {
+                    classes(Styles.studyWriteFeedback)
+                    attr("role", "status")
+                }) { Text(generateError!!) }
+                Button(attrs = {
+                    classes(Styles.chip)
+                    attr("type", "button")
+                    onClick {
+                        generateError = null
+                        generateMore(resumeAt = queue.size)
+                    }
+                }) { Text(strings.chatPlayRetry) }
+            }
+        }
+        else -> {
+            Div(attrs = { classes(Styles.studyPreparingMeanings) }) {
+                MaterialSymbol("progress_activity")
+                Text(strings.chatExpressEmpty)
+            }
         }
     }
 }

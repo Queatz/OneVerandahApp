@@ -8,6 +8,8 @@ import apap.oneverandah.api.SaveStudySessionRequest
 import apap.oneverandah.api.SpeechRequest
 import apap.oneverandah.api.SpeechResponse
 import apap.oneverandah.api.StudyDissectSentenceRequest
+import apap.oneverandah.api.StudyExpressCheckRequest
+import apap.oneverandah.api.StudyExpressGenerateRequest
 import apap.oneverandah.api.StudyPlayScenariosRequest
 import apap.oneverandah.api.StudyPlayTurnRequest
 import apap.oneverandah.api.StudyWriteCheckRequest
@@ -158,6 +160,30 @@ fun Route.chatRoutes(
                 return@post
             }
             call.respond(studyService.writeCheck(request))
+        }
+
+        post("/api/chat/study/express/check") {
+            val request = call.receive<StudyExpressCheckRequest>()
+            if (request.normalizedOrNull() == null) {
+                call.respond(
+                    HttpStatusCode.BadRequest,
+                    ChatErrorResponse("Study express check requires non-blank meaning and attempt text"),
+                )
+                return@post
+            }
+            call.respond(studyService.expressCheck(request))
+        }
+
+        post("/api/chat/study/express/generate") {
+            val request = call.receive<StudyExpressGenerateRequest>()
+            if (request.normalizedOrNull() == null) {
+                call.respond(
+                    HttpStatusCode.BadRequest,
+                    ChatErrorResponse("Study express generate requires non-blank source text"),
+                )
+                return@post
+            }
+            call.respond(studyService.expressGenerate(request))
         }
 
         get("/api/chat/study/playground/image/{imageId}") {

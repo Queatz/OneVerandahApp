@@ -61,7 +61,9 @@ class QwenStudyClientTest {
                 2 -> """{"characters":[{"id":"main","name":"Lan","role":"main","description":"Young woman in linen"}]}"""
                 3 -> """{"scenarios":[{"description":"A neighbor greets you.","openingLine":"Xin chào!"},{"description":"A vendor offers fruit.","openingLine":null},{"description":"A classmate asks a question.","openingLine":"Bạn rảnh không?"},{"description":"Someone waves from across the courtyard.","openingLine":null}]}"""
                 4 -> """{"description":"They smile.","reply":"Thật sao?"}"""
-                else -> """{"feedback":"Add the missing word."}"""
+                5 -> """{"feedback":"Add the missing word."}"""
+                6 -> """{"correct":true,"feedback":""}"""
+                else -> """{"sentences":[{"text":"Xin chào.","translation":"Hello."},{"text":"Tạm biệt.","translation":"Goodbye."},{"text":"Cảm ơn.","translation":"Thank you."},{"text":"Không sao.","translation":"No problem."},{"text":"Hẹn gặp lại.","translation":"See you later."},{"text":"Bạn khỏe không?","translation":"How are you?"},{"text":"Tôi ổn.","translation":"I am fine."},{"text":"Đi thôi.","translation":"Let's go."},{"text":"Chờ một chút.","translation":"Wait a moment."},{"text":"Được rồi.","translation":"Alright."}]}"""
             }
             respond(
                 content = qwenChatResponse(content),
@@ -110,9 +112,28 @@ class QwenStudyClientTest {
                 languageTag = "en",
             ),
         )
+        ai.evaluateExpressAttempt(
+            StudyExpressCheckGenerationRequest(
+                meaning = "Hello.",
+                attempt = "Xin chào.",
+                textLanguageTag = "vi",
+                languageTag = "en",
+                referenceText = "Xin chào.",
+            ),
+        )
+        ai.generateExpressSentences(
+            StudyExpressGenerateGenerationRequest(
+                text = "Xin chào.",
+                textLanguageTag = "vi",
+                languageTag = "en",
+                vocabulary = listOf("chào"),
+            ),
+        )
 
         assertEquals(
             listOf(
+                "qwen3.7-flash",
+                "qwen3.7-flash",
                 "qwen3.7-flash",
                 "qwen3.7-flash",
                 "qwen3.7-flash",

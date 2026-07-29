@@ -194,6 +194,28 @@ object ChatApi {
         return json.decodeFromString(StudyWriteCheckResponse.serializer(), text)
     }
 
+    /** Judge an Express-tab production attempt (meaning match, not exact wording). */
+    suspend fun studyExpressCheck(request: StudyExpressCheckRequest): StudyExpressCheckResponse {
+        val response = client.post(chatApiUrl("/study/express/check")) {
+            contentType(ContentType.Application.Json)
+            setBody(json.encodeToString(StudyExpressCheckRequest.serializer(), request))
+        }
+        val text = response.bodyAsText()
+        if (!response.status.isSuccess()) throw ChatApiException(errorMessage(text, response.status.value))
+        return json.decodeFromString(StudyExpressCheckResponse.serializer(), text)
+    }
+
+    /** Generate a fresh batch of Express practice sentences from related vocabulary. */
+    suspend fun studyExpressGenerate(request: StudyExpressGenerateRequest): StudyExpressGenerateResponse {
+        val response = client.post(chatApiUrl("/study/express/generate")) {
+            contentType(ContentType.Application.Json)
+            setBody(json.encodeToString(StudyExpressGenerateRequest.serializer(), request))
+        }
+        val text = response.bodyAsText()
+        if (!response.status.isSuccess()) throw ChatApiException(errorMessage(text, response.status.value))
+        return json.decodeFromString(StudyExpressGenerateResponse.serializer(), text)
+    }
+
     /** Poll async study image status (playground comics, portraits, and sentence visuals). */
     suspend fun studyImage(imageId: String): StudyPlaygroundImageResponse = studyPlaygroundImage(imageId)
 

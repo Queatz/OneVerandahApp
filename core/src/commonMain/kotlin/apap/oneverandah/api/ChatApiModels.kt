@@ -621,6 +621,78 @@ data class StudyWriteCheckResponse(
     val feedback: String = "",
 )
 
+/**
+ * Express-tab check: does the learner's attempt convey [meaning] in the study language?
+ *
+ * [meaning] is shown in the learner UI language ([languageTag]).
+ * [attempt] should be written in the study/source language ([textLanguageTag]).
+ * [referenceText] is an optional known good sentence in the study language (not required
+ * for a match — semantic meaning is enough).
+ */
+@Serializable
+data class StudyExpressCheckRequest(
+    val meaning: String,
+    val attempt: String,
+    val textLanguageTag: String,
+    val languageTag: String,
+    val referenceText: String = "",
+) {
+    fun normalizedOrNull(): StudyExpressCheckRequest? {
+        val normalizedMeaning = meaning.trim().takeIf { it.isNotEmpty() } ?: return null
+        val normalizedAttempt = attempt.trim().takeIf { it.isNotEmpty() } ?: return null
+        return copy(
+            meaning = normalizedMeaning,
+            attempt = normalizedAttempt,
+            textLanguageTag = Language.fromTag(textLanguageTag).tag,
+            languageTag = Language.fromTag(languageTag).tag,
+            referenceText = referenceText.trim(),
+        )
+    }
+}
+
+/** Judgment for an Express-tab production attempt. */
+@Serializable
+data class StudyExpressCheckResponse(
+    /** True when the attempt correctly expresses the prompted meaning. */
+    val correct: Boolean,
+    /** Short coaching note in the learner UI language; empty when correct. */
+    val feedback: String = "",
+)
+
+/**
+ * Ask the model for a fresh batch of Express practice sentences using related vocabulary.
+ *
+ * [vocabulary] are study-language words/phrases from the session.
+ * [previousSentences] are already-seen study-language lines to avoid repeating.
+ * Returned [StudyExampleSentence.text] is study language; [StudyExampleSentence.translation]
+ * is the learner UI language prompt.
+ */
+@Serializable
+data class StudyExpressGenerateRequest(
+    val text: String,
+    val textLanguageTag: String,
+    val languageTag: String,
+    val vocabulary: List<String> = emptyList(),
+    val previousSentences: List<String> = emptyList(),
+) {
+    fun normalizedOrNull(): StudyExpressGenerateRequest? {
+        val normalizedText = text.trim().takeIf { it.isNotEmpty() } ?: return null
+        return copy(
+            text = normalizedText,
+            textLanguageTag = Language.fromTag(textLanguageTag).tag,
+            languageTag = Language.fromTag(languageTag).tag,
+            vocabulary = vocabulary.map { it.trim() }.filter { it.isNotEmpty() }.distinct(),
+            previousSentences = previousSentences.map { it.trim() }.filter { it.isNotEmpty() },
+        )
+    }
+}
+
+/** Batch of Express practice prompts (typically 10). */
+@Serializable
+data class StudyExpressGenerateResponse(
+    val sentences: List<StudyExampleSentence>,
+)
+
 @Serializable
 data class ChatErrorResponse(val error: String)
 

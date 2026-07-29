@@ -427,6 +427,65 @@ class DashScopeStudyAiClient(
         return QwenStudyWriteCheckParser.parse(content)
     }
 
+    override suspend fun evaluateExpressAttempt(
+        request: StudyExpressCheckGenerationRequest,
+    ): StudyExpressJudgment {
+        val userContent = buildString {
+            appendLine("Target meaning (learner's language ${request.languageTag}):")
+            appendLine(request.meaning)
+            appendLine()
+            appendLine("Learner attempt (study language ${request.textLanguageTag}):")
+            appendLine(request.attempt)
+            if (request.referenceText.isNotBlank()) {
+                appendLine()
+                appendLine("Optional reference sentence in the study language (exact match is NOT required):")
+                appendLine(request.referenceText)
+            }
+        }
+        val content = complete(
+            systemPrompt = expressCheckSystemPrompt(
+                activeLanguageTag = request.languageTag,
+                textLanguageTag = request.textLanguageTag,
+            ),
+            userContent = userContent,
+            label = "study express check",
+            temperature = 0.2,
+        )
+        return QwenStudyExpressCheckParser.parse(content)
+    }
+
+    override suspend fun generateExpressSentences(
+        request: StudyExpressGenerateGenerationRequest,
+    ): List<StudyExampleSentence> {
+        val userContent = buildString {
+            appendLine("Source language tag: ${request.textLanguageTag}")
+            appendLine("Learner UI language tag: ${request.languageTag}")
+            if (request.vocabulary.isNotEmpty()) {
+                appendLine()
+                appendLine("Related vocabulary to reuse naturally:")
+                request.vocabulary.forEach { word -> appendLine("- $word") }
+            }
+            if (request.previousSentences.isNotEmpty()) {
+                appendLine()
+                appendLine("Already practiced study-language sentences (do not repeat or paraphrase closely):")
+                request.previousSentences.takeLast(40).forEach { line -> appendLine("- $line") }
+            }
+            appendLine()
+            appendLine("Full source text for theme continuity:")
+            append(request.text)
+        }
+        val content = complete(
+            systemPrompt = expressGenerateSystemPrompt(
+                activeLanguageTag = request.languageTag,
+                textLanguageTag = request.textLanguageTag,
+            ),
+            userContent = userContent,
+            label = "study express generate",
+            temperature = 0.7,
+        )
+        return QwenStudyExpressGenerateParser.parse(content)
+    }
+
     private suspend fun complete(
         systemPrompt: String,
         userContent: String,
@@ -576,6 +635,38 @@ class DashScopeStudyAiClient(
         - Keep feedback to 1–2 short sentences. Be specific and kind. Point out the main difference; do not dump the full corrected sentence unless a tiny fix needs showing.
         - Do not wrap the JSON in markdown. Do not add extra keys.
     """.trimIndent()
+
+    private fun expressCheckSystemPrompt(activeLanguageTag: String, textLanguageTag: String): String = """
+        You are a precise speaking/writing coach for One Verandah Express practice.
+        The learner sees a meaning in their language and must express that meaning in the study language.
+        Always return one JSON object and no markdown. The schema is exactly:
+        {"correct":true,"feedback":"short coaching note"}
+        Rules:
+        - The prompted meaning is written in the learner's active language '$activeLanguageTag'.
+        - The learner attempt is written in the study/source language '$textLanguageTag'.
+        - "correct" must be a boolean. true when the attempt successfully conveys the same core meaning as a natural native speaker would understand — grammar may be imperfect if meaning is clear.
+        - Exact wording of any reference sentence is NOT required. Paraphrases and natural alternatives that keep the meaning count as correct.
+        - Set "correct":false when the meaning is wrong, incomplete, contradictory, unintelligible, or in the wrong language.
+        - "feedback" MUST be written in the learner's active language '$activeLanguageTag'.
+        - When correct is true, feedback may be an empty string or a very short encouragement.
+        - When correct is false, keep feedback to 1–2 short sentences: say what is missing or off and gently nudge toward the meaning (do not dump a full model answer unless a tiny hint needs showing).
+        - Do not wrap the JSON in markdown. Do not add extra keys.
+    """.trimIndent()
+
+    private fun expressGenerateSystemPrompt(activeLanguageTag: String, textLanguageTag: String): String = """
+        You invent short production-practice sentences for language learners (Express mode).
+        Always return one JSON object and no markdown. The schema is exactly:
+        {"sentences":[{"text":"study-language sentence","translation":"meaning in learner language"},{"text":"...","translation":"..."}]}
+        Rules:
+        - Return EXACTLY 10 sentence objects.
+        - "text" is a short, natural sentence written in the study/source language '$textLanguageTag'.
+        - "translation" is the meaning written in the learner's active language '$activeLanguageTag' (this is what the learner will see as the prompt).
+        - Ground sentences in the themes and vocabulary of the source text. Prefer reusing provided vocabulary words naturally across the batch.
+        - Vary structures (statements, questions, everyday requests) while staying beginner-to-intermediate friendly.
+        - Do not repeat previous sentences or near-duplicates.
+        - Never leave translation blank. Do not put plain strings in the sentences array.
+        - Do not wrap the JSON in markdown. Do not add extra keys.
+    """.trimIndent()
 }
 
 /**
@@ -629,6 +720,71 @@ object QwenStudyWriteCheckParser {
             .getOrElse { throw IllegalArgumentException("Qwen study write check is not valid JSON", it) }
         return element as? JsonObject
             ?: throw IllegalArgumentException("Qwen study write check root must be a JSON object")
+    }
+}
+
+/**
+ * Lenient Express-tab judgment parser.
+ *
+ * Accepts common aliases so minor model drift does not fail the learner attempt.
+ */
+object QwenStudyExpressCheckParser {
+    private val json = Json { ignoreUnknownKeys = true; explicitNulls = false; isLenient = true }
+
+    fun parse(content: String): StudyExpressJudgment {
+        val root = parseRootObject(content)
+        val correct = root.boolean("correct")
+            ?: root.boolean("ok")
+            ?: root.boolean("isCorrect")
+            ?: root.boolean("natural")
+            ?: throw IllegalArgumentException("Qwen study express check missing correct boolean")
+        val feedback = root.string("feedback")?.trim().orEmpty()
+            .ifEmpty { root.string("summary")?.trim().orEmpty() }
+            .ifEmpty { root.string("explanation")?.trim().orEmpty() }
+        return StudyExpressJudgment(correct = correct, feedback = feedback)
+    }
+
+    private fun parseRootObject(content: String): JsonObject {
+        val normalized = stripJsonFences(content)
+        val element = runCatching { json.parseToJsonElement(normalized) }
+            .getOrElse { throw IllegalArgumentException("Qwen study express check is not valid JSON", it) }
+        return element as? JsonObject
+            ?: throw IllegalArgumentException("Qwen study express check root must be a JSON object")
+    }
+}
+
+/**
+ * Lenient parser for Express batch generation JSON.
+ */
+object QwenStudyExpressGenerateParser {
+    private val json = Json { ignoreUnknownKeys = true; explicitNulls = false; isLenient = true }
+
+    fun parse(content: String): List<StudyExampleSentence> {
+        val root = parseRootObject(content)
+        val array = root["sentences"] as? JsonArray
+            ?: throw IllegalArgumentException("Qwen study express generate missing sentences array")
+        return array.mapNotNull { element ->
+            when (element) {
+                is JsonObject -> {
+                    val text = element.string("text")?.trim()?.takeIf { it.isNotEmpty() }
+                        ?: element.string("sentence")?.trim()?.takeIf { it.isNotEmpty() }
+                        ?: return@mapNotNull null
+                    val translation = element.string("translation")?.trim()?.takeIf { it.isNotEmpty() }
+                        ?: element.string("meaning")?.trim()?.takeIf { it.isNotEmpty() }
+                        ?: return@mapNotNull null
+                    StudyExampleSentence(text = text, translation = translation)
+                }
+                else -> null
+            }
+        }
+    }
+
+    private fun parseRootObject(content: String): JsonObject {
+        val normalized = stripJsonFences(content)
+        val element = runCatching { json.parseToJsonElement(normalized) }
+            .getOrElse { throw IllegalArgumentException("Qwen study express generate is not valid JSON", it) }
+        return element as? JsonObject
+            ?: throw IllegalArgumentException("Qwen study express generate root must be a JSON object")
     }
 }
 

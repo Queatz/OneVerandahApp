@@ -1,5 +1,10 @@
 package apap.oneverandah.screens
 
+import apap.oneverandah.api.StudyExampleSentence
+import apap.oneverandah.api.StudySentence
+import apap.oneverandah.api.StudySessionResponse
+import apap.oneverandah.api.StudyToken
+import apap.oneverandah.api.StudyTokenStatus
 import kotlin.test.Test
 import kotlin.test.assertEquals
 import kotlin.test.assertTrue
@@ -34,5 +39,39 @@ class ChatScreenStudyExampleTest {
         assertTrue(studyExampleHighlightRanges("Hello friend.", "bye").isEmpty())
         assertTrue(studyExampleHighlightRanges("Hello friend.", "   ").isEmpty())
         assertTrue(studyExampleHighlightRanges("", "Hello").isEmpty())
+    }
+
+    @Test
+    fun `collects unique express practice sentences from token examples`() {
+        val session = StudySessionResponse(
+            text = "Xin chào bạn.",
+            textLanguageTag = "vi",
+            sentences = listOf(
+                StudySentence(
+                    text = "Xin chào bạn.",
+                    tokens = listOf(
+                        StudyToken(
+                            text = "Xin chào",
+                            status = StudyTokenStatus.READY,
+                            exampleSentences = listOf(
+                                StudyExampleSentence(text = "Xin chào.", translation = "Hello."),
+                                StudyExampleSentence(text = "Chào bạn.", translation = "Hi friend."),
+                                StudyExampleSentence(text = "Xin chào.", translation = "Hello."),
+                            ),
+                        ),
+                        StudyToken(text = ".", status = StudyTokenStatus.PLAIN),
+                    ),
+                ),
+            ),
+        )
+
+        assertEquals(
+            listOf(
+                StudyExampleSentence(text = "Xin chào.", translation = "Hello."),
+                StudyExampleSentence(text = "Chào bạn.", translation = "Hi friend."),
+            ),
+            collectExpressPracticeSentences(session),
+        )
+        assertEquals(listOf("Xin chào"), collectExpressVocabulary(session))
     }
 }

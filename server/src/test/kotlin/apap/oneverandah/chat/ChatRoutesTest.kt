@@ -142,6 +142,12 @@ class ChatRoutesTest {
 
                 override suspend fun evaluateWriteAttempt(request: StudyWriteCheckGenerationRequest) =
                     error("not used")
+
+                override suspend fun evaluateExpressAttempt(request: StudyExpressCheckGenerationRequest) =
+                    error("not used")
+
+                override suspend fun generateExpressSentences(request: StudyExpressGenerateGenerationRequest) =
+                    error("not used")
             },
         )
         application {
@@ -233,6 +239,12 @@ class ChatRoutesTest {
 
                 override suspend fun evaluateWriteAttempt(request: StudyWriteCheckGenerationRequest) =
                     error("not used")
+
+                override suspend fun evaluateExpressAttempt(request: StudyExpressCheckGenerationRequest) =
+                    error("not used")
+
+                override suspend fun generateExpressSentences(request: StudyExpressGenerateGenerationRequest) =
+                    error("not used")
             },
         )
         application {
@@ -311,6 +323,12 @@ class ChatRoutesTest {
                     error("not used")
 
                 override suspend fun evaluateWriteAttempt(request: StudyWriteCheckGenerationRequest) =
+                    error("not used")
+
+                override suspend fun evaluateExpressAttempt(request: StudyExpressCheckGenerationRequest) =
+                    error("not used")
+
+                override suspend fun generateExpressSentences(request: StudyExpressGenerateGenerationRequest) =
                     error("not used")
             },
             imageGenerator = StudyPlaygroundImageGenerator { _, _ -> "https://cdn.example/play.png" },
@@ -410,6 +428,12 @@ class ChatRoutesTest {
 
                 override suspend fun evaluateWriteAttempt(request: StudyWriteCheckGenerationRequest) =
                     error("not used")
+
+                override suspend fun evaluateExpressAttempt(request: StudyExpressCheckGenerationRequest) =
+                    error("not used")
+
+                override suspend fun generateExpressSentences(request: StudyExpressGenerateGenerationRequest) =
+                    error("not used")
             },
             imageGenerator = StudyPlaygroundImageGenerator { _, _ -> "https://cdn.example/sentence.png" },
             idGenerator = { "sentence-image-1" },
@@ -496,6 +520,12 @@ class ChatRoutesTest {
                     error("not used")
 
                 override suspend fun evaluateWriteAttempt(request: StudyWriteCheckGenerationRequest) =
+                    error("not used")
+
+                override suspend fun evaluateExpressAttempt(request: StudyExpressCheckGenerationRequest) =
+                    error("not used")
+
+                override suspend fun generateExpressSentences(request: StudyExpressGenerateGenerationRequest) =
                     error("not used")
             },
             imageGenerator = StudyPlaygroundImageGenerator { _, _ -> "https://cdn.example/portrait.png" },

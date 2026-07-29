@@ -3,6 +3,10 @@ package apap.oneverandah.chat
 import apap.oneverandah.api.StudyDissectSentenceRequest
 import apap.oneverandah.api.StudyDissectSentenceResponse
 import apap.oneverandah.api.StudyExampleSentence
+import apap.oneverandah.api.StudyExpressCheckRequest
+import apap.oneverandah.api.StudyExpressCheckResponse
+import apap.oneverandah.api.StudyExpressGenerateRequest
+import apap.oneverandah.api.StudyExpressGenerateResponse
 import apap.oneverandah.api.StudyPlayChatMessage
 import apap.oneverandah.api.StudyPlayHistoryMessage
 import apap.oneverandah.api.StudyPlayScenario
@@ -106,6 +110,27 @@ data class StudyWriteFeedback(
     val feedback: String,
 )
 
+data class StudyExpressCheckGenerationRequest(
+    val meaning: String,
+    val attempt: String,
+    val textLanguageTag: String,
+    val languageTag: String,
+    val referenceText: String = "",
+)
+
+data class StudyExpressJudgment(
+    val correct: Boolean,
+    val feedback: String,
+)
+
+data class StudyExpressGenerateGenerationRequest(
+    val text: String,
+    val textLanguageTag: String,
+    val languageTag: String,
+    val vocabulary: List<String> = emptyList(),
+    val previousSentences: List<String> = emptyList(),
+)
+
 /** Designed cast member before portrait jobs are attached. */
 data class StudyCharacterDesign(
     val id: String,
@@ -130,6 +155,8 @@ interface StudyAiClient {
     suspend fun generatePlayScenarios(request: StudyPlayScenariosGenerationRequest): List<StudyPlayScenarioDesign>
     suspend fun generatePlayTurn(request: StudyPlayTurnGenerationRequest): StudyPlayTurnDesign
     suspend fun evaluateWriteAttempt(request: StudyWriteCheckGenerationRequest): StudyWriteFeedback
+    suspend fun evaluateExpressAttempt(request: StudyExpressCheckGenerationRequest): StudyExpressJudgment
+    suspend fun generateExpressSentences(request: StudyExpressGenerateGenerationRequest): List<StudyExampleSentence>
 }
 
 class StudyService(
@@ -407,6 +434,76 @@ class StudyService(
             defaultWriteFeedback(request.languageTag)
         }
         return StudyWriteCheckResponse(correct = false, feedback = feedback)
+    }
+
+    /**
+     * Judges whether an Express-tab attempt correctly expresses the prompted meaning
+     * in the study language. Exact wording is not required — semantic success is enough.
+     */
+    suspend fun expressCheck(rawRequest: StudyExpressCheckRequest): StudyExpressCheckResponse {
+        val request = requireNotNull(rawRequest.normalizedOrNull()) {
+            "Study express check requires non-blank meaning and attempt text"
+        }
+        // Fast path: learner typed the known reference sentence (when present).
+        if (request.referenceText.isNotBlank() && writeAttemptMatches(request.referenceText, request.attempt)) {
+            return StudyExpressCheckResponse(correct = true, feedback = "")
+        }
+        val judgment = runCatching {
+            aiClient.evaluateExpressAttempt(
+                StudyExpressCheckGenerationRequest(
+                    meaning = request.meaning,
+                    attempt = request.attempt,
+                    textLanguageTag = request.textLanguageTag,
+                    languageTag = request.languageTag,
+                    referenceText = request.referenceText,
+                ),
+            )
+        }.getOrElse { error ->
+            log.warn("Study express check failed: {}", error.message)
+            StudyExpressJudgment(correct = false, feedback = "")
+        }
+        if (judgment.correct) {
+            return StudyExpressCheckResponse(correct = true, feedback = "")
+        }
+        val feedback = judgment.feedback.trim().ifBlank {
+            defaultExpressFeedback(request.languageTag)
+        }
+        return StudyExpressCheckResponse(correct = false, feedback = feedback)
+    }
+
+    /**
+     * Generates a fresh batch of Express practice sentences (target + UI translation)
+     * grounded in the study text vocabulary. Endless mode calls this when the queue is empty.
+     */
+    suspend fun expressGenerate(rawRequest: StudyExpressGenerateRequest): StudyExpressGenerateResponse {
+        val request = requireNotNull(rawRequest.normalizedOrNull()) {
+            "Study express generate requires non-blank source text"
+        }
+        val generated = runCatching {
+            aiClient.generateExpressSentences(
+                StudyExpressGenerateGenerationRequest(
+                    text = request.text,
+                    textLanguageTag = request.textLanguageTag,
+                    languageTag = request.languageTag,
+                    vocabulary = request.vocabulary,
+                    previousSentences = request.previousSentences,
+                ),
+            )
+        }.getOrElse { error ->
+            log.warn("Study express generate failed: {}", error.message)
+            emptyList()
+        }
+        val cleaned = normalizeExpressSentences(generated)
+        val sentences = cleaned.ifEmpty {
+            defaultExpressSentences(
+                sourceText = request.text,
+                textLanguageTag = request.textLanguageTag,
+                languageTag = request.languageTag,
+                vocabulary = request.vocabulary,
+            )
+        }
+        require(sentences.isNotEmpty()) { "Express generate must return at least one sentence" }
+        return StudyExpressGenerateResponse(sentences = sentences)
     }
 
     /** Current comic/sentence/character-image job status (shared store). */
@@ -757,6 +854,100 @@ internal fun defaultWriteFeedback(languageTag: String): String =
         "ru" -> "Пока не совпадает. Сверьте каждое слово и знаки препинания."
         else -> "Not an exact match yet. Compare each word and the punctuation."
     }
+
+internal fun defaultExpressFeedback(languageTag: String): String =
+    when (Language.fromTag(languageTag).tag) {
+        "vi" -> "Chưa diễn đạt đúng ý. Hãy thử lại với từ vựng liên quan."
+        "zh" -> "还没有准确表达这个意思。请用相关词汇再试一次。"
+        "ja" -> "まだ意味を正しく表せていません。関連語彙でもう一度試してください。"
+        "ko" -> "아직 의미를 정확히 표현하지 못했습니다. 관련 어휘로 다시 시도해 보세요."
+        "ru" -> "Пока смысл передан неточно. Попробуйте снова с похожей лексикой."
+        else -> "That doesn't quite express the meaning yet. Try again with related words."
+    }
+
+internal fun normalizeExpressSentences(sentences: List<StudyExampleSentence>): List<StudyExampleSentence> {
+    val cleaned = sentences.mapNotNull { item ->
+        val text = item.text.trim().takeIf { it.isNotEmpty() } ?: return@mapNotNull null
+        val translation = item.translation.trim().takeIf { it.isNotEmpty() } ?: return@mapNotNull null
+        StudyExampleSentence(text = text, translation = translation)
+    }
+    return cleaned
+        .distinctBy { it.text.lowercase() to it.translation.lowercase() }
+        .take(10)
+}
+
+internal fun defaultExpressSentences(
+    sourceText: String,
+    textLanguageTag: String,
+    languageTag: String,
+    vocabulary: List<String>,
+): List<StudyExampleSentence> {
+    val study = Language.fromTag(textLanguageTag).tag
+    val ui = Language.fromTag(languageTag).tag
+    val words = vocabulary.map { it.trim() }.filter { it.isNotEmpty() }.take(6)
+    if (words.isNotEmpty() && study == "vi") {
+        return words.take(3).flatMapIndexed { index, word ->
+            listOf(
+                StudyExampleSentence(
+                    text = "Tôi muốn nói về $word.",
+                    translation = when (ui) {
+                        "vi" -> "Tôi muốn nói về $word."
+                        "zh" -> "我想谈谈${word}。"
+                        "ja" -> "${word}について話したいです。"
+                        "ko" -> "${word}에 대해 이야기하고 싶어요."
+                        "ru" -> "Я хочу поговорить о «$word»."
+                        else -> "I want to talk about $word."
+                    },
+                ),
+                StudyExampleSentence(
+                    text = "Bạn hiểu $word không?",
+                    translation = when (ui) {
+                        "vi" -> "Bạn hiểu $word không?"
+                        "zh" -> "你明白${word}吗？"
+                        "ja" -> "${word}は分かりますか？"
+                        "ko" -> "${word} 이해하시나요?"
+                        "ru" -> "Вы понимаете «$word»?"
+                        else -> "Do you understand $word?"
+                    },
+                ),
+            ).take(if (index == 0) 2 else 1)
+        }.take(10)
+    }
+    // Fallback: split source text into short practice lines.
+    val chunks = sourceText
+        .split(Regex("(?<=[.!?。！？…])\\s+|\\n+"))
+        .map { it.trim() }
+        .filter { it.isNotEmpty() }
+        .take(10)
+    if (chunks.isNotEmpty()) {
+        return chunks.map { line ->
+            StudyExampleSentence(
+                text = line,
+                translation = when (ui) {
+                    "vi" -> "Hãy diễn đạt ý của câu này."
+                    "zh" -> "请用学习语言表达这句话的意思。"
+                    "ja" -> "この文の意味を学習言語で表してください。"
+                    "ko" -> "이 문장의 의미를 학습 언어로 표현해 보세요."
+                    "ru" -> "Выразите смысл этой фразы на изучаемом языке."
+                    else -> "Express the meaning of this sentence."
+                },
+            )
+        }
+    }
+    return listOf(
+        StudyExampleSentence(
+            text = sourceText.trim().ifBlank { "Hello." },
+            translation = when (ui) {
+                "vi" -> "Hãy diễn đạt ý này."
+                "zh" -> "请表达这个意思。"
+                "ja" -> "この意味を表してください。"
+                "ko" -> "이 의미를 표현해 보세요."
+                "ru" -> "Выразите этот смысл."
+                else -> "Express this meaning."
+            },
+        ),
+    )
+}
 
 
 

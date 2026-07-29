@@ -17,6 +17,8 @@ import apap.oneverandah.api.StudyToken
 import apap.oneverandah.api.StudyTokenStatus
 import apap.oneverandah.api.StudyWriteCheckRequest
 import apap.oneverandah.api.StudyWordPlaygroundRequest
+import apap.oneverandah.api.StudyExpressCheckRequest
+import apap.oneverandah.api.StudyExpressGenerateRequest
 import kotlin.test.Test
 import kotlin.test.assertContains
 import kotlin.test.assertEquals
@@ -775,8 +777,6 @@ class StudyServiceTest {
         assertEquals(4, response.scenarios.size)
         assertTrue(response.scenarios.all { it.description.isNotBlank() })
     }
-}
-
 
     @Test
     fun `write check returns empty feedback when attempt matches`() = runBlocking {
@@ -812,6 +812,109 @@ class StudyServiceTest {
         assertEquals("Xin chào bạn!", fake.lastWriteCheckRequest?.expected)
         assertEquals("Xin chào!", fake.lastWriteCheckRequest?.attempt)
     }
+
+    @Test
+    fun `express check accepts exact reference sentence without AI`() = runBlocking {
+        val fake = FakeStudyAiClient(
+            expressJudgment = StudyExpressJudgment(correct = false, feedback = "should not be used"),
+        )
+        val service = StudyService(fake)
+        val response = service.expressCheck(
+            StudyExpressCheckRequest(
+                meaning = "Hello friend.",
+                attempt = "  Xin chào bạn. ",
+                textLanguageTag = "vi",
+                languageTag = "en",
+                referenceText = "Xin chào bạn.",
+            ),
+        )
+        assertTrue(response.correct)
+        assertEquals("", response.feedback)
+        assertEquals(null, fake.lastExpressCheckRequest)
+    }
+
+    @Test
+    fun `express check uses AI judgment for paraphrases`() = runBlocking {
+        val fake = FakeStudyAiClient(
+            expressJudgment = StudyExpressJudgment(correct = true, feedback = "Great"),
+        )
+        val service = StudyService(fake)
+        val response = service.expressCheck(
+            StudyExpressCheckRequest(
+                meaning = "Hello friend.",
+                attempt = "Chào bạn nhé!",
+                textLanguageTag = "vi",
+                languageTag = "en",
+                referenceText = "Xin chào bạn.",
+            ),
+        )
+        assertTrue(response.correct)
+        assertEquals("Hello friend.", fake.lastExpressCheckRequest?.meaning)
+        assertEquals("Chào bạn nhé!", fake.lastExpressCheckRequest?.attempt)
+    }
+
+    @Test
+    fun `express check returns AI feedback when incorrect`() = runBlocking {
+        val fake = FakeStudyAiClient(
+            expressJudgment = StudyExpressJudgment(correct = false, feedback = "Missing the greeting."),
+        )
+        val service = StudyService(fake)
+        val response = service.expressCheck(
+            StudyExpressCheckRequest(
+                meaning = "Hello friend.",
+                attempt = "Tôi đói.",
+                textLanguageTag = "vi",
+                languageTag = "en",
+                referenceText = "Xin chào bạn.",
+            ),
+        )
+        assertFalse(response.correct)
+        assertEquals("Missing the greeting.", response.feedback)
+    }
+
+    @Test
+    fun `express generate returns cleaned AI batch`() = runBlocking {
+        val fake = FakeStudyAiClient(
+            expressSentences = listOf(
+                StudyExampleSentence(text = "  Xin chào. ", translation = " Hello. "),
+                StudyExampleSentence(text = "Tạm biệt.", translation = "Goodbye."),
+                StudyExampleSentence(text = "", translation = "skip"),
+            ),
+        )
+        val service = StudyService(fake)
+        val response = service.expressGenerate(
+            StudyExpressGenerateRequest(
+                text = "Xin chào bạn.",
+                textLanguageTag = "vi",
+                languageTag = "en",
+                vocabulary = listOf("chào", "bạn"),
+            ),
+        )
+        assertEquals(
+            listOf(
+                StudyExampleSentence(text = "Xin chào.", translation = "Hello."),
+                StudyExampleSentence(text = "Tạm biệt.", translation = "Goodbye."),
+            ),
+            response.sentences,
+        )
+        assertEquals(listOf("chào", "bạn"), fake.lastExpressGenerateRequest?.vocabulary)
+    }
+
+    @Test
+    fun `express generate falls back when AI returns nothing`() = runBlocking {
+        val service = StudyService(FakeStudyAiClient(expressSentences = emptyList()))
+        val response = service.expressGenerate(
+            StudyExpressGenerateRequest(
+                text = "Xin chào bạn.",
+                textLanguageTag = "vi",
+                languageTag = "en",
+                vocabulary = listOf("chào"),
+            ),
+        )
+        assertTrue(response.sentences.isNotEmpty())
+        assertTrue(response.sentences.all { it.text.isNotBlank() && it.translation.isNotBlank() })
+    }
+}
 
 private class FakeStudyAiClient(
     private val skeleton: StudySessionResponse = StudySessionResponse(
@@ -853,6 +956,14 @@ private class FakeStudyAiClient(
     private val writeFeedback: StudyWriteFeedback = StudyWriteFeedback(
         feedback = "You dropped the final question mark.",
     ),
+    private val expressJudgment: StudyExpressJudgment = StudyExpressJudgment(
+        correct = true,
+        feedback = "",
+    ),
+    private val expressSentences: List<StudyExampleSentence> = listOf(
+        StudyExampleSentence(text = "Xin chào.", translation = "Hello."),
+        StudyExampleSentence(text = "Tạm biệt.", translation = "Goodbye."),
+    ),
 ) : StudyAiClient {
     var lastSkeletonRequest: StudyGenerationRequest? = null
     var lastDissectRequest: StudyDissectGenerationRequest? = null
@@ -861,6 +972,8 @@ private class FakeStudyAiClient(
     var lastPlayScenariosRequest: StudyPlayScenariosGenerationRequest? = null
     var lastPlayTurnRequest: StudyPlayTurnGenerationRequest? = null
     var lastWriteCheckRequest: StudyWriteCheckGenerationRequest? = null
+    var lastExpressCheckRequest: StudyExpressCheckGenerationRequest? = null
+    var lastExpressGenerateRequest: StudyExpressGenerateGenerationRequest? = null
 
     override suspend fun generateSkeleton(request: StudyGenerationRequest): StudySessionResponse {
         lastSkeletonRequest = request
@@ -905,5 +1018,19 @@ private class FakeStudyAiClient(
     ): StudyWriteFeedback {
         lastWriteCheckRequest = request
         return writeFeedback
+    }
+
+    override suspend fun evaluateExpressAttempt(
+        request: StudyExpressCheckGenerationRequest,
+    ): StudyExpressJudgment {
+        lastExpressCheckRequest = request
+        return expressJudgment
+    }
+
+    override suspend fun generateExpressSentences(
+        request: StudyExpressGenerateGenerationRequest,
+    ): List<StudyExampleSentence> {
+        lastExpressGenerateRequest = request
+        return expressSentences
     }
 }
