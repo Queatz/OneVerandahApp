@@ -17,6 +17,7 @@ import apap.oneverandah.components.MaterialSymbol
 import apap.oneverandah.components.PrimaryButton
 import apap.oneverandah.components.Scaffold
 import apap.oneverandah.components.SectionTitle
+import apap.oneverandah.components.Spacer
 import apap.oneverandah.i18n.Localization
 import apap.oneverandah.model.Language
 import apap.oneverandah.model.LocalizedText
@@ -1010,13 +1011,14 @@ private fun PhraseEditorDialog(
                     classes(Styles.adminCoverPreview)
                 })
             }
+            Spacer()
             PrimaryButton(
                 label = strings.adminGeneratePhoto,
                 icon = "auto_awesome",
             ) {
                 onGeneratePhoto(initial?.id, imageUrl.takeIf { it.isNotBlank() })
             }
-
+            Spacer()
             Button(attrs = {
                 classes(Styles.chip)
                 if (approved) classes(Styles.chipActive)

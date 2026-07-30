@@ -26,6 +26,9 @@ object Styles {
     // Banner
     const val banner = "banner"
 
+    // Spacer
+    const val spacer = "spacer"
+
     // Content
     const val content = "content"
     const val contentHasBanner = "content-has-banner"
@@ -451,6 +454,11 @@ object Styles {
                 box-shadow: 0 10px 30px var(--md-shadow);
             }
         }
+        
+        /* Spacer */
+        .${spacer} {
+            height: 16px;
+        }
 
         /* App bar */
         .${appBar} {
@@ -692,6 +700,7 @@ object Styles {
             display: flex;
             align-items: center;
             cursor: pointer;
+            gap: 8px;
             border: 1px solid #ffffff16;
             box-shadow: 0 4px 8px -8px var(--md-shadow-light) inset;
             transition: background-color 0.2s, transform 0.1s, box-shadow 0.2s;

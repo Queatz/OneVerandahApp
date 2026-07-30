@@ -2366,7 +2366,8 @@ private fun StudyExpressTab(
     when {
         current != null -> {
             Div(attrs = { classes(Styles.studyWriteBlock) }) {
-                if (queue.isNotEmpty()) {
+                // Disabled, not needed because new expressions are auto-generated
+                if (false && queue.isNotEmpty()) {
                     Span(attrs = { classes(Styles.studySessionHint) }) {
                         Text("${(index + 1).coerceAtMost(queue.size)} / ${queue.size}")
                     }

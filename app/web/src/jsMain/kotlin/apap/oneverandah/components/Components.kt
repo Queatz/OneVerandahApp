@@ -39,6 +39,13 @@ fun MaterialSymbol(name: String, extraClass: String? = null) {
     }) { Text(name) }
 }
 
+@Composable
+fun Spacer() {
+    Div(attrs = {
+        classes(Styles.spacer)
+    })
+}
+
 /**
  * A reusable, async-preloaded background image that fades in professionally
  * once the browser has fully decoded it.
