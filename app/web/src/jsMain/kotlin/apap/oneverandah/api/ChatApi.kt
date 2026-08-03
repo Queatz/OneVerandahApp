@@ -162,6 +162,17 @@ object ChatApi {
         return json.decodeFromString(StudySentenceImageResponse.serializer(), text)
     }
 
+    /** Start async expressive visual for one dissected Study-tab word/phrase. */
+    suspend fun studyWordImage(request: StudyWordImageRequest): StudyWordImageResponse {
+        val response = client.post(chatApiUrl("/study/word-image")) {
+            contentType(ContentType.Application.Json)
+            setBody(json.encodeToString(StudyWordImageRequest.serializer(), request))
+        }
+        val text = response.bodyAsText()
+        if (!response.status.isSuccess()) throw ChatApiException(errorMessage(text, response.status.value))
+        return json.decodeFromString(StudyWordImageResponse.serializer(), text)
+    }
+
     /** Generate four related Play-tab scenario starters (covers are async image jobs). */
     suspend fun studyPlayScenarios(request: StudyPlayScenariosRequest): StudyPlayScenariosResponse {
         val response = client.post(chatApiUrl("/study/play/scenarios")) {

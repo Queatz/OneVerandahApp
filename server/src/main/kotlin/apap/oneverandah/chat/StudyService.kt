@@ -28,6 +28,8 @@ import apap.oneverandah.api.StudyStoryCharactersRequest
 import apap.oneverandah.api.StudyStoryCharactersResponse
 import apap.oneverandah.api.StudyToken
 import apap.oneverandah.api.StudyTokenStatus
+import apap.oneverandah.api.StudyWordImageRequest
+import apap.oneverandah.api.StudyWordImageResponse
 import apap.oneverandah.api.StudyWordPlaygroundRequest
 import apap.oneverandah.api.StudyWordPlaygroundResponse
 import apap.oneverandah.model.Language
@@ -196,9 +198,11 @@ class StudyService(
             ),
         )
         val sentence = generated.normalizedDissected(expectedTokens = request.tokens)
+        // Pre-generate an expressive word visual for every dissectable token.
+        val tokensWithImages = sentence.tokens.map { token -> attachWordImageJob(token) }
         return StudyDissectSentenceResponse(
             sentenceText = sentence.text,
-            tokens = sentence.tokens,
+            tokens = tokensWithImages,
         )
     }
 
@@ -305,6 +309,27 @@ class StudyService(
             logLabel = "sentence visual",
         )
         return StudySentenceImageResponse(imageId = imageId)
+    }
+
+    /**
+     * Starts an async expressive visual for one dissected word/phrase.
+     * Poll [playgroundImage] with the returned image id, then persist on the token.
+     */
+    suspend fun wordImage(rawRequest: StudyWordImageRequest): StudyWordImageResponse {
+        val request = requireNotNull(rawRequest.normalizedOrNull()) {
+            "Study word image requires non-blank word text"
+        }
+        val imageId = idGenerator().trim().ifBlank { UUID.randomUUID().toString() }
+        enqueueStudyImage(
+            imageId = imageId,
+            prompt = wordVisualPrompt(
+                word = request.word,
+                contextualMeaning = request.contextualMeaning,
+            ),
+            referenceImageUrls = emptyList(),
+            logLabel = "word visual",
+        )
+        return StudyWordImageResponse(imageId = imageId)
     }
 
     /**
@@ -527,6 +552,33 @@ class StudyService(
         )
     }
 
+    /** Attach a fresh async word-image job when the token is dissectable and has no URL yet. */
+    private fun attachWordImageJob(token: StudyToken): StudyToken {
+        if (!token.isDissectable) {
+            return token.copy(imageId = null, imageUrl = null)
+        }
+        val existingUrl = token.imageUrl?.trim()?.takeIf { it.isNotEmpty() }
+        if (existingUrl != null) {
+            return token.copy(
+                imageId = token.imageId?.trim()?.takeIf { it.isNotEmpty() },
+                imageUrl = existingUrl,
+            )
+        }
+        val imageId = token.imageId?.trim()?.takeIf { it.isNotEmpty() }
+            ?: idGenerator().trim().ifBlank { UUID.randomUUID().toString() }
+        // Re-enqueue when the URL is still missing (new dissect or lost in-memory job).
+        enqueueStudyImage(
+            imageId = imageId,
+            prompt = wordVisualPrompt(
+                word = token.text,
+                contextualMeaning = token.contextualMeaning,
+            ),
+            referenceImageUrls = emptyList(),
+            logLabel = "word visual",
+        )
+        return token.copy(imageId = imageId, imageUrl = null)
+    }
+
     private fun enqueueStudyImage(
         imageId: String,
         prompt: String,
@@ -619,6 +671,7 @@ internal fun playgroundComicPrompt(word: String, sentence: String, natural: Bool
         append("Learner sentence: \"$sentence\". ")
         append(sceneGuidance)
         append(' ')
+        append("Art style: $STUDY_STORY_ART_STYLE. ")
         append(
             "Warm natural scene in storytelling vibe, clear character emotion, " +
                 "dynamic composition, no captions or letters, no border, no watermark, high quality square image.",
@@ -626,11 +679,27 @@ internal fun playgroundComicPrompt(word: String, sentence: String, natural: Bool
     }
 }
 
-/** Shared art direction so portraits and sentence panels stay in one story world. */
+/** Shared art direction so all study/catalog images stay in one expressive storybook world. */
 internal const val STUDY_STORY_ART_STYLE: String =
-    "consistent soft ink-wash storybook illustration with bold clean outlines, " +
+    "expressive storybook art style with bold clean outlines, " +
         "warm natural lighting, expressive faces and body language, cohesive muted-then-warm color palette, " +
         "gentle everyday realism with a touch of whimsy, cinematic framing"
+
+/** Prompt for a single dissected word/phrase visual (word + contextual meaning). */
+internal fun wordVisualPrompt(word: String, contextualMeaning: String = ""): String = buildString {
+    append("Expressive storybook art style single-panel illustration for language learning. ")
+    append("Focus word/phrase: \"$word\". ")
+    val meaning = contextualMeaning.trim()
+    if (meaning.isNotEmpty()) {
+        append("Contextual meaning to depict: \"$meaning\". ")
+    }
+    append("Show one clear, memorable visual metaphor or everyday scene that teaches this word's meaning. ")
+    append("Art style: $STUDY_STORY_ART_STYLE. ")
+    append(
+        "Absolutely no text, no letters, no numbers, no captions, no signs with writing, no logos, " +
+            "no speech bubbles, no border, no watermark, high quality square image.",
+    )
+}
 
 /** Character reference portrait used as a named identity anchor for later panels. */
 internal fun characterPortraitPrompt(character: StudyCharacterDesign): String = buildString {
@@ -1032,6 +1101,9 @@ internal fun StudySessionResponse.normalizedSkeleton(sourceText: String): StudyS
             StudyToken(
                 text = tokenText,
                 status = if (isLexical) StudyTokenStatus.PENDING else StudyTokenStatus.PLAIN,
+                // Keep any already-persisted word visuals when reopening a session.
+                imageId = if (isLexical) token.imageId?.trim()?.takeIf { it.isNotEmpty() } else null,
+                imageUrl = if (isLexical) token.imageUrl?.trim()?.takeIf { it.isNotEmpty() } else null,
             )
         }
         if (tokens.isEmpty()) return@mapNotNull null
@@ -1125,6 +1197,8 @@ internal fun StudySentence.normalizedDissected(expectedTokens: List<String>): St
                     translation = example.translation.trim(),
                 )
             },
+            imageId = match.imageId?.trim()?.takeIf { it.isNotEmpty() },
+            imageUrl = match.imageUrl?.trim()?.takeIf { it.isNotEmpty() },
         )
         if (looksLikePunctuationOnly(expectedText) || !cleaned.hasDissectionContent()) {
             cleaned.copy(
@@ -1134,6 +1208,8 @@ internal fun StudySentence.normalizedDissected(expectedTokens: List<String>): St
                 contextualMeaning = "",
                 nearSynonyms = emptyList(),
                 exampleSentences = emptyList(),
+                imageId = null,
+                imageUrl = null,
             )
         } else {
             cleaned.copy(status = StudyTokenStatus.READY)

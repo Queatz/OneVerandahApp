@@ -107,6 +107,21 @@ class ChatInputTest {
     }
 
     @Test
+    fun `voice start skips connecting UI when microphone is already ready`() {
+        assertEquals(VoiceInputUiState.Listening, voiceUiStateForStart(microphoneReady = true))
+        assertEquals(VoiceInputUiState.Connecting, voiceUiStateForStart(microphoneReady = false))
+    }
+
+    @Test
+    fun `scroll chat input moves textarea caret to the end`() {
+        val area = document.createElement("textarea") as org.w3c.dom.HTMLTextAreaElement
+        area.value = "hello from voice"
+        scrollChatInputToEnd(area)
+        assertEquals(area.value.length, area.selectionStart)
+        assertEquals(area.value.length, area.selectionEnd)
+    }
+
+    @Test
     fun `releasing pointer outside input stops active voice input`() {
         val scheduler = TestScheduler()
         var stops = 0

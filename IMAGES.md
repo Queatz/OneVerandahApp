@@ -105,10 +105,10 @@ The backend calls Alibaba Cloud **Model Studio / DashScope** text-to-image
    ```bash
    QWEN_API_KEY=sk-xxxxxxxxxxxxxxxxxxxxxxxx
    # Optional overrides (quality defaults shown):
-   # Use wan2.7-image for text-only and reference-grounded stills.
+   # Use qwen-image-3.0-pro for text-only and reference-grounded stills.
    # Text-only calls are auto-routed to multimodal-generation.
-   QWEN_MODEL=wan2.7-image
-   QWEN_R2I_MODEL=wan2.7-image
+   QWEN_MODEL=qwen-image-3.0-pro
+   QWEN_R2I_MODEL=qwen-image-3.0-pro
    # wan2.x-image pixel sizes bottom out around 768*768 (512 is rejected).
    QWEN_MULTIMODAL_SIZE=768*768
    # Only used if you switch QWEN_MODEL back to a classic *-t2i* model.
@@ -127,7 +127,7 @@ The backend calls Alibaba Cloud **Model Studio / DashScope** text-to-image
 The client picks the right DashScope contract per model: classic async
 `text2image/image-synthesis` for `wanx` / `*-t2i*` if configured, and
 multimodal-generation (messages payload, sync or async) for `wan2.x-image`
-text-only and reference-grounded stills (default: `wan2.7-image`). Reference images re-hosted into
+text-only and reference-grounded stills (default: `qwen-image-3.0-pro`). Reference images re-hosted into
 DashScope temp storage are cached in-process so study story panels reuse the
 same character portraits without re-uploading each time. Failures are retried
 with exponential backoff; after `GENERATION_MAX_RETRIES` the image is marked

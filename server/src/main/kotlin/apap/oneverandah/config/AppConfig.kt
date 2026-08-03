@@ -86,8 +86,8 @@ data class OssConfig(
  * Qwen (DashScope) image-generation settings. [enabled] requires an API key.
  *
  * [model] / [endpoint] drive text-only generation (catalog covers, study playground
- * comics). Multimodal still models such as `wan2.7-image` must not be paired with
- * classic `text2image/image-synthesis` — DashScope rejects that with
+ * comics). Multimodal still models such as `qwen-image-3.0-pro` / `wan2.x-image` must not
+ * be paired with classic `text2image/image-synthesis` — DashScope rejects that with
  * `InvalidParameter: url error`. The client auto-routes those models through
  * [r2iEndpoint] (multimodal-generation) when needed.
  *
@@ -95,9 +95,9 @@ data class OssConfig(
  * - [promptExtend] runs an extra LLM rewrite (~3–4s). Off by default because our
  *   prompts are already detailed (study story panels, covers).
  * - Prefer `512*512` only for classic T2I / legacy R2I contracts when those are used.
- * - [multimodalSize] for wan2.x-image accepts `1K`/`2K` or `width*height`; pixel
+ * - [multimodalSize] for multimodal still models accepts `1K`/`2K` or `width*height`; pixel
  *   sizes must stay in about `[768*768, 2048*2048]`, so 512 is not valid there.
- * - Default [model] and [r2iModel] both use `wan2.7-image` (quality multimodal).
+ * - Default [model] and [r2iModel] both use `qwen-image-3.0-pro` (quality multimodal).
  *   Text-only calls are auto-routed to the multimodal endpoint.
  */
 data class QwenImageConfig(
@@ -107,15 +107,15 @@ data class QwenImageConfig(
     /**
      * DashScope endpoint for multimodal still-image generation (text-only or
      * reference-grounded). Default is the multimodal generation API used by
-     * wan2.x-image models.
+     * qwen-image / wan2.x-image models.
      */
     val r2iEndpoint: String =
         "https://dashscope.aliyuncs.com/api/v1/services/aigc/multimodal-generation/generation",
     /**
      * Model used when apartment reference photos are supplied.
-     * wan2.x-image accepts multiple reference images + a text prompt.
+     * Multimodal still models accept multiple reference images + a text prompt.
      */
-    val r2iModel: String = "wan2.7-image",
+    val r2iModel: String = "qwen-image-3.0-pro",
     /**
      * When true, DashScope rewrites the prompt with an LLM before generating.
      * Improves short prompts but adds ~3–4s latency per image.
@@ -303,11 +303,11 @@ data class AppConfig(
                 endpoint = source["QWEN_API_ENDPOINT"]
                     ?: "https://dashscope.aliyuncs.com/api/v1/services/aigc/text2image/image-synthesis",
                 apiKey = source["QWEN_API_KEY"] ?: "",
-                // Text-only + reference-grounded both default to wan2.7-image (multimodal).
-                model = source["QWEN_MODEL"] ?: "wan2.7-image",
+                // Text-only + reference-grounded both default to qwen-image-3.0-pro (multimodal).
+                model = source["QWEN_MODEL"] ?: "qwen-image-3.0-pro",
                 r2iEndpoint = source["QWEN_R2I_ENDPOINT"]
                     ?: "https://dashscope.aliyuncs.com/api/v1/services/aigc/multimodal-generation/generation",
-                r2iModel = source["QWEN_R2I_MODEL"] ?: "wan2.7-image",
+                r2iModel = source["QWEN_R2I_MODEL"] ?: "qwen-image-3.0-pro",
                 promptExtend = source.bool("QWEN_PROMPT_EXTEND", false),
                 multimodalSize = source["QWEN_MULTIMODAL_SIZE"]?.takeIf { it.isNotBlank() } ?: "768*768",
                 textToImageSize = source["QWEN_T2I_SIZE"]?.takeIf { it.isNotBlank() } ?: "512*512",

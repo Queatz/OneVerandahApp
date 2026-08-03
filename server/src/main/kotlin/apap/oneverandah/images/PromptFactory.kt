@@ -11,15 +11,18 @@ import apap.oneverandah.model.Service
  * agnostic).
  */
 object PromptFactory {
+    private const val ART_STYLE =
+        "expressive storybook art style, warm inviting palette, soft natural lighting, " +
+            "clear composition, gentle everyday realism with a touch of whimsy"
+
     fun forCategory(category: Category): String =
-        "A professional, modern editorial illustration representing the category " +
+        "Expressive storybook art style illustration representing the category " +
             "'${category.title.en}' for a premium lifestyle services marketplace. " +
-            "Clean minimal composition, soft natural lighting, warm inviting palette, " +
-            "no text, high quality, 1024x1024."
+            "$ART_STYLE, no text, no letters, no watermark, high quality square image."
 
     fun forService(service: Service, categoryName: String): String =
-        "A professional, modern editorial illustration representing the service " +
+        "Expressive storybook art style illustration representing the service " +
             "'${service.title.en}' in the category '$categoryName' for a premium " +
-            "lifestyle services marketplace. Clean minimal composition, soft natural " +
-            "lighting, warm inviting palette, no text, high quality, 1024x1024."
+            "lifestyle services marketplace. $ART_STYLE, no text, no letters, " +
+            "no watermark, high quality square image."
 }

@@ -16,6 +16,7 @@ import apap.oneverandah.api.StudySessionResponse
 import apap.oneverandah.api.StudyToken
 import apap.oneverandah.api.StudyTokenStatus
 import apap.oneverandah.api.StudyWriteCheckRequest
+import apap.oneverandah.api.StudyWordImageRequest
 import apap.oneverandah.api.StudyWordPlaygroundRequest
 import apap.oneverandah.api.StudyExpressCheckRequest
 import apap.oneverandah.api.StudyExpressGenerateRequest
@@ -150,8 +151,14 @@ class StudyServiceTest {
             word.exampleSentences,
         )
         assertTrue(word.isDissectable)
+        assertEquals("Greeting", word.contextualMeaning)
+        // Pre-generate word visual job id for dissectable tokens.
+        assertNotNull(word.imageId)
+        assertTrue(word.imageId!!.isNotBlank())
+        assertEquals(null, word.imageUrl)
         assertEquals(StudyTokenStatus.PLAIN, response.tokens.last().status)
         assertFalse(response.tokens.last().isDissectable)
+        assertEquals(null, response.tokens.last().imageId)
     }
 
     @Test
@@ -457,11 +464,112 @@ class StudyServiceTest {
     }
 
     @Test
-    fun `playground comic prompt mentions word and comic style`() {
+    fun `playground comic prompt mentions word and storybook style`() {
         val prompt = playgroundComicPrompt(word = "chào", sentence = "Xin chào!", natural = true)
-        assertContains(prompt, "comic-style")
+        assertContains(prompt, "Expressive storybook art style")
         assertContains(prompt, "chào")
         assertContains(prompt, "Xin chào!")
+    }
+
+    @Test
+    fun `word visual prompt uses word and contextual meaning`() {
+        val prompt = wordVisualPrompt(word = "chào", contextualMeaning = "a friendly greeting")
+        assertContains(prompt, "Expressive storybook art style")
+        assertContains(prompt, "chào")
+        assertContains(prompt, "a friendly greeting")
+        assertContains(prompt, "Absolutely no text")
+        assertContains(prompt, STUDY_STORY_ART_STYLE.take(20))
+    }
+
+    @Test
+    fun `word image starts async expressive visual`() = runBlocking {
+        val prompts = mutableListOf<String>()
+        val service = StudyService(
+            aiClient = FakeStudyAiClient(),
+            imageGenerator = StudyPlaygroundImageGenerator { prompt, _ ->
+                prompts += prompt
+                "https://cdn.example/word.png"
+            },
+            idGenerator = { "word-image-1" },
+        )
+
+        val response = service.wordImage(
+            StudyWordImageRequest(word = "  chào  ", contextualMeaning = "  greeting  "),
+        )
+        assertEquals("word-image-1", response.imageId)
+
+        var image = service.playgroundImage("word-image-1")
+        assertNotNull(image)
+        var attempts = 0
+        while (
+            image!!.status != StudyPlaygroundImageStatus.COMPLETED &&
+            image.status != StudyPlaygroundImageStatus.FAILED &&
+            attempts < 40
+        ) {
+            delay(25)
+            image = service.playgroundImage("word-image-1")
+            attempts++
+        }
+        assertEquals(StudyPlaygroundImageStatus.COMPLETED, image.status)
+        assertEquals("https://cdn.example/word.png", image.imageUrl)
+        assertTrue(prompts.single().contains("chào"))
+        assertTrue(prompts.single().contains("greeting"))
+    }
+
+    @Test
+    fun `dissect pre-generates word images for lexical tokens`() = runBlocking {
+        val prompts = mutableListOf<String>()
+        val ids = mutableListOf("w1", "w2")
+        val service = StudyService(
+            aiClient = FakeStudyAiClient(
+                dissect = StudySentence(
+                    text = "Xin chào.",
+                    tokens = listOf(
+                        StudyToken(
+                            text = "Xin chào",
+                            literalMeaning = "Hello",
+                            contextualMeaning = "Friendly greeting",
+                            register = "neutral",
+                        ),
+                        StudyToken(text = "."),
+                    ),
+                ),
+            ),
+            imageGenerator = StudyPlaygroundImageGenerator { prompt, _ ->
+                prompts += prompt
+                "https://cdn.example/${prompts.size}.png"
+            },
+            idGenerator = { ids.removeFirst() },
+        )
+
+        val response = service.dissectSentence(
+            StudyDissectSentenceRequest(
+                text = "Xin chào.",
+                sentenceText = "Xin chào.",
+                tokens = listOf("Xin chào", "."),
+                textLanguageTag = "vi",
+                languageTag = "en",
+            ),
+        )
+        assertEquals("w1", response.tokens.first().imageId)
+        assertEquals(null, response.tokens.last().imageId)
+
+        var image = service.playgroundImage("w1")
+        var attempts = 0
+        while (
+            image != null &&
+            image.status != StudyPlaygroundImageStatus.COMPLETED &&
+            image.status != StudyPlaygroundImageStatus.FAILED &&
+            attempts < 40
+        ) {
+            delay(25)
+            image = service.playgroundImage("w1")
+            attempts++
+        }
+        assertEquals(StudyPlaygroundImageStatus.COMPLETED, image?.status)
+        assertEquals("https://cdn.example/1.png", image?.imageUrl)
+        assertTrue(prompts.single().contains("Xin chào"))
+        assertTrue(prompts.single().contains("Friendly greeting"))
     }
 
     @Test
@@ -509,6 +617,7 @@ class StudyServiceTest {
         assertContains(prompt, "no speech bubbles")
         assertContains(prompt, "language learners")
         assertContains(prompt, "Absolutely no text")
+        assertContains(prompt, "expressive storybook art style")
     }
 
     @Test

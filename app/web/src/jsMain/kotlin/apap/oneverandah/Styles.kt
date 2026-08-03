@@ -318,6 +318,8 @@ object Styles {
     const val studyTokenPlain = "study-token-plain"
     const val studyTokenPending = "study-token-pending"
     const val studyTokenDetail = "study-token-detail"
+    const val studyWordImage = "study-word-image"
+    const val studyWordImagePlaceholder = "study-word-image-placeholder"
     const val studyExampleSentence = "study-example-sentence"
     const val studyExampleWord = "study-example-word"
     const val studyExampleTranslation = "study-example-translation"
@@ -2578,6 +2580,35 @@ object Styles {
         }
         .${studyTokenDetail} {
             margin-top: 2px;
+        }
+        .${studyWordImage} {
+            display: block;
+            width: 100%;
+            max-width: 280px;
+            border-radius: 14px;
+            border: 1px solid var(--md-sys-color-outline);
+            background: var(--md-sys-color-surface-variant);
+            aspect-ratio: 1 / 1;
+            object-fit: cover;
+            margin-bottom: 8px;
+        }
+        .${studyWordImagePlaceholder} {
+            display: flex;
+            align-items: center;
+            justify-content: center;
+            gap: 8px;
+            width: 100%;
+            max-width: 280px;
+            min-height: 120px;
+            border-radius: 14px;
+            border: 1px dashed color-mix(in srgb, var(--md-sys-color-outline) 70%, transparent);
+            background: color-mix(in srgb, var(--md-sys-color-surface-variant) 55%, transparent);
+            color: var(--md-sys-color-on-surface-variant);
+            font-size: 13px;
+            margin-bottom: 8px;
+        }
+        .${studyWordImagePlaceholder} .${materialSymbols} {
+            animation: spin 1.2s linear infinite;
         }
         .${studyExampleSentence} {
             margin: 0 0 10px;

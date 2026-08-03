@@ -16,6 +16,7 @@ import apap.oneverandah.api.StudyWriteCheckRequest
 import apap.oneverandah.api.StudySentenceImageRequest
 import apap.oneverandah.api.StudySessionRequest
 import apap.oneverandah.api.StudyStoryCharactersRequest
+import apap.oneverandah.api.StudyWordImageRequest
 import apap.oneverandah.api.StudyWordPlaygroundRequest
 import apap.oneverandah.chat.ChatService
 import apap.oneverandah.chat.QwenAsrRelay
@@ -124,6 +125,18 @@ fun Route.chatRoutes(
                 return@post
             }
             call.respond(studyService.sentenceImage(request))
+        }
+
+        post("/api/chat/study/word-image") {
+            val request = call.receive<StudyWordImageRequest>()
+            if (request.normalizedOrNull() == null) {
+                call.respond(
+                    HttpStatusCode.BadRequest,
+                    ChatErrorResponse("Study word image requires non-blank word text"),
+                )
+                return@post
+            }
+            call.respond(studyService.wordImage(request))
         }
 
         post("/api/chat/study/play/scenarios") {

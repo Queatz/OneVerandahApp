@@ -157,6 +157,8 @@ class ChatApiModelsTest {
                                     translation = "I am here.",
                                 ),
                             ),
+                            imageId = "word-img-1",
+                            imageUrl = "https://cdn.example/word.png",
                         ),
                         StudyToken(text = ".", status = StudyTokenStatus.PLAIN),
                         StudyToken(text = "đang", status = StudyTokenStatus.PENDING),
@@ -210,6 +212,8 @@ class ChatApiModelsTest {
 
         assertEquals(response, decoded)
         assertEquals(true, decoded.sentences.single().tokens[0].isDissectable)
+        assertEquals("word-img-1", decoded.sentences.single().tokens[0].imageId)
+        assertEquals("https://cdn.example/word.png", decoded.sentences.single().tokens[0].imageUrl)
         assertEquals(false, decoded.sentences.single().tokens[1].isDissectable)
         assertEquals(false, decoded.sentences.single().tokens[2].isDissectable)
         assertEquals(StudyTokenStatus.PENDING, decoded.sentences.single().tokens[2].status)
@@ -247,7 +251,24 @@ class ChatApiModelsTest {
         assertNull(StudySentenceImageRequest(sentenceText = "   ").normalizedOrNull())
     }
 
+    
     @Test
+    fun `study word image request normalizes and rejects blanks`() {
+        val normalized = StudyWordImageRequest(
+            word = "  chào  ",
+            contextualMeaning = "  greeting  ",
+        ).normalizedOrNull()
+        assertEquals(
+            StudyWordImageRequest(word = "chào", contextualMeaning = "greeting"),
+            normalized,
+        )
+        assertEquals(
+            null,
+            StudyWordImageRequest(word = "   ", contextualMeaning = "x").normalizedOrNull(),
+        )
+    }
+
+@Test
     fun `study story characters request normalizes and rejects blanks`() {
         val normalized = StudyStoryCharactersRequest(text = "  Hello.  ", textLanguageTag = "en-US").normalizedOrNull()
         assertEquals("Hello.", normalized?.text)

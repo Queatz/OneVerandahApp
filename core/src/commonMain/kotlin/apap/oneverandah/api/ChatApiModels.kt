@@ -241,6 +241,9 @@ data class StudyExampleSentence(
  * Lexical tokens start as [StudyTokenStatus.PENDING] on the skeleton and become
  * [StudyTokenStatus.READY] after per-sentence dissection. Punctuation stays
  * [StudyTokenStatus.PLAIN] with empty dissection fields.
+ *
+ * [imageId]/[imageUrl] hold the pre-generated expressive word visual for
+ * dissectable tokens (prompted from the word + contextual meaning).
  */
 @Serializable
 data class StudyToken(
@@ -251,6 +254,10 @@ data class StudyToken(
     val contextualMeaning: String = "",
     val nearSynonyms: List<String> = emptyList(),
     val exampleSentences: List<StudyExampleSentence> = emptyList(),
+    /** Async word-image job id; poll [StudyPlaygroundImageResponse]. */
+    val imageId: String? = null,
+    /** Public URL once the word visual is ready. */
+    val imageUrl: String? = null,
 ) {
     /** True when this token is ready for full interactive dissection. */
     val isDissectable: Boolean
@@ -433,6 +440,33 @@ data class StudySentenceImageRequest(
 /** Immediate ack for a Study-tab sentence visual job. */
 @Serializable
 data class StudySentenceImageResponse(
+    val imageId: String,
+)
+
+/**
+ * Request an expressive Study-tab visual for one dissected word/phrase.
+ *
+ * Returns an [imageId] immediately; poll [StudyPlaygroundImageResponse] until
+ * the image is ready, then persist [StudyToken.imageUrl] on the session.
+ * The generator uses [word] plus [contextualMeaning] for the scene.
+ */
+@Serializable
+data class StudyWordImageRequest(
+    val word: String,
+    val contextualMeaning: String = "",
+) {
+    fun normalizedOrNull(): StudyWordImageRequest? {
+        val normalizedWord = word.trim().takeIf { it.isNotEmpty() } ?: return null
+        return copy(
+            word = normalizedWord,
+            contextualMeaning = contextualMeaning.trim(),
+        )
+    }
+}
+
+/** Immediate ack for a Study-tab word visual job. */
+@Serializable
+data class StudyWordImageResponse(
     val imageId: String,
 )
 

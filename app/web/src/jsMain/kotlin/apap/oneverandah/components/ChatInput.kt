@@ -18,6 +18,7 @@ import org.jetbrains.compose.web.dom.Div
 import org.jetbrains.compose.web.dom.Input
 import org.jetbrains.compose.web.dom.TextArea
 import org.w3c.dom.Element
+import org.w3c.dom.HTMLInputElement
 import org.w3c.dom.HTMLTextAreaElement
 import org.w3c.dom.events.Event
 
@@ -30,6 +31,23 @@ internal fun chatInputHeightPx(scrollHeight: Int): Int =
 private fun resizeChatInput(textArea: HTMLTextAreaElement) {
     textArea.style.height = "auto"
     textArea.style.height = "${chatInputHeightPx(textArea.scrollHeight)}px"
+}
+
+/** Keeps the caret and viewport pinned to the latest voice text. */
+internal fun scrollChatInputToEnd(element: Element) {
+    when (element) {
+        is HTMLTextAreaElement -> {
+            val end = element.value.length
+            runCatching { element.setSelectionRange(end, end) }
+            element.scrollTop = element.scrollHeight.toDouble()
+        }
+        is HTMLInputElement -> {
+            val end = element.value.length
+            runCatching { element.setSelectionRange(end, end) }
+            // Some browsers expose scrollLeft on single-line inputs when text overflows.
+            element.asDynamic().scrollLeft = element.asDynamic().scrollWidth
+        }
+    }
 }
 
 internal fun installHoldListeners(element: Element, gesture: HoldToSpeakGesture): () -> Unit {
@@ -60,7 +78,9 @@ internal fun installHoldListeners(element: Element, gesture: HoldToSpeakGesture)
  * `null`/blank, matching the `(value: String?) -> Unit` contract).
  *
  * Hold-to-speak warms the mic/socket after ~150ms and only enters listening
- * after ~350ms, so short clicks never request microphone permission.
+ * after ~350ms, so short clicks never request microphone permission. Once the
+ * mic is granted, the UI shows Listening immediately while audio is queued to
+ * the ASR websocket; releasing cancels further transcript updates.
  *
  * @param value the current text to display.
  * @param onValueChange called on every input change with the new text.
@@ -84,6 +104,7 @@ fun ChatInput(
 ) {
     val hasText = value.isNotEmpty()
     var textAreaRef by remember { mutableStateOf<HTMLTextAreaElement?>(null) }
+    var inputRef by remember { mutableStateOf<HTMLInputElement?>(null) }
     var voiceState by remember { mutableStateOf(VoiceInputUiState.Idle) }
     val currentValue = rememberUpdatedState(value)
     val currentOnValueChange = rememberUpdatedState(onValueChange)
@@ -91,7 +112,9 @@ fun ChatInput(
     val currentLanguage = rememberUpdatedState(resolvedLanguage)
     val voiceSession = remember {
         VoiceSessionController(
-            onValueChange = { currentOnValueChange.value(it) },
+            onValueChange = { next ->
+                currentOnValueChange.value(next)
+            },
             onStateChange = { voiceState = it },
             onError = { console.error(it) },
         )
@@ -133,6 +156,15 @@ fun ChatInput(
         LaunchedEffect(value, textAreaRef) {
             textAreaRef?.let(::resizeChatInput)
         }
+    }
+    // While voice is active, keep the caret/viewport on the newest characters.
+    LaunchedEffect(value, voiceState, textAreaRef, inputRef) {
+        if (voiceState == VoiceInputUiState.Idle) return@LaunchedEffect
+        textAreaRef?.let { area ->
+            resizeChatInput(area)
+            scrollChatInputToEnd(area)
+        }
+        inputRef?.let(::scrollChatInputToEnd)
     }
     Div(attrs = {
         classes(Styles.chatInput)
@@ -184,10 +216,16 @@ fun ChatInput(
                         onSend(value)
                     }
                 }
-                ref { inputRef ->
-                    val removeHoldListeners = installHoldListeners(inputRef, holdGesture)
-                    if (autoFocus) inputRef.focus()
-                    onDispose { removeHoldListeners() }
+                ref { element ->
+                    val removeHoldListeners = installHoldListeners(element, holdGesture)
+                    inputRef = element
+                    if (autoFocus) element.focus()
+                    onDispose {
+                        removeHoldListeners()
+                        if (inputRef === element) {
+                            inputRef = null
+                        }
+                    }
                 }
             }
         }

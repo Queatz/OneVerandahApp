@@ -287,6 +287,9 @@ data class UiStrings(
     val chatStudySentenceImageLoading: String,
     val chatStudySentenceImageError: String,
     val chatStudySentenceImageAlt: String,
+    val chatStudyWordImageLoading: String,
+    val chatStudyWordImageError: String,
+    val chatStudyWordImageAlt: String,
 )
 
 private val English = UiStrings(
@@ -564,6 +567,9 @@ private val English = UiStrings(
     chatStudySentenceImageLoading = "Creating a scene…",
     chatStudySentenceImageError = "Couldn't create the scene image.",
     chatStudySentenceImageAlt = "Illustration for this sentence",
+    chatStudyWordImageLoading = "Creating a word scene…",
+    chatStudyWordImageError = "Couldn't create the word image.",
+    chatStudyWordImageAlt = "Illustration for this word",
 )
 
 private val Vietnamese = UiStrings(
@@ -841,6 +847,9 @@ private val Vietnamese = UiStrings(
     chatStudySentenceImageLoading = "Đang tạo cảnh…",
     chatStudySentenceImageError = "Không tạo được ảnh minh họa.",
     chatStudySentenceImageAlt = "Minh họa cho câu này",
+    chatStudyWordImageLoading = "Đang tạo ảnh cho từ…",
+    chatStudyWordImageError = "Không tạo được ảnh cho từ.",
+    chatStudyWordImageAlt = "Minh họa cho từ này",
 )
 
 private val Chinese = UiStrings(
@@ -1117,6 +1126,9 @@ private val Chinese = UiStrings(
     chatStudySentenceImageLoading = "正在创建场景…",
     chatStudySentenceImageError = "无法创建场景图片。",
     chatStudySentenceImageAlt = "这句话的插图",
+    chatStudyWordImageLoading = "正在创建词语场景…",
+    chatStudyWordImageError = "无法创建词语图片。",
+    chatStudyWordImageAlt = "这个词的插图",
 )
 
 private val Japanese = UiStrings(
@@ -1393,6 +1405,9 @@ private val Japanese = UiStrings(
     chatStudySentenceImageLoading = "シーンを作成しています…",
     chatStudySentenceImageError = "シーン画像を作成できませんでした。",
     chatStudySentenceImageAlt = "この文のイラスト",
+    chatStudyWordImageLoading = "単語のイラストを作成中…",
+    chatStudyWordImageError = "単語の画像を作成できませんでした。",
+    chatStudyWordImageAlt = "この単語のイラスト",
 )
 
 private val Korean = UiStrings(
@@ -1669,6 +1684,9 @@ private val Korean = UiStrings(
     chatStudySentenceImageLoading = "장면을 만드는 중…",
     chatStudySentenceImageError = "장면 이미지를 만들지 못했습니다.",
     chatStudySentenceImageAlt = "이 문장의 일러스트",
+    chatStudyWordImageLoading = "단어 장면을 만드는 중…",
+    chatStudyWordImageError = "단어 이미지를 만들지 못했습니다.",
+    chatStudyWordImageAlt = "이 단어의 일러스트",
 )
 
 private val Russian = UiStrings(
@@ -1945,6 +1963,9 @@ private val Russian = UiStrings(
     chatStudySentenceImageLoading = "Создаём сцену…",
     chatStudySentenceImageError = "Не удалось создать изображение сцены.",
     chatStudySentenceImageAlt = "Иллюстрация к этому предложению",
+    chatStudyWordImageLoading = "Создаём картинку для слова…",
+    chatStudyWordImageError = "Не удалось создать изображение слова.",
+    chatStudyWordImageAlt = "Иллюстрация к этому слову",
 )
 
 fun stringsFor(language: Language): UiStrings = when (language) {

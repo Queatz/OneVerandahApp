@@ -20,8 +20,9 @@ class ChatScreenStudyExampleTest {
 
     @Test
     fun `highlights every non-overlapping occurrence`() {
+        // "the cat is the best" → first "the" at 0, second at 11
         assertEquals(
-            listOf(0 until 3, 10 until 13),
+            listOf(0 until 3, 11 until 14),
             studyExampleHighlightRanges("the cat is the best", "the"),
         )
     }

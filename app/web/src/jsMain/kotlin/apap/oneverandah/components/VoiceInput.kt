@@ -25,6 +25,16 @@ internal enum class VoiceInputUiState {
     Listening,
 }
 
+/**
+ * UI state when a hold becomes active.
+ *
+ * Only show [VoiceInputUiState.Connecting] while the microphone permission / stream is still
+ * outstanding. Once the mic is available, jump straight to listening even if the ASR socket is
+ * still warming — audio is queued until the session is ready.
+ */
+internal fun voiceUiStateForStart(microphoneReady: Boolean): VoiceInputUiState =
+    if (microphoneReady) VoiceInputUiState.Listening else VoiceInputUiState.Connecting
+
 internal class VoiceTranscript(private val initialValue: String) {
     fun partial(text: String, stash: String): String = merge(text + stash)
 
@@ -121,7 +131,11 @@ internal class BrowserVoiceInput(
     private var muteGain: dynamic = null
     private var workletLoaded = false
     private var micRequestInFlight = false
+    /** Cached Permissions API / prior getUserMedia success — avoids Connecting flash. */
+    private var micPermissionGranted = false
     private var listening = false
+    /** True while we should capture PCM (warm-up pre-roll or active listen). */
+    private var capturing = false
     private var sessionReady = false
     private var sessionLanguage: String? = null
     private var disposed = false
@@ -135,6 +149,10 @@ internal class BrowserVoiceInput(
         if (disposed) return
         this.language = language
         clearIdleTimer()
+        // Start mic + capture graph immediately so the first hold can queue audio
+        // before the websocket handshake finishes.
+        capturing = true
+        probeMicrophonePermission()
         ensureMicrophone()
         ensureSocket()
     }
@@ -144,9 +162,13 @@ internal class BrowserVoiceInput(
         this.language = language
         transcript = VoiceTranscript(initialValue)
         listening = true
+        capturing = true
         firstAudioSent = false
         clearIdleTimer()
-        onStateChange(if (sessionReady) VoiceInputUiState.Listening else VoiceInputUiState.Connecting)
+        // Never flash "Connecting..." once the mic is already available — queue audio
+        // and open the socket in the background.
+        probeMicrophonePermission()
+        onStateChange(voiceUiStateForStart(microphoneReady = isMicrophoneReady()))
         ensureMicrophone()
         ensureSocket()
         flushPendingIfReady()
@@ -154,33 +176,74 @@ internal class BrowserVoiceInput(
 
     fun endListening() {
         if (disposed) return
-        if (!listening) {
+        if (!listening && !capturing) {
             scheduleIdleClose()
             return
         }
-        listening = false
+        // Hard-cancel: drop the turn, discard queued audio, ignore any further ASR text.
+        cancelActiveTurn(closeSession = false)
         onStateChange(VoiceInputUiState.Idle)
-        val activeSocket = socket
-        if (activeSocket != null && activeSocket.readyState == webSocketOpen && sessionReady) {
-            runCatching { activeSocket.send("""{"type":"input_audio_buffer.commit"}""") }
-        }
         scheduleIdleClose()
     }
 
     /** Keep mic/socket warm after an aborted warm-up (hold released before confirm). */
     fun park() {
         if (disposed || listening) return
+        capturing = false
+        clearPendingPcm()
         scheduleIdleClose()
     }
 
     fun dispose() {
         if (disposed) return
         disposed = true
-        listening = false
+        cancelActiveTurn(closeSession = true)
         clearIdleTimer()
         stopAudioGraph(stopTracks = true)
         finishAndCloseSocket()
         onStateChange(VoiceInputUiState.Idle)
+    }
+
+    private fun isMicrophoneReady(): Boolean = mediaStream != null || micPermissionGranted
+
+    private fun probeMicrophonePermission() {
+        if (micPermissionGranted || mediaStream != null) return
+        val permissions = window.navigator.asDynamic().permissions ?: return
+        runCatching {
+            permissions.query(js("{name:'microphone'}")).then(
+                { status: dynamic ->
+                    val granted = (status.state as? String) == "granted"
+                    if (granted) {
+                        micPermissionGranted = true
+                        if (listening) onStateChange(VoiceInputUiState.Listening)
+                    }
+                    status.onchange = {
+                        micPermissionGranted = (status.state as? String) == "granted"
+                    }
+                    null
+                },
+                { null },
+            )
+        }
+    }
+
+    private fun cancelActiveTurn(closeSession: Boolean) {
+        listening = false
+        capturing = false
+        transcript = null
+        clearPendingPcm()
+        firstAudioSent = false
+        if (closeSession) return
+        // Drop any audio already sitting in the provider buffer without requesting a final transcript.
+        val activeSocket = socket
+        if (activeSocket != null && activeSocket.readyState == webSocketOpen && sessionReady) {
+            runCatching { activeSocket.send("""{"type":"input_audio_buffer.clear"}""") }
+        }
+    }
+
+    private fun clearPendingPcm() {
+        pendingPcm = js("[]")
+        pendingBytes = 0
     }
 
     private fun ensureMicrophone() {
@@ -203,7 +266,10 @@ internal class BrowserVoiceInput(
                     return@then null
                 }
                 mediaStream = stream
+                micPermissionGranted = true
                 ensureAudioGraph(stream)
+                // Mic permission resolved — leave Connecting immediately if still holding.
+                if (listening) onStateChange(VoiceInputUiState.Listening)
                 null
             },
             { cause: dynamic ->
@@ -222,7 +288,8 @@ internal class BrowserVoiceInput(
                 existing.send(sessionUpdateEvent(language))
                 sessionLanguage = language
                 sessionReady = false
-                if (listening) onStateChange(VoiceInputUiState.Connecting)
+                // Language switch re-hands the session; keep Listening if mic is already up.
+                if (listening) onStateChange(voiceUiStateForStart(microphoneReady = isMicrophoneReady()))
             }
             return
         }
@@ -247,44 +314,60 @@ internal class BrowserVoiceInput(
                             sessionReady = true
                             console.info("[asr] session ready in ${msSince(openedAtMs)}ms")
                             if (listening) onStateChange(VoiceInputUiState.Listening)
+                            // Flush whatever was queued while the socket/session warmed up.
                             flushPendingIfReady()
                         }
                         "conversation.item.input_audio_transcription.text" -> {
-                            transcript?.let {
-                                onValueChange(it.partial(data.text as? String ?: "", data.stash as? String ?: ""))
+                            // Release cancels the turn: ignore late partials/finals.
+                            if (listening) {
+                                transcript?.let {
+                                    onValueChange(
+                                        it.partial(
+                                            data.text as? String ?: "",
+                                            data.stash as? String ?: "",
+                                        ),
+                                    )
+                                }
                             }
                         }
                         "conversation.item.input_audio_transcription.delta" -> {
-                            transcript?.let {
-                                onValueChange(it.partial(data.delta as? String ?: "", ""))
+                            if (listening) {
+                                transcript?.let {
+                                    onValueChange(it.partial(data.delta as? String ?: "", ""))
+                                }
                             }
                         }
                         "conversation.item.input_audio_transcription.completed" -> {
-                            transcript?.let {
-                                onValueChange(it.completed(data.transcript as? String ?: ""))
+                            if (listening) {
+                                transcript?.let {
+                                    onValueChange(it.completed(data.transcript as? String ?: ""))
+                                }
                             }
                         }
                         "session.finished" -> {
                             sessionReady = false
                             closeSocketOnly()
                         }
-                        "error" -> fail(data.error?.message?.toString() ?: "Voice recognition failed")
+                        "error" -> {
+                            if (listening) fail(data.error?.message?.toString() ?: "Voice recognition failed")
+                        }
                     }
                 }
             }
         }
         activeSocket.onerror = {
-            if (!disposed) fail("Voice recognition connection failed")
+            if (!disposed && listening) fail("Voice recognition connection failed")
         }
         activeSocket.onclose = {
             if (socket === activeSocket) {
                 socket = null
                 sessionReady = false
                 sessionLanguage = null
-                pendingPcm = js("[]")
-                pendingBytes = 0
+                clearPendingPcm()
                 if (listening) {
                     listening = false
+                    capturing = false
+                    transcript = null
                     onStateChange(VoiceInputUiState.Idle)
                 }
             }
@@ -349,7 +432,7 @@ internal class BrowserVoiceInput(
         val processor = context.createScriptProcessor(scriptProcessorBufferSize, 1, 1)
         captureNode = processor
         processor.onaudioprocess = { event: dynamic ->
-            if (listening || pendingBytes > 0) {
+            if (capturing || listening) {
                 val samples = event.inputBuffer.getChannelData(0)
                 val pcm = resamplePcm16(samples, (context.sampleRate as Number).toInt())
                 onPcmFrame(pcm.buffer)
@@ -361,11 +444,14 @@ internal class BrowserVoiceInput(
 
     private fun onPcmFrame(buffer: dynamic) {
         if (disposed) return
-        if (!listening) return
+        // Queue during warm-up pre-roll and active listening; drop once cancelled.
+        if (!capturing && !listening) return
         val bytes = (buffer.byteLength as? Number)?.toInt() ?: return
         if (bytes <= 0) return
         val activeSocket = socket
-        if (sessionReady && activeSocket?.readyState == webSocketOpen) {
+        // Only stream live audio while the user is still holding. Warm-up pre-roll stays
+        // buffered until beginListening + session ready flush it.
+        if (listening && sessionReady && activeSocket?.readyState == webSocketOpen) {
             sendBinary(activeSocket, buffer)
         } else {
             bufferPcm(buffer, bytes)
@@ -384,17 +470,18 @@ internal class BrowserVoiceInput(
     }
 
     private fun flushPendingIfReady() {
+        if (!listening) return
         val activeSocket = socket
         if (!sessionReady || activeSocket?.readyState != webSocketOpen) return
         val count = pendingPcm.length as Int
         for (index in 0 until count) {
             sendBinary(activeSocket, pendingPcm[index])
         }
-        pendingPcm = js("[]")
-        pendingBytes = 0
+        clearPendingPcm()
     }
 
     private fun sendBinary(activeSocket: WebSocket, buffer: dynamic) {
+        if (!listening) return
         if (!firstAudioSent) {
             firstAudioSent = true
             console.info("[asr] first audio sent at ${msSince(openedAtMs)}ms")
@@ -427,7 +514,7 @@ internal class BrowserVoiceInput(
         clearIdleTimer()
         idleTimer = window.setTimeout({
             idleTimer = null
-            if (disposed || listening) return@setTimeout
+            if (disposed || listening || capturing) return@setTimeout
             // Keep the socket warm for a minute, then fully tear down.
             finishAndCloseSocket()
             stopAudioGraph(stopTracks = true)
@@ -452,8 +539,7 @@ internal class BrowserVoiceInput(
         socket = null
         sessionReady = false
         sessionLanguage = null
-        pendingPcm = js("[]")
-        pendingBytes = 0
+        clearPendingPcm()
         if (activeSocket != null && activeSocket.readyState < 2) {
             runCatching { activeSocket.close() }
         }
@@ -461,7 +547,7 @@ internal class BrowserVoiceInput(
 
     private fun fail(message: String) {
         if (disposed) return
-        listening = false
+        cancelActiveTurn(closeSession = true)
         clearIdleTimer()
         stopAudioGraph(stopTracks = true)
         closeSocketOnly()

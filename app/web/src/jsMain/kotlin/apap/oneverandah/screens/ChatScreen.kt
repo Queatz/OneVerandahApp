@@ -45,6 +45,7 @@ import apap.oneverandah.api.StudyStoryCharacter
 import apap.oneverandah.api.StudyStoryCharactersRequest
 import apap.oneverandah.api.StudyToken
 import apap.oneverandah.api.StudyTokenStatus
+import apap.oneverandah.api.StudyWordImageRequest
 import apap.oneverandah.api.StudyWordPlaygroundRequest
 import apap.oneverandah.api.StudyWriteCheckRequest
 import apap.oneverandah.api.StudyWordPlaygroundResponse
@@ -116,6 +117,10 @@ fun ChatScreen(
     val studyImageInFlight = remember { mutableStateMapOf<String, Boolean>() }
     // "$messageId#$sentenceIndex" -> generation failed (no URL)
     val studyImageFailed = remember { mutableStateMapOf<String, Boolean>() }
+    // "$messageId#$sentenceIndex#$tokenIndex" -> in-flight word-image job
+    val studyWordImageInFlight = remember { mutableStateMapOf<String, Boolean>() }
+    // "$messageId#$sentenceIndex#$tokenIndex" -> word-image generation failed
+    val studyWordImageFailed = remember { mutableStateMapOf<String, Boolean>() }
     // messageId -> story cast design / portrait polling in flight
     val studyCharactersInFlight = remember { mutableStateMapOf<String, Boolean>() }
     // messageId -> play scenario generation / image polling in flight
@@ -301,6 +306,9 @@ fun ChatScreen(
         }
     }
 
+    // Assigned once loadMissingStudyWordImages is defined (local fns cannot forward-ref).
+    var warmStudyWordImages: (messageId: String) -> Unit = {}
+
     suspend fun dissectStudySentence(messageId: String, sentenceIndex: Int) {
         val session = studyCache[messageId] ?: return
         val sentence = session.sentences.getOrNull(sentenceIndex) ?: return
@@ -327,10 +335,26 @@ fun ChatScreen(
             val current = studyCache[messageId] ?: return@onSuccess
             if (sentenceIndex !in current.sentences.indices) return@onSuccess
             val existingSentence = current.sentences[sentenceIndex]
+            // Prefer already-persisted word visuals when re-dissecting the same texts.
+            val mergedTokens = response.tokens.mapIndexed { tokenIndex, token ->
+                val existing = existingSentence.tokens.getOrNull(tokenIndex)
+                if (
+                    existing != null &&
+                    existing.text == token.text &&
+                    !existing.imageUrl.isNullOrBlank()
+                ) {
+                    token.copy(
+                        imageId = existing.imageId ?: token.imageId,
+                        imageUrl = existing.imageUrl,
+                    )
+                } else {
+                    token
+                }
+            }
             val updatedSentences = current.sentences.toMutableList()
             updatedSentences[sentenceIndex] = StudySentence(
                 text = response.sentenceText.ifBlank { existingSentence.text },
-                tokens = response.tokens,
+                tokens = mergedTokens,
                 // Keep Study-tab visuals across dissection merges.
                 imageId = existingSentence.imageId,
                 imageUrl = existingSentence.imageUrl,
@@ -342,6 +366,7 @@ fun ChatScreen(
                 studySession = updated
                 studySentenceStatus[sentenceIndex] = StudySentenceLoadState.READY
             }
+            warmStudyWordImages(messageId)
         }.onFailure {
             if (studyTarget?.id == messageId) {
                 studySentenceStatus[sentenceIndex] = StudySentenceLoadState.ERROR
@@ -353,7 +378,10 @@ fun ChatScreen(
         val pendingIndices = session.sentences.indices.filter { index ->
             studySentenceStatus[index] != StudySentenceLoadState.READY
         }
-        if (pendingIndices.isEmpty()) return
+        if (pendingIndices.isEmpty()) {
+            warmStudyWordImages(messageId)
+            return
+        }
         scope.launch {
             val semaphore = Semaphore(permits = STUDY_DISSECT_PARALLELISM)
             coroutineScope {
@@ -365,6 +393,7 @@ fun ChatScreen(
                     }
                 }.awaitAll()
             }
+            warmStudyWordImages(messageId)
         }
     }
 
@@ -374,6 +403,8 @@ fun ChatScreen(
         val prefix = "$messageId#"
         studyImageInFlight.keys.filter { it.startsWith(prefix) }.forEach { studyImageInFlight.remove(it) }
         studyImageFailed.keys.filter { it.startsWith(prefix) }.forEach { studyImageFailed.remove(it) }
+        studyWordImageInFlight.keys.filter { it.startsWith(prefix) }.forEach { studyWordImageInFlight.remove(it) }
+        studyWordImageFailed.keys.filter { it.startsWith(prefix) }.forEach { studyWordImageFailed.remove(it) }
         studyCharactersInFlight.remove(messageId)
         studyPlayInFlight.remove(messageId)
         studyPlayFailed.remove(messageId)
@@ -607,6 +638,171 @@ fun ChatScreen(
             studySession = updated
         }
         persistStudySession(messageId, updated)
+    }
+
+    fun studyWordImageKey(messageId: String, sentenceIndex: Int, tokenIndex: Int): String =
+        "$messageId#$sentenceIndex#$tokenIndex"
+
+    fun applyStudyWordImage(
+        messageId: String,
+        sentenceIndex: Int,
+        tokenIndex: Int,
+        imageId: String?,
+        imageUrl: String?,
+    ) {
+        val current = studyCache[messageId] ?: return
+        if (sentenceIndex !in current.sentences.indices) return
+        val sentence = current.sentences[sentenceIndex]
+        if (tokenIndex !in sentence.tokens.indices) return
+        val token = sentence.tokens[tokenIndex]
+        // Never regenerate or clobber a completed word visual.
+        if (!token.imageUrl.isNullOrBlank()) return
+        val nextId = imageId?.trim()?.takeIf { it.isNotEmpty() } ?: token.imageId
+        val nextUrl = imageUrl?.trim()?.takeIf { it.isNotEmpty() }
+        if (token.imageId == nextId && token.imageUrl == nextUrl) return
+        val updatedTokens = sentence.tokens.toMutableList()
+        updatedTokens[tokenIndex] = token.copy(imageId = nextId, imageUrl = nextUrl)
+        val updatedSentences = current.sentences.toMutableList()
+        updatedSentences[sentenceIndex] = sentence.copy(tokens = updatedTokens)
+        val updated = current.copy(sentences = updatedSentences)
+        studyCache[messageId] = updated
+        if (studyTarget?.id == messageId) {
+            studySession = updated
+        }
+        persistStudySession(messageId, updated)
+    }
+
+    suspend fun ensureStudyWordImage(messageId: String, sentenceIndex: Int, tokenIndex: Int) {
+        val key = studyWordImageKey(messageId, sentenceIndex, tokenIndex)
+        if (studyWordImageInFlight[key] == true) return
+        val session = studyCache[messageId] ?: return
+        val token = session.sentences.getOrNull(sentenceIndex)?.tokens?.getOrNull(tokenIndex) ?: return
+        if (!token.isDissectable) return
+        if (!token.imageUrl.isNullOrBlank()) {
+            studyWordImageFailed.remove(key)
+            return
+        }
+        studyWordImageInFlight[key] = true
+        studyWordImageFailed.remove(key)
+        try {
+            var imageId = token.imageId?.trim().orEmpty()
+            if (imageId.isNotEmpty()) {
+                val existing = runCatching { ChatApi.studyImage(imageId) }.getOrNull()
+                when {
+                    existing == null -> {
+                        // Job lost (e.g. server restart) — start a fresh one.
+                        imageId = ""
+                    }
+                    existing.status == StudyPlaygroundImageStatus.COMPLETED &&
+                        !existing.imageUrl.isNullOrBlank() -> {
+                        applyStudyWordImage(messageId, sentenceIndex, tokenIndex, imageId, existing.imageUrl)
+                        return
+                    }
+                    existing.status == StudyPlaygroundImageStatus.FAILED -> {
+                        studyWordImageFailed[key] = true
+                        return
+                    }
+                    else -> Unit // PENDING / GENERATING — fall through to poll
+                }
+            }
+            if (imageId.isEmpty()) {
+                val latestToken = studyCache[messageId]
+                    ?.sentences?.getOrNull(sentenceIndex)
+                    ?.tokens?.getOrNull(tokenIndex)
+                    ?: token
+                val started = runCatching {
+                    ChatApi.studyWordImage(
+                        StudyWordImageRequest(
+                            word = latestToken.text,
+                            contextualMeaning = latestToken.contextualMeaning,
+                        ),
+                    )
+                }.getOrNull()
+                if (started == null) {
+                    studyWordImageFailed[key] = true
+                    return
+                }
+                imageId = started.imageId
+                applyStudyWordImage(messageId, sentenceIndex, tokenIndex, imageId, null)
+            }
+            var attempts = 0
+            var missingJobStreak = 0
+            while (attempts < STUDY_IMAGE_POLL_MAX_ATTEMPTS) {
+                val latest = studyCache[messageId]
+                    ?.sentences?.getOrNull(sentenceIndex)
+                    ?.tokens?.getOrNull(tokenIndex)
+                if (!latest?.imageUrl.isNullOrBlank()) return
+                val image = runCatching { ChatApi.studyImage(imageId) }.getOrNull()
+                if (image != null) {
+                    missingJobStreak = 0
+                    when (image.status) {
+                        StudyPlaygroundImageStatus.COMPLETED -> {
+                            if (!image.imageUrl.isNullOrBlank()) {
+                                applyStudyWordImage(
+                                    messageId,
+                                    sentenceIndex,
+                                    tokenIndex,
+                                    imageId,
+                                    image.imageUrl,
+                                )
+                            } else {
+                                studyWordImageFailed[key] = true
+                            }
+                            return
+                        }
+                        StudyPlaygroundImageStatus.FAILED -> {
+                            studyWordImageFailed[key] = true
+                            return
+                        }
+                        StudyPlaygroundImageStatus.PENDING,
+                        StudyPlaygroundImageStatus.GENERATING,
+                        -> Unit
+                    }
+                } else {
+                    missingJobStreak += 1
+                    if (missingJobStreak >= STUDY_IMAGE_MISSING_JOB_LIMIT) {
+                        studyWordImageFailed[key] = true
+                        return
+                    }
+                }
+                attempts += 1
+                delay(STUDY_IMAGE_POLL_DELAY_MS)
+            }
+            studyWordImageFailed[key] = true
+        } finally {
+            studyWordImageInFlight.remove(key)
+        }
+    }
+
+    fun loadMissingStudyWordImages(messageId: String, session: StudySessionResponse) {
+        val pending = mutableListOf<Pair<Int, Int>>()
+        session.sentences.forEachIndexed { sentenceIndex, sentence ->
+            sentence.tokens.forEachIndexed { tokenIndex, token ->
+                if (
+                    token.isDissectable &&
+                    token.imageUrl.isNullOrBlank() &&
+                    studyWordImageFailed[studyWordImageKey(messageId, sentenceIndex, tokenIndex)] != true
+                ) {
+                    pending += sentenceIndex to tokenIndex
+                }
+            }
+        }
+        if (pending.isEmpty()) return
+        scope.launch {
+            val semaphore = Semaphore(permits = STUDY_IMAGE_PARALLELISM)
+            coroutineScope {
+                pending.map { (sentenceIndex, tokenIndex) ->
+                    async {
+                        semaphore.withPermit {
+                            ensureStudyWordImage(messageId, sentenceIndex, tokenIndex)
+                        }
+                    }
+                }.awaitAll()
+            }
+        }
+    }
+    warmStudyWordImages = { messageId ->
+        studyCache[messageId]?.let { loadMissingStudyWordImages(messageId, it) }
     }
 
     /**
@@ -958,6 +1154,7 @@ fun ChatScreen(
             syncStudySentenceStatuses(cached)
             loadMissingStudyDissections(message.id, cached)
             loadMissingStudyImages(message.id, cached)
+            loadMissingStudyWordImages(message.id, cached)
             loadMissingPlayScenarios(message.id, cached)
             return
         }
@@ -977,6 +1174,7 @@ fun ChatScreen(
                     syncStudySentenceStatuses(session)
                     loadMissingStudyDissections(message.id, session)
                     loadMissingStudyImages(message.id, session)
+                    loadMissingStudyWordImages(message.id, session)
                     loadMissingPlayScenarios(message.id, session)
                 }
             }.onFailure {
@@ -1177,6 +1375,7 @@ fun ChatScreen(
                 sentenceStatus = studySentenceStatus.toMap(),
                 messageId = studyTarget?.id,
                 imageFailed = studyImageFailed.toMap(),
+                wordImageFailed = studyWordImageFailed.toMap(),
                 playLoading = studyTarget?.id?.let { studyPlayInFlight[it] == true } == true,
                 playFailed = studyTarget?.id?.let { studyPlayFailed[it] == true } == true,
                 strings = strings,
@@ -1715,6 +1914,7 @@ private fun StudySessionDialog(
     sentenceStatus: Map<Int, StudySentenceLoadState>,
     messageId: String?,
     imageFailed: Map<String, Boolean>,
+    wordImageFailed: Map<String, Boolean>,
     playLoading: Boolean,
     playFailed: Boolean,
     strings: UiStrings,
@@ -1760,6 +1960,7 @@ private fun StudySessionDialog(
                     sentenceStatus = sentenceStatus,
                     messageId = messageId,
                     imageFailed = imageFailed,
+                    wordImageFailed = wordImageFailed,
                     playLoading = playLoading,
                     playFailed = playFailed,
                     strings = strings,
@@ -1785,6 +1986,7 @@ private fun StudySessionContent(
     sentenceStatus: Map<Int, StudySentenceLoadState>,
     messageId: String?,
     imageFailed: Map<String, Boolean>,
+    wordImageFailed: Map<String, Boolean>,
     playLoading: Boolean,
     playFailed: Boolean,
     strings: UiStrings,
@@ -2003,10 +2205,17 @@ private fun StudySessionContent(
                     // Keep the dissection panel under this sentence so learners don't scroll
                     // past later sentences to read meanings for a word above.
                     selectedToken?.let { token ->
+                        val wordFailKey = messageId?.let { mid ->
+                            selectedRef?.let { ref ->
+                                "$mid#${ref.sentenceIndex}#${ref.tokenIndex}"
+                            }
+                        }
+                        val wordFailed = wordFailKey != null && wordImageFailed[wordFailKey] == true
                         StudyTokenDetail(
                             token = token,
                             textLanguageTag = session.textLanguageTag,
                             strings = strings,
+                            imageFailed = wordFailed,
                         )
                     }
                 }
@@ -2907,8 +3116,29 @@ private fun StudyTokenDetail(
     token: StudyToken,
     textLanguageTag: String,
     strings: UiStrings,
+    imageFailed: Boolean = false,
 ) {
     Div(attrs = { classes(Styles.wordDefinition, Styles.studyTokenDetail) }) {
+        // Word visual sits at the top of the dissection panel.
+        when {
+            !token.imageUrl.isNullOrBlank() -> {
+                Img(src = token.imageUrl!!, alt = strings.chatStudyWordImageAlt, attrs = {
+                    classes(Styles.studyWordImage)
+                })
+            }
+            token.isDissectable && !imageFailed -> {
+                Div(attrs = { classes(Styles.studyWordImagePlaceholder) }) {
+                    MaterialSymbol("progress_activity")
+                    Span { Text(strings.chatStudyWordImageLoading) }
+                }
+            }
+            token.isDissectable && imageFailed -> {
+                Div(attrs = { classes(Styles.studyWordImagePlaceholder) }) {
+                    MaterialSymbol("broken_image")
+                    Span { Text(strings.chatStudyWordImageError) }
+                }
+            }
+        }
         Span(attrs = { classes(Styles.wordDefinitionTitle) }) { Text(token.text) }
         when {
             token.status == StudyTokenStatus.PENDING || !token.isDissectable -> {

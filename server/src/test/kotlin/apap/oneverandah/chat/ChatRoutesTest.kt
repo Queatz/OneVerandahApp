@@ -10,6 +10,8 @@ import apap.oneverandah.api.StudyPlaygroundImageResponse
 import apap.oneverandah.api.StudyPlaygroundImageStatus
 import apap.oneverandah.api.StudySentence
 import apap.oneverandah.api.StudySentenceImageRequest
+import apap.oneverandah.api.StudyWordImageResponse
+import apap.oneverandah.api.StudyWordImageRequest
 import apap.oneverandah.chat.StudyCharactersGenerationRequest
 import apap.oneverandah.chat.StudyCharacterDesign
 import apap.oneverandah.api.StudyStoryCharactersResponse
@@ -481,6 +483,93 @@ class ChatRoutesTest {
         }
         assertEquals(StudyPlaygroundImageStatus.COMPLETED, imageStatus)
         assertEquals("https://cdn.example/sentence.png", imageUrl)
+    }
+
+
+    @Test
+    fun `study word image endpoint validates and exposes shared image status`() = testApplication {
+        val chatService = ChatService(
+            repository = InMemoryChatRepository(),
+            aiClient = object : ChatAiClient {
+                override suspend fun generate(request: ChatGenerationRequest) = GeneratedChatReply("unused")
+            },
+            residentDirectory = ResidentDirectory(emptyList()),
+        )
+        val studyService = StudyService(
+            aiClient = object : StudyAiClient {
+                override suspend fun generateSkeleton(request: StudyGenerationRequest) =
+                    error("not used")
+
+                override suspend fun dissectSentence(request: StudyDissectGenerationRequest) =
+                    error("not used")
+
+                override suspend fun evaluateWordUsage(request: StudyWordPlaygroundGenerationRequest) =
+                    error("not used")
+
+                override suspend fun designStoryCharacters(request: StudyCharactersGenerationRequest) =
+                    error("not used")
+
+                override suspend fun generatePlayScenarios(request: StudyPlayScenariosGenerationRequest) =
+                    error("not used")
+
+                override suspend fun generatePlayTurn(request: StudyPlayTurnGenerationRequest) =
+                    error("not used")
+
+                override suspend fun evaluateWriteAttempt(request: StudyWriteCheckGenerationRequest) =
+                    error("not used")
+
+                override suspend fun evaluateExpressAttempt(request: StudyExpressCheckGenerationRequest) =
+                    error("not used")
+
+                override suspend fun generateExpressSentences(request: StudyExpressGenerateGenerationRequest) =
+                    error("not used")
+            },
+            imageGenerator = StudyPlaygroundImageGenerator { _, _ -> "https://cdn.example/word.png" },
+            idGenerator = { "word-image-1" },
+        )
+        application {
+            install(ContentNegotiation) { json() }
+            routing {
+                chatRoutes(
+                    chatService = chatService,
+                    speechService = SpeechService(RouteSpeechClient()),
+                    studyService = studyService,
+                )
+            }
+        }
+
+        val invalid = client.post("/api/chat/study/word-image") {
+            contentType(ContentType.Application.Json)
+            setBody("""{"word":"   "}""")
+        }
+        assertEquals(HttpStatusCode.BadRequest, invalid.status)
+
+        val response = client.post("/api/chat/study/word-image") {
+            contentType(ContentType.Application.Json)
+            setBody(json.encodeToString(StudyWordImageRequest(word = "chào", contextualMeaning = "greeting")))
+        }
+        assertEquals(HttpStatusCode.OK, response.status)
+        val started = json.decodeFromString<StudyWordImageResponse>(response.bodyAsText())
+        assertEquals("word-image-1", started.imageId)
+
+        var imageStatus = StudyPlaygroundImageStatus.PENDING
+        var imageUrl: String? = null
+        repeat(40) {
+            val imageResponse = client.get("/api/chat/study/playground/image/word-image-1")
+            assertEquals(HttpStatusCode.OK, imageResponse.status)
+            val image = json.decodeFromString<StudyPlaygroundImageResponse>(imageResponse.bodyAsText())
+            imageStatus = image.status
+            imageUrl = image.imageUrl
+            if (
+                imageStatus == StudyPlaygroundImageStatus.COMPLETED ||
+                imageStatus == StudyPlaygroundImageStatus.FAILED
+            ) {
+                return@repeat
+            }
+            delay(25)
+        }
+        assertEquals(StudyPlaygroundImageStatus.COMPLETED, imageStatus)
+        assertEquals("https://cdn.example/word.png", imageUrl)
     }
 
     @Test
