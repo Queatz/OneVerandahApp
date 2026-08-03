@@ -681,13 +681,12 @@ internal fun playgroundComicPrompt(word: String, sentence: String, natural: Bool
 
 /** Shared art direction so all study/catalog images stay in one expressive storybook world. */
 internal const val STUDY_STORY_ART_STYLE: String =
-    "expressive storybook art style with bold clean outlines, " +
-        "warm natural lighting, expressive faces and body language, cohesive muted-then-warm color palette, " +
-        "gentle everyday realism with a touch of whimsy, cinematic framing"
+    "expressive storybook art style, " +
+        "everyday realism with a touch of cinematic framing"
 
 /** Prompt for a single dissected word/phrase visual (word + contextual meaning). */
 internal fun wordVisualPrompt(word: String, contextualMeaning: String = ""): String = buildString {
-    append("Expressive storybook art style single-panel illustration for language learning. ")
+    append("Expressive storybook art style scene that clearly illustrates the following for language learning. ")
     append("Focus word/phrase: \"$word\". ")
     val meaning = contextualMeaning.trim()
     if (meaning.isNotEmpty()) {

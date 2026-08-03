@@ -339,6 +339,15 @@ object Styles {
     const val studyPlaygroundImageStatusBusy = "study-playground-image-status-busy"
     const val studyPlaygroundSendBusy = "study-playground-send-busy"
     const val studyPreparingMeanings = "study-preparing-meanings"
+    const val studyStoryCard = "study-story-card"
+    const val studyStoryProgress = "study-story-progress"
+    const val studyStoryImage = "study-story-image"
+    const val studyStoryImagePlaceholder = "study-story-image-placeholder"
+    const val studyStoryWord = "study-story-word"
+    const val studyStorySentence = "study-story-sentence"
+    const val studyStoryMeaningLabel = "study-story-meaning-label"
+    const val studyStoryMeaning = "study-story-meaning"
+    const val studyStoryContinue = "study-story-continue"
     const val storiesSoon = "stories-soon"
     const val hiddenAdminWrap = "hidden-admin-wrap"
     const val hiddenAdminButton = "hidden-admin-button"
@@ -2577,6 +2586,100 @@ object Styles {
             gap: 8px;
             font-size: 13px;
             color: var(--md-sys-color-on-surface-variant);
+        }
+        .${studyStoryCard} {
+            display: flex;
+            flex-direction: column;
+            align-items: stretch;
+            gap: 16px;
+            padding: 18px 16px 16px;
+            border-radius: 22px;
+            border: 1px solid color-mix(in srgb, var(--md-sys-color-primary) 22%, var(--md-sys-color-outline));
+            background:
+                radial-gradient(circle at top, color-mix(in srgb, var(--md-sys-color-primary) 14%, transparent), transparent 58%),
+                color-mix(in srgb, var(--md-sys-color-primary) 4%, var(--md-sys-color-surface));
+            box-shadow: 0 10px 28px color-mix(in srgb, var(--md-shadow) 35%, transparent);
+        }
+        .${studyStoryProgress} {
+            align-self: center;
+            font-size: 12px;
+            font-weight: 600;
+            letter-spacing: 0.04em;
+            text-transform: uppercase;
+            color: var(--md-sys-color-on-surface-variant);
+        }
+        .${studyStoryImage} {
+            display: block;
+            width: 100%;
+            max-width: 440px;
+            margin: 0 auto;
+            border-radius: 18px;
+            border: 1px solid color-mix(in srgb, var(--md-sys-color-outline) 70%, transparent);
+            background: var(--md-sys-color-surface-variant);
+            aspect-ratio: 1 / 1;
+            object-fit: cover;
+            box-shadow: 0 12px 30px color-mix(in srgb, var(--md-shadow) 28%, transparent);
+        }
+        .${studyStoryImagePlaceholder} {
+            display: flex;
+            align-items: center;
+            justify-content: center;
+            gap: 10px;
+            width: 100%;
+            max-width: 440px;
+            min-height: 220px;
+            margin: 0 auto;
+            border-radius: 18px;
+            border: 1px dashed color-mix(in srgb, var(--md-sys-color-outline) 70%, transparent);
+            background: color-mix(in srgb, var(--md-sys-color-surface-variant) 55%, transparent);
+            color: var(--md-sys-color-on-surface-variant);
+            font-size: 13px;
+        }
+        .${studyStoryImagePlaceholder} .${materialSymbols} {
+            animation: spin 1.2s linear infinite;
+        }
+        .${studyStoryWord} {
+            margin: 0;
+            text-align: center;
+            font-size: 34px;
+            line-height: 1.2;
+            font-weight: 750;
+            letter-spacing: -0.02em;
+            color: var(--md-sys-color-on-surface);
+        }
+        .${studyStorySentence} {
+            margin: 0;
+            text-align: center;
+            font-size: 24px;
+            line-height: 1.45;
+            font-weight: 650;
+            color: var(--md-sys-color-on-surface);
+        }
+        .${studyStoryMeaningLabel} {
+            display: block;
+            margin: 4px 0 2px;
+            text-align: center;
+            font-size: 12px;
+            font-weight: 700;
+            letter-spacing: 0.05em;
+            text-transform: uppercase;
+            color: var(--md-sys-color-on-surface-variant);
+        }
+        .${studyStoryMeaning} {
+            margin: 0 0 6px;
+            text-align: center;
+            font-size: 17px;
+            line-height: 1.5;
+            color: var(--md-sys-color-on-surface);
+        }
+        .${studyStoryContinue} {
+            width: 100%;
+            margin-top: 4px;
+            justify-content: center;
+            min-height: 48px;
+            border-radius: 999px;
+            font-size: 16px;
+            font-weight: 700;
         }
         .${studyTokenDetail} {
             margin-top: 2px;

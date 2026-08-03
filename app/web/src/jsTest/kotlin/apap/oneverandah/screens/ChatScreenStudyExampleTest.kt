@@ -75,4 +75,60 @@ class ChatScreenStudyExampleTest {
         )
         assertEquals(listOf("Xin chào"), collectExpressVocabulary(session))
     }
+
+    @Test
+    fun `collects story word steps in reading order and skips plain tokens`() {
+        val session = StudySessionResponse(
+            text = "Xin chào bạn.",
+            textLanguageTag = "vi",
+            sentences = listOf(
+                StudySentence(
+                    text = "Xin chào bạn.",
+                    tokens = listOf(
+                        StudyToken(text = "Xin chào", status = StudyTokenStatus.READY),
+                        StudyToken(text = " ", status = StudyTokenStatus.PLAIN),
+                        StudyToken(text = "bạn", status = StudyTokenStatus.PENDING),
+                        StudyToken(text = ".", status = StudyTokenStatus.PLAIN),
+                    ),
+                ),
+                StudySentence(
+                    text = "Tạm biệt.",
+                    tokens = listOf(
+                        StudyToken(text = "Tạm biệt", status = StudyTokenStatus.READY),
+                        StudyToken(text = ".", status = StudyTokenStatus.PLAIN),
+                    ),
+                ),
+            ),
+        )
+
+        assertEquals(
+            listOf(
+                StoryWordStep(sentenceIndex = 0, tokenIndex = 0),
+                StoryWordStep(sentenceIndex = 0, tokenIndex = 2),
+                StoryWordStep(sentenceIndex = 1, tokenIndex = 0),
+            ),
+            collectStoryWordSteps(session),
+        )
+    }
+
+    @Test
+    fun `story word steps ignore blank non-plain tokens`() {
+        val session = StudySessionResponse(
+            text = "Hi",
+            textLanguageTag = "en",
+            sentences = listOf(
+                StudySentence(
+                    text = "Hi",
+                    tokens = listOf(
+                        StudyToken(text = "   ", status = StudyTokenStatus.READY),
+                        StudyToken(text = "Hi", status = StudyTokenStatus.READY),
+                    ),
+                ),
+            ),
+        )
+        assertEquals(
+            listOf(StoryWordStep(sentenceIndex = 0, tokenIndex = 1)),
+            collectStoryWordSteps(session),
+        )
+    }
 }

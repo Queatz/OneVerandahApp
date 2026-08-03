@@ -2004,7 +2004,7 @@ private fun StudySessionContent(
         mutableStateMapOf<String, String>()
     }
     var selectedRef by remember(session.text) { mutableStateOf<StudyTokenRef?>(null) }
-    var mode by remember(session.text) { mutableStateOf(StudySessionMode.STUDY) }
+    var mode by remember(session.text) { mutableStateOf(StudySessionMode.STORY) }
     var highlightedWord by remember(session.text) { mutableStateOf<String?>(null) }
     val speechItems = remember(session.text, session.textLanguageTag, session.sentences.map { it.text }) {
         session.sentences.mapIndexed { index, sentence -> "sentence-$index" to sentence.text }
@@ -2071,6 +2071,15 @@ private fun StudySessionContent(
     Div(attrs = { classes(Styles.studyModeTabs) }) {
         Button(attrs = {
             classes(Styles.chip)
+            if (mode == StudySessionMode.STORY) classes(Styles.chipActive)
+            attr("type", "button")
+            onClick {
+                mode = StudySessionMode.STORY
+                selectedRef = null
+            }
+        }) { Text(strings.chatStoryTab) }
+        Button(attrs = {
+            classes(Styles.chip)
             if (mode == StudySessionMode.STUDY) classes(Styles.chipActive)
             attr("type", "button")
             onClick { mode = StudySessionMode.STUDY }
@@ -2114,6 +2123,25 @@ private fun StudySessionContent(
     }
 
     when (mode) {
+        StudySessionMode.STORY -> {
+            StudyStoryTab(
+                session = session,
+                messageId = messageId,
+                imageFailed = imageFailed,
+                wordImageFailed = wordImageFailed,
+                sentenceAudio = sentenceAudio,
+                strings = strings,
+                playStudyToken = { sentenceIndex, tokenIndex, tokenText ->
+                    // Keep selection aligned so async token-TTS fallback still plays.
+                    selectedRef = StudyTokenRef(sentenceIndex, tokenIndex)
+                    playStudyToken(sentenceIndex, tokenIndex, tokenText)
+                },
+                onFinished = {
+                    selectedRef = null
+                    mode = StudySessionMode.STUDY
+                },
+            )
+        }
         StudySessionMode.STUDY -> {
             Span(attrs = { classes(Styles.studySessionHint) }) { Text(strings.chatStudyTapHint) }
             if (anyLoading) {
@@ -2339,7 +2367,266 @@ private fun StudySentenceVisual(
     }
 }
 
-private enum class StudySessionMode { STUDY, READ, WRITE, EXPRESS, PLAY }
+private enum class StudySessionMode { STORY, STUDY, READ, WRITE, EXPRESS, PLAY }
+
+private enum class StudyStoryPhase { WORDS, SENTENCES }
+
+/** Ordered story-walkthrough steps for non-plain study tokens. */
+internal data class StoryWordStep(
+    val sentenceIndex: Int,
+    val tokenIndex: Int,
+)
+
+/** Collects every non-plain token in reading order for the Story tab. */
+internal fun collectStoryWordSteps(session: StudySessionResponse): List<StoryWordStep> {
+    val steps = mutableListOf<StoryWordStep>()
+    session.sentences.forEachIndexed { sentenceIndex, sentence ->
+        sentence.tokens.forEachIndexed { tokenIndex, token ->
+            if (token.status != StudyTokenStatus.PLAIN && token.text.isNotBlank()) {
+                steps += StoryWordStep(sentenceIndex = sentenceIndex, tokenIndex = tokenIndex)
+            }
+        }
+    }
+    return steps
+}
+
+@Composable
+private fun StudyStoryTab(
+    session: StudySessionResponse,
+    messageId: String?,
+    imageFailed: Map<String, Boolean>,
+    wordImageFailed: Map<String, Boolean>,
+    sentenceAudio: Map<String, StudySentenceAudio>,
+    strings: UiStrings,
+    playStudyToken: (sentenceIndex: Int, tokenIndex: Int, tokenText: String) -> Unit,
+    onFinished: () -> Unit,
+) {
+    val wordSteps = remember(session) { collectStoryWordSteps(session) }
+    val sentenceCount = session.sentences.size
+    var phase by remember(session.text) {
+        mutableStateOf(
+            if (wordSteps.isNotEmpty()) StudyStoryPhase.WORDS else StudyStoryPhase.SENTENCES,
+        )
+    }
+    var stepIndex by remember(session.text) { mutableStateOf(0) }
+    var lastAutoplayKey by remember(session.text) { mutableStateOf<String?>(null) }
+
+    fun advanceStory() {
+        when (phase) {
+            StudyStoryPhase.WORDS -> {
+                if (stepIndex < wordSteps.lastIndex) {
+                    stepIndex += 1
+                } else if (sentenceCount > 0) {
+                    phase = StudyStoryPhase.SENTENCES
+                    stepIndex = 0
+                } else {
+                    onFinished()
+                }
+            }
+            StudyStoryPhase.SENTENCES -> {
+                if (stepIndex < sentenceCount - 1) {
+                    stepIndex += 1
+                } else {
+                    onFinished()
+                }
+            }
+        }
+    }
+
+    // Keep the cursor valid as the session skeleton fills in.
+    LaunchedEffect(phase, wordSteps.size, sentenceCount, stepIndex) {
+        when (phase) {
+            StudyStoryPhase.WORDS -> {
+                if (wordSteps.isEmpty()) {
+                    if (sentenceCount > 0) {
+                        phase = StudyStoryPhase.SENTENCES
+                        stepIndex = 0
+                    } else {
+                        onFinished()
+                    }
+                } else if (stepIndex > wordSteps.lastIndex) {
+                    stepIndex = wordSteps.lastIndex
+                }
+            }
+            StudyStoryPhase.SENTENCES -> {
+                if (sentenceCount <= 0) {
+                    onFinished()
+                } else if (stepIndex > sentenceCount - 1) {
+                    stepIndex = sentenceCount - 1
+                }
+            }
+        }
+    }
+
+    val safeWordIndex = if (wordSteps.isEmpty()) 0 else stepIndex.coerceIn(0, wordSteps.lastIndex)
+    val safeSentenceIndex =
+        if (sentenceCount <= 0) 0 else stepIndex.coerceIn(0, sentenceCount - 1)
+    val totalSteps = wordSteps.size + sentenceCount
+    val currentOrdinal = when (phase) {
+        StudyStoryPhase.WORDS -> safeWordIndex + 1
+        StudyStoryPhase.SENTENCES -> wordSteps.size + safeSentenceIndex + 1
+    }.coerceAtLeast(1)
+    val progressLabel = if (totalSteps > 0) "$currentOrdinal / $totalSteps" else ""
+
+    when (phase) {
+        StudyStoryPhase.WORDS -> {
+            val step = wordSteps.getOrNull(safeWordIndex)
+            if (step == null) {
+                Div(attrs = { classes(Styles.studyPreparingMeanings) }) {
+                    MaterialSymbol("progress_activity")
+                    Text(strings.chatStudyPreparingMeanings)
+                }
+                return
+            }
+            val token = session.sentences
+                .getOrNull(step.sentenceIndex)
+                ?.tokens
+                ?.getOrNull(step.tokenIndex)
+            if (token == null) {
+                Div(attrs = { classes(Styles.studyPreparingMeanings) }) {
+                    MaterialSymbol("progress_activity")
+                    Text(strings.chatStudyPreparingMeanings)
+                }
+                return
+            }
+            val wordFailKey = messageId?.let { mid ->
+                "$mid#${step.sentenceIndex}#${step.tokenIndex}"
+            }
+            val wordFailed = wordFailKey != null && wordImageFailed[wordFailKey] == true
+            val sentenceClipUrl = sentenceAudio["sentence-${step.sentenceIndex}"]?.url
+            // Include clip url so the first timed segment can replace a missing-timing attempt.
+            val autoplayKey =
+                "word-${step.sentenceIndex}-${step.tokenIndex}-${token.text}|${sentenceClipUrl.orEmpty()}"
+            LaunchedEffect(autoplayKey) {
+                if (lastAutoplayKey == autoplayKey) return@LaunchedEffect
+                lastAutoplayKey = autoplayKey
+                playStudyToken(step.sentenceIndex, step.tokenIndex, token.text)
+            }
+
+            Div(attrs = { classes(Styles.studyStoryCard) }) {
+                if (progressLabel.isNotEmpty()) {
+                    Span(attrs = { classes(Styles.studyStoryProgress) }) { Text(progressLabel) }
+                }
+                StudyStoryVisual(
+                    imageUrl = token.imageUrl,
+                    failed = wordFailed,
+                    loadingLabel = strings.chatStudyWordImageLoading,
+                    errorLabel = strings.chatStudyWordImageError,
+                    alt = strings.chatStudyWordImageAlt,
+                )
+                P(attrs = { classes(Styles.studyStoryWord) }) { Text(token.text) }
+                when {
+                    token.status == StudyTokenStatus.PENDING || !token.isDissectable -> {
+                        P(attrs = { classes(Styles.studyStoryMeaning) }) {
+                            Text(strings.chatStudyMeaningLoading)
+                        }
+                    }
+                    else -> {
+                        if (token.literalMeaning.isNotBlank()) {
+                            Span(attrs = { classes(Styles.studyStoryMeaningLabel) }) {
+                                Text(strings.chatStudyLiteral)
+                            }
+                            P(attrs = { classes(Styles.studyStoryMeaning) }) {
+                                Text(token.literalMeaning)
+                            }
+                        }
+                        if (token.contextualMeaning.isNotBlank()) {
+                            Span(attrs = { classes(Styles.studyStoryMeaningLabel) }) {
+                                Text(strings.chatStudyContext)
+                            }
+                            P(attrs = { classes(Styles.studyStoryMeaning) }) {
+                                Text(token.contextualMeaning)
+                            }
+                        }
+                        if (token.literalMeaning.isBlank() && token.contextualMeaning.isBlank()) {
+                            P(attrs = { classes(Styles.studyStoryMeaning) }) {
+                                Text(strings.chatStudyMeaningLoading)
+                            }
+                        }
+                    }
+                }
+                Button(attrs = {
+                    classes(Styles.btnPrimary, Styles.studyStoryContinue)
+                    attr("type", "button")
+                    onClick { advanceStory() }
+                }) {
+                    Text(strings.chatStoryContinue)
+                }
+            }
+        }
+        StudyStoryPhase.SENTENCES -> {
+            if (sentenceCount <= 0) {
+                Div(attrs = { classes(Styles.studyPreparingMeanings) }) {
+                    MaterialSymbol("progress_activity")
+                    Text(strings.chatStudyPreparingMeanings)
+                }
+                return
+            }
+            val sentence = session.sentences[safeSentenceIndex]
+            val imageFailKey = messageId?.let { "$it#$safeSentenceIndex" }
+            val visualFailed = imageFailKey != null && imageFailed[imageFailKey] == true
+            val sentenceClip = sentenceAudio["sentence-$safeSentenceIndex"]
+            val autoplayKey = "sentence-$safeSentenceIndex-${sentenceClip?.url.orEmpty()}"
+            LaunchedEffect(autoplayKey) {
+                val url = sentenceClip?.url ?: return@LaunchedEffect
+                if (lastAutoplayKey == autoplayKey) return@LaunchedEffect
+                lastAutoplayKey = autoplayKey
+                playAudio(url, restart = true)
+            }
+
+            Div(attrs = { classes(Styles.studyStoryCard) }) {
+                if (progressLabel.isNotEmpty()) {
+                    Span(attrs = { classes(Styles.studyStoryProgress) }) { Text(progressLabel) }
+                }
+                StudyStoryVisual(
+                    imageUrl = sentence.imageUrl,
+                    failed = visualFailed,
+                    loadingLabel = strings.chatStudySentenceImageLoading,
+                    errorLabel = strings.chatStudySentenceImageError,
+                    alt = strings.chatStudySentenceImageAlt,
+                )
+                P(attrs = { classes(Styles.studyStorySentence) }) { Text(sentence.text) }
+                Button(attrs = {
+                    classes(Styles.btnPrimary, Styles.studyStoryContinue)
+                    attr("type", "button")
+                    onClick { advanceStory() }
+                }) {
+                    Text(strings.chatStoryContinue)
+                }
+            }
+        }
+    }
+}
+
+@Composable
+private fun StudyStoryVisual(
+    imageUrl: String?,
+    failed: Boolean,
+    loadingLabel: String,
+    errorLabel: String,
+    alt: String,
+) {
+    val url = imageUrl?.trim()?.takeIf { it.isNotEmpty() }
+    when {
+        url != null -> {
+            Img(src = url, alt = alt, attrs = {
+                classes(Styles.studyStoryImage)
+            })
+        }
+        failed -> {
+            Div(attrs = { classes(Styles.studyStoryImagePlaceholder) }) {
+                MaterialSymbol("image_not_supported")
+                Span { Text(errorLabel) }
+            }
+        }
+        else -> {
+            Div(attrs = { classes(Styles.studyStoryImagePlaceholder) }) {
+                MaterialSymbol("progress_activity")
+                Span { Text(loadingLabel) }
+            }
+        }
+    }
+}
 
 /** Compares learner input to a study sentence after light whitespace normalization. */
 internal fun studyWriteMatches(expected: String, actual: String): Boolean {
@@ -3439,10 +3726,11 @@ private fun bindStudyAudioPlaybackState(
     }
 }
 
-private fun playAudio(url: String) {
+private fun playAudio(url: String, restart: Boolean = false) {
     val current = activeStudyAudio
     // Toggle: tapping the same sentence again pauses instead of restarting.
     if (
+        !restart &&
         current != null &&
         activeStudyAudioUrl == url &&
         !studyAudioPlaylistActive &&
