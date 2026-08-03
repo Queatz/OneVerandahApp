@@ -711,7 +711,6 @@ object Styles {
         .${listIcon} {
             font-size: 40px;
             color: var(--md-sys-color-primary);
-            margin-right: 16px;
         }
         /* Thumbnail cover for a service row (falls back to the icon when the
            image has not been generated yet). */
@@ -719,7 +718,6 @@ object Styles {
             width: 56px;
             height: 56px;
             border-radius: 16px;
-            margin-right: 16px;
             flex: 0 0 auto;
             background-size: cover;
             background-position: center;

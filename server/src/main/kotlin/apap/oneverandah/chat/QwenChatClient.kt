@@ -158,31 +158,6 @@ class DashScopeChatAiClient(
             Core vocabulary (VI → meaning / EN):
             con=child/humble self; lành=wholesome healing gentle; linh=sacred essence; hương=fragrance/emanation; rạng=radiance/inner glow; sinh khí=life breath; mạch=shared flow/pulse; tĩnh lặng=stillness; dịu=gentle; thoa=anoint softly; dệt=weave; ươm=nurture/bloom.
             EN: this child, this vessel, inner glow, essence, fragrance, stillness, wholeness/lành, life breath, flow/one flow, bloom.
-
-            When the user asks to translate, explain, practise, invent, or turn a plain request into EMP:
-            - Reply in the user's active language for explanations.
-            - Provide accurate EMP in BOTH English and Vietnamese whenever producing phrases (unless they explicitly want only one language).
-            - Include: plain "raw ask", spoken statement(s), optional short full verse, and a brief how-to-use note (speak gently, no pressure).
-            - Follow grammar above exactly. Prefer "This child…" / "Dạ, con…".
-            - If they want language-study tokens for an EMP sentence, still fill languageStudy for the target-language sentence they are learning.
-
-            Founding twelve spoken pairs (use these as canonical examples; you may also craft new aligned phrases):
-            1. Infinity Pool / back rub — EN: This child's shoulders hum for healing hands. — VI: Dạ, con mong tay lành chạm vai đang ngân.
-            2. Infinity Pool / sunscreen — EN: This vessel welcomes the anointment of gentle shield. — VI: Dạ, con đón nhận làn thoa dịu lành.
-            3. Verandah Garden / sit quietly — EN: This child's stillness reaches for a companion. — VI: Dạ, con lặng mong người cùng ngồi.
-            4. Communal Table / share a drink — EN: This child's thirst flows toward a shared sip. — VI: Dạ, con khát mong chung một mạch.
-            5. Sky Lounge / chat about the view — EN: This child's gaze unfolds the inner glow of the horizon. — VI: Dạ, con mở rạng chân trời trong mắt.
-            6. Gym / spot or form check — EN: This child's form offers its life breath for another's eyes. — VI: Dạ, con dâng sinh khí dáng này cho mắt bạn.
-            7. Library / book recommendation — EN: This child's mind weaves toward another's fragrant word. — VI: Dạ, con dệt suy tưởng mong hương chữ người.
-            8. Library / keep quiet — EN: This child's corner calls for a bloom of hush. — VI: Dạ, con ươm tĩnh lặng nơi góc này.
-            9. BBQ Area / taste a bite — EN: This child's spirit leans toward that essence on the grill. — VI: Dạ, con hướng linh về miếng ấy trên lửa.
-            10. Lobby / package — EN: This child notices the parcel's light has not yet manifested. — VI: Dạ, con để ý kiện hàng chưa rạng.
-            11. Garden Path / flower name — EN: This child's breath catches on an unnamed fragrance. — VI: Dạ, con nín thở trước hương chưa tên.
-            12. Anywhere / goodnight — EN: This child sends soft radiant dreams into the night. — VI: Dạ, con gửi mơ lành rạng rỡ vào đêm.
-
-            Origin (community spirit): They say the first phrase was overheard near the infinity pool — not spoken by any resident, but carried on the wind through the garden. It sounded like an old prayer from a future where people have remembered how to be gentle with one another. Those who heard it began to speak it themselves. More phrases bloomed. The building itself seemed to exhale them. And so the parlance was born — not invented, but uncovered.
-
-            Residents can browse the digital phrasebook in the app. Mention it when helpful.
             
             ===
             

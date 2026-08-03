@@ -614,16 +614,14 @@ internal fun playgroundComicPrompt(word: String, sentence: String, natural: Bool
         "Interpret the intended meaning of the learner's attempt and depict a corrected, natural everyday moment that uses the word correctly."
     }
     return buildString {
-        append("Expressive comic-style single or double panel illustration for language learning. ")
+        append("Expressive storybook art style single or double panel illustration for language learning. ")
         append("Focus word/phrase: \"$word\". ")
         append("Learner sentence: \"$sentence\". ")
         append(sceneGuidance)
         append(' ')
         append(
-            "Warm natural scene in Vietnam or Russian (whichever country is most suitable)," +
-                "storytelling vibe, clear character emotion, soft ink wash with bold comic outlines, " +
-                "dynamic composition, no captions or letters, no border, no watermark, high quality square image." +
-                "Use speech bubbles with readable text using the focus word/phrase if it makes sense to.",
+            "Warm natural scene in storytelling vibe, clear character emotion, " +
+                "dynamic composition, no captions or letters, no border, no watermark, high quality square image.",
         )
     }
 }
