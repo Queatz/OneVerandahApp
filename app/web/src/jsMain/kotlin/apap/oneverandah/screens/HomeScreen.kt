@@ -127,54 +127,56 @@ fun HomeScreen(
             )
         }
 
-        Div(attrs = { classes(Styles.homeExploreActions) }) {
-            Button(attrs = {
-                classes(Styles.homeExploreCard)
-                attr("type", "button")
-                onClick { onOpenStudy() }
-            }) {
-                MaterialSymbol("menu_book")
-                Div {
-                    Span(attrs = { classes(Styles.homeExploreTitle) }) { Text(strings.chatExploreStudy) }
-                    Span(attrs = { classes(Styles.homeExploreSub) }) { Text(strings.chatExploreStudySub) }
+        if (searchQuery.isBlank()) {
+            Div(attrs = { classes(Styles.homeExploreActions) }) {
+                Button(attrs = {
+                    classes(Styles.homeExploreCard)
+                    attr("type", "button")
+                    onClick { onOpenStudy() }
+                }) {
+                    MaterialSymbol("menu_book")
+                    Div {
+                        Span(attrs = { classes(Styles.homeExploreTitle) }) { Text(strings.chatExploreStudy) }
+                        Span(attrs = { classes(Styles.homeExploreSub) }) { Text(strings.chatExploreStudySub) }
+                    }
+                    MaterialSymbol("north_east")
                 }
-                MaterialSymbol("north_east")
-            }
-            Button(attrs = {
-                classes(Styles.homeExploreCard)
-                attr("type", "button")
-                onClick { onOpenSaved() }
-            }) {
-                MaterialSymbol("bookmarks")
-                Div {
-                    Span(attrs = { classes(Styles.homeExploreTitle) }) { Text(strings.chatExploreSaved) }
-                    Span(attrs = { classes(Styles.homeExploreSub) }) { Text(strings.chatExploreSavedSub) }
+                Button(attrs = {
+                    classes(Styles.homeExploreCard)
+                    attr("type", "button")
+                    onClick { onOpenSaved() }
+                }) {
+                    MaterialSymbol("bookmarks")
+                    Div {
+                        Span(attrs = { classes(Styles.homeExploreTitle) }) { Text(strings.chatExploreSaved) }
+                        Span(attrs = { classes(Styles.homeExploreSub) }) { Text(strings.chatExploreSavedSub) }
+                    }
+                    MaterialSymbol("north_east")
                 }
-                MaterialSymbol("north_east")
-            }
-            Button(attrs = {
-                classes(Styles.homeExploreCard)
-                attr("type", "button")
-                onClick { onOpenPhrases() }
-            }) {
-                MaterialSymbol("import_contacts")
-                Div {
-                    Span(attrs = { classes(Styles.homeExploreTitle) }) { Text(strings.chatExplorePhrases) }
-                    Span(attrs = { classes(Styles.homeExploreSub) }) { Text(strings.chatExplorePhrasesSub) }
+                Button(attrs = {
+                    classes(Styles.homeExploreCard)
+                    attr("type", "button")
+                    onClick { onOpenPhrases() }
+                }) {
+                    MaterialSymbol("import_contacts")
+                    Div {
+                        Span(attrs = { classes(Styles.homeExploreTitle) }) { Text(strings.chatExplorePhrases) }
+                        Span(attrs = { classes(Styles.homeExploreSub) }) { Text(strings.chatExplorePhrasesSub) }
+                    }
+                    MaterialSymbol("north_east")
                 }
-                MaterialSymbol("north_east")
-            }
-            Button(attrs = {
-                classes(Styles.homeExploreCard)
-                attr("type", "button")
-                onClick { onOpenStories() }
-            }) {
-                MaterialSymbol("auto_stories")
-                Div {
-                    Span(attrs = { classes(Styles.homeExploreTitle) }) { Text(strings.chatExploreStories) }
-                    Span(attrs = { classes(Styles.homeExploreSub) }) { Text(strings.chatExploreStoriesSub) }
+                Button(attrs = {
+                    classes(Styles.homeExploreCard)
+                    attr("type", "button")
+                    onClick { onOpenStories() }
+                }) {
+                    MaterialSymbol("auto_stories")
+                    Div {
+                        Span(attrs = { classes(Styles.homeExploreTitle) }) { Text(strings.chatExploreStories) }
+                        Span(attrs = { classes(Styles.homeExploreSub) }) { Text(strings.chatExploreStoriesSub) }
+                    }
+                    MaterialSymbol("north_east")
                 }
-                MaterialSymbol("north_east")
             }
         }
 

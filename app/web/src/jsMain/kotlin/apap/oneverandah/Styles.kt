@@ -2746,7 +2746,6 @@ object Styles {
         .${studyWordImage} {
             display: block;
             width: 100%;
-            max-width: 280px;
             border-radius: 14px;
             border: 1px solid var(--md-sys-color-outline);
             background: var(--md-sys-color-surface-variant);

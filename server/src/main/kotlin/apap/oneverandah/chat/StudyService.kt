@@ -685,19 +685,19 @@ internal const val STUDY_STORY_ART_STYLE: String =
 
 /** Prompt for a single dissected word/phrase visual (word + contextual meaning). */
 internal fun wordVisualPrompt(word: String, contextualMeaning: String = ""): String = buildString {
-    append("Clearly illustrate the following in a helpful way. ")
+    append("Create an image to clearly illustrate the following in a helpful way. ")
     appendLine()
-    append("\"$word\". ")
+    append("**$word** ")
     appendLine()
     val meaning = contextualMeaning.trim()
     if (meaning.isNotEmpty()) {
-        append("Contextual meaning to depict: \"$meaning\". ")
+        append("$meaning. ")
     }
     appendLine()
-    append("Art style: $STUDY_STORY_ART_STYLE. ")
+    append("Style: $STUDY_STORY_ART_STYLE. ")
     appendLine()
     append(
-        "Absolutely no other text, no letters, no numbers, no captions, no signs with writing, no logos, " +
+        "Absolutely no text, no letters, no numbers, no captions, no signs with writing, no logos, " +
             "no speech bubbles, no border, no framing, no watermark, high quality square image.",
     )
 }
