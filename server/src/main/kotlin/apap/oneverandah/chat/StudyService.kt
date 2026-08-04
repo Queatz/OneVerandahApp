@@ -681,22 +681,24 @@ internal fun playgroundComicPrompt(word: String, sentence: String, natural: Bool
 
 /** Shared art direction so all study/catalog images stay in one expressive storybook world. */
 internal const val STUDY_STORY_ART_STYLE: String =
-    "expressive storybook art style, " +
-        "everyday realism with a touch of cinematic framing"
+    "expressive storybook art"
 
 /** Prompt for a single dissected word/phrase visual (word + contextual meaning). */
 internal fun wordVisualPrompt(word: String, contextualMeaning: String = ""): String = buildString {
-    append("Expressive storybook art style scene that clearly illustrates the following for language learning. ")
-    append("Focus word/phrase: \"$word\". ")
+    append("Clearly illustrate the following in a helpful way. ")
+    appendLine()
+    append("\"$word\". ")
+    appendLine()
     val meaning = contextualMeaning.trim()
     if (meaning.isNotEmpty()) {
         append("Contextual meaning to depict: \"$meaning\". ")
     }
-    append("Show one clear, memorable visual metaphor or everyday scene that teaches this word's meaning. ")
+    appendLine()
     append("Art style: $STUDY_STORY_ART_STYLE. ")
+    appendLine()
     append(
-        "Absolutely no text, no letters, no numbers, no captions, no signs with writing, no logos, " +
-            "no speech bubbles, no border, no watermark, high quality square image.",
+        "Absolutely no other text, no letters, no numbers, no captions, no signs with writing, no logos, " +
+            "no speech bubbles, no border, no framing, no watermark, high quality square image.",
     )
 }
 

@@ -41,6 +41,7 @@ fun main() {
 @Composable
 fun App() {
     var pendingChatMessage by remember { mutableStateOf<String?>(null) }
+    var pendingChatPanel by remember { mutableStateOf<ChatInitialPanel?>(null) }
     // Load generated cover images on launch and keep them fresh by polling the
     // backend. Failures are swallowed inside ImageStore so the UI always renders.
     LaunchedEffect(Unit) {
@@ -113,6 +114,8 @@ fun App() {
                 ChatScreen(
                     initialMessage = pendingChatMessage,
                     onInitialMessageConsumed = { pendingChatMessage = null },
+                     initialPanel = pendingChatPanel,
+                    onInitialPanelConsumed = { pendingChatPanel = null },
                     onBack = { router.navigate("/") },
                     onHome = { router.navigate("/") },
                     onOpenPhrases = { router.navigate("/phrases") },
@@ -152,8 +155,21 @@ fun App() {
                 onServiceSelected = { serviceId -> router.navigate("/service/$serviceId") },
                 onChatRequested = { message ->
                     pendingChatMessage = message
+                    pendingChatPanel = null
                     router.navigate("/chat")
                 },
+                onOpenStudy = {
+                    pendingChatMessage = null
+                    pendingChatPanel = ChatInitialPanel.Study
+                    router.navigate("/chat")
+                },
+                onOpenSaved = {
+                    pendingChatMessage = null
+                    pendingChatPanel = ChatInitialPanel.Saved
+                    router.navigate("/chat")
+                },
+                onOpenPhrases = { router.navigate("/phrases") },
+                onOpenStories = { router.navigate("/stories") },
             )
         }
 
@@ -163,9 +179,28 @@ fun App() {
                 onServiceSelected = { serviceId -> router.navigate("/service/$serviceId") },
                 onChatRequested = { message ->
                     pendingChatMessage = message
+                    pendingChatPanel = null
                     router.navigate("/chat")
                 },
+                onOpenStudy = {
+                    pendingChatMessage = null
+                    pendingChatPanel = ChatInitialPanel.Study
+                    router.navigate("/chat")
+                },
+                onOpenSaved = {
+                    pendingChatMessage = null
+                    pendingChatPanel = ChatInitialPanel.Saved
+                    router.navigate("/chat")
+                },
+                onOpenPhrases = { router.navigate("/phrases") },
+                onOpenStories = { router.navigate("/stories") },
             )
         }
     }
+}
+
+/** Optional panel to open immediately when entering chat from home shortcuts. */
+enum class ChatInitialPanel {
+    Study,
+    Saved,
 }

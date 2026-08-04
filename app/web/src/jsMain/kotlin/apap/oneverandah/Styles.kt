@@ -233,6 +233,12 @@ object Styles {
     const val pinnedBadge = "pinned-badge"
     const val pinnedEmpty = "pinned-empty"
 
+    // Home chat explore shortcuts (compact)
+    const val homeExploreActions = "home-explore-actions"
+    const val homeExploreCard = "home-explore-card"
+    const val homeExploreTitle = "home-explore-title"
+    const val homeExploreSub = "home-explore-sub"
+
     // Phrases / Earth-Mystical Parlance
     const val phraseCard = "phrase-card"
     const val phraseCardCovered = "phrase-card-covered"
@@ -1784,6 +1790,59 @@ object Styles {
             z-index: 60;
         }
         .${toast}.${toastVisible} { opacity: 1; transform: translate(-50%, 0); }
+
+        /* Home chat explore shortcuts under search */
+        .${homeExploreActions} {
+            display: grid;
+            grid-template-columns: 1fr 1fr;
+            gap: 8px;
+            width: 100%;
+            margin: -8px 0 20px 0;
+        }
+        .${homeExploreCard} {
+            display: flex;
+            align-items: center;
+            gap: 8px;
+            width: 100%;
+            box-sizing: border-box;
+            text-align: left;
+            padding: 10px 12px;
+            border-radius: 14px;
+            border: 1px solid var(--md-sys-color-outline);
+            background: color-mix(in srgb, var(--md-sys-color-primary) 8%, var(--md-sys-color-surface));
+            color: var(--md-sys-color-on-surface);
+            font: inherit;
+            cursor: pointer;
+            min-width: 0;
+        }
+        .${homeExploreCard} > div {
+            display: flex;
+            flex-direction: column;
+            gap: 1px;
+            flex: 1 1 auto;
+            min-width: 0;
+        }
+        .${homeExploreCard} .${materialSymbols} {
+            font-size: 18px;
+            flex: 0 0 auto;
+        }
+        .${homeExploreTitle} {
+            font-weight: 700;
+            font-size: 13px;
+            line-height: 1.2;
+            white-space: nowrap;
+            overflow: hidden;
+            text-overflow: ellipsis;
+        }
+        .${homeExploreSub} {
+            font-size: 11px;
+            line-height: 1.25;
+            color: var(--md-sys-color-on-surface-variant);
+            display: -webkit-box;
+            -webkit-line-clamp: 2;
+            -webkit-box-orient: vertical;
+            overflow: hidden;
+        }
 
         /* Home "Pinned & Recent" section */
         .${pinnedSection} { }

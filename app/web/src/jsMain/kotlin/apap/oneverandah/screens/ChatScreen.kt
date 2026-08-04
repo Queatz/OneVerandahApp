@@ -9,6 +9,7 @@ import androidx.compose.runtime.mutableStateOf
 import androidx.compose.runtime.remember
 import androidx.compose.runtime.rememberCoroutineScope
 import androidx.compose.runtime.setValue
+import apap.oneverandah.ChatInitialPanel
 import apap.oneverandah.Styles
 import apap.oneverandah.api.ChatApi
 import apap.oneverandah.api.ChatApiException
@@ -85,6 +86,8 @@ import kotlin.math.abs
 fun ChatScreen(
     initialMessage: String?,
     onInitialMessageConsumed: () -> Unit,
+    initialPanel: ChatInitialPanel? = null,
+    onInitialPanelConsumed: () -> Unit = {},
     onBack: () -> Unit,
     onHome: () -> Unit,
     onOpenPhrases: () -> Unit = {},
@@ -1275,6 +1278,20 @@ fun ChatScreen(
         }
     }
 
+    LaunchedEffect(initialPanel) {
+        when (initialPanel) {
+            ChatInitialPanel.Study -> {
+                onInitialPanelConsumed()
+                openStudySessionsPanel()
+            }
+            ChatInitialPanel.Saved -> {
+                onInitialPanelConsumed()
+                openSavedPanel()
+            }
+            null -> Unit
+        }
+    }
+
     LaunchedEffect(latestAiMessageId) {
         val messageId = latestAiMessageId ?: return@LaunchedEffect
         // Wait a frame so the new message is in the DOM and laid out before measuring.
@@ -1815,6 +1832,21 @@ private fun scrollChatMessageIntoView(messageId: String): Boolean {
     options.top = targetTop
     container.asDynamic().scrollTo(options)
     return true
+}
+
+/**
+ * Smooth-scrolls the open bottom-dialog content pane back to the top.
+ *
+ * Story Continue can leave the user mid-sheet after a taller step; the next
+ * card should start from the top of the study dialog.
+ */
+private fun scrollStudyDialogToTop() {
+    val container = document.querySelector(
+        ".${Styles.dialogScrim}.${Styles.dialogScrimVisible} .${Styles.dialogContent}",
+    ) as? HTMLElement ?: return
+    if (container.scrollTop <= 0.5) return
+    val options = js("({ behavior: 'smooth', top: 0.0 })")
+    container.asDynamic().scrollTo(options)
 }
 
 @Composable
@@ -2412,6 +2444,8 @@ private fun StudyStoryTab(
     var lastAutoplayKey by remember(session.text) { mutableStateOf<String?>(null) }
 
     fun advanceStory() {
+        // Start each next story step (or the Study tab handoff) from the top.
+        scrollStudyDialogToTop()
         when (phase) {
             StudyStoryPhase.WORDS -> {
                 if (stepIndex < wordSteps.lastIndex) {

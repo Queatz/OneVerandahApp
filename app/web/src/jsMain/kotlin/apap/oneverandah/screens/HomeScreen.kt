@@ -39,7 +39,7 @@ private const val PLACEHOLDER_TYPE_MS = 90L
  * How long to wait after the user stops typing before reporting the search
  * query to the backend, so a burst of keystrokes yields a single request.
  */
-private const val SEARCH_DEBOUNCE_MS = 500L
+    private const val SEARCH_DEBOUNCE_MS = 500L
 
 /**
  * Category dashboard (Category step of Category -> Services -> Offer).
@@ -49,6 +49,10 @@ fun HomeScreen(
     onCategorySelected: (String) -> Unit,
     onServiceSelected: (String) -> Unit,
     onChatRequested: (String) -> Unit,
+    onOpenStudy: () -> Unit = {},
+    onOpenSaved: () -> Unit = {},
+    onOpenPhrases: () -> Unit = {},
+    onOpenStories: () -> Unit = {},
 ) {
     val strings = Localization.strings
     val language = Localization.language
@@ -121,6 +125,57 @@ fun HomeScreen(
                 placeholder = animatedPlaceholder,
                 autoFocus = true,
             )
+        }
+
+        Div(attrs = { classes(Styles.homeExploreActions) }) {
+            Button(attrs = {
+                classes(Styles.homeExploreCard)
+                attr("type", "button")
+                onClick { onOpenStudy() }
+            }) {
+                MaterialSymbol("menu_book")
+                Div {
+                    Span(attrs = { classes(Styles.homeExploreTitle) }) { Text(strings.chatExploreStudy) }
+                    Span(attrs = { classes(Styles.homeExploreSub) }) { Text(strings.chatExploreStudySub) }
+                }
+                MaterialSymbol("north_east")
+            }
+            Button(attrs = {
+                classes(Styles.homeExploreCard)
+                attr("type", "button")
+                onClick { onOpenSaved() }
+            }) {
+                MaterialSymbol("bookmarks")
+                Div {
+                    Span(attrs = { classes(Styles.homeExploreTitle) }) { Text(strings.chatExploreSaved) }
+                    Span(attrs = { classes(Styles.homeExploreSub) }) { Text(strings.chatExploreSavedSub) }
+                }
+                MaterialSymbol("north_east")
+            }
+            Button(attrs = {
+                classes(Styles.homeExploreCard)
+                attr("type", "button")
+                onClick { onOpenPhrases() }
+            }) {
+                MaterialSymbol("import_contacts")
+                Div {
+                    Span(attrs = { classes(Styles.homeExploreTitle) }) { Text(strings.chatExplorePhrases) }
+                    Span(attrs = { classes(Styles.homeExploreSub) }) { Text(strings.chatExplorePhrasesSub) }
+                }
+                MaterialSymbol("north_east")
+            }
+            Button(attrs = {
+                classes(Styles.homeExploreCard)
+                attr("type", "button")
+                onClick { onOpenStories() }
+            }) {
+                MaterialSymbol("auto_stories")
+                Div {
+                    Span(attrs = { classes(Styles.homeExploreTitle) }) { Text(strings.chatExploreStories) }
+                    Span(attrs = { classes(Styles.homeExploreSub) }) { Text(strings.chatExploreStoriesSub) }
+                }
+                MaterialSymbol("north_east")
+            }
         }
 
         if (searchQuery.isBlank()) {
