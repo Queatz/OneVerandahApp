@@ -2,15 +2,20 @@ package apap.oneverandah.api
 
 import apap.oneverandah.state.DeviceTokenStore
 import io.ktor.client.HttpClient
+import io.ktor.client.request.accept
 import io.ktor.client.request.delete
 import io.ktor.client.request.get
 import io.ktor.client.request.header
 import io.ktor.client.request.post
+import io.ktor.client.request.preparePost
 import io.ktor.client.request.setBody
+import io.ktor.client.statement.bodyAsChannel
 import io.ktor.client.statement.bodyAsText
 import io.ktor.http.ContentType
+import io.ktor.http.HttpHeaders
 import io.ktor.http.contentType
 import io.ktor.http.isSuccess
+import io.ktor.utils.io.readUTF8Line
 import kotlinx.serialization.json.Json
 
 object ChatApi {
@@ -62,14 +67,42 @@ object ChatApi {
         if (!response.status.isSuccess()) throw ChatApiException(errorMessage(text, response.status.value))
     }
 
-    suspend fun send(request: ChatRequest): ChatResponse {
-        val response = client.post(chatApiUrl()) {
+    /**
+     * Send a chat turn.
+     *
+     * Requests an NDJSON stream so a fast short reply can paint via [onPartial]
+     * before the merged final response is returned.
+     */
+    suspend fun send(
+        request: ChatRequest,
+        onPartial: (suspend (ChatResponse) -> Unit)? = null,
+    ): ChatResponse {
+        val ndjson = ContentType("application", "x-ndjson")
+        return client.preparePost(chatApiUrl()) {
             contentType(ContentType.Application.Json)
+            accept(ndjson)
+            header(HttpHeaders.Accept, "application/x-ndjson")
             setBody(json.encodeToString(ChatRequest.serializer(), request))
+        }.execute { response ->
+            if (!response.status.isSuccess()) {
+                val text = response.bodyAsText()
+                throw ChatApiException(errorMessage(text, response.status.value), response.status.value)
+            }
+            val channel = response.bodyAsChannel()
+            var finalResponse: ChatResponse? = null
+            while (!channel.isClosedForRead) {
+                val line = channel.readUTF8Line() ?: break
+                if (line.isBlank()) continue
+                val event = json.decodeFromString(ChatResponse.serializer(), line)
+                if (event.partial) {
+                    onPartial?.invoke(event)
+                } else {
+                    finalResponse = event
+                }
+            }
+            finalResponse
+                ?: throw ChatApiException("Chat stream ended without a final response")
         }
-        val text = response.bodyAsText()
-        if (!response.status.isSuccess()) throw ChatApiException(errorMessage(text, response.status.value))
-        return json.decodeFromString(ChatResponse.serializer(), text)
     }
 
     suspend fun history(conversationId: String): ChatHistoryResponse {

@@ -12,15 +12,19 @@ import io.ktor.http.ContentType
 import io.ktor.http.HttpHeaders
 import io.ktor.http.contentType
 import io.ktor.http.isSuccess
+import kotlinx.coroutines.async
+import kotlinx.coroutines.channels.Channel
+import kotlinx.coroutines.coroutineScope
+import kotlinx.coroutines.launch
 import kotlinx.serialization.Serializable
 import kotlinx.serialization.json.Json
-import kotlinx.serialization.json.JsonArray
 import kotlinx.serialization.json.buildJsonArray
 import kotlinx.serialization.json.buildJsonObject
 import kotlinx.serialization.json.jsonArray
 import kotlinx.serialization.json.jsonObject
 import kotlinx.serialization.json.jsonPrimitive
 import kotlinx.serialization.json.put
+import org.slf4j.LoggerFactory
 
 object QwenStructuredReplyParser {
     private val json = Json { ignoreUnknownKeys = true; explicitNulls = false }
@@ -37,7 +41,10 @@ object QwenStructuredReplyParser {
             .map(String::trim)
             .filter(String::isNotEmpty)
             .distinct()
-        require(followUpQuestions.size == 3) { "Qwen must return exactly three distinct follow-up questions" }
+        // Short-prompt replies may omit follow-ups; long replies must still return exactly three.
+        if (followUpQuestions.isNotEmpty()) {
+            require(followUpQuestions.size == 3) { "Qwen must return exactly three distinct follow-up questions" }
+        }
         return GeneratedChatReply(
             text = wire.text.trim(),
             languageStudy = wire.languageStudy?.let { study ->
@@ -60,7 +67,7 @@ private data class QwenReplyWire(
     val text: String,
     val languageStudy: QwenLanguageStudyWire? = null,
     val factId: String? = null,
-    val followUpQuestions: List<String>,
+    val followUpQuestions: List<String> = emptyList(),
 )
 
 @Serializable
@@ -82,13 +89,82 @@ class DashScopeChatAiClient(
     private val client: HttpClient,
 ) : ChatAiClient {
     private val json = Json { ignoreUnknownKeys = true; explicitNulls = false }
+    private val log = LoggerFactory.getLogger(DashScopeChatAiClient::class.java)
 
-    override suspend fun generate(request: ChatGenerationRequest): GeneratedChatReply {
+    /**
+     * Fire a short system-prompt call and the full system-prompt call in parallel.
+     * The first successful reply is delivered via [onPartial] immediately; when both
+     * finish, the texts are merged as `short\n\nlong` (short first) with structured
+     * fields taken from the long reply when available.
+     */
+    override suspend fun generate(
+        request: ChatGenerationRequest,
+        onPartial: suspend (GeneratedChatReply) -> Unit,
+    ): GeneratedChatReply {
         check(config.enabled) { "Qwen chat requires QWEN_API_KEY" }
+        return coroutineScope {
+            val shortDeferred = async {
+                runCatching { complete(request, shortSystemPrompt(request), label = "short") }
+            }
+            val longDeferred = async {
+                runCatching { complete(request, systemPrompt(request), label = "long") }
+            }
+
+            // Collect completions in finish order so the first success can paint immediately.
+            data class Completion(val shortPrompt: Boolean, val result: Result<GeneratedChatReply>)
+            val completions = Channel<Completion>(capacity = 2)
+            launch { completions.send(Completion(shortPrompt = true, result = shortDeferred.await())) }
+            launch { completions.send(Completion(shortPrompt = false, result = longDeferred.await())) }
+
+            var shortReply: GeneratedChatReply? = null
+            var longReply: GeneratedChatReply? = null
+            var shortError: Throwable? = null
+            var longError: Throwable? = null
+            var partialEmitted = false
+            var finished = 0
+
+            while (finished < 2) {
+                val completion = completions.receive()
+                finished += 1
+                completion.result
+                    .onSuccess { reply ->
+                        if (completion.shortPrompt) shortReply = reply else longReply = reply
+                    }
+                    .onFailure { error ->
+                        if (completion.shortPrompt) {
+                            shortError = error
+                            log.warn("Short chat prompt failed: {}", error.message)
+                        } else {
+                            longError = error
+                            log.warn("Long chat prompt failed: {}", error.message)
+                        }
+                    }
+
+                // Emit once when the first successful reply arrives and the other is still running.
+                if (!partialEmitted && finished < 2) {
+                    val snapshot = mergeChatReplies(shortReply, longReply)
+                    if (snapshot != null) {
+                        partialEmitted = true
+                        onPartial(snapshot)
+                    }
+                }
+            }
+            completions.close()
+
+            mergeChatReplies(shortReply, longReply)
+                ?: throw (longError ?: shortError ?: QwenChatException("Qwen chat returned no content"))
+        }
+    }
+
+    private suspend fun complete(
+        request: ChatGenerationRequest,
+        systemPrompt: String,
+        label: String,
+    ): GeneratedChatReply {
         val messages = buildJsonArray {
             add(buildJsonObject {
                 put("role", "system")
-                put("content", systemPrompt(request))
+                put("content", systemPrompt)
             })
             request.history.takeLast(20).forEach { message ->
                 add(buildJsonObject {
@@ -110,15 +186,24 @@ class DashScopeChatAiClient(
         }
         val responseText = response.bodyAsText()
         if (!response.status.isSuccess()) {
-            throw QwenChatException("Qwen chat failed (${response.status}): $responseText")
+            throw QwenChatException("Qwen chat $label failed (${response.status}): $responseText")
         }
         val root = json.parseToJsonElement(responseText).jsonObject
         val content = root["choices"]?.jsonArray
             ?.firstOrNull()?.jsonObject
             ?.get("message")?.jsonObject
             ?.get("content")?.jsonPrimitive?.content
-            ?: throw QwenChatException("Qwen chat returned no structured content: $responseText")
+            ?: throw QwenChatException("Qwen chat $label returned no structured content: $responseText")
         return QwenStructuredReplyParser.parse(content)
+    }
+
+    private fun shortSystemPrompt(request: ChatGenerationRequest): String {
+        return """
+            You are a community assistant. Reply in the user's active language '${request.languageTag}'.
+            Keep your response to 1–2 concise sentences that are helpful to the user.
+            Always return one JSON object and no markdown. The schema is:
+            {"text":"helpful response"}
+        """.trimIndent()
     }
 
     private fun systemPrompt(request: ChatGenerationRequest): String {
@@ -158,12 +243,44 @@ class DashScopeChatAiClient(
             Core vocabulary (VI → meaning / EN):
             con=child/humble self; lành=wholesome healing gentle; linh=sacred essence; hương=fragrance/emanation; rạng=radiance/inner glow; sinh khí=life breath; mạch=shared flow/pulse; tĩnh lặng=stillness; dịu=gentle; thoa=anoint softly; dệt=weave; ươm=nurture/bloom.
             EN: this child, this vessel, inner glow, essence, fragrance, stillness, wholeness/lành, life breath, flow/one flow, bloom.
+
+            Spoken EMP examples (keep invitations gentle and under ~10 words):
+            EN: "This child's shoulders hum for healing hands"
+            VI: "Dạ, con mong tay lành chạm vai đang ngân"
             
             ===
             
             ONLY bring up EMP and One Verandah if the user's intent is not clear, or the user is asking about it or related topics.
         """.trimIndent()
     }
+}
+
+/**
+ * Merge short + long chat replies.
+ * Text is short first, then long, separated by a blank line when both exist.
+ * Structured extras (language study, fact id, follow-ups) prefer the long reply.
+ */
+internal fun mergeChatReplies(
+    shortReply: GeneratedChatReply?,
+    longReply: GeneratedChatReply?,
+): GeneratedChatReply? {
+    if (shortReply == null && longReply == null) return null
+    if (shortReply == null) return longReply
+    if (longReply == null) return shortReply
+    val shortText = shortReply.text.trim()
+    val longText = longReply.text.trim()
+    val mergedText = when {
+        shortText.isEmpty() -> longText
+        longText.isEmpty() -> shortText
+        shortText == longText -> shortText
+        else -> "$shortText\n\n$longText"
+    }
+    return GeneratedChatReply(
+        text = mergedText,
+        languageStudy = longReply.languageStudy ?: shortReply.languageStudy,
+        factId = longReply.factId ?: shortReply.factId,
+        followUpQuestions = longReply.followUpQuestions.ifEmpty { shortReply.followUpQuestions },
+    )
 }
 
 class QwenChatException(message: String) : RuntimeException(message)

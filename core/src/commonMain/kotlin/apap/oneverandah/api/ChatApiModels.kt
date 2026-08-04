@@ -24,6 +24,11 @@ data class ChatRequest(
 data class ChatResponse(
     val conversationId: String,
     val message: ChatMessage,
+    /**
+     * True while a faster short reply is shown and the fuller reply is still running.
+     * Final responses set this to false (default) so older clients ignore the field.
+     */
+    val partial: Boolean = false,
 )
 
 @Serializable

@@ -41,7 +41,10 @@ class StudySessionsRoutesTest {
         val chatService = ChatService(
             repository = InMemoryChatRepository(),
             aiClient = object : ChatAiClient {
-                override suspend fun generate(request: ChatGenerationRequest) = GeneratedChatReply("unused")
+                override suspend fun generate(
+                    request: ChatGenerationRequest,
+                    onPartial: suspend (GeneratedChatReply) -> Unit,
+                ) = GeneratedChatReply("unused")
             },
             residentDirectory = ResidentDirectory(emptyList()),
         )
@@ -127,7 +130,10 @@ class StudySessionsRoutesTest {
         val chatService = ChatService(
             repository = InMemoryChatRepository(),
             aiClient = object : ChatAiClient {
-                override suspend fun generate(request: ChatGenerationRequest) = GeneratedChatReply("unused")
+                override suspend fun generate(
+                    request: ChatGenerationRequest,
+                    onPartial: suspend (GeneratedChatReply) -> Unit,
+                ) = GeneratedChatReply("unused")
             },
             residentDirectory = ResidentDirectory(emptyList()),
         )

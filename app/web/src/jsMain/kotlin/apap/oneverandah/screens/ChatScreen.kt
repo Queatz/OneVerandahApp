@@ -226,10 +226,23 @@ fun ChatScreen(
         )
         scope.launch {
             runCatching {
-                ChatApi.send(ChatRequest(conversationId, text, language.tag))
+                ChatApi.send(ChatRequest(conversationId, text, language.tag)) { partial ->
+                    conversationId = partial.conversationId
+                    val existing = messages.indexOfFirst { it.id == partial.message.id }
+                    if (existing >= 0) {
+                        messages[existing] = partial.message
+                    } else {
+                        messages += partial.message
+                    }
+                }
             }.onSuccess { response ->
                 conversationId = response.conversationId
-                messages += response.message
+                val existing = messages.indexOfFirst { it.id == response.message.id }
+                if (existing >= 0) {
+                    messages[existing] = response.message
+                } else {
+                    messages += response.message
+                }
                 latestAiMessageId = response.message.id
             }.onFailure {
                 error = strings.chatError

@@ -63,7 +63,17 @@ data class GeneratedLanguageStudy(
 )
 
 interface ChatAiClient {
-    suspend fun generate(request: ChatGenerationRequest): GeneratedChatReply
+    /**
+     * Generate a chat reply.
+     *
+     * Implementations may invoke [onPartial] zero or more times with intermediate
+     * replies (for example a fast short-prompt answer) before returning the final
+     * merged reply. Callers must not assume [onPartial] is used.
+     */
+    suspend fun generate(
+        request: ChatGenerationRequest,
+        onPartial: suspend (GeneratedChatReply) -> Unit = {},
+    ): GeneratedChatReply
 }
 
 class ResidentDirectory(residents: List<ServiceProvider>) {
@@ -86,7 +96,17 @@ class ChatService(
     private val clock: () -> Long = System::currentTimeMillis,
     private val idGenerator: () -> String = { UUID.randomUUID().toString() },
 ) {
-    suspend fun send(rawRequest: ChatRequest): ChatResponse {
+    /**
+     * Handle a user chat turn.
+     *
+     * When [onPartial] is provided, intermediate AI replies (for example a fast
+     * short-prompt answer) are delivered before the final persisted response.
+     * Only the final AI message is written to the repository.
+     */
+    suspend fun send(
+        rawRequest: ChatRequest,
+        onPartial: (suspend (ChatResponse) -> Unit)? = null,
+    ): ChatResponse {
         val request = requireNotNull(rawRequest.normalizedOrNull()) { "Message must not be blank" }
         val conversationId = request.conversationId ?: idGenerator()
         val userMessage = ChatMessage(
@@ -99,6 +119,43 @@ class ChatService(
 
         val language = Language.fromTag(request.languageTag)
         val matchedResident = residentDirectory.findMention(request.message)
+        val aiMessageId = idGenerator()
+        val aiCreatedAt = clock()
+
+        fun buildResponse(generated: GeneratedChatReply, partial: Boolean): ChatResponse {
+            val matchedFact = facts.firstOrNull { it.id == generated.factId }
+            // Resident cards are resolved locally and can appear on the first paint.
+            // Language-study / fact mini-apps wait for the fuller structured reply.
+            val miniApp = when {
+                matchedResident != null -> ResidentCardMiniApp(
+                    residentId = matchedResident.id,
+                    name = matchedResident.name,
+                    address = matchedResident.blockAddress,
+                    phone = matchedResident.phone,
+                    photo = matchedResident.photo,
+                    sex = matchedResident.sex.name,
+                    intro = matchedResident.intro.resolve(language),
+                )
+                !partial && generated.languageStudy != null -> generated.languageStudy.toMiniApp()
+                !partial && matchedFact != null -> FactMiniApp(
+                    factId = matchedFact.id,
+                    title = matchedFact.title.resolve(language),
+                    body = matchedFact.body.resolve(language),
+                    icon = matchedFact.icon,
+                )
+                else -> null
+            }
+            val aiMessage = ChatMessage(
+                id = aiMessageId,
+                sender = ChatSender.AI,
+                text = generated.text,
+                createdAt = aiCreatedAt,
+                miniApp = miniApp,
+                followUpQuestions = if (partial) emptyList() else generated.followUpQuestions,
+            )
+            return ChatResponse(conversationId, aiMessage, partial = partial)
+        }
+
         val generated = aiClient.generate(
             ChatGenerationRequest(
                 message = request.message,
@@ -109,37 +166,12 @@ class ChatService(
                     FactSummary(fact.id, fact.title.resolve(language), fact.keywords)
                 },
             ),
-        )
-        val matchedFact = facts.firstOrNull { it.id == generated.factId }
-        val miniApp = when {
-            matchedResident != null -> ResidentCardMiniApp(
-                residentId = matchedResident.id,
-                name = matchedResident.name,
-                address = matchedResident.blockAddress,
-                phone = matchedResident.phone,
-                photo = matchedResident.photo,
-                sex = matchedResident.sex.name,
-                intro = matchedResident.intro.resolve(language),
-            )
-            generated.languageStudy != null -> generated.languageStudy.toMiniApp()
-            matchedFact != null -> FactMiniApp(
-                factId = matchedFact.id,
-                title = matchedFact.title.resolve(language),
-                body = matchedFact.body.resolve(language),
-                icon = matchedFact.icon,
-            )
-            else -> null
+        ) { partialReply ->
+            onPartial?.invoke(buildResponse(partialReply, partial = true))
         }
-        val aiMessage = ChatMessage(
-            id = idGenerator(),
-            sender = ChatSender.AI,
-            text = generated.text,
-            createdAt = clock(),
-            miniApp = miniApp,
-            followUpQuestions = generated.followUpQuestions,
-        )
-        repository.append(conversationId, aiMessage)
-        return ChatResponse(conversationId, aiMessage)
+        val response = buildResponse(generated, partial = false)
+        repository.append(conversationId, response.message)
+        return response
     }
 
     suspend fun history(conversationId: String): List<ChatMessage> = repository.history(conversationId)

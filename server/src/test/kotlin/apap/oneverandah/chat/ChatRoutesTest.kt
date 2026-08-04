@@ -25,6 +25,7 @@ import apap.oneverandah.api.StudyWordPlaygroundRequest
 import apap.oneverandah.api.StudyWordPlaygroundResponse
 import apap.oneverandah.routes.chatRoutes
 import io.ktor.client.request.get
+import io.ktor.client.request.header
 import io.ktor.client.request.post
 import io.ktor.client.request.setBody
 import io.ktor.client.statement.bodyAsText
@@ -50,7 +51,10 @@ class ChatRoutesTest {
         val service = ChatService(
             repository = repository,
             aiClient = object : ChatAiClient {
-                override suspend fun generate(request: ChatGenerationRequest) = GeneratedChatReply("Hello!")
+                override suspend fun generate(
+                    request: ChatGenerationRequest,
+                    onPartial: suspend (GeneratedChatReply) -> Unit,
+                ) = GeneratedChatReply("Hello!")
             },
             residentDirectory = ResidentDirectory(emptyList()),
         )
@@ -78,11 +82,55 @@ class ChatRoutesTest {
     }
 
     @Test
+    fun `chat endpoint streams partial then final ndjson when accepted`() = testApplication {
+        val service = ChatService(
+            repository = InMemoryChatRepository(),
+            aiClient = object : ChatAiClient {
+                override suspend fun generate(
+                    request: ChatGenerationRequest,
+                    onPartial: suspend (GeneratedChatReply) -> Unit,
+                ): GeneratedChatReply {
+                    onPartial(GeneratedChatReply(text = "Quick."))
+                    return GeneratedChatReply(
+                        text = "Quick.\n\nFuller.",
+                        followUpQuestions = listOf("One", "Two", "Three"),
+                    )
+                }
+            },
+            residentDirectory = ResidentDirectory(emptyList()),
+        )
+        application {
+            install(ContentNegotiation) { json() }
+            routing { chatRoutes(service, SpeechService(RouteSpeechClient())) }
+        }
+
+        val sent = client.post("/api/chat") {
+            contentType(ContentType.Application.Json)
+            header(io.ktor.http.HttpHeaders.Accept, "application/x-ndjson")
+            setBody("{\"message\":\"Hi\",\"languageTag\":\"en\"}")
+        }
+        assertEquals(HttpStatusCode.OK, sent.status)
+        val lines = sent.bodyAsText().lines().filter { it.isNotBlank() }
+        assertEquals(2, lines.size)
+        val partial = json.decodeFromString<ChatResponse>(lines[0])
+        val final = json.decodeFromString<ChatResponse>(lines[1])
+        assertEquals(true, partial.partial)
+        assertEquals("Quick.", partial.message.text)
+        assertEquals(false, final.partial)
+        assertEquals("Quick.\n\nFuller.", final.message.text)
+        assertEquals(listOf("One", "Two", "Three"), final.message.followUpQuestions)
+        assertEquals(partial.message.id, final.message.id)
+    }
+
+    @Test
     fun `speech endpoint returns encoded audio`() = testApplication {
         val service = ChatService(
             repository = InMemoryChatRepository(),
             aiClient = object : ChatAiClient {
-                override suspend fun generate(request: ChatGenerationRequest) = GeneratedChatReply("unused")
+                override suspend fun generate(
+                    request: ChatGenerationRequest,
+                    onPartial: suspend (GeneratedChatReply) -> Unit,
+                ) = GeneratedChatReply("unused")
             },
             residentDirectory = ResidentDirectory(emptyList()),
         )
@@ -107,7 +155,10 @@ class ChatRoutesTest {
         val chatService = ChatService(
             repository = InMemoryChatRepository(),
             aiClient = object : ChatAiClient {
-                override suspend fun generate(request: ChatGenerationRequest) = GeneratedChatReply("unused")
+                override suspend fun generate(
+                    request: ChatGenerationRequest,
+                    onPartial: suspend (GeneratedChatReply) -> Unit,
+                ) = GeneratedChatReply("unused")
             },
             residentDirectory = ResidentDirectory(emptyList()),
         )
@@ -185,7 +236,10 @@ class ChatRoutesTest {
         val chatService = ChatService(
             repository = InMemoryChatRepository(),
             aiClient = object : ChatAiClient {
-                override suspend fun generate(request: ChatGenerationRequest) = GeneratedChatReply("unused")
+                override suspend fun generate(
+                    request: ChatGenerationRequest,
+                    onPartial: suspend (GeneratedChatReply) -> Unit,
+                ) = GeneratedChatReply("unused")
             },
             residentDirectory = ResidentDirectory(emptyList()),
         )
@@ -297,7 +351,10 @@ class ChatRoutesTest {
         val chatService = ChatService(
             repository = InMemoryChatRepository(),
             aiClient = object : ChatAiClient {
-                override suspend fun generate(request: ChatGenerationRequest) = GeneratedChatReply("unused")
+                override suspend fun generate(
+                    request: ChatGenerationRequest,
+                    onPartial: suspend (GeneratedChatReply) -> Unit,
+                ) = GeneratedChatReply("unused")
             },
             residentDirectory = ResidentDirectory(emptyList()),
         )
@@ -404,7 +461,10 @@ class ChatRoutesTest {
         val chatService = ChatService(
             repository = InMemoryChatRepository(),
             aiClient = object : ChatAiClient {
-                override suspend fun generate(request: ChatGenerationRequest) = GeneratedChatReply("unused")
+                override suspend fun generate(
+                    request: ChatGenerationRequest,
+                    onPartial: suspend (GeneratedChatReply) -> Unit,
+                ) = GeneratedChatReply("unused")
             },
             residentDirectory = ResidentDirectory(emptyList()),
         )
@@ -491,7 +551,10 @@ class ChatRoutesTest {
         val chatService = ChatService(
             repository = InMemoryChatRepository(),
             aiClient = object : ChatAiClient {
-                override suspend fun generate(request: ChatGenerationRequest) = GeneratedChatReply("unused")
+                override suspend fun generate(
+                    request: ChatGenerationRequest,
+                    onPartial: suspend (GeneratedChatReply) -> Unit,
+                ) = GeneratedChatReply("unused")
             },
             residentDirectory = ResidentDirectory(emptyList()),
         )
@@ -577,7 +640,10 @@ class ChatRoutesTest {
         val chatService = ChatService(
             repository = InMemoryChatRepository(),
             aiClient = object : ChatAiClient {
-                override suspend fun generate(request: ChatGenerationRequest) = GeneratedChatReply("unused")
+                override suspend fun generate(
+                    request: ChatGenerationRequest,
+                    onPartial: suspend (GeneratedChatReply) -> Unit,
+                ) = GeneratedChatReply("unused")
             },
             residentDirectory = ResidentDirectory(emptyList()),
         )

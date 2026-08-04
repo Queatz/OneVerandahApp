@@ -18,6 +18,7 @@ import apap.oneverandah.api.StudySessionRequest
 import apap.oneverandah.api.StudyStoryCharactersRequest
 import apap.oneverandah.api.StudyWordImageRequest
 import apap.oneverandah.api.StudyWordPlaygroundRequest
+import apap.oneverandah.api.ChatResponse
 import apap.oneverandah.chat.ChatService
 import apap.oneverandah.chat.QwenAsrRelay
 import apap.oneverandah.chat.SavedMessagesService
@@ -25,18 +26,31 @@ import apap.oneverandah.chat.SpeechService
 import apap.oneverandah.chat.StudyService
 import apap.oneverandah.chat.StudySessionsService
 import apap.oneverandah.chat.UnauthorizedDeviceException
+import io.ktor.http.ContentType
+import io.ktor.http.HttpHeaders
 import io.ktor.http.HttpStatusCode
 import io.ktor.server.request.header
 import io.ktor.server.request.receive
 import io.ktor.server.response.respond
+import io.ktor.server.response.respondTextWriter
 import io.ktor.server.routing.Route
 import io.ktor.server.routing.delete
 import io.ktor.server.routing.get
 import io.ktor.server.routing.post
 import io.ktor.server.websocket.webSocket
 import java.util.Base64
+import kotlinx.serialization.json.Json
 
 const val DEVICE_TOKEN_HEADER = "X-Device-Token"
+
+private val chatStreamJson = Json {
+    encodeDefaults = true
+    explicitNulls = false
+    ignoreUnknownKeys = true
+    classDiscriminator = "type"
+}
+
+private val ndjsonContentType = ContentType("application", "x-ndjson")
 
 fun Route.chatRoutes(
     chatService: ChatService,
@@ -51,7 +65,24 @@ fun Route.chatRoutes(
             call.respond(HttpStatusCode.BadRequest, ChatErrorResponse("Message must not be blank"))
             return@post
         }
-        call.respond(chatService.send(request))
+        val accept = call.request.header(HttpHeaders.Accept).orEmpty()
+        val wantsStream = accept.contains("application/x-ndjson", ignoreCase = true)
+        if (!wantsStream) {
+            call.respond(chatService.send(request))
+            return@post
+        }
+
+        // NDJSON stream: optional partial line(s), then a final non-partial ChatResponse.
+        call.respondTextWriter(contentType = ndjsonContentType) {
+            suspend fun writeEvent(response: ChatResponse) {
+                appendLine(chatStreamJson.encodeToString(ChatResponse.serializer(), response))
+                flush()
+            }
+            val final = chatService.send(request) { partial ->
+                writeEvent(partial)
+            }
+            writeEvent(final)
+        }
     }
 
     post("/api/chat/speech") {

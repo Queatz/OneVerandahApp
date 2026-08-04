@@ -26,6 +26,7 @@ import kotlin.test.assertFailsWith
 import kotlin.test.assertIs
 import kotlin.test.assertNotNull
 import kotlin.test.assertNull
+import kotlinx.coroutines.delay
 import kotlinx.coroutines.runBlocking
 import kotlinx.serialization.json.Json
 import kotlinx.serialization.json.jsonArray
@@ -129,9 +130,9 @@ class ChatServiceTest {
 
     @Test
     fun `Qwen receives multilingual semantic language study instructions`() = runBlocking {
-        var requestBody = ""
+        val requestBodies = mutableListOf<String>()
         val engine = MockEngine { request ->
-            requestBody = (request.body as OutgoingContent.ByteArrayContent).bytes().decodeToString()
+            requestBodies += (request.body as OutgoingContent.ByteArrayContent).bytes().decodeToString()
             respond(
                 content = """{"choices":[{"message":{"content":"{\"text\":\"Let's learn.\",\"languageStudy\":null,\"factId\":null,\"followUpQuestions\":[\"Practise another phrase\",\"Show me another example\",\"Explain the grammar\"]}"}}]}""",
                 status = HttpStatusCode.OK,
@@ -151,11 +152,19 @@ class ChatServiceTest {
             ),
         )
 
-        val body = Json.parseToJsonElement(requestBody).jsonObject
-        assertEquals("qwen3.7-flash", body["model"]?.jsonPrimitive?.content)
-        val systemPrompt = body["messages"]?.jsonArray
-            ?.first()?.jsonObject
-            ?.get("content")?.jsonPrimitive?.content.orEmpty()
+        // Dual short+long prompts fire in parallel.
+        assertEquals(2, requestBodies.size)
+        val systemPrompts = requestBodies.map { bodyText ->
+            val body = Json.parseToJsonElement(bodyText).jsonObject
+            assertEquals("qwen3.7-flash", body["model"]?.jsonPrimitive?.content)
+            body["messages"]?.jsonArray
+                ?.first()?.jsonObject
+                ?.get("content")?.jsonPrimitive?.content.orEmpty()
+        }
+        val shortPrompt = systemPrompts.first { it.contains("1–2 concise sentences") || it.contains("1-2 concise sentences") }
+        val systemPrompt = systemPrompts.first { it.contains("Earth-Mystical Parlance") }
+        assertContains(shortPrompt, "Keep your response to 1–2 concise sentences")
+        assertContains(shortPrompt, "{\"text\":\"helpful response\"}")
         assertContains(systemPrompt, "Recognize language-learning intent from meaning in every language")
         assertContains(systemPrompt, "never rely on English keywords")
         assertContains(systemPrompt, "Teach me how to talk about stickiness in Vietnamese")
@@ -175,6 +184,93 @@ class ChatServiceTest {
         assertContains(systemPrompt, "Dạ, con mong tay lành chạm vai đang ngân")
         assertContains(systemPrompt, "This child")
         assertContains(systemPrompt, "Dạ, con")
+        client.close()
+    }
+
+    @Test
+    fun `send surfaces partial reply then persists merged final`() = runBlocking {
+        val followUps = listOf("Tell me more", "Show an example", "What else")
+        val ai = FakeChatAiClient(
+            reply = GeneratedChatReply(
+                text = "Quick take.\n\nFuller detail about One Verandah.",
+                followUpQuestions = followUps,
+            ),
+            partialReply = GeneratedChatReply(text = "Quick take."),
+        )
+        val service = service(InMemoryChatRepository(), ai)
+        val partials = mutableListOf<String>()
+
+        val response = service.send(ChatRequest(message = "Hello", languageTag = "en")) { partial ->
+            partials += partial.message.text
+            assertEquals(true, partial.partial)
+            assertEquals(emptyList(), partial.message.followUpQuestions)
+        }
+
+        assertEquals(listOf("Quick take."), partials)
+        assertEquals(false, response.partial)
+        assertEquals("Quick take.\n\nFuller detail about One Verandah.", response.message.text)
+        assertEquals(followUps, response.message.followUpQuestions)
+        assertEquals(1, ai.partialEmissions)
+    }
+
+    @Test
+    fun `mergeChatReplies keeps short text first and long structured fields`() {
+        val short = GeneratedChatReply(
+            text = "Short answer.",
+            followUpQuestions = listOf("A", "B", "C"),
+        )
+        val long = GeneratedChatReply(
+            text = "Longer detail.",
+            factId = "prime-location",
+            followUpQuestions = listOf("D", "E", "F"),
+        )
+
+        val merged = mergeChatReplies(short, long)
+        assertEquals("Short answer.\n\nLonger detail.", merged?.text)
+        assertEquals("prime-location", merged?.factId)
+        assertEquals(listOf("D", "E", "F"), merged?.followUpQuestions)
+    }
+
+    @Test
+    fun `Qwen dual prompts emit partial then merge short before long`() = runBlocking {
+        val engine = MockEngine { request ->
+            val body = (request.body as OutgoingContent.ByteArrayContent).bytes().decodeToString()
+            val system = Json.parseToJsonElement(body).jsonObject["messages"]?.jsonArray
+                ?.first()?.jsonObject
+                ?.get("content")?.jsonPrimitive?.content.orEmpty()
+            val isShort = system.contains("1–2 concise sentences") || system.contains("1-2 concise sentences")
+            val text = if (isShort) "Short hello." else "Longer hello with detail."
+            // Make the long prompt slower so the short reply arrives first.
+            if (!isShort) delay(40)
+            val contentInner = if (isShort) {
+                """{\"text\":\"$text\"}"""
+            } else {
+                """{\"text\":\"$text\",\"languageStudy\":null,\"factId\":null,\"followUpQuestions\":[\"One\",\"Two\",\"Three\"]}"""
+            }
+            respond(
+                content = """{"choices":[{"message":{"content":"$contentInner"}}]}""",
+                status = HttpStatusCode.OK,
+                headers = headersOf(HttpHeaders.ContentType, "application/json"),
+            )
+        }
+        val client = HttpClient(engine)
+        val ai = DashScopeChatAiClient(qwenConfig(), client)
+        val partials = mutableListOf<String>()
+
+        val result = ai.generate(
+            ChatGenerationRequest(
+                message = "Hi",
+                languageTag = "en",
+                history = emptyList(),
+                matchedResident = null,
+                facts = emptyList(),
+            ),
+        ) { partial ->
+            partials += partial.text
+        }
+
+        assertEquals(listOf("Short hello."), partials)
+        assertEquals("Short hello.\n\nLonger hello with detail.", result.text)
         client.close()
     }
 
@@ -229,6 +325,16 @@ class ChatServiceTest {
 
         assertEquals("Let's practise.", result.text)
         assertEquals("Tôi", result.languageStudy?.tokens?.single()?.text)
+    }
+
+    @Test
+    fun `Qwen structured reply parser accepts text-only short reply`() {
+        val result = QwenStructuredReplyParser.parse("""{"text":"Quick helpful answer."}""")
+
+        assertEquals("Quick helpful answer.", result.text)
+        assertNull(result.languageStudy)
+        assertNull(result.factId)
+        assertEquals(emptyList(), result.followUpQuestions)
     }
 
     @Test
@@ -316,11 +422,20 @@ class ChatServiceTest {
 
 private class FakeChatAiClient(
     private val reply: GeneratedChatReply,
+    private val partialReply: GeneratedChatReply? = null,
 ) : ChatAiClient {
     var lastRequest: ChatGenerationRequest? = null
+    var partialEmissions = 0
 
-    override suspend fun generate(request: ChatGenerationRequest): GeneratedChatReply {
+    override suspend fun generate(
+        request: ChatGenerationRequest,
+        onPartial: suspend (GeneratedChatReply) -> Unit,
+    ): GeneratedChatReply {
         lastRequest = request
+        if (partialReply != null) {
+            partialEmissions += 1
+            onPartial(partialReply)
+        }
         return reply
     }
 }

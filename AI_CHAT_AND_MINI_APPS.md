@@ -130,6 +130,7 @@ Kotlin serialization adds the subtype discriminator to JSON automatically. Becau
 ```http
 POST /api/chat
 Content-Type: application/json
+Accept: application/x-ndjson
 
 {
   "conversationId": "optional-existing-id",
@@ -142,6 +143,8 @@ The browser gets the backend base URL through `ImageApi.apiBaseUrl`; production 
 
 The first request omits `conversationId`. The server generates one, and the browser reuses it for later turns in the same screen session.
 
+When `Accept: application/x-ndjson` is set, the response is a stream of JSON lines (`ChatResponse`). The first line may be a fast partial reply (`partial: true`); the last line is always the final merged reply (`partial: false`). Without that Accept header the endpoint still returns a single final JSON object for simpler clients/tests.
+
 ### 2. Server orchestration
 
 `ChatService.send` performs the authoritative workflow:
@@ -151,11 +154,12 @@ The first request omits `conversationId`. The server generates one, and the brow
 3. Persist the user's message.
 4. Resolve the active `Language` from `languageTag`.
 5. Match a resident deterministically by a case-insensitive name or address mention.
-6. Give Qwen recent history, trusted resident context, and fact summaries.
-7. Parse Qwen's structured reply.
-8. Resolve any model-selected trusted ID against the server catalog.
-9. Build at most one mini app.
-10. Persist and return the AI message.
+6. Fire short + long Qwen system-prompt calls in parallel (same history/context).
+7. Optionally emit the first successful reply as a partial update for immediate UI paint.
+8. Merge texts as `short\n\nlong` when both succeed; structured fields prefer the long reply.
+9. Resolve any model-selected trusted ID against the server catalog.
+10. Build at most one mini app (language-study/fact wait for the final reply).
+11. Persist and return only the final AI message.
 
 The mini-app precedence is important:
 
@@ -187,8 +191,11 @@ Adding a sealed subtype will force this dispatch to be updated at compile time. 
 - Model: `qwen3.7-flash` by default for chat and lighter study tasks; `qwen3-max-preview` only for heavy study-session breakdown (skeleton + per-sentence dissection).
 - `response_format.type`: `json_object`.
 - Temperature: `0.4`.
-- A system message containing the active language, response schema, mini-app instructions, and trusted context.
-- Up to the last 20 persisted messages, mapped to Qwen `user` and `assistant` roles.
+- **Two parallel completions per turn:**
+  - **Short system prompt:** asks for a 1–3 sentence helpful answer so something can paint ASAP.
+  - **Long system prompt:** full assistant instructions (language study, facts, EMP lexicon, follow-ups, trusted context).
+- Up to the last 20 persisted messages, mapped to Qwen `user` and `assistant` roles on both calls.
+- Final user-visible text merges short then long with a blank line between them when both succeed.
 
 The current model-level reply schema is:
 
