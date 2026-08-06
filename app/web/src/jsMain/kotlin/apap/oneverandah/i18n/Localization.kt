@@ -416,7 +416,7 @@ private val English = UiStrings(
         "What quiet drama can I try at One Verandah today?",
         "Help me turn a plain request into Earth-Mystic Parlance",
     ),
-    phrasesBlurb = "Use Earth-Mystic Parlance everyday to enhance your experience at One Verandah.",
+    phrasesBlurb = "Use Earth-Mystic Parlance invitations to enhance your community at One Verandah.",
     phrasesAllLocations = "All places",
     phrasesLoading = "Loading phrases…",
     phrasesEmpty = "No phrases yet. Check back soon.",
@@ -700,7 +700,7 @@ private val Vietnamese = UiStrings(
         "Hôm nay One Verandah có phép màu nào dịu dàng?",
         "Giúp tôi biến lời nhờ vả thành Lời Huyền Linh",
     ),
-    phrasesBlurb = "Dùng Lời Huyền Linh mỗi ngày để nâng tầm trải nghiệm tại One Verandah.",
+    phrasesBlurb = "Dùng những lời mời Lời Huyền Linh để nâng tầm cộng đồng của bạn tại One Verandah.",
     phrasesAllLocations = "Mọi nơi",
     phrasesLoading = "Đang tải câu nói…",
     phrasesEmpty = "Chưa có câu nói. Hãy quay lại sau.",
@@ -983,7 +983,7 @@ private val Chinese = UiStrings(
         "教我一句实用的越南语",
         "今天在 One Verandah 可以做什么？",
     ),
-    phrasesBlurb = "每天使用地球秘语，让 One Verandah 的生活更美好。",
+    phrasesBlurb = "使用地球秘语邀请，增强 One Verandah 的社区。",
     phrasesAllLocations = "全部地点",
     phrasesLoading = "正在加载短语…",
     phrasesEmpty = "暂无短语，请稍后再来。",
@@ -1266,7 +1266,7 @@ private val Japanese = UiStrings(
         "役立つベトナム語のフレーズを教えて",
         "今日 One Verandah でできることは？",
     ),
-    phrasesBlurb = "Earth-Mystic Parlance を毎日使い、One Verandah での体験をより豊かに。",
+    phrasesBlurb = "Earth-Mystic Parlance の招待を使い、One Verandah のコミュニティをより豊かに。",
     phrasesAllLocations = "すべての場所",
     phrasesLoading = "フレーズを読み込み中…",
     phrasesEmpty = "フレーズはまだありません。",
@@ -1549,7 +1549,7 @@ private val Korean = UiStrings(
         "유용한 베트남어 표현을 가르쳐 주세요",
         "오늘 One Verandah에서 무엇을 할 수 있나요?",
     ),
-    phrasesBlurb = "Earth-Mystic Parlance를 매일 사용해 One Verandah 경험을 더 풍요롭게 하세요.",
+    phrasesBlurb = "Earth-Mystic Parlance 초대를 사용해 One Verandah 커뮤니티를 더 풍요롭게 하세요.",
     phrasesAllLocations = "모든 장소",
     phrasesLoading = "문구 불러오는 중…",
     phrasesEmpty = "아직 문구가 없습니다.",
@@ -1832,7 +1832,7 @@ private val Russian = UiStrings(
         "Научи меня полезной вьетнамской фразе",
         "Что можно сделать в One Verandah сегодня?",
     ),
-    phrasesBlurb = "Используйте Earth-Mystic Parlance каждый день, чтобы обогатить жизнь в One Verandah.",
+    phrasesBlurb = "Используйте приглашения Earth-Mystic Parlance, чтобы укрепить сообщество One Verandah.",
     phrasesAllLocations = "Все места",
     phrasesLoading = "Загрузка фраз…",
     phrasesEmpty = "Фраз пока нет. Загляните позже.",
@@ -2009,7 +2009,7 @@ fun stringsFor(language: Language): UiStrings = when (language) {
 
 /** Returns the flag emoji used to represent [language] in the UI. */
 fun flagFor(language: Language): String = when (language) {
-    Language.ENGLISH -> "\uD83C\uDDEC\uD83C\uDDE7" // 🇬🇧
+    Language.ENGLISH -> "\uD83C\uDDFA\uD83C\uDDF8" // 🇬🇧
     Language.VIETNAMESE -> "\uD83C\uDDFB\uD83C\uDDF3" // 🇻🇳
     Language.CHINESE -> "\uD83C\uDDE8\uD83C\uDDF3" // 🇨🇳
     Language.JAPANESE -> "\uD83C\uDDEF\uD83C\uDDF5" // 🇯🇵

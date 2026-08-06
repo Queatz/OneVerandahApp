@@ -392,6 +392,7 @@ object Styles {
             --md-banner-fade: #FEF7FF;
             --md-shadow: rgba(0, 0, 0, 0.15);
             --md-shadow-light: rgba(255, 255, 255, 0.6);
+            --md-sys-color-scrim: rgba(0, 0, 0, 0.4);
         }
 
         @media (prefers-color-scheme: dark) {
@@ -411,6 +412,7 @@ object Styles {
                 --md-banner-fade: #141218;
                 --md-shadow: rgba(0, 0, 0, 0.6);
                 --md-shadow-light: rgba(255, 255, 255, 0.6);
+                --md-sys-color-scrim: rgba(0, 0, 0, 0.8);
             }
         }
 
@@ -527,10 +529,11 @@ object Styles {
             flex-direction: column;
             padding: 12px;
             overflow-y: auto;
+            z-index: 1;
             background-color: var(--md-sys-color-surface);
             color: var(--md-sys-color-on-surface);
             border-right: 1px solid color-mix(in srgb, var(--md-sys-color-outline) 28%, transparent);
-            box-shadow: 8px 0 24px -20px var(--md-shadow);
+            box-shadow: 8px 0 24px -12px var(--md-shadow);
             -ms-overflow-style: none;
             scrollbar-width: none;
         }
@@ -557,7 +560,6 @@ object Styles {
         }
         .${appShell}.${layoutDesktop} .${homeExploreActions} {
             grid-template-columns: repeat(2, minmax(0, 1fr));
-            max-width: 720px;
         }
         /* Bottom sheets stay docked to the bottom edge on desktop (no floating
            centered dialog). Square off the bottom corners so the sheet meets
@@ -1422,16 +1424,20 @@ object Styles {
         .${dialogScrim} {
             position: absolute;
             inset: 0;
-            background: rgba(0, 0, 0, 0.4);
+            background: var(--md-sys-color-scrim);
             display: flex;
             align-items: flex-end;
             justify-content: center;
             opacity: 0;
             pointer-events: none;
-            transition: opacity 0.25s ease;
+            transition: opacity 0.25s ease, filter 0.25s ease;
             z-index: 40;
         }
-        .${dialogScrim}.${dialogScrimVisible} { opacity: 1; pointer-events: auto; }
+        .${dialogScrim}.${dialogScrimVisible} {
+            opacity: 1;
+            pointer-events: auto;
+            backdrop-filter: blur(12px);
+        }
         .${dialogSheet} {
             width: 100%;
             background-color: var(--md-sys-color-surface);
@@ -1929,6 +1935,7 @@ object Styles {
             font: inherit;
             cursor: pointer;
             min-width: 0;
+            background-image: linear-gradient(to bottom right, #ffffff1c, transparent);
         }
         .${homeExploreCard} > div {
             display: flex;
@@ -2382,6 +2389,7 @@ object Styles {
             color: var(--md-sys-color-on-surface);
             font: inherit;
             cursor: pointer;
+            background-image: linear-gradient(to bottom right, #ffffff1c, transparent);
         }
         .${chatExploreCard} > div {
             display: flex;
