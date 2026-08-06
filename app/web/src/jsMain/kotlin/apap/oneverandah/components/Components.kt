@@ -7,6 +7,7 @@ import androidx.compose.runtime.mutableStateOf
 import androidx.compose.runtime.remember
 import androidx.compose.runtime.setValue
 import apap.oneverandah.Styles
+import apap.oneverandah.state.LayoutModeStore
 import apap.oneverandah.state.Toaster
 import apap.oneverandah.i18n.Localization
 import apap.oneverandah.i18n.flagFor
@@ -87,7 +88,8 @@ fun CoverImage(url: String) {
  * Top app bar.
  *
  * @param title optional title text (omitted on the booking screen, like the prototype).
- * @param onBack when provided, shows a back arrow that invokes it; otherwise a menu icon.
+ * @param onBack when provided, shows a back arrow that invokes it.
+ * @param onMenu when provided (mobile layout), shows a hamburger that opens the drawer.
  * @param onLanguageClick opens the language selection dialog (replaces cycling toggle).
  */
 @Composable
@@ -103,23 +105,25 @@ fun AppBar(
     val strings = Localization.strings
     val router = Router.current
     Div(attrs = { classes(Styles.appBar) }) {
-        if (onBack != null) {
-            Span(attrs = {
+        when {
+            onBack != null -> Span(attrs = {
                 classes(Styles.materialSymbols, Styles.appBarIcon)
                 attr("role", "button")
                 attr("aria-label", strings.back)
                 onClick { onBack() }
             }) { Text("arrow_back") }
-        } else {
-            Span(attrs = {
+            onMenu != null -> Span(attrs = {
                 classes(Styles.materialSymbols, Styles.appBarIcon)
                 attr("role", "button")
                 attr("aria-label", strings.menu)
-                onClick { onMenu?.invoke() }
+                onClick { onMenu() }
             }) { Text("menu") }
         }
         if (title != null) {
             H1(attrs = { classes(Styles.appBarTitle) }) { Text(title) }
+        } else {
+            // Keep trailing actions right-aligned when there is no title.
+            Div(attrs = { classes(Styles.appBarTitle) })
         }
         appBarAction?.invoke()
         if (showPhrasesAction) {
@@ -150,8 +154,67 @@ fun AppBar(
 }
 
 /**
+ * Shared navigation destinations + language list used by both the mobile
+ * overlay drawer and the permanent desktop sidebar.
+ */
+@Composable
+private fun NavMenuItems(
+    onHome: (() -> Unit)? = null,
+    onNavigate: () -> Unit = {},
+) {
+    val strings = Localization.strings
+    val router = Router.current
+    val preferDesktop = LayoutModeStore.preference == LayoutModeStore.Preference.DESKTOP
+    // Only offer the layout switcher when the viewport is wide enough for desktop.
+    val showLayoutToggle = LayoutModeStore.viewportWide
+
+    DrawerItem("home", strings.menuHome) {
+        onNavigate()
+        if (onHome != null) onHome() else router.navigate("/")
+    }
+    DrawerItem("chat_bubble", strings.chatTitle) {
+        onNavigate()
+        router.navigate("/chat")
+    }
+    DrawerItem("import_contacts", strings.phrasesTitle) {
+        onNavigate()
+        router.navigate("/phrases")
+    }
+    DrawerItem("auto_stories", strings.storiesTitle) {
+        onNavigate()
+        router.navigate("/stories")
+    }
+    DrawerItem("info", strings.menuAbout) {
+        onNavigate()
+        router.navigate("/about")
+    }
+    DrawerItem("add_business", strings.helpListService) {
+        onNavigate()
+        router.navigate("/list")
+    }
+    DrawerItem("help_outline", strings.menuHelp) {
+        onNavigate()
+        router.navigate("/help")
+    }
+    if (showLayoutToggle) {
+        DrawerItem(
+            icon = if (preferDesktop) "smartphone" else "computer",
+            label = if (preferDesktop) strings.layoutSwitchToMobile else strings.layoutSwitchToDesktop,
+        ) {
+            LayoutModeStore.toggle()
+            // Keep the permanent sidebar open; close the mobile drawer after toggling.
+            if (preferDesktop) onNavigate()
+        }
+    }
+
+    Div(attrs = { classes(Styles.drawerSection) }) { Text(strings.menuLanguage) }
+    LanguageOptions(onSelected = { /* stay open so user can compare */ })
+}
+
+/**
  * Slide-in navigation drawer with a few basic app options and a language
  * selector (with flags). Visibility is animated via CSS based on [open].
+ * Used only in the mobile / phone-frame layout.
  */
 @Composable
 fun NavigationDrawer(
@@ -160,7 +223,6 @@ fun NavigationDrawer(
     onHome: (() -> Unit)? = null,
 ) {
     val strings = Localization.strings
-    val router = Router.current
 
     // Scrim behind the drawer; clicking it closes the drawer.
     Div(attrs = {
@@ -183,38 +245,25 @@ fun NavigationDrawer(
                 onClick { onClose() }
             }) { Text("close") }
         }
+        NavMenuItems(onHome = onHome, onNavigate = onClose)
+    }
+}
 
-        DrawerItem("home", strings.menuHome) {
-            onClose()
-            if (onHome != null) onHome() else router.navigate("/")
-        }
-        DrawerItem("import_contacts", strings.phrasesTitle) {
-            onClose()
-            router.navigate("/phrases")
-        }
-        DrawerItem("auto_stories", strings.storiesTitle) {
-            onClose()
-            router.navigate("/stories")
-        }
-        DrawerItem("chat_bubble", strings.chatTitle) {
-            onClose()
-            router.navigate("/chat")
-        }
-        DrawerItem("info", strings.menuAbout) {
-            onClose()
-            router.navigate("/about")
-        }
-        DrawerItem("add_business", strings.helpListService) {
-            onClose()
-            router.navigate("/list")
-        }
-        DrawerItem("help_outline", strings.menuHelp) {
-            onClose()
-            router.navigate("/help")
-        }
-
-        Div(attrs = { classes(Styles.drawerSection) }) { Text(strings.menuLanguage) }
-        LanguageOptions(onSelected = { /* stay open so user can compare */ })
+/**
+ * Permanent left-hand navigation rail used in desktop layout.
+ */
+@Composable
+fun NavigationSidebar(
+    onHome: (() -> Unit)? = null,
+) {
+    val strings = Localization.strings
+    Div(attrs = {
+        classes(Styles.sidebar)
+        attr("role", "navigation")
+        attr("aria-label", strings.menu)
+    }) {
+        // Title is already shown in the desktop top app bar — skip the duplicate header.
+        NavMenuItems(onHome = onHome)
     }
 }
 
@@ -273,8 +322,12 @@ private fun DrawerItem(icon: String, label: String, onClick: () -> Unit) {
 }
 
 /**
- * Page scaffold: phone-like frame containing an app bar, an optional banner
- * image area, a scrollable content region and an optional sticky footer.
+ * Page scaffold: app chrome containing an app bar, an optional banner image
+ * area, a scrollable content region and an optional sticky footer.
+ *
+ * On wide viewports with desktop preference, the shell is full-width with a
+ * permanent left sidebar. Otherwise it uses the phone-frame mobile chrome
+ * (including when the user forces mobile layout on desktop).
  */
 @Composable
 fun Scaffold(
@@ -294,78 +347,141 @@ fun Scaffold(
 ) {
     var drawerOpen by remember { mutableStateOf(false) }
     var languageDialogOpen by remember { mutableStateOf(false) }
-    Div(attrs = { classes(Styles.appShell) }) {
+
+    // Read state fields directly so Compose tracks preference + viewport.
+    val viewportWide = LayoutModeStore.viewportWide
+    val layoutPreference = LayoutModeStore.preference
+    val isDesktop = viewportWide && layoutPreference == LayoutModeStore.Preference.DESKTOP
+
+    LaunchedEffect(Unit) {
+        LayoutModeStore.ensureViewportListener()
+    }
+    LaunchedEffect(isDesktop) {
+        if (isDesktop) drawerOpen = false
+    }
+
+    Div(attrs = {
+        classes(Styles.appShell)
+        if (isDesktop) classes(Styles.layoutDesktop) else classes(Styles.layoutMobile)
+    }) {
         Div(attrs = { classes(Styles.appFrame) }) {
             AppBar(
                 title = title,
                 onBack = onBack,
-                onMenu = { drawerOpen = true },
+                // Hamburger only in mobile layout; desktop keeps the rail open.
+                onMenu = if (isDesktop) null else ({ drawerOpen = true }),
                 onLanguageClick = { languageDialogOpen = true },
                 showChatAction = showChatAction,
                 showPhrasesAction = showPhrasesAction,
                 appBarAction = appBarAction,
             )
-            if (showBanner) {
-                Div(attrs = {
-                    classes(Styles.banner)
-                    if (bannerImageUrl != null) {
-                        style { property("background-image", "url('$bannerImageUrl')") }
-                    }
-                })
-            }
-            Div(attrs = {
-                classes(Styles.content)
-                if (showBanner) {
-                    classes(Styles.contentHasBanner)
-                }
-                ref { element ->
-                    val frame = element.parentElement as? HTMLElement
-                    val apply = {
-                        val scrolled = element.scrollTop > 0
-                        if (scrolled) {
-                            frame?.style?.setProperty("--appbar-radius", "16px")
-                        } else {
-                            frame?.style?.setProperty("--appbar-radius", "28px")
-                        }
-                        if (showBanner) {
-                            val fraction = (element.scrollTop / 168.0).coerceIn(0.0, 1.0)
-                            frame?.style?.setProperty("--banner-scroll", fraction.toString())
-                        }
-                        if (scrollKey != null) scrollPositions[scrollKey] = element.scrollTop
-                    }
-                    if (scrollKey != null) {
-                        element.scrollTop = scrollPositions[scrollKey] ?: 0.0
-                    }
-                    apply()
-                    val listener: (Event) -> Unit = { apply() }
-                    element.addEventListener("scroll", listener)
-                    onDispose {
-                        element.removeEventListener("scroll", listener)
-                        frame?.style?.removeProperty("--appbar-radius")
-                        if (showBanner) {
-                            frame?.style?.removeProperty("--banner-scroll")
-                        }
+
+            if (isDesktop) {
+                Div(attrs = { classes(Styles.appBody) }) {
+                    NavigationSidebar(onHome = onHome)
+                    Div(attrs = { classes(Styles.appMain) }) {
+                        ScaffoldMainColumn(
+                            showBanner = showBanner,
+                            bannerImageUrl = bannerImageUrl,
+                            footer = footer,
+                            lockScroll = lockScroll,
+                            scrollKey = scrollKey,
+                            content = content,
+                        )
                     }
                 }
-                if (lockScroll) classes(Styles.contentLocked)
-            }, content = content)
-            if (footer != null) {
-                Div(attrs = { classes(Styles.footer) }, content = footer)
+            } else {
+                ScaffoldMainColumn(
+                    showBanner = showBanner,
+                    bannerImageUrl = bannerImageUrl,
+                    footer = footer,
+                    lockScroll = lockScroll,
+                    scrollKey = scrollKey,
+                    content = content,
+                )
+                NavigationDrawer(
+                    open = drawerOpen,
+                    onClose = { drawerOpen = false },
+                    onHome = onHome,
+                )
             }
-            // Overlays (e.g. success animation) live inside the frame so they
-            // cover only the phone surface, not the whole desktop viewport.
+
+            // Overlays live inside the frame so they cover the app surface
+            // (phone chrome or full desktop shell), not the page outside it.
             overlay?.invoke()
             ToastHost()
-            NavigationDrawer(
-                open = drawerOpen,
-                onClose = { drawerOpen = false },
-                onHome = onHome,
-            )
             LanguageDialog(
                 visible = languageDialogOpen,
                 onDismiss = { languageDialogOpen = false },
             )
         }
+    }
+}
+
+/**
+ * Banner + scrollable content + optional footer. Used as the full mobile body
+ * and as the main column beside the desktop sidebar.
+ */
+@Composable
+private fun ScaffoldMainColumn(
+    showBanner: Boolean,
+    bannerImageUrl: String?,
+    footer: (ContentBuilder<HTMLElement>)?,
+    lockScroll: Boolean,
+    scrollKey: String?,
+    content: ContentBuilder<HTMLDivElement>,
+) {
+    if (showBanner) {
+        Div(attrs = {
+            classes(Styles.banner)
+            if (bannerImageUrl != null) {
+                style { property("background-image", "url('$bannerImageUrl')") }
+            }
+        })
+    }
+    Div(attrs = {
+        classes(Styles.content)
+        if (showBanner) {
+            classes(Styles.contentHasBanner)
+        }
+        ref { element ->
+            // Prefer the app frame for CSS custom properties so app-bar radius
+            // and banner dimming stay frame-scoped in both layouts.
+            val host = generateSequence(element.parentElement) { it.parentElement }
+                .filterIsInstance<HTMLElement>()
+                .firstOrNull { it.classList.contains(Styles.appFrame) }
+                ?: (element.parentElement as? HTMLElement)
+            val apply = {
+                val scrolled = element.scrollTop > 0
+                if (scrolled) {
+                    host?.style?.setProperty("--appbar-radius", "16px")
+                } else {
+                    host?.style?.setProperty("--appbar-radius", "28px")
+                }
+                if (showBanner) {
+                    val fraction = (element.scrollTop / 168.0).coerceIn(0.0, 1.0)
+                    host?.style?.setProperty("--banner-scroll", fraction.toString())
+                }
+                if (scrollKey != null) scrollPositions[scrollKey] = element.scrollTop
+            }
+            if (scrollKey != null) {
+                element.scrollTop = scrollPositions[scrollKey] ?: 0.0
+            }
+            apply()
+            val listener: (Event) -> Unit = { apply() }
+            element.addEventListener("scroll", listener)
+            onDispose {
+                element.removeEventListener("scroll", listener)
+                host?.style?.removeProperty("--appbar-radius")
+                if (showBanner) {
+                    host?.style?.removeProperty("--banner-scroll")
+                }
+            }
+        }
+        if (lockScroll) classes(Styles.contentLocked)
+    }, content = content)
+    if (footer != null) {
+        Div(attrs = { classes(Styles.footer) }, content = footer)
     }
 }
 

@@ -18,6 +18,11 @@ object Styles {
     // App chrome
     const val appShell = "app-shell"
     const val appFrame = "app-frame"
+    const val appBody = "app-body"
+    const val appMain = "app-main"
+    const val sidebar = "sidebar"
+    const val layoutDesktop = "layout-desktop"
+    const val layoutMobile = "layout-mobile"
     const val appBar = "app-bar"
     const val appBarIcon = "app-bar-icon"
     const val appBarTitle = "app-bar-title"
@@ -437,7 +442,8 @@ object Styles {
             width: 100%;
         }
 
-        /* Phone-like frame on desktop, full-bleed on small screens. */
+        /* Phone-like frame by default / in mobile layout; full-bleed on small
+           screens. Desktop layout overrides below. */
         .${appFrame} {
             position: relative;
             display: flex;
@@ -462,14 +468,123 @@ object Styles {
             overflow: hidden;
         }
 
+        /* Phone-frame chrome when the user is in mobile layout on a wide screen. */
         @media (min-width: 600px) {
-            .${appShell} { align-items: center; padding: 32px 16px; }
-            .${appFrame} {
+            .${appShell}.${layoutMobile} { align-items: center; padding: 32px 16px; }
+            .${appShell}.${layoutMobile} .${appFrame} {
                 min-height: 0;
                 max-height: calc(100vh - 64px);
                 border-radius: 28px;
                 box-shadow: 0 10px 30px var(--md-shadow);
             }
+        }
+
+        /* ---- Desktop shell ----
+           Full-width top bar, permanent left sidebar, main column fills the
+           leftover space with page content centered at max-width 800px. */
+        .${appShell}.${layoutDesktop} {
+            align-items: stretch;
+            padding: 0;
+            min-height: 100vh;
+            min-height: 100dvh;
+        }
+        .${appShell}.${layoutDesktop} .${appFrame} {
+            max-width: none;
+            width: 100%;
+            height: 100vh;
+            height: 100dvh;
+            max-height: none;
+            border-radius: 0;
+            box-shadow: none;
+        }
+        .${appShell}.${layoutDesktop} .${appBar} {
+            border-radius: 0;
+            /* Flat full-width bar; ignore phone-frame scroll radius. */
+            --appbar-radius: 0px;
+        }
+        .${appBody} {
+            display: flex;
+            flex: 1 1 auto;
+            min-height: 0;
+            min-width: 0;
+            overflow: hidden;
+        }
+        .${appMain} {
+            position: relative;
+            display: flex;
+            flex-direction: column;
+            flex: 1 1 auto;
+            min-width: 0;
+            min-height: 0;
+            overflow: hidden;
+        }
+        .${sidebar} {
+            flex: 0 0 280px;
+            width: 280px;
+            max-width: 32vw;
+            min-height: 0;
+            display: flex;
+            flex-direction: column;
+            padding: 12px;
+            overflow-y: auto;
+            background-color: var(--md-sys-color-surface);
+            color: var(--md-sys-color-on-surface);
+            border-right: 1px solid color-mix(in srgb, var(--md-sys-color-outline) 28%, transparent);
+            box-shadow: 8px 0 24px -20px var(--md-shadow);
+            -ms-overflow-style: none;
+            scrollbar-width: none;
+        }
+        .${sidebar}::-webkit-scrollbar { display: none; }
+        /* Center main column content/footer within a 800px readable measure. */
+        .${appShell}.${layoutDesktop} .${appMain} > .${content},
+        .${appShell}.${layoutDesktop} .${appMain} > .${footer} {
+            padding-left: max(24px, calc((100% - 800px) / 2));
+            padding-right: max(24px, calc((100% - 800px) / 2));
+        }
+        /* Banner stays behind the main column only (not under the sidebar). */
+        .${appShell}.${layoutDesktop} .${appMain} > .${banner} {
+            left: 0;
+            right: 0;
+        }
+        /* Mild density bump so home grids use the wider measure. */
+        .${appShell}.${layoutDesktop} .${grid} {
+            grid-template-columns: repeat(4, 1fr);
+        }
+        @media (min-width: 1280px) {
+            .${appShell}.${layoutDesktop} .${grid} {
+                grid-template-columns: repeat(5, 1fr);
+            }
+        }
+        .${appShell}.${layoutDesktop} .${homeExploreActions} {
+            grid-template-columns: repeat(2, minmax(0, 1fr));
+            max-width: 720px;
+        }
+        /* Bottom sheets stay docked to the bottom edge on desktop (no floating
+           centered dialog). Square off the bottom corners so the sheet meets
+           the frame edge cleanly. */
+        .${appShell}.${layoutDesktop} .${dialogScrim} {
+            align-items: flex-end;
+            justify-content: center;
+            padding: 0;
+        }
+        .${appShell}.${layoutDesktop} .${dialogSheet} {
+            width: 100%;
+            max-width: 800px;
+            max-height: 90%;
+            border-radius: 28px 28px 0 0;
+            transform: translateY(100%);
+        }
+        .${appShell}.${layoutDesktop} .${dialogScrim}.${dialogScrimVisible} .${dialogSheet} {
+            transform: translateY(0);
+        }
+        .${appShell}.${layoutDesktop} .${savedPanel} {
+            left: 50%;
+            right: auto;
+            width: min(800px, 100%);
+            transform: translateX(-50%);
+            top: 12%;
+            border-radius: 24px 24px 0 0;
+            bottom: 0;
         }
         
         /* Spacer */
