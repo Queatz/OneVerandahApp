@@ -258,6 +258,25 @@ object Styles {
     const val homeExploreTitle = "home-explore-title"
     const val homeExploreSub = "home-explore-sub"
 
+    // Home services feed / category toggle
+    const val homeBrowseToggle = "home-browse-toggle"
+    const val serviceFeed = "service-feed"
+    const val serviceFeedSentinel = "service-feed-sentinel"
+    const val serviceFeedLoading = "service-feed-loading"
+    const val serviceCard = "service-card"
+    const val serviceCardCover = "service-card-cover"
+    const val serviceCardCovered = "service-card-covered"
+    const val serviceCardCoverFallback = "service-card-cover-fallback"
+    const val serviceCardBody = "service-card-body"
+    const val serviceCardTitle = "service-card-title"
+    const val serviceCardPrice = "service-card-price"
+    const val serviceCardProvider = "service-card-provider"
+    const val serviceCardProviderLabel = "service-card-provider-label"
+    const val serviceCardProviderName = "service-card-provider-name"
+    const val serviceCardDescription = "service-card-description"
+    const val serviceCardRating = "service-card-rating"
+    const val serviceCardAction = "service-card-action"
+
     // Phrases / Earth-Mystical Parlance
     const val phraseCard = "phrase-card"
     const val phraseCardCovered = "phrase-card-covered"
@@ -2058,6 +2077,140 @@ object Styles {
             -webkit-line-clamp: 2;
             -webkit-box-orient: vertical;
             overflow: hidden;
+        }
+
+        /* Home browse mode toggle (Services feed vs Categories) */
+        .${homeBrowseToggle} {
+            display: flex;
+            flex-wrap: wrap;
+            gap: 8px;
+            margin: 4px 0 16px 0;
+        }
+
+        /* Infinite services feed */
+        .${serviceFeed} {
+            display: flex;
+            flex-direction: column;
+            gap: 16px;
+            margin-bottom: 8px;
+        }
+        .${serviceFeedSentinel} {
+            min-height: 1px;
+            width: 100%;
+        }
+        .${serviceFeedLoading} {
+            display: flex;
+            align-items: center;
+            justify-content: center;
+            gap: 8px;
+            padding: 12px 8px 4px 8px;
+            color: var(--md-sys-color-on-surface-variant);
+            font-size: 13px;
+            font-weight: 600;
+        }
+        .${serviceFeedLoading} .${materialSymbols} {
+            font-size: 18px;
+            animation: spin 1.1s linear infinite;
+        }
+
+        /* Service feed card (content-post style) */
+        .${serviceCard} {
+            background-color: var(--md-sys-color-surface-variant);
+            border-radius: 28px;
+            overflow: hidden;
+            border: 1px solid #ffffff16;
+            box-shadow: 0 4px 8px -8px var(--md-shadow-light) inset;
+            color: var(--md-sys-color-on-surface);
+            transition: box-shadow 0.2s, transform 0.1s;
+        }
+        .${serviceCard}:hover {
+            box-shadow: 0 0 16px -4px #ffffff36;
+        }
+        .${serviceCardCover} {
+            position: relative;
+            width: 100%;
+            aspect-ratio: 16 / 10;
+            min-height: 160px;
+            background: linear-gradient(
+                135deg,
+                color-mix(in srgb, var(--md-sys-color-primary) 22%, var(--md-sys-color-surface-variant)),
+                var(--md-sys-color-surface-variant)
+            );
+            overflow: hidden;
+        }
+        .${serviceCardCover}.${serviceCardCovered} {
+            background-color: var(--md-sys-color-surface-variant);
+        }
+        .${serviceCardCoverFallback} {
+            position: absolute;
+            inset: 0;
+            display: flex;
+            align-items: center;
+            justify-content: center;
+        }
+        .${serviceCardCoverFallback} .${materialSymbols} {
+            font-size: 56px;
+            color: var(--md-sys-color-primary);
+        }
+        .${serviceCardCover} .${coverImageVeiled} {
+            border-radius: 0;
+            background-color: color-mix(in srgb, var(--md-sys-color-surface) 18%, transparent);
+        }
+        .${serviceCardBody} {
+            display: flex;
+            flex-direction: column;
+            gap: 10px;
+            padding: 16px 16px 14px 16px;
+        }
+        .${serviceCardTitle} {
+            margin: 0;
+            font-size: 20px;
+            font-weight: 700;
+            line-height: 1.25;
+        }
+        .${serviceCardPrice} {
+            margin: 0;
+            font-size: 15px;
+            font-weight: 700;
+            color: var(--md-sys-color-primary);
+        }
+        .${serviceCardProvider} {
+            display: inline-flex;
+            align-items: center;
+            flex-wrap: wrap;
+            gap: 8px;
+            font-size: 14px;
+        }
+        .${serviceCardProviderLabel} {
+            font-weight: 700;
+            color: var(--md-sys-color-on-surface-variant);
+        }
+        .${serviceCardProviderName} {
+            font-weight: 700;
+            color: var(--md-sys-color-primary);
+        }
+        .${serviceCardDescription} {
+            margin: 0;
+            font-size: 14px;
+            line-height: 1.45;
+            color: var(--md-sys-color-on-surface-variant);
+            display: -webkit-box;
+            -webkit-line-clamp: 3;
+            -webkit-box-orient: vertical;
+            overflow: hidden;
+        }
+        .${serviceCardRating} {
+            margin: 0;
+            font-size: 14px;
+            font-weight: 700;
+            color: var(--md-sys-color-primary);
+        }
+        .${serviceCardAction} {
+            margin-top: 4px;
+        }
+        .${serviceCardAction} .${btnPrimary} {
+            padding: 14px 20px;
+            font-size: 15px;
         }
 
         /* Home "Pinned & Recent" section */
