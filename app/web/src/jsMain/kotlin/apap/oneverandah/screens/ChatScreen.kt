@@ -1355,48 +1355,46 @@ fun ChatScreen(
                     onDismiss = { showProviderDetails = false },
                 )
             }
-            if (savedPanelOpen) {
-                SavedMessagesPanel(
-                    items = savedItems,
-                    loading = savedLoading,
-                    strings = strings,
-                    onClose = { savedPanelOpen = false },
-                    onSend = { item ->
+            SavedMessagesPanel(
+                visible = savedPanelOpen,
+                items = savedItems,
+                loading = savedLoading,
+                strings = strings,
+                onClose = { savedPanelOpen = false },
+                onSend = { item ->
+                    savedPanelOpen = false
+                    startFreshConversation(item.text, autoSend = true)
+                },
+                onEdit = { item ->
+                    savedPanelOpen = false
+                    startFreshConversation(item.text, autoSend = false)
+                },
+                onRemove = ::removeSaved,
+                onResidentSelected = { card ->
+                    val provider = Catalog.services.asSequence()
+                        .map { it.provider }
+                        .firstOrNull { it.id == card.residentId }
+                    if (provider != null) {
                         savedPanelOpen = false
-                        startFreshConversation(item.text, autoSend = true)
-                    },
-                    onEdit = { item ->
-                        savedPanelOpen = false
-                        startFreshConversation(item.text, autoSend = false)
-                    },
-                    onRemove = ::removeSaved,
-                    onResidentSelected = { card ->
-                        val provider = Catalog.services.asSequence()
-                            .map { it.provider }
-                            .firstOrNull { it.id == card.residentId }
-                        if (provider != null) {
-                            savedPanelOpen = false
-                            if (provider == selectedProvider) {
-                                showProviderDetails = true
-                            } else {
-                                showProviderDetails = false
-                                selectedProvider = provider
-                            }
+                        if (provider == selectedProvider) {
+                            showProviderDetails = true
+                        } else {
+                            showProviderDetails = false
+                            selectedProvider = provider
                         }
-                    },
-                )
-            }
-            if (studySessionsPanelOpen) {
-                StudySessionsPanel(
-                    items = studySessionItems,
-                    loading = studySessionsLoading,
-                    strings = strings,
-                    onClose = { studySessionsPanelOpen = false },
-                    onStart = ::startStudyFromText,
-                    onOpen = ::openSavedStudySession,
-                    onRemove = ::removeStudySession,
-                )
-            }
+                    }
+                },
+            )
+            StudySessionsPanel(
+                visible = studySessionsPanelOpen,
+                items = studySessionItems,
+                loading = studySessionsLoading,
+                strings = strings,
+                onClose = { studySessionsPanelOpen = false },
+                onStart = ::startStudyFromText,
+                onOpen = ::openSavedStudySession,
+                onRemove = ::removeStudySession,
+            )
             StudySessionDialog(
                 visible = studySessionVisible,
                 loading = studyLoading,
@@ -1564,6 +1562,7 @@ private fun ChatEmptyState(
 
 @Composable
 private fun StudySessionsPanel(
+    visible: Boolean,
     items: List<SavedStudySession>,
     loading: Boolean,
     strings: UiStrings,
@@ -1573,25 +1572,22 @@ private fun StudySessionsPanel(
     onRemove: (SavedStudySession) -> Unit,
 ) {
     var draft by remember { mutableStateOf("") }
-    Div(attrs = {
-        classes(Styles.savedPanelScrim)
-        onClick { onClose() }
-    })
-    Div(attrs = {
-        classes(Styles.savedPanel)
-        attr("role", "dialog")
-        attr("aria-label", strings.chatStudySessionsTitle)
-    }) {
-        Div(attrs = { classes(Styles.savedPanelHeader) }) {
-            Span(attrs = { classes(Styles.savedPanelTitle) }) { Text(strings.chatStudySessionsTitle) }
-            Span(attrs = {
-                classes(Styles.materialSymbols, Styles.appBarIcon)
-                attr("role", "button")
-                attr("aria-label", strings.close)
-                onClick { onClose() }
-            }) { Text("close") }
+
+    // Clear the draft when the sheet closes so the next open starts empty.
+    LaunchedEffect(visible) {
+        if (!visible) draft = ""
+    }
+
+    BottomDialog(
+        visible = visible,
+        closeLabel = strings.close,
+        onDismiss = onClose,
+        expanded = true,
+    ) {
+        Div(attrs = { classes(Styles.dialogHeader) }) {
+            P(attrs = { classes(Styles.dialogTitle) }) { Text(strings.chatStudySessionsTitle) }
         }
-        Div(attrs = { classes(Styles.savedPanelBody) }) {
+        Div(attrs = { classes(Styles.dialogBody, Styles.savedPanelBody) }) {
             ChatInput(
                 value = draft,
                 onValueChange = { draft = it },
@@ -1603,7 +1599,7 @@ private fun StudySessionsPanel(
                 },
                 placeholder = strings.chatStudySessionsPlaceholder,
                 multiline = true,
-                autoFocus = true,
+                autoFocus = visible,
             )
             when {
                 loading && items.isEmpty() -> {
@@ -1651,6 +1647,7 @@ private fun StudySessionsPanel(
 
 @Composable
 private fun SavedMessagesPanel(
+    visible: Boolean,
     items: List<SavedChatMessage>,
     loading: Boolean,
     strings: UiStrings,
@@ -1660,25 +1657,16 @@ private fun SavedMessagesPanel(
     onRemove: (SavedChatMessage) -> Unit,
     onResidentSelected: (ResidentCardMiniApp) -> Unit,
 ) {
-    Div(attrs = {
-        classes(Styles.savedPanelScrim)
-        onClick { onClose() }
-    })
-    Div(attrs = {
-        classes(Styles.savedPanel)
-        attr("role", "dialog")
-        attr("aria-label", strings.chatSavedTitle)
-    }) {
-        Div(attrs = { classes(Styles.savedPanelHeader) }) {
-            Span(attrs = { classes(Styles.savedPanelTitle) }) { Text(strings.chatSavedTitle) }
-            Span(attrs = {
-                classes(Styles.materialSymbols, Styles.appBarIcon)
-                attr("role", "button")
-                attr("aria-label", strings.close)
-                onClick { onClose() }
-            }) { Text("close") }
+    BottomDialog(
+        visible = visible,
+        closeLabel = strings.close,
+        onDismiss = onClose,
+        expanded = true,
+    ) {
+        Div(attrs = { classes(Styles.dialogHeader) }) {
+            P(attrs = { classes(Styles.dialogTitle) }) { Text(strings.chatSavedTitle) }
         }
-        Div(attrs = { classes(Styles.savedPanelBody) }) {
+        Div(attrs = { classes(Styles.dialogBody, Styles.savedPanelBody) }) {
             when {
                 loading && items.isEmpty() -> {
                     Div(attrs = { classes(Styles.chatStatus) }) {
@@ -1974,6 +1962,8 @@ private fun StudySessionDialog(
         visible = visible,
         closeLabel = strings.close,
         onDismiss = onDismiss,
+        // Progressive skeleton → content growth must not resize the sheet.
+        expanded = true,
     ) {
         Div(attrs = { classes(Styles.dialogHeader) }) {
             P(attrs = { classes(Styles.dialogTitle) }) { Text(strings.chatStudyTitle) }

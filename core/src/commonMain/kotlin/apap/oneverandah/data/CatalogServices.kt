@@ -13,6 +13,7 @@ import apap.oneverandah.model.MultiSelectOption
 import apap.oneverandah.model.Review
 import apap.oneverandah.model.Service
 import apap.oneverandah.model.SingleSelectOption
+import apap.oneverandah.model.ProviderSkill
 import apap.oneverandah.model.ServiceProvider
 import apap.oneverandah.model.ServiceStatus
 import apap.oneverandah.model.Sex
@@ -40,7 +41,59 @@ internal object CatalogServices {
 
     // ---------------------------------------------------------------------
 
-    private val jacob = ServiceProvider("Jacob", Sex.MALE, "Block B - B07.01", "+84 708 739 214", "face_6", lt("Builder, coach and resident who loves turning ideas into realities.", "Lập trình viên, người khai vấn và cư dân, yêu thích biến ý tưởng thành hiện thực."))
+    private val jacob = ServiceProvider(
+        name = "Jacob",
+        sex = Sex.MALE,
+        blockAddress = "Block B - B07.01",
+        phone = "+84 708 739 214",
+        photo = "face_6",
+        intro = lt(
+            "Builder, coach and resident who loves turning ideas into realities.",
+            "Lập trình viên, người khai vấn và cư dân, yêu thích biến ý tưởng thành hiện thực."
+        ),
+        skills = listOf(
+            ProviderSkill(
+                name = lt("App Development", "Phát triển ứng dụng", "应用开发"),
+                emoji = "💻",
+                level = 5,
+            ),
+            ProviderSkill(
+                name = lt("Life Coaching", "Khai vấn đời sống", "人生教练"),
+                emoji = "🧠",
+                level = 5,
+            ),
+            ProviderSkill(
+                name = lt("English Teaching", "Dạy tiếng Anh", "英语教学"),
+                emoji = "🗣️",
+                level = 4,
+            ),
+            ProviderSkill(
+                name = lt("Wellness & Massage", "Sức khỏe & Mát-xa", "健康与按摩"),
+                emoji = "💆",
+                level = 4,
+            ),
+            ProviderSkill(
+                name = lt("Fitness Coaching", "Huấn luyện thể lực", "健身教练"),
+                emoji = "💪",
+                level = 4,
+            ),
+            ProviderSkill(
+                name = lt("Cooking", "Nấu ăn", "烹饪"),
+                emoji = "🍳",
+                level = 3,
+            ),
+            ProviderSkill(
+                name = lt("Photography", "Nhiếp ảnh", "摄影"),
+                emoji = "📸",
+                level = 3,
+            ),
+            ProviderSkill(
+                name = lt("Home Organizing", "Sắp xếp nhà cửa", "居家收纳"),
+                emoji = "🏡",
+                level = 3,
+            ),
+        ),
+    )
 
     private val appDesignJacob = Service(
         id = "app-design-jacob",

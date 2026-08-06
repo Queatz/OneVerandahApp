@@ -192,7 +192,9 @@ fun ChatInput(
                     textAreaRef = textArea
                     resizeChatInput(textArea)
                     if (autoFocus) {
-                        textArea.focus()
+                        // Avoid scrolling the app frame/page when focusing a
+                        // field that may still be off-screen during sheet open.
+                        textArea.asDynamic().focus(js("{ preventScroll: true }"))
                     }
                     onDispose {
                         removeHoldListeners()
@@ -219,7 +221,9 @@ fun ChatInput(
                 ref { element ->
                     val removeHoldListeners = installHoldListeners(element, holdGesture)
                     inputRef = element
-                    if (autoFocus) element.focus()
+                    if (autoFocus) {
+                        element.asDynamic().focus(js("{ preventScroll: true }"))
+                    }
                     onDispose {
                         removeHoldListeners()
                         if (inputRef === element) {

@@ -148,6 +148,18 @@ object Styles {
     const val infoIcon = "info-icon"
     const val infoText = "info-text"
 
+    // Provider skills
+    const val skillSection = "skill-section"
+    const val skillGrid = "skill-grid"
+    const val skillCard = "skill-card"
+    const val skillEmoji = "skill-emoji"
+    const val skillBody = "skill-body"
+    const val skillName = "skill-name"
+    const val skillMeter = "skill-meter"
+    const val skillPip = "skill-pip"
+    const val skillPipFilled = "filled"
+    const val skillLevelLabel = "skill-level-label"
+
     // Price summary
     const val priceSummary = "price-summary"
     const val priceLine = "price-line"
@@ -159,6 +171,8 @@ object Styles {
     const val dialogScrimVisible = "visible"
     const val dialogSheet = "dialog-sheet"
     const val dialogSheetVisible = "visible"
+    /** Tall sheets that should open at max height and scroll internally. */
+    const val dialogSheetExpanded = "dialog-sheet-expanded"
     const val dialogGrip = "dialog-grip"
     const val dialogHandle = "dialog-handle"
     const val dialogContent = "dialog-content"
@@ -288,10 +302,6 @@ object Styles {
     const val chatExploreTitle = "chat-explore-title"
     const val chatExploreSub = "chat-explore-sub"
     const val chatBookmarkBtn = "chat-bookmark-btn"
-    const val savedPanelScrim = "saved-panel-scrim"
-    const val savedPanel = "saved-panel"
-    const val savedPanelHeader = "saved-panel-header"
-    const val savedPanelTitle = "saved-panel-title"
     const val savedPanelBody = "saved-panel-body"
     const val savedPanelEmpty = "saved-panel-empty"
     const val savedItem = "saved-item"
@@ -451,7 +461,6 @@ object Styles {
             display: flex;
             flex-direction: column;
             width: 100%;
-            max-width: 480px;
             /* Lock the frame to the viewport height so .content is the only
                scroll container. This keeps overlays (scrim/bottom sheet)
                covering exactly the visible surface and lets us lock page
@@ -472,6 +481,7 @@ object Styles {
 
         /* Phone-frame chrome when the user is in mobile layout on a wide screen. */
         @media (min-width: 600px) {
+            .${appFrame} { max-width: 480px; }
             .${appShell}.${layoutMobile} { align-items: center; padding: 32px 16px; }
             .${appShell}.${layoutMobile} .${appFrame} {
                 min-height: 0;
@@ -578,15 +588,6 @@ object Styles {
         }
         .${appShell}.${layoutDesktop} .${dialogScrim}.${dialogScrimVisible} .${dialogSheet} {
             transform: translateY(0);
-        }
-        .${appShell}.${layoutDesktop} .${savedPanel} {
-            left: 50%;
-            right: auto;
-            width: min(800px, 100%);
-            transform: translateX(-50%);
-            top: 12%;
-            border-radius: 24px 24px 0 0;
-            bottom: 0;
         }
         
         /* Spacer */
@@ -1392,6 +1393,90 @@ object Styles {
         .${infoIcon} { font-size: 24px; color: var(--md-sys-color-primary); flex: 0 0 auto; }
         .${infoText} { margin: 0; font-size: 14px; color: var(--md-sys-color-on-surface-variant); }
 
+        /* Provider skills — primary profile highlight */
+        .${skillSection} {
+            margin-bottom: 20px;
+            display: flex;
+            flex-direction: column;
+            gap: 10px;
+        }
+        .${skillGrid} {
+            display: grid;
+            grid-template-columns: repeat(2, minmax(0, 1fr));
+            gap: 10px;
+        }
+        .${skillCard} {
+            display: flex;
+            align-items: center;
+            gap: 12px;
+            padding: 14px 14px;
+            border-radius: 20px;
+            background:
+                linear-gradient(
+                    145deg,
+                    color-mix(in srgb, var(--md-sys-color-primary-container) 55%, var(--md-sys-color-surface-variant)),
+                    var(--md-sys-color-surface-variant)
+                );
+            border: 1px solid color-mix(in srgb, var(--md-sys-color-primary) 18%, transparent);
+            box-shadow: 0 6px 16px -12px var(--md-shadow);
+            min-width: 0;
+        }
+        .${skillEmoji} {
+            flex: 0 0 auto;
+            width: 44px;
+            height: 44px;
+            border-radius: 14px;
+            display: flex;
+            align-items: center;
+            justify-content: center;
+            font-size: 24px;
+            line-height: 1;
+            background: color-mix(in srgb, var(--md-sys-color-surface) 80%, transparent);
+            box-shadow: inset 0 0 0 1px color-mix(in srgb, var(--md-sys-color-outline) 20%, transparent);
+        }
+        .${skillBody} {
+            flex: 1 1 auto;
+            min-width: 0;
+            display: flex;
+            flex-direction: column;
+            gap: 6px;
+        }
+        .${skillName} {
+            margin: 0;
+            font-size: 13px;
+            font-weight: 700;
+            color: var(--md-sys-color-on-surface);
+            line-height: 1.25;
+            overflow: hidden;
+            text-overflow: ellipsis;
+            white-space: nowrap;
+        }
+        .${skillMeter} {
+            display: flex;
+            align-items: center;
+            gap: 4px;
+        }
+        .${skillPip} {
+            width: 10px;
+            height: 10px;
+            border-radius: 999px;
+            background: color-mix(in srgb, var(--md-sys-color-outline) 35%, transparent);
+            transition: background-color 0.15s ease, transform 0.15s ease;
+        }
+        .${skillPip}.${skillPipFilled} {
+            background: linear-gradient(135deg, var(--md-sys-color-primary), var(--md-sys-color-primary-dark));
+            box-shadow: 0 0 0 2px color-mix(in srgb, var(--md-sys-color-primary) 18%, transparent);
+            transform: scale(1.05);
+        }
+        .${skillLevelLabel} {
+            margin-left: 4px;
+            font-size: 11px;
+            font-weight: 700;
+            color: var(--md-sys-color-primary);
+            letter-spacing: 0.02em;
+            white-space: nowrap;
+        }
+
         /* Price summary */
         .${priceSummary} {
             background-color: var(--md-sys-color-surface-variant);
@@ -1451,12 +1536,21 @@ object Styles {
             transform: translateY(100%);
             transition: transform 0.3s cubic-bezier(0.2, 0, 0, 1);
         }
+        /* Pin height for large/async content so progressive loads only scroll
+           inside the sheet instead of resizing it (and jolting the frame). */
+        .${dialogSheet}.${dialogSheetExpanded} {
+            height: 90%;
+            max-height: 90%;
+        }
         .${dialogScrim}.${dialogScrimVisible} .${dialogSheet} { transform: translateY(0); }
         /* Scrollable content region; the grip handle above it stays fixed. */
         .${dialogContent} {
             overflow-y: auto;
             padding: 0 24px 24px 24px;
             flex: 1 1 auto;
+            /* Allow the flex child to shrink so overflow-y scrolling works when
+               the sheet is height-pinned (expanded). */
+            min-height: 0;
         }
         /* Grab area around the handle: large hit target, no native gestures. */
         .${dialogGrip} {
@@ -2430,45 +2524,13 @@ object Styles {
         .${chatBookmarkBtn} .${materialSymbols} {
             font-size: 18px;
         }
-        .${savedPanelScrim} {
-            position: absolute;
-            inset: 0;
-            background: rgba(0, 0, 0, 0.35);
-            z-index: 40;
-        }
-        .${savedPanel} {
-            position: absolute;
-            left: 0;
-            right: 0;
-            bottom: 0;
-            top: 12%;
-            z-index: 41;
-            display: flex;
-            flex-direction: column;
-            background: var(--md-sys-color-surface);
-            border-radius: 24px 24px 0 0;
-            box-shadow: 0 -8px 28px rgba(0, 0, 0, 0.18);
-            overflow: hidden;
-        }
-        .${savedPanelHeader} {
-            display: flex;
-            align-items: center;
-            justify-content: space-between;
-            gap: 12px;
-            padding: 16px 16px 10px;
-            // border-bottom: 1px solid var(--md-sys-color-outline-variant, var(--md-sys-color-outline));
-        }
-        .${savedPanelTitle} {
-            font-size: 18px;
-            font-weight: 700;
-        }
+        /* Saved / study-sessions list body inside BottomDialog. Content scrolls
+           via dialogContent — do not nest a second capped scroll region. */
         .${savedPanelBody} {
-            flex: 1 1 auto;
-            overflow-y: auto;
-            padding: 12px 16px 28px;
             display: flex;
             flex-direction: column;
             gap: 12px;
+            padding-bottom: 8px;
         }
         .${savedPanelEmpty} {
             display: flex;
@@ -2699,7 +2761,6 @@ object Styles {
         .${studySentenceImage} {
             display: block;
             width: 100%;
-            max-width: 420px;
             border-radius: 14px;
             border: 1px solid var(--md-sys-color-outline);
             background: var(--md-sys-color-surface-variant);

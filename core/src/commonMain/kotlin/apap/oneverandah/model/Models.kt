@@ -101,6 +101,31 @@ enum class ServiceStatus {
 }
 
 /**
+ * A skill advertised on a [ServiceProvider]'s profile.
+ *
+ * [level] is a 1–5 proficiency score shown as a visual meter in the UI.
+ * [emoji] is a short emoji (or emoji sequence) used as the skill's icon.
+ * Out-of-range levels are clamped so catalog data stays resilient.
+ */
+data class ProviderSkill(
+    val name: LocalizedText,
+    val emoji: String,
+    val level: Int,
+) {
+    init {
+        require(level in 1..5) {
+            "Provider skill level must be between 1 and 5 (was $level)"
+        }
+    }
+
+    companion object {
+        /** Builds a [ProviderSkill], clamping [level] into 1..5. */
+        fun of(name: LocalizedText, emoji: String, level: Int): ProviderSkill =
+            ProviderSkill(name = name, emoji = emoji, level = level.coerceIn(1, 5))
+    }
+}
+
+/**
  * A service provider who performs a [Service].
  */
 data class ServiceProvider(
@@ -111,6 +136,11 @@ data class ServiceProvider(
     val photo: String, // Material symbol or image path/URL
     /** A short introduction shown in the provider details dialog. */
     val intro: LocalizedText = LocalizedText("", ""),
+    /**
+     * Skills highlighted on the provider profile, each with an emoji and a
+     * 1–5 level. Treated as a primary piece of profile information.
+     */
+    val skills: List<ProviderSkill> = emptyList(),
     /**
      * Optional explicit override for [id]. Used to disambiguate providers who
      * share the same [name] (and would otherwise produce the same slug).

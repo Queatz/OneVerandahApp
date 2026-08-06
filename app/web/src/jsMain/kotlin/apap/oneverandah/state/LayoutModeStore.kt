@@ -17,7 +17,9 @@ import org.w3c.dom.events.Event
  */
 object LayoutModeStore {
     private const val STORAGE_KEY = "oneverandah.layout.preference"
-    private const val DESKTOP_MIN_WIDTH_PX = 900
+    // Keep in sync with the phone-frame media query in Styles
+    // (`@media (min-width: 600px) .app-shell.layout-mobile`).
+    private const val DESKTOP_MIN_WIDTH_PX = 600
     private const val DESKTOP_MEDIA = "(min-width: ${DESKTOP_MIN_WIDTH_PX}px)"
 
     /** User preference when the viewport is wide enough for desktop. */

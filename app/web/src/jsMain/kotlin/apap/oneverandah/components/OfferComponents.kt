@@ -13,6 +13,7 @@ import apap.oneverandah.model.CounterOption
 import apap.oneverandah.model.Language
 import apap.oneverandah.model.Money
 import apap.oneverandah.model.PriceBreakdown
+import apap.oneverandah.model.ProviderSkill
 import apap.oneverandah.model.Review
 import apap.oneverandah.model.ServiceProvider
 import apap.oneverandah.state.ImageStore
@@ -262,12 +263,17 @@ fun PriceSummaryView(
  * `if (visible)` or the enter transition will be skipped. This component also
  * self-corrects the first-frame case (mounted already-open) by painting closed
  * for one frame before applying the open class, so every future sheet animates.
+ *
+ * @param expanded when true, the sheet opens at max height and scrolls
+ *   internally. Use for panels whose content starts short (loading) and later
+ *   grows, so the sheet size stays stable.
  */
 @Composable
 fun BottomDialog(
     visible: Boolean,
     closeLabel: String,
     onDismiss: () -> Unit,
+    expanded: Boolean = false,
     content: @Composable () -> Unit,
 ) {
     // Drag-to-dismiss state for the bottom sheet handle.
@@ -291,14 +297,14 @@ fun BottomDialog(
             dragStart = null
             dragY = 0.0
             // One frame is enough for the closed styles to apply before open.
-            kotlinx.coroutines.delay(16)
+            delay(16)
             open = true
         } else if (rendered) {
             open = false
             dragStart = null
             dragY = 0.0
             // Match Styles.dialogSheet transition (~300ms).
-            kotlinx.coroutines.delay(320)
+            delay(320)
             rendered = false
         }
     }
@@ -314,6 +320,7 @@ fun BottomDialog(
     }) {
         Div(attrs = {
             classes(Styles.dialogSheet)
+            if (expanded) classes(Styles.dialogSheetExpanded)
             attr("role", "dialog")
             attr("aria-modal", "true")
             // While dragging, follow the pointer and suppress the open
@@ -571,9 +578,75 @@ fun ProviderDetailsDialog(
 }
 
 /**
- * Shared provider details body: avatar header, intro/about, sex, block/address,
- * Zalo phone and a row of the provider's services. Reused by both the
- * [ProviderDetailsDialog] bottom sheet and the standalone provider screen.
+ * Pretty skill grid for a provider profile: emoji badge, skill name, and a
+ * 1–5 level meter. Sorted highest-level first so strongest skills lead.
+ */
+@Composable
+fun ProviderSkillsSection(
+    skills: List<ProviderSkill>,
+    language: Language,
+    skillsLabel: String,
+    levelLabel: String,
+) {
+    if (skills.isEmpty()) return
+
+    val ordered = skills.sortedByDescending { it.level }
+
+    Div(attrs = { classes(Styles.skillSection) }) {
+        Span(attrs = {
+            style {
+                property("font-size", "12px")
+                property("color", "var(--md-sys-color-on-surface-variant)")
+                property("font-weight", "700")
+                property("text-transform", "uppercase")
+            }
+        }) {
+            Text(skillsLabel)
+        }
+
+        Div(attrs = { classes(Styles.skillGrid) }) {
+            ordered.forEach { skill ->
+                Div(attrs = {
+                    classes(Styles.skillCard)
+                    attr("title", "${skill.name.resolve(language)} · $levelLabel ${skill.level}")
+                }) {
+                    Div(attrs = { classes(Styles.skillEmoji) }) {
+                        Text(skill.emoji)
+                    }
+                    Div(attrs = { classes(Styles.skillBody) }) {
+                        P(attrs = { classes(Styles.skillName) }) {
+                            Text(skill.name.resolve(language))
+                        }
+                        Div(attrs = {
+                            classes(Styles.skillMeter)
+                            attr("role", "img")
+                            attr(
+                                "aria-label",
+                                "$levelLabel ${skill.level} / 5",
+                            )
+                        }) {
+                            for (pip in 1..5) {
+                                Span(attrs = {
+                                    classes(Styles.skillPip)
+                                    if (pip <= skill.level) classes(Styles.skillPipFilled)
+                                }) { }
+                            }
+                            Span(attrs = { classes(Styles.skillLevelLabel) }) {
+                                Text("$levelLabel ${skill.level}")
+                            }
+                        }
+                    }
+                }
+            }
+        }
+    }
+}
+
+/**
+ * Shared provider details body: avatar header, intro/about, skills, sex,
+ * block/address, Zalo phone and a row of the provider's services. Reused by
+ * both the [ProviderDetailsDialog] bottom sheet and the standalone provider
+ * screen.
  *
  * [servicesLabel] is the heading shown above the services row; [excludeServiceId]
  * (when non-null) drops that service from the row so the dialog can show "other"
@@ -642,6 +715,16 @@ fun ProviderDetailsContent(
                         Text(intro)
                     }
                 }
+            }
+
+            // Skills (primary profile highlight under About)
+            if (provider.skills.isNotEmpty()) {
+                ProviderSkillsSection(
+                    skills = provider.skills,
+                    language = language,
+                    skillsLabel = strings.providerSkillsLabel,
+                    levelLabel = strings.providerSkillLevelLabel,
+                )
             }
 
             // Sex
