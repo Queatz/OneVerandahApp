@@ -2425,6 +2425,24 @@ internal fun collectStoryWordSteps(session: StudySessionResponse): List<StoryWor
     return steps
 }
 
+/**
+ * Learner-language meaning lines to speak after the target word in Story mode.
+ * Skips blanks and de-duplicates identical literal/context glosses.
+ */
+internal fun collectStoryMeaningNarrationTexts(
+    literalMeaning: String,
+    contextualMeaning: String,
+): List<String> {
+    val literal = literalMeaning.trim()
+    val contextual = contextualMeaning.trim()
+    val lines = mutableListOf<String>()
+    if (literal.isNotEmpty()) lines += literal
+    if (contextual.isNotEmpty() && !contextual.equals(literal, ignoreCase = true)) {
+        lines += contextual
+    }
+    return lines
+}
+
 @Composable
 private fun StudyStoryTab(
     session: StudySessionResponse,
@@ -2445,6 +2463,9 @@ private fun StudyStoryTab(
     }
     var stepIndex by remember(session.text) { mutableStateOf(0) }
     var lastAutoplayKey by remember(session.text) { mutableStateOf<String?>(null) }
+    // Learner-language meaning clips (literal / context) keyed by spoken text.
+    val meaningAudio = remember(session.text) { mutableStateMapOf<String, String>() }
+    val learnerLanguageTag = Localization.language.tag
 
     fun advanceStory() {
         // Start each next story step (or the Study tab handoff) from the top.
@@ -2531,13 +2552,62 @@ private fun StudyStoryTab(
             }
             val wordFailed = wordFailKey != null && wordImageFailed[wordFailKey] == true
             val sentenceClipUrl = sentenceAudio["sentence-${step.sentenceIndex}"]?.url
+            val meaningTexts = collectStoryMeaningNarrationTexts(
+                literalMeaning = token.literalMeaning,
+                contextualMeaning = token.contextualMeaning,
+            )
             // Include clip url so the first timed segment can replace a missing-timing attempt.
-            val autoplayKey =
+            // Meaning texts are part of the key so late-arriving dissections also get spoken.
+            val wordAutoplayKey =
                 "word-${step.sentenceIndex}-${step.tokenIndex}-${token.text}|${sentenceClipUrl.orEmpty()}"
+            val autoplayKey = "$wordAutoplayKey#${meaningTexts.joinToString(separator = "\u0001")}"
             LaunchedEffect(autoplayKey) {
                 if (lastAutoplayKey == autoplayKey) return@LaunchedEffect
+                val previousKey = lastAutoplayKey
                 lastAutoplayKey = autoplayKey
-                playStudyToken(step.sentenceIndex, step.tokenIndex, token.text)
+                val previousWordKey = previousKey?.substringBefore('#')
+                val shouldPlayWord = previousWordKey != wordAutoplayKey
+                if (shouldPlayWord) {
+                    playStudyToken(step.sentenceIndex, step.tokenIndex, token.text)
+                }
+                if (meaningTexts.isEmpty()) return@LaunchedEffect
+
+                // Prefetch meaning TTS while the word clip plays (learner UI language).
+                val meaningUrls = mutableListOf<String>()
+                for (text in meaningTexts) {
+                    val cached = meaningAudio[text]
+                    if (cached != null) {
+                        meaningUrls += cached
+                        continue
+                    }
+                    val url = runCatching {
+                        withSpeechRetry {
+                            ChatApi.speechDataUrl(SpeechRequest(text, learnerLanguageTag))
+                        }
+                    }.getOrNull()
+                    if (url != null) {
+                        meaningAudio[text] = url
+                        meaningUrls += url
+                    }
+                }
+                if (meaningUrls.isEmpty()) return@LaunchedEffect
+
+                // Wait for the word clip: allow slow token-TTS fallback to start, then
+                // drain whatever is playing so meanings do not overlap it.
+                if (shouldPlayWord) {
+                    var waitedForStartMs = 0
+                    while (studyAudioPlayingUrl == null && waitedForStartMs < 4_000) {
+                        delay(40)
+                        waitedForStartMs += 40
+                    }
+                } else {
+                    delay(80)
+                }
+                while (studyAudioPlayingUrl != null) {
+                    delay(40)
+                }
+                if (lastAutoplayKey != autoplayKey) return@LaunchedEffect
+                playAudioSequence(meaningUrls)
             }
 
             Div(attrs = { classes(Styles.studyStoryCard) }) {

@@ -131,4 +131,39 @@ class ChatScreenStudyExampleTest {
             collectStoryWordSteps(session),
         )
     }
+
+    @Test
+    fun `story meaning narration keeps literal then context and trims`() {
+        assertEquals(
+            listOf("hello", "greeting in this sentence"),
+            collectStoryMeaningNarrationTexts(
+                literalMeaning = "  hello  ",
+                contextualMeaning = " greeting in this sentence ",
+            ),
+        )
+    }
+
+    @Test
+    fun `story meaning narration skips blanks and duplicate glosses`() {
+        assertEquals(
+            listOf("hello"),
+            collectStoryMeaningNarrationTexts(
+                literalMeaning = "Hello",
+                contextualMeaning = "hello",
+            ),
+        )
+        assertEquals(
+            listOf("only context"),
+            collectStoryMeaningNarrationTexts(
+                literalMeaning = "   ",
+                contextualMeaning = "only context",
+            ),
+        )
+        assertTrue(
+            collectStoryMeaningNarrationTexts(
+                literalMeaning = "",
+                contextualMeaning = "  ",
+            ).isEmpty(),
+        )
+    }
 }
