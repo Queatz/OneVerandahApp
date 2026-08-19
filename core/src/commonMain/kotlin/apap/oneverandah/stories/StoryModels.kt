@@ -112,6 +112,11 @@ data class StoryCharactersResponse(
 )
 
 @Serializable
+data class StoryCharacterRenameRequest(
+    val name: String,
+)
+
+@Serializable
 data class StoryImageUploadResponse(
     val imageUrl: String,
 )

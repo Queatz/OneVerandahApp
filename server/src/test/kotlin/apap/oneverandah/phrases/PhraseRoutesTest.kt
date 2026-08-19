@@ -16,6 +16,7 @@ import io.ktor.client.request.forms.formData
 import io.ktor.client.request.get
 import io.ktor.client.request.header
 import io.ktor.client.request.post
+import io.ktor.client.request.put
 import io.ktor.client.request.setBody
 import io.ktor.client.statement.bodyAsText
 import io.ktor.http.ContentType
@@ -297,6 +298,48 @@ class PhraseRoutesTest {
             header(HttpHeaders.Authorization, "Bearer $token")
         }
         assertEquals(HttpStatusCode.OK, activate.status)
+    }
+
+    @Test
+    fun adminCanRenameReferencePhoto() = testApplication {
+        val config = AppConfig.load()
+        val imageSystem = runBlocking { ImageSystem.create(config) }
+        val chatSystem = runBlocking { ChatSystem.create(config) }
+        val phraseSystem = runBlocking {
+            PhraseSystem.create(config, FakeStorage(), null)
+        }
+        application {
+            module(config, imageSystem, chatSystem, phraseSystem)
+        }
+
+        phraseSystem.referencePhotos.save(
+            ReferencePhoto(
+                id = "ref-pool",
+                name = "pool",
+                imageUrl = "https://example.test/pool.jpg",
+                createdAt = 1L,
+            ),
+        )
+        val token = adminToken(client, config)
+        val renamed = client.put("/api/v1/admin/reference-photos/ref-pool") {
+            header(HttpHeaders.Authorization, "Bearer $token")
+            contentType(ContentType.Application.Json)
+            setBody(
+                json.encodeToString(
+                    ReferencePhotoRenameRequest.serializer(),
+                    ReferencePhotoRenameRequest("dusk pool"),
+                ),
+            )
+        }
+        assertEquals(HttpStatusCode.OK, renamed.status)
+        val photo = json.decodeFromString(ReferencePhoto.serializer(), renamed.bodyAsText())
+        assertEquals("dusk pool", photo.name)
+
+        val listed = client.get("/api/v1/admin/reference-photos") {
+            header(HttpHeaders.Authorization, "Bearer $token")
+        }
+        val photos = json.decodeFromString(ReferencePhotosResponse.serializer(), listed.bodyAsText())
+        assertEquals(listOf("dusk pool"), photos.photos.map { it.name })
     }
 
     private suspend fun adminToken(

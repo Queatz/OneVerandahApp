@@ -148,6 +148,46 @@ class StoryServiceTest {
     }
 
     @Test
+    fun renameCharacterUpdatesPersistedName() = runBlocking {
+        val service = service()
+        val created = service.addCharacter("Minh", "https://example.test/minh.png")
+        val renamed = service.renameCharacter(created.id, "  Minh Anh  ")
+        assertEquals("Minh Anh", renamed.name)
+        assertEquals(created.id, renamed.id)
+        assertEquals("Minh Anh", service.listCharacters().single().name)
+    }
+
+    @Test
+    fun renameCharacterRejectsBlankAndUnknown() = runBlocking {
+        val service = service()
+        val created = service.addCharacter("Minh", "https://example.test/minh.png")
+        assertFailsWith<IllegalArgumentException> { service.renameCharacter(created.id, "  ") }
+        assertFailsWith<IllegalStateException> { service.renameCharacter("missing", "Lan") }
+        Unit
+    }
+
+    @Test
+    fun renameStudyCharacterPersistsUploadedCopy() = runBlocking {
+        val service = service(
+            studyCharacters = listOf(
+                StudyStoryCharacter(
+                    id = "main",
+                    name = "Lan",
+                    role = "main",
+                    description = "soft smile",
+                    imageUrl = "https://example.test/lan.png",
+                ),
+            ),
+        )
+        val studyId = service.listCharacters().single().id
+        val renamed = service.renameCharacter(studyId, "Lan Chi")
+        assertEquals("Lan Chi", renamed.name)
+        assertEquals(StoryCharacter.SOURCE_UPLOAD, renamed.source)
+        assertEquals(listOf("Lan Chi"), service.listCharacters().map { it.name })
+        assertTrue(service.deleteCharacter(renamed.id))
+    }
+
+    @Test
     fun harvestedStudyCharactersKeepUniqueIdsWhenRolesCollide() = runBlocking {
         val service = service(
             studyCharacters = listOf(

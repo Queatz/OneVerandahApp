@@ -4,6 +4,10 @@ import apap.oneverandah.config.QwenImageConfig
 import apap.oneverandah.images.storage.GeneratedImage
 import io.ktor.client.HttpClient
 import io.ktor.client.call.body
+import io.ktor.client.plugins.HttpRequestTimeoutException
+import io.ktor.client.plugins.HttpTimeoutConfig
+import io.ktor.client.plugins.timeout
+import io.ktor.client.request.HttpRequestBuilder
 import io.ktor.client.request.forms.formData
 import io.ktor.client.request.forms.submitFormWithBinaryData
 import io.ktor.client.request.get
@@ -35,11 +39,21 @@ import kotlinx.serialization.json.jsonObject
 import kotlinx.serialization.json.jsonPrimitive
 import kotlinx.serialization.json.put
 import org.slf4j.LoggerFactory
+import java.awt.Color
+import java.awt.RenderingHints
+import java.awt.image.BufferedImage
+import java.io.ByteArrayInputStream
+import java.io.ByteArrayOutputStream
 import java.io.File
+import java.net.SocketTimeoutException
 import java.net.URI
 import java.util.Base64
 import java.util.UUID
 import java.util.concurrent.ConcurrentHashMap
+import javax.imageio.IIOImage
+import javax.imageio.ImageIO
+import javax.imageio.ImageWriteParam
+import javax.imageio.stream.MemoryCacheImageOutputStream
 
 /**
  * Real Qwen image generation via Alibaba Cloud DashScope.
@@ -373,7 +387,9 @@ class DashScopeQwenClient(
     }
 
     private suspend fun download(url: String): GeneratedImage {
-        val response: HttpResponse = withTransientHttpRetry { client.get(url) }
+        val response: HttpResponse = withTransientHttpRetry {
+            client.get(url) { fileTransferTimeout() }
+        }
         if (!response.status.isSuccess()) {
             throw QwenException("Failed to download generated image ($url): ${response.status}")
         }
@@ -409,12 +425,13 @@ class DashScopeQwenClient(
                 return@withLock cached
             }
 
-            val image = loadReferenceImage(trimmed)
+            val image = loadReferenceImage(trimmed)?.let { shrinkForDashScope(it) }
                 ?: throw QwenException(
                     "Cannot load reference image for Qwen R2I: $trimmed. " +
                         "Upload failed or the file is not reachable from the server.",
                 )
-            val fileName = guessFileName(trimmed, image.extension)
+            val guessed = guessFileName(trimmed, image.extension)
+            val fileName = guessed.substringBeforeLast('.', guessed) + "." + image.extension
             val ossUrl = uploadToDashScopeTemp(image, fileName)
             dashScopeRefCache[trimmed] = ossUrl
             log.info("Re-hosted reference image for DashScope: {} → {}", trimmed, ossUrl)
@@ -439,7 +456,9 @@ class DashScopeQwenClient(
         // HTTP(S) fetch (public OSS, CDN, or this server if reachable).
         if (url.startsWith("http://", ignoreCase = true) || url.startsWith("https://", ignoreCase = true)) {
             return runCatching {
-                val response: HttpResponse = withTransientHttpRetry { client.get(url) }
+                val response: HttpResponse = withTransientHttpRetry {
+                    client.get(url) { fileTransferTimeout() }
+                }
                 if (!response.status.isSuccess()) {
                     null
                 } else {
@@ -474,6 +493,13 @@ class DashScopeQwenClient(
             }
         }
         throw last ?: error("Qwen HTTP retry exhausted")
+    }
+
+    /** OSS uploads/downloads can outlive the 5-minute API request budget. */
+    private fun HttpRequestBuilder.fileTransferTimeout() {
+        timeout {
+            requestTimeoutMillis = HttpTimeoutConfig.INFINITE_TIMEOUT_MS
+        }
     }
 
     private fun resolveLocalFile(url: String): File? {
@@ -517,26 +543,30 @@ class DashScopeQwenClient(
         val safeName = fileName.replace(Regex("[^A-Za-z0-9._-]"), "_").ifBlank { "ref.png" }
         val key = "$uploadDir/$safeName"
 
-        val uploadResponse = client.submitFormWithBinaryData(
-            url = uploadHost,
-            formData = formData {
-                append("OSSAccessKeyId", ossAccessKeyId)
-                append("Signature", signature)
-                append("policy", policy)
-                append("x-oss-object-acl", acl)
-                append("x-oss-forbid-overwrite", forbidOverwrite)
-                append("key", key)
-                append("success_action_status", "200")
-                append(
-                    "file",
-                    image.bytes,
-                    Headers.build {
-                        append(HttpHeaders.ContentType, image.contentType)
-                        append(HttpHeaders.ContentDisposition, "filename=\"$safeName\"")
-                    },
-                )
-            },
-        )
+        val uploadResponse = withTransientHttpRetry {
+            client.submitFormWithBinaryData(
+                url = uploadHost,
+                formData = formData {
+                    append("OSSAccessKeyId", ossAccessKeyId)
+                    append("Signature", signature)
+                    append("policy", policy)
+                    append("x-oss-object-acl", acl)
+                    append("x-oss-forbid-overwrite", forbidOverwrite)
+                    append("key", key)
+                    append("success_action_status", "200")
+                    append(
+                        "file",
+                        image.bytes,
+                        Headers.build {
+                            append(HttpHeaders.ContentType, image.contentType)
+                            append(HttpHeaders.ContentDisposition, "filename=\"$safeName\"")
+                        },
+                    )
+                },
+            ) {
+                fileTransferTimeout()
+            }
+        }
         if (!uploadResponse.status.isSuccess()) {
             throw QwenException(
                 "DashScope temp upload failed (${uploadResponse.status}): ${uploadResponse.bodyAsText()}",
@@ -647,20 +677,81 @@ class DashScopeQwenClient(
             return "ref-${UUID.randomUUID().toString().take(8)}.$extension"
         }
 
+        /**
+         * Shrinks scene/character photos before the DashScope OSS upload.
+         * Full-resolution phone pictures routinely exceed the 5-minute request
+         * budget on `dashscope-file-mgr.oss-cn-beijing.aliyuncs.com`.
+         */
+        internal fun shrinkForDashScope(
+            image: GeneratedImage,
+            maxEdge: Int = 1024,
+            maxBytes: Int = 400_000,
+        ): GeneratedImage {
+            val decoded = runCatching { ImageIO.read(ByteArrayInputStream(image.bytes)) }.getOrNull()
+                ?: return image
+            val width = decoded.width
+            val height = decoded.height
+            if (width <= 0 || height <= 0) return image
+
+            val longest = maxOf(width, height)
+            if (longest <= maxEdge && image.bytes.size <= maxBytes) return image
+
+            val scale = if (longest > maxEdge) maxEdge.toDouble() / longest else 1.0
+            val targetW = (width * scale).toInt().coerceAtLeast(1)
+            val targetH = (height * scale).toInt().coerceAtLeast(1)
+            val rgb = BufferedImage(targetW, targetH, BufferedImage.TYPE_INT_RGB)
+            val graphics = rgb.createGraphics()
+            graphics.setRenderingHint(RenderingHints.KEY_INTERPOLATION, RenderingHints.VALUE_INTERPOLATION_BILINEAR)
+            graphics.color = Color.WHITE
+            graphics.fillRect(0, 0, targetW, targetH)
+            graphics.drawImage(decoded, 0, 0, targetW, targetH, null)
+            graphics.dispose()
+
+            val jpeg = encodeJpeg(rgb, quality = 0.82f) ?: return image
+            return GeneratedImage(bytes = jpeg, contentType = "image/jpeg", extension = "jpg")
+        }
+
+        private fun encodeJpeg(image: BufferedImage, quality: Float): ByteArray? {
+            val writers = ImageIO.getImageWritersByFormatName("jpeg")
+            if (!writers.hasNext()) return null
+            val writer = writers.next()
+            return try {
+                val out = ByteArrayOutputStream()
+                MemoryCacheImageOutputStream(out).use { stream ->
+                    writer.output = stream
+                    val param = writer.defaultWriteParam
+                    if (param.canWriteCompressed()) {
+                        param.compressionMode = ImageWriteParam.MODE_EXPLICIT
+                        param.compressionQuality = quality.coerceIn(0.1f, 1.0f)
+                    }
+                    writer.write(null, IIOImage(image, null, null), param)
+                    stream.flush()
+                }
+                out.toByteArray().takeIf { it.isNotEmpty() }
+            } catch (_: Exception) {
+                null
+            } finally {
+                writer.dispose()
+            }
+        }
+
         /** CIO reports dropped keep-alives / idle cuts as a parse EOF. */
         internal fun isTransientHttpClose(error: Throwable): Boolean =
             generateSequence(error) { it.cause }.any { cause ->
                 when (cause) {
                     is java.io.EOFException,
+                    is SocketTimeoutException,
                     is java.net.SocketException,
                     is java.nio.channels.ClosedChannelException,
+                    is HttpRequestTimeoutException,
                     -> true
                     else -> {
                         val message = cause.message.orEmpty()
                         message.contains("prematurely closed", ignoreCase = true) ||
                             message.contains("connection reset", ignoreCase = true) ||
                             message.contains("broken pipe", ignoreCase = true) ||
-                            message.contains("connection abort", ignoreCase = true)
+                            message.contains("connection abort", ignoreCase = true) ||
+                            message.contains("Request timeout has expired", ignoreCase = true)
                     }
                 }
             }

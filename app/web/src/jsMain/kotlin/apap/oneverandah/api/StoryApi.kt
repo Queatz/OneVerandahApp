@@ -6,6 +6,7 @@ import apap.oneverandah.stories.StoriesResponse
 import apap.oneverandah.stories.Story
 import apap.oneverandah.stories.StoryApiError
 import apap.oneverandah.stories.StoryCharacter
+import apap.oneverandah.stories.StoryCharacterRenameRequest
 import apap.oneverandah.stories.StoryCharactersResponse
 import apap.oneverandah.stories.StoryImageUploadResponse
 import apap.oneverandah.stories.StoryLanguageResponse
@@ -230,6 +231,17 @@ object StoryApi {
         val response = window.fetch("${base()}/api/v1/admin/story-characters", init.unsafeCast<RequestInit>()).await()
         val text = response.text().await()
         if (!response.ok) throw StoryApiException(errorMessage(text, response.status.toInt()))
+        return json.decodeFromString(StoryCharacter.serializer(), text)
+    }
+
+    suspend fun renameCharacter(id: String, name: String): StoryCharacter {
+        val response = client.put("${base()}/api/v1/admin/story-characters/$id") {
+            authed()
+            contentType(ContentType.Application.Json)
+            setBody(json.encodeToString(StoryCharacterRenameRequest.serializer(), StoryCharacterRenameRequest(name)))
+        }
+        val text = response.bodyAsText()
+        if (!response.status.isSuccess()) throw StoryApiException(errorMessage(text, response.status.value))
         return json.decodeFromString(StoryCharacter.serializer(), text)
     }
 

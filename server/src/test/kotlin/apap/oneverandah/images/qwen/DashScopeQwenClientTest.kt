@@ -1,10 +1,14 @@
 package apap.oneverandah.images.qwen
 
 import apap.oneverandah.config.QwenImageConfig
+import apap.oneverandah.images.storage.GeneratedImage
 import io.ktor.client.HttpClient
 import io.ktor.client.engine.mock.MockEngine
 import io.ktor.client.engine.mock.respond
 import io.ktor.client.engine.mock.respondOk
+import io.ktor.client.plugins.HttpTimeout
+import io.ktor.client.plugins.HttpTimeoutCapability
+import io.ktor.client.plugins.HttpTimeoutConfig
 import io.ktor.http.HttpHeaders
 import io.ktor.http.HttpStatusCode
 import io.ktor.http.content.OutgoingContent
@@ -19,9 +23,13 @@ import kotlinx.coroutines.coroutineScope
 import kotlinx.coroutines.delay
 import kotlinx.coroutines.runBlocking
 import kotlinx.io.readByteArray
+import java.awt.image.BufferedImage
+import java.io.ByteArrayInputStream
+import java.io.ByteArrayOutputStream
 import java.nio.file.Files
 import java.util.Base64
 import java.util.concurrent.atomic.AtomicInteger
+import javax.imageio.ImageIO
 import kotlin.test.Test
 import kotlin.test.assertEquals
 import kotlin.test.assertNotNull
@@ -253,6 +261,119 @@ class DashScopeQwenClientTest {
         assertNotNull(image)
         assertTrue(image.bytes.contentEquals(bytes))
         assertEquals("png", image.extension)
+    }
+
+    @Test
+    fun shrinkForDashScope_downscalesLargePngToJpeg() {
+        val original = pngBytes(width = 2000, height = 1600)
+        val shrunk = DashScopeQwenClient.shrinkForDashScope(
+            GeneratedImage(
+                bytes = original,
+                contentType = "image/png",
+                extension = "png",
+            ),
+        )
+        assertEquals("jpg", shrunk.extension)
+        assertEquals("image/jpeg", shrunk.contentType)
+        assertTrue(shrunk.bytes.size < original.size, "expected ${shrunk.bytes.size} < ${original.size}")
+        val decoded = ImageIO.read(ByteArrayInputStream(shrunk.bytes))
+        assertNotNull(decoded)
+        assertTrue(maxOf(decoded.width, decoded.height) <= 1024)
+    }
+
+    @Test
+    fun transientHttpClose_detectsRequestTimeout() {
+        val timeout = io.ktor.client.plugins.HttpRequestTimeoutException(
+            "https://dashscope-file-mgr.oss-cn-beijing.aliyuncs.com",
+            300_000,
+        )
+        assertTrue(DashScopeQwenClient.isTransientHttpClose(timeout))
+        assertTrue(
+            DashScopeQwenClient.isTransientHttpClose(
+                RuntimeException("Request timeout has expired [url=https://dashscope-file-mgr.oss-cn-beijing.aliyuncs.com, request_timeout=300000 ms]"),
+            ),
+        )
+    }
+
+    @Test
+    fun generateWithReference_uploadsShrunkJpegWithoutRequestTimeout() = runBlocking {
+        val root = Files.createTempDirectory("ov-qwen-shrink-").toFile()
+        try {
+            val key = "reference/huge-scene.png"
+            val file = root.resolve(key)
+            file.parentFile.mkdirs()
+            val original = pngBytes(width = 1800, height = 1400)
+            file.writeBytes(original)
+
+            var uploadedBytes = 0
+            var uploadTimeout: Long? = -1L
+
+            val engine = MockEngine { request ->
+                val url = request.url.toString()
+                when {
+                    url.contains("/api/v1/uploads") -> respond(
+                        content = """
+                            {
+                              "data": {
+                                "upload_host": "https://dashscope-file-mgr.oss-cn-beijing.aliyuncs.com",
+                                "upload_dir": "dashscope-instant/test-dir",
+                                "oss_access_key_id": "AKIATEST",
+                                "signature": "sig",
+                                "policy": "pol",
+                                "x_oss_object_acl": "private",
+                                "x_oss_forbid_overwrite": "true"
+                              }
+                            }
+                        """.trimIndent(),
+                        status = HttpStatusCode.OK,
+                        headers = headersOf(HttpHeaders.ContentType, "application/json"),
+                    )
+                    url.contains("dashscope-file-mgr.oss-cn-beijing.aliyuncs.com") -> {
+                        uploadedBytes = readBodyBytes(request.body).size
+                        uploadTimeout = request.getCapabilityOrNull(HttpTimeoutCapability)?.requestTimeoutMillis
+                        respondOk("OK")
+                    }
+                    url.contains("multimodal-generation") -> respond(
+                        content = """{"output":{"choices":[{"message":{"content":[{"image":"https://dashscope-result.example.test/out.png","type":"image"}]}}]}}""",
+                        status = HttpStatusCode.OK,
+                        headers = headersOf(HttpHeaders.ContentType, "application/json"),
+                    )
+                    url.contains("dashscope-result.example.test") -> respond(
+                        content = ByteReadChannel(byteArrayOf(3, 3, 3)),
+                        status = HttpStatusCode.OK,
+                        headers = headersOf(HttpHeaders.ContentType, "image/png"),
+                    )
+                    else -> error("Unexpected request: $url")
+                }
+            }
+            val client = HttpClient(engine) {
+                install(HttpTimeout) {
+                    requestTimeoutMillis = 300_000
+                }
+            }
+            val qwen = DashScopeQwenClient(
+                config = QwenImageConfig(
+                    endpoint = "https://dashscope.aliyuncs.com/api/v1/services/aigc/text2image/image-synthesis",
+                    apiKey = "test-key",
+                    model = "wan2.7-image",
+                    r2iEndpoint = "https://dashscope.aliyuncs.com/api/v1/services/aigc/multimodal-generation/generation",
+                    r2iModel = "wan2.7-image",
+                ),
+                client = client,
+                localImageRoot = root,
+                publicBaseUrl = "https://api.oneverandah.app",
+            )
+            val image = qwen.generate(
+                prompt = "Lan by the pool at dusk",
+                referenceImageUrls = listOf("https://api.oneverandah.app/images/$key"),
+            )
+            assertTrue(image.bytes.contentEquals(byteArrayOf(3, 3, 3)))
+            assertTrue(uploadedBytes in 1 until original.size, "uploaded $uploadedBytes bytes from ${original.size}")
+            assertEquals(HttpTimeoutConfig.INFINITE_TIMEOUT_MS, uploadTimeout)
+            client.close()
+        } finally {
+            root.deleteRecursively()
+        }
     }
 
     @Test
@@ -714,19 +835,36 @@ class DashScopeQwenClientTest {
     }
 
     private suspend fun readBodyText(body: OutgoingContent): String =
+        readBodyBytes(body).toString(Charsets.UTF_8)
+
+    private suspend fun readBodyBytes(body: OutgoingContent): ByteArray =
         when (body) {
-            is TextContent -> body.text
-            is OutgoingContent.ByteArrayContent -> body.bytes().toString(Charsets.UTF_8)
+            is TextContent -> body.text.toByteArray()
+            is OutgoingContent.ByteArrayContent -> body.bytes()
             is OutgoingContent.ReadChannelContent -> {
                 val channel = body.readFrom()
-                channel.readRemaining().readByteArray().toString(Charsets.UTF_8)
+                channel.readRemaining().readByteArray()
             }
             is OutgoingContent.WriteChannelContent -> {
                 val channel = ByteChannel(autoFlush = true)
                 body.writeTo(channel)
                 channel.flushAndClose()
-                channel.readRemaining().readByteArray().toString(Charsets.UTF_8)
+                channel.readRemaining().readByteArray()
             }
-            else -> body.toString()
+            else -> body.toString().toByteArray()
         }
+
+    private fun pngBytes(width: Int, height: Int): ByteArray {
+        val image = BufferedImage(width, height, BufferedImage.TYPE_INT_RGB)
+        var seed = 0x9E3779B9.toInt()
+        for (y in 0 until height) {
+            for (x in 0 until width) {
+                seed = seed * 1664525 + 1013904223
+                image.setRGB(x, y, seed and 0x00FFFFFF)
+            }
+        }
+        val out = ByteArrayOutputStream()
+        check(ImageIO.write(image, "png", out)) { "failed to encode test PNG" }
+        return out.toByteArray()
+    }
 }

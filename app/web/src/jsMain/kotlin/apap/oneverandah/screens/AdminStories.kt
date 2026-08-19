@@ -551,22 +551,17 @@ private fun StoryGeneratePhotoDialog(
                 }
             }
             Label(attrs = { classes(Styles.phraseExpandHint) }) { Text(strings.adminSelectCharacters) }
-            Div(attrs = { classes(Styles.adminRefGrid) }) {
-                characters.forEach { character ->
-                    val on = character.id in selectedCharacters
-                    Button(attrs = {
-                        classes(Styles.adminRefTile)
-                        if (on) classes(Styles.adminRefTileSelected)
-                        attr("type", "button")
-                        onClick {
-                            selectedCharacters = if (on) selectedCharacters - character.id else selectedCharacters + character.id
-                        }
-                    }) {
-                        Img(src = character.imageUrl, alt = character.name, attrs = { classes(Styles.adminRefThumb) })
-                        Span { Text(character.name) }
+            AdminCharacterGrid(
+                characters = characters,
+                selectedIds = selectedCharacters,
+                onSelect = { character ->
+                    selectedCharacters = if (character.id in selectedCharacters) {
+                        selectedCharacters - character.id
+                    } else {
+                        selectedCharacters + character.id
                     }
-                }
-            }
+                },
+            )
             AdminStoryField(strings.adminCharacterName, characterName) { characterName = it }
             Input(type = InputType.File) {
                 classes(Styles.textInput)
@@ -619,6 +614,44 @@ private fun StoryGeneratePhotoDialog(
             }
         }
     }
+}
+
+@Composable
+fun AdminCharacterGrid(
+    characters: List<StoryCharacter>,
+    selectedIds: Set<String> = emptySet(),
+    onSelect: ((StoryCharacter) -> Unit)? = null,
+    actions: (@Composable (StoryCharacter) -> Unit)? = null,
+) {
+    Div(attrs = { classes(Styles.adminRefGrid) }) {
+        characters.forEach { character ->
+            val selected = character.id in selectedIds
+            if (onSelect != null) {
+                Button(attrs = {
+                    classes(Styles.adminRefTile)
+                    if (selected) classes(Styles.adminRefTileSelected)
+                    attr("type", "button")
+                    onClick { onSelect(character) }
+                }) {
+                    AdminCharacterTileBody(character)
+                }
+            } else {
+                Div(attrs = {
+                    classes(Styles.adminRefTile)
+                    if (selected) classes(Styles.adminRefTileSelected)
+                }) {
+                    AdminCharacterTileBody(character)
+                    actions?.invoke(character)
+                }
+            }
+        }
+    }
+}
+
+@Composable
+private fun AdminCharacterTileBody(character: StoryCharacter) {
+    Img(src = character.imageUrl, alt = character.name, attrs = { classes(Styles.adminRefThumb) })
+    Span { Text(character.name) }
 }
 
 @Composable

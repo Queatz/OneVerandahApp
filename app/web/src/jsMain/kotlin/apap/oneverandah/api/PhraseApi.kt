@@ -11,6 +11,7 @@ import apap.oneverandah.phrases.PhraseUpsertRequest
 import apap.oneverandah.phrases.PhrasesCoverResponse
 import apap.oneverandah.phrases.PhrasesResponse
 import apap.oneverandah.phrases.ReferencePhoto
+import apap.oneverandah.phrases.ReferencePhotoRenameRequest
 import apap.oneverandah.phrases.ReferencePhotosResponse
 import apap.oneverandah.state.AdminAuth
 import io.ktor.client.HttpClient
@@ -163,6 +164,17 @@ object PhraseApi {
         val response = window.fetch("${base()}/api/v1/admin/reference-photos", init.unsafeCast<RequestInit>()).await()
         val text = response.text().await()
         if (!response.ok) throw PhraseApiException(errorMessage(text, response.status.toInt()))
+        return json.decodeFromString(ReferencePhoto.serializer(), text)
+    }
+
+    suspend fun renameReferencePhoto(id: String, name: String): ReferencePhoto {
+        val response = client.put("${base()}/api/v1/admin/reference-photos/$id") {
+            authed()
+            contentType(ContentType.Application.Json)
+            setBody(json.encodeToString(ReferencePhotoRenameRequest.serializer(), ReferencePhotoRenameRequest(name)))
+        }
+        val text = response.bodyAsText()
+        if (!response.status.isSuccess()) throw PhraseApiException(errorMessage(text, response.status.value))
         return json.decodeFromString(ReferencePhoto.serializer(), text)
     }
 

@@ -198,6 +198,27 @@ class StoryService(
         return characters.delete(id)
     }
 
+    suspend fun renameCharacter(id: String, name: String): StoryCharacter {
+        val trimmed = name.trim()
+        require(trimmed.isNotEmpty()) { "A character name is required" }
+        val existing = characters.findById(id)
+        if (existing != null) {
+            val updated = existing.copy(name = trimmed)
+            characters.save(updated)
+            return updated
+        }
+        val listed = listCharacters().firstOrNull { it.id == id }
+            ?: error("Character '$id' not found")
+        val persisted = listed.copy(
+            id = if (listed.id.startsWith("study-")) "char-${idGenerator()}" else listed.id,
+            name = trimmed,
+            source = StoryCharacter.SOURCE_UPLOAD,
+            createdAt = if (listed.createdAt == 0L) clock() else listed.createdAt,
+        )
+        characters.save(persisted)
+        return persisted
+    }
+
     suspend fun findCharacter(id: String): StoryCharacter? {
         characters.findById(id)?.let { return it }
         return listCharacters().firstOrNull { it.id == id }

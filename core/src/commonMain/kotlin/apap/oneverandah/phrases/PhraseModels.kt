@@ -86,6 +86,11 @@ data class ReferencePhotosResponse(
     val photos: List<ReferencePhoto> = emptyList(),
 )
 
+@Serializable
+data class ReferencePhotoRenameRequest(
+    val name: String,
+)
+
 /**
  * Admin request to craft a scene with Qwen R2I from named apartment references.
  *

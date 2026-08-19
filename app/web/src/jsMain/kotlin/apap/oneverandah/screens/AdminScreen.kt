@@ -26,6 +26,7 @@ import apap.oneverandah.phrases.Phrase
 import apap.oneverandah.phrases.PhraseDefaults
 import apap.oneverandah.api.StoryApi
 import apap.oneverandah.stories.Story
+import apap.oneverandah.stories.StoryCharacter
 import apap.oneverandah.phrases.PhraseLocations
 import apap.oneverandah.phrases.PhraseUpsertRequest
 import apap.oneverandah.phrases.ReferencePhoto
@@ -63,6 +64,7 @@ fun AdminScreen(onBack: () -> Unit) {
     var tab by remember { mutableStateOf(AdminTab.PHRASES) }
     var phrases by remember { mutableStateOf<List<Phrase>>(emptyList()) }
     var photos by remember { mutableStateOf<List<ReferencePhoto>>(emptyList()) }
+    var characters by remember { mutableStateOf<List<StoryCharacter>>(emptyList()) }
     var voices by remember { mutableStateOf<List<ClonedVoice>>(emptyList()) }
     var stories by remember { mutableStateOf<List<Story>>(emptyList()) }
     var coverImageUrl by remember { mutableStateOf<String?>(null) }
@@ -71,7 +73,10 @@ fun AdminScreen(onBack: () -> Unit) {
     var showEditor by remember { mutableStateOf(false) }
     var pendingDeletePhrase by remember { mutableStateOf<Phrase?>(null) }
     var pendingDeletePhoto by remember { mutableStateOf<ReferencePhoto?>(null) }
+    var pendingDeleteCharacter by remember { mutableStateOf<StoryCharacter?>(null) }
     var pendingDeleteVoice by remember { mutableStateOf<ClonedVoice?>(null) }
+    var renamingPhoto by remember { mutableStateOf<ReferencePhoto?>(null) }
+    var renamingCharacter by remember { mutableStateOf<StoryCharacter?>(null) }
     var generateTarget by remember { mutableStateOf<GenerateTarget?>(null) }
     /** Latest generated image URL to inject into the open phrase editor. */
     var editorImageOverride by remember { mutableStateOf<String?>(null) }
@@ -85,6 +90,7 @@ fun AdminScreen(onBack: () -> Unit) {
                 phrases = response.phrases
                 coverImageUrl = response.coverImageUrl
                 photos = PhraseApi.fetchReferencePhotos()
+                characters = runCatching { StoryApi.fetchCharacters() }.getOrDefault(emptyList())
                 voices = runCatching { PhraseApi.fetchClonedVoices() }.getOrDefault(emptyList())
                 stories = runCatching { StoryApi.fetchAdminStories() }.getOrDefault(emptyList())
             } catch (e: PhraseApiException) {
@@ -109,7 +115,8 @@ fun AdminScreen(onBack: () -> Unit) {
     }
 
     val anySheetOpen = showPassword || showEditor || pendingDeletePhrase != null ||
-        pendingDeletePhoto != null || pendingDeleteVoice != null || generateTarget != null
+        pendingDeletePhoto != null || pendingDeleteCharacter != null || pendingDeleteVoice != null ||
+        renamingPhoto != null || renamingCharacter != null || generateTarget != null
 
     Scaffold(
         title = strings.adminTitle,
@@ -232,6 +239,67 @@ fun AdminScreen(onBack: () -> Unit) {
             )
 
             ConfirmDeleteDialog(
+                visible = pendingDeleteCharacter != null,
+                title = strings.adminDeleteCharacterConfirm,
+                onDismiss = { pendingDeleteCharacter = null },
+                onConfirm = {
+                    val character = pendingDeleteCharacter ?: return@ConfirmDeleteDialog
+                    pendingDeleteCharacter = null
+                    scope.launch {
+                        try {
+                            StoryApi.deleteCharacter(character.id)
+                            refresh()
+                            Toaster.show(strings.adminSaved)
+                        } catch (e: Throwable) {
+                            Toaster.show(e.message ?: strings.adminError)
+                        }
+                    }
+                },
+            )
+
+            AdminRenameDialog(
+                visible = renamingPhoto != null,
+                title = strings.adminEdit,
+                label = strings.adminPhotoName,
+                initialName = renamingPhoto?.name.orEmpty(),
+                onDismiss = { renamingPhoto = null },
+                onSave = { name ->
+                    val photo = renamingPhoto ?: return@AdminRenameDialog
+                    scope.launch {
+                        try {
+                            PhraseApi.renameReferencePhoto(photo.id, name)
+                            renamingPhoto = null
+                            refresh()
+                            Toaster.show(strings.adminSaved)
+                        } catch (e: Throwable) {
+                            Toaster.show(e.message ?: strings.adminError)
+                        }
+                    }
+                },
+            )
+
+            AdminRenameDialog(
+                visible = renamingCharacter != null,
+                title = strings.adminEdit,
+                label = strings.adminCharacterName,
+                initialName = renamingCharacter?.name.orEmpty(),
+                onDismiss = { renamingCharacter = null },
+                onSave = { name ->
+                    val character = renamingCharacter ?: return@AdminRenameDialog
+                    scope.launch {
+                        try {
+                            StoryApi.renameCharacter(character.id, name)
+                            renamingCharacter = null
+                            refresh()
+                            Toaster.show(strings.adminSaved)
+                        } catch (e: Throwable) {
+                            Toaster.show(e.message ?: strings.adminError)
+                        }
+                    }
+                },
+            )
+
+            ConfirmDeleteDialog(
                 visible = pendingDeleteVoice != null,
                 title = strings.adminDeleteVoiceConfirm,
                 onDismiss = { pendingDeleteVoice = null },
@@ -338,6 +406,12 @@ fun AdminScreen(onBack: () -> Unit) {
                 }) { Text(strings.adminPhotosTab) }
                 Button(attrs = {
                     classes(Styles.chip)
+                    if (tab == AdminTab.CHARACTERS) classes(Styles.chipActive)
+                    attr("type", "button")
+                    onClick { tab = AdminTab.CHARACTERS }
+                }) { Text(strings.adminCharactersTab) }
+                Button(attrs = {
+                    classes(Styles.chip)
                     if (tab == AdminTab.VOICES) classes(Styles.chipActive)
                     attr("type", "button")
                     onClick { tab = AdminTab.VOICES }
@@ -357,6 +431,7 @@ fun AdminScreen(onBack: () -> Unit) {
                     showPassword = true
                     phrases = emptyList()
                     photos = emptyList()
+                    characters = emptyList()
                     voices = emptyList()
                     stories = emptyList()
                     coverImageUrl = null
@@ -447,7 +522,16 @@ fun AdminScreen(onBack: () -> Unit) {
                     photos = photos,
                     loading = loading,
                     onUploaded = { refresh() },
+                    onRenameRequest = { renamingPhoto = it },
                     onDeleteRequest = { pendingDeletePhoto = it },
+                )
+            }
+            AdminTab.CHARACTERS -> {
+                AdminCharactersPanel(
+                    characters = characters,
+                    loading = loading,
+                    onRenameRequest = { renamingCharacter = it },
+                    onDeleteRequest = { pendingDeleteCharacter = it },
                 )
             }
             AdminTab.STORIES -> {
@@ -637,6 +721,7 @@ private fun ReferencePhotosPanel(
     photos: List<ReferencePhoto>,
     loading: Boolean,
     onUploaded: () -> Unit,
+    onRenameRequest: (ReferencePhoto) -> Unit,
     onDeleteRequest: (ReferencePhoto) -> Unit,
 ) {
     val strings = Localization.strings
@@ -709,13 +794,61 @@ private fun ReferencePhotosPanel(
                 H2 { Text(photo.name) }
                 P { Text(photo.imageUrl) }
             }
-            Button(attrs = {
-                classes(Styles.btnText)
-                attr("type", "button")
-                onClick { onDeleteRequest(photo) }
-            }) { Text(strings.adminDelete) }
+            Div(attrs = { classes(Styles.adminRowActions) }) {
+                Button(attrs = {
+                    classes(Styles.btnText)
+                    attr("type", "button")
+                    onClick { onRenameRequest(photo) }
+                }) { Text(strings.adminEdit) }
+                Button(attrs = {
+                    classes(Styles.btnText)
+                    attr("type", "button")
+                    onClick { onDeleteRequest(photo) }
+                }) { Text(strings.adminDelete) }
+            }
         }
     }
+}
+
+@Composable
+private fun AdminCharactersPanel(
+    characters: List<StoryCharacter>,
+    loading: Boolean,
+    onRenameRequest: (StoryCharacter) -> Unit,
+    onDeleteRequest: (StoryCharacter) -> Unit,
+) {
+    val strings = Localization.strings
+
+    SectionTitle(strings.adminCharactersTab)
+    P(attrs = { classes(Styles.homePrompt) }) {
+        Text(strings.adminCharactersHint)
+    }
+
+    if (loading && characters.isEmpty()) {
+        P { Text(strings.phrasesLoading) }
+    } else if (characters.isEmpty()) {
+        P(attrs = { classes(Styles.homePrompt) }) { Text(strings.adminCharactersEmpty) }
+    }
+
+    AdminCharacterGrid(
+        characters = characters,
+        actions = { character ->
+            Div(attrs = { classes(Styles.adminRowActions) }) {
+                Button(attrs = {
+                    classes(Styles.btnText)
+                    attr("type", "button")
+                    onClick { onRenameRequest(character) }
+                }) { Text(strings.adminEdit) }
+                if (character.source != StoryCharacter.SOURCE_STUDY) {
+                    Button(attrs = {
+                        classes(Styles.btnText)
+                        attr("type", "button")
+                        onClick { onDeleteRequest(character) }
+                    }) { Text(strings.adminDelete) }
+                }
+            }
+        },
+    )
 }
 
 @Composable
@@ -767,6 +900,46 @@ private fun AdminPasswordDialog(
                 enabled = password.isNotBlank() && !busy,
                 onClick = onSubmit,
             )
+        }
+    }
+}
+
+@Composable
+private fun AdminRenameDialog(
+    visible: Boolean,
+    title: String,
+    label: String,
+    initialName: String,
+    onDismiss: () -> Unit,
+    onSave: (String) -> Unit,
+) {
+    val strings = Localization.strings
+    var name by remember(visible, initialName) { mutableStateOf(initialName) }
+
+    BottomDialog(
+        visible = visible,
+        closeLabel = strings.close,
+        onDismiss = onDismiss,
+    ) {
+        Div(attrs = { classes(Styles.dialogHeader) }) {
+            P(attrs = { classes(Styles.dialogTitle) }) { Text(title) }
+        }
+        Div(attrs = { classes(Styles.dialogBody) }) {
+            AdminField(label, name) { name = it }
+        }
+        Div(attrs = { classes(Styles.dialogActions) }) {
+            Button(attrs = {
+                classes(Styles.btnText)
+                attr("type", "button")
+                onClick { onDismiss() }
+            }) { Text(strings.close) }
+            PrimaryButton(
+                label = strings.adminSave,
+                icon = "save",
+                enabled = name.isNotBlank(),
+            ) {
+                onSave(name.trim())
+            }
         }
     }
 }
@@ -1117,4 +1290,4 @@ private fun AdminArea(label: String, value: String, onChange: (String) -> Unit) 
     }
 }
 
-private enum class AdminTab { PHRASES, PHOTOS, VOICES, STORIES }
+private enum class AdminTab { PHRASES, PHOTOS, CHARACTERS, VOICES, STORIES }

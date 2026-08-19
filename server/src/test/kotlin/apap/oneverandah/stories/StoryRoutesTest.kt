@@ -224,6 +224,42 @@ class StoryRoutesTest {
         assertTrue(ready?.imageUrl?.isNotBlank() == true)
     }
 
+    @Test
+    fun adminCanRenameCharacter() = testApplication {
+        val config = AppConfig.load()
+        val system = testSystem()
+        application {
+            install(ContentNegotiation) {
+                json(json)
+            }
+            routing {
+                storyRoutes(system, config)
+            }
+        }
+
+        val created = system.service.addCharacter("Minh", "https://example.test/minh.png")
+        val token = AdminJwt.issue(config.adminJwtSecret)
+        val renamed = client.put("/api/v1/admin/story-characters/${created.id}") {
+            header(HttpHeaders.Authorization, "Bearer $token")
+            contentType(ContentType.Application.Json)
+            setBody(
+                json.encodeToString(
+                    StoryCharacterRenameRequest.serializer(),
+                    StoryCharacterRenameRequest("Minh Anh"),
+                ),
+            )
+        }
+        assertEquals(HttpStatusCode.OK, renamed.status)
+        val body = json.decodeFromString(StoryCharacter.serializer(), renamed.bodyAsText())
+        assertEquals("Minh Anh", body.name)
+
+        val listed = client.get("/api/v1/admin/story-characters") {
+            header(HttpHeaders.Authorization, "Bearer $token")
+        }
+        val characters = json.decodeFromString(StoryCharactersResponse.serializer(), listed.bodyAsText())
+        assertEquals(listOf("Minh Anh"), characters.characters.map { it.name })
+    }
+
     private fun testSystem(
         qwen: apap.oneverandah.images.qwen.QwenClient = PlaceholderQwenClient(),
     ): StorySystem {

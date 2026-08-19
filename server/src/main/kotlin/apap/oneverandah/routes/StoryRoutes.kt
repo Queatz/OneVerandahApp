@@ -5,6 +5,7 @@ import apap.oneverandah.config.AppConfig
 import apap.oneverandah.stories.GenerateStoryImageRequest
 import apap.oneverandah.stories.StoriesResponse
 import apap.oneverandah.stories.StoryApiError
+import apap.oneverandah.stories.StoryCharacterRenameRequest
 import apap.oneverandah.stories.StoryCharactersResponse
 import apap.oneverandah.stories.StoryImageUploadResponse
 import apap.oneverandah.stories.StoryLanguageResponse
@@ -256,6 +257,23 @@ fun Route.storyRoutes(system: StorySystem, config: AppConfig) {
                 call.respond(HttpStatusCode.Created, service.addCharacter(uploaded.name, url))
             } catch (e: IllegalArgumentException) {
                 call.respond(HttpStatusCode.BadRequest, StoryApiError(e.message ?: "Invalid character"))
+            }
+        }
+
+        put("/story-characters/{id}") {
+            if (!requireAdmin(config)) return@put
+            val id = call.parameters["id"].orEmpty()
+            val body = runCatching { call.receive<StoryCharacterRenameRequest>() }.getOrNull()
+            if (body == null) {
+                call.respond(HttpStatusCode.BadRequest, StoryApiError("Invalid character payload"))
+                return@put
+            }
+            try {
+                call.respond(service.renameCharacter(id, body.name))
+            } catch (e: IllegalArgumentException) {
+                call.respond(HttpStatusCode.BadRequest, StoryApiError(e.message ?: "Invalid character"))
+            } catch (e: IllegalStateException) {
+                call.respond(HttpStatusCode.NotFound, StoryApiError(e.message ?: "Not found"))
             }
         }
 

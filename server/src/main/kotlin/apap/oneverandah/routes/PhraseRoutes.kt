@@ -19,6 +19,7 @@ import apap.oneverandah.phrases.PhraseUpsertRequest
 import apap.oneverandah.phrases.PhrasesCoverResponse
 import apap.oneverandah.phrases.PhrasesResponse
 import apap.oneverandah.phrases.ReferencePhoto
+import apap.oneverandah.phrases.ReferencePhotoRenameRequest
 import apap.oneverandah.phrases.ReferencePhotosResponse
 import io.ktor.http.HttpHeaders
 import io.ktor.http.HttpStatusCode
@@ -298,6 +299,29 @@ fun Route.phraseRoutes(
             )
             photos.save(photo)
             call.respond(HttpStatusCode.Created, photo)
+        }
+
+        put("/reference-photos/{id}") {
+            if (!requireAdmin(config)) return@put
+            val id = call.parameters["id"].orEmpty()
+            val body = runCatching { call.receive<ReferencePhotoRenameRequest>() }.getOrNull()
+            if (body == null) {
+                call.respond(HttpStatusCode.BadRequest, PhraseApiError("Invalid reference photo payload"))
+                return@put
+            }
+            val name = body.name.trim()
+            if (name.isBlank()) {
+                call.respond(HttpStatusCode.BadRequest, PhraseApiError("A non-blank 'name' is required"))
+                return@put
+            }
+            val existing = photos.findById(id)
+            if (existing == null) {
+                call.respond(HttpStatusCode.NotFound, PhraseApiError("Reference photo '$id' not found"))
+                return@put
+            }
+            val updated = existing.copy(name = name)
+            photos.save(updated)
+            call.respond(updated)
         }
 
         delete("/reference-photos/{id}") {
