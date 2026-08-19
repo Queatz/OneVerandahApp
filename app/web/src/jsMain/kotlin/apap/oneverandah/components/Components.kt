@@ -130,9 +130,9 @@ fun AppBar(
             Span(attrs = {
                 classes(Styles.materialSymbols, Styles.appBarIcon)
                 attr("role", "button")
-                attr("aria-label", strings.phrasesTitle)
-                onClick { router.navigate("/phrases") }
-            }) { Text("import_contacts") }
+                attr("aria-label", strings.storiesTitle)
+                onClick { router.navigate("/stories") }
+            }) { Text("auto_stories") }
         }
         if (showChatAction) {
             Span(attrs = {

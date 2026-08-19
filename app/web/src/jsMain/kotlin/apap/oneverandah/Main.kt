@@ -20,8 +20,9 @@ import apap.oneverandah.screens.AdminScreen
 import apap.oneverandah.screens.HelpScreen
 import apap.oneverandah.screens.ListServiceScreen
 import apap.oneverandah.screens.ChatScreen
-import apap.oneverandah.screens.ComingSoonStoriesScreen
 import apap.oneverandah.screens.PhrasesScreen
+import apap.oneverandah.screens.StoriesScreen
+import apap.oneverandah.screens.StoryReaderScreen
 import org.jetbrains.compose.web.renderComposable
 
 fun main() {
@@ -134,11 +135,18 @@ fun App() {
         }
 
         route("stories") {
+            string { storyId ->
+                StoryReaderScreen(
+                    storyId = storyId,
+                    onBack = { router.navigate("/stories") },
+                    onHome = { router.navigate("/") },
+                )
+            }
             noMatch {
-                ComingSoonStoriesScreen(
+                StoriesScreen(
                     onBack = { router.navigate("/") },
                     onHome = { router.navigate("/") },
-                    onOpenPhrases = { router.navigate("/phrases") },
+                    onOpenStory = { id -> router.navigate("/stories/$id") },
                 )
             }
         }

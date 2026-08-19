@@ -143,6 +143,17 @@ class ArangoStudySessionsRepository private constructor(
         ensureSuccess(response, "enforce study session cap")
     }
 
+    override suspend fun listRecent(limit: Int): List<SavedStudySessionRecord> {
+        val body = buildJsonObject {
+            put(
+                "query",
+                "FOR doc IN $collection SORT doc.updatedAt DESC LIMIT @limit RETURN doc",
+            )
+            put("bindVars", buildJsonObject { put("limit", limit.coerceAtLeast(0)) })
+        }
+        return queryDocuments(body, "list recent study sessions")
+    }
+
     private suspend fun queryDocuments(body: JsonObject, action: String): List<SavedStudySessionRecord> {
         val response = client.post("$dbUrl/_api/cursor") {
             authed()

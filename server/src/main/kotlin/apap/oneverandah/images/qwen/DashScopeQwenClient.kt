@@ -66,7 +66,7 @@ class DashScopeQwenClient(
     private val publicBaseUrl: String? = null,
     /** Faster poll cadence so completed jobs are noticed sooner under concurrency. */
     private val pollIntervalMs: Long = 1_000,
-    private val maxPollAttempts: Int = 180,
+    private val maxPollAttempts: Int = 300,
 ) : QwenClient {
     override val kind: String = "qwen"
 
@@ -241,11 +241,17 @@ class DashScopeQwenClient(
             )
         }
 
-        val response: HttpResponse = client.post(endpoint) {
-            header(HttpHeaders.Authorization, "Bearer ${config.apiKey}")
-            if (usesOss) header(HEADER_OSS_RESOLVE, "enable")
-            contentType(ContentType.Application.Json)
-            setBody(json.encodeToString(JsonObject.serializer(), requestBody))
+        // Hold the HTTP connection only long enough to enqueue the job. Sync
+        // multimodal generation regularly outlives CIO/proxy idle limits and
+        // surfaces as "the server prematurely closed the connection".
+        val response: HttpResponse = withTransientHttpRetry {
+            client.post(endpoint) {
+                header(HttpHeaders.Authorization, "Bearer ${config.apiKey}")
+                header(HEADER_ASYNC, "enable")
+                if (usesOss) header(HEADER_OSS_RESOLVE, "enable")
+                contentType(ContentType.Application.Json)
+                setBody(json.encodeToString(JsonObject.serializer(), requestBody))
+            }
         }
         val text = response.bodyAsText()
         if (!response.status.isSuccess()) {
@@ -270,12 +276,14 @@ class DashScopeQwenClient(
         requestBody: JsonObject,
         usesOssUrls: Boolean,
     ): String {
-        val response: HttpResponse = client.post(endpoint) {
-            header(HttpHeaders.Authorization, "Bearer ${config.apiKey}")
-            header("X-DashScope-Async", "enable")
-            if (usesOssUrls) header(HEADER_OSS_RESOLVE, "enable")
-            contentType(ContentType.Application.Json)
-            setBody(json.encodeToString(JsonObject.serializer(), requestBody))
+        val response: HttpResponse = withTransientHttpRetry {
+            client.post(endpoint) {
+                header(HttpHeaders.Authorization, "Bearer ${config.apiKey}")
+                header(HEADER_ASYNC, "enable")
+                if (usesOssUrls) header(HEADER_OSS_RESOLVE, "enable")
+                contentType(ContentType.Application.Json)
+                setBody(json.encodeToString(JsonObject.serializer(), requestBody))
+            }
         }
 
         val text = response.bodyAsText()
@@ -291,8 +299,10 @@ class DashScopeQwenClient(
     private suspend fun pollForResult(taskId: String, submitEndpoint: String): String {
         val tasksBaseUrl = apiRootFromEndpoint(submitEndpoint) + "/tasks/"
         repeat(maxPollAttempts) {
-            val response: HttpResponse = client.get(tasksBaseUrl + taskId) {
-                header(HttpHeaders.Authorization, "Bearer ${config.apiKey}")
+            val response: HttpResponse = withTransientHttpRetry {
+                client.get(tasksBaseUrl + taskId) {
+                    header(HttpHeaders.Authorization, "Bearer ${config.apiKey}")
+                }
             }
             val text = response.bodyAsText()
             if (!response.status.isSuccess()) {
@@ -363,7 +373,7 @@ class DashScopeQwenClient(
     }
 
     private suspend fun download(url: String): GeneratedImage {
-        val response: HttpResponse = client.get(url)
+        val response: HttpResponse = withTransientHttpRetry { client.get(url) }
         if (!response.status.isSuccess()) {
             throw QwenException("Failed to download generated image ($url): ${response.status}")
         }
@@ -429,7 +439,7 @@ class DashScopeQwenClient(
         // HTTP(S) fetch (public OSS, CDN, or this server if reachable).
         if (url.startsWith("http://", ignoreCase = true) || url.startsWith("https://", ignoreCase = true)) {
             return runCatching {
-                val response: HttpResponse = client.get(url)
+                val response: HttpResponse = withTransientHttpRetry { client.get(url) }
                 if (!response.status.isSuccess()) {
                     null
                 } else {
@@ -441,6 +451,29 @@ class DashScopeQwenClient(
         }
 
         return null
+    }
+
+    private suspend fun <T> withTransientHttpRetry(
+        attempts: Int = 3,
+        block: suspend () -> T,
+    ): T {
+        var last: Throwable? = null
+        repeat(attempts) { attempt ->
+            try {
+                return block()
+            } catch (e: Throwable) {
+                last = e
+                if (!isTransientHttpClose(e) || attempt == attempts - 1) throw e
+                log.warn(
+                    "Retrying Qwen HTTP after transient close (attempt {}/{}): {}",
+                    attempt + 1,
+                    attempts,
+                    e.message,
+                )
+                delay(400L * (attempt + 1))
+            }
+        }
+        throw last ?: error("Qwen HTTP retry exhausted")
     }
 
     private fun resolveLocalFile(url: String): File? {
@@ -514,6 +547,7 @@ class DashScopeQwenClient(
 
     companion object {
         private val log = LoggerFactory.getLogger(DashScopeQwenClient::class.java)
+        private const val HEADER_ASYNC = "X-DashScope-Async"
         private const val HEADER_OSS_RESOLVE = "X-DashScope-OssResourceResolve"
         private const val DEFAULT_MULTIMODAL_ENDPOINT =
             "https://dashscope.aliyuncs.com/api/v1/services/aigc/multimodal-generation/generation"
@@ -612,6 +646,24 @@ class DashScopeQwenClient(
             if (!fromPath.isNullOrBlank()) return fromPath
             return "ref-${UUID.randomUUID().toString().take(8)}.$extension"
         }
+
+        /** CIO reports dropped keep-alives / idle cuts as a parse EOF. */
+        internal fun isTransientHttpClose(error: Throwable): Boolean =
+            generateSequence(error) { it.cause }.any { cause ->
+                when (cause) {
+                    is java.io.EOFException,
+                    is java.net.SocketException,
+                    is java.nio.channels.ClosedChannelException,
+                    -> true
+                    else -> {
+                        val message = cause.message.orEmpty()
+                        message.contains("prematurely closed", ignoreCase = true) ||
+                            message.contains("connection reset", ignoreCase = true) ||
+                            message.contains("broken pipe", ignoreCase = true) ||
+                            message.contains("connection abort", ignoreCase = true)
+                    }
+                }
+            }
 
         internal fun decodeDataUrl(dataUrl: String): GeneratedImage? {
             val comma = dataUrl.indexOf(',')

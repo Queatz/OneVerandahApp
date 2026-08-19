@@ -38,6 +38,7 @@ interface StudySessionsRepository {
     suspend fun upsert(record: SavedStudySessionRecord): SavedStudySessionRecord
     suspend fun delete(id: String): Boolean
     suspend fun deleteOldestBeyond(deviceTokenHash: String, keepNewest: Int)
+    suspend fun listRecent(limit: Int = 40): List<SavedStudySessionRecord>
 }
 
 class InMemoryStudySessionsRepository : StudySessionsRepository {
@@ -81,6 +82,11 @@ class InMemoryStudySessionsRepository : StudySessionsRepository {
             owned.drop(keepNewest).forEach { items.remove(it.id) }
         }
     }
+
+    override suspend fun listRecent(limit: Int): List<SavedStudySessionRecord> =
+        mutex.withLock {
+            items.values.sortedByDescending { it.updatedAt }.take(limit.coerceAtLeast(0))
+        }
 }
 
 class StudySessionsService(
@@ -120,6 +126,13 @@ class StudySessionsService(
         repository.deleteOldestBeyond(device.tokenHash, maxPerDevice)
         return saved.toApi()
     }
+
+    /** Harvest named portraits from recent study sessions for Mini Story photo generation. */
+    suspend fun listRecentCharacters(limit: Int = 40): List<apap.oneverandah.api.StudyStoryCharacter> =
+        repository.listRecent(limit)
+            .flatMap { it.session.characters }
+            .filter { !it.imageUrl.isNullOrBlank() }
+            .distinctBy { it.imageUrl }
 
     /**
      * @return true when deleted, false when the id is missing or owned by another device.

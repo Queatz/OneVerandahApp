@@ -389,6 +389,19 @@ object Styles {
     const val studyStoryMeaning = "study-story-meaning"
     const val studyStoryContinue = "study-story-continue"
     const val storiesSoon = "stories-soon"
+    const val storiesGrid = "stories-grid"
+    const val storyCoverCard = "story-cover-card"
+    const val storyCoverThumb = "story-cover-thumb"
+    const val storyCoverPlaceholder = "story-cover-placeholder"
+    const val storyCoverTitle = "story-cover-title"
+    const val storyCoverCategory = "story-cover-category"
+    const val storyReaderCover = "story-reader-cover"
+    const val storyReaderNav = "story-reader-nav"
+    const val storyLearningRow = "story-learning-row"
+    const val storyPageMeta = "story-page-meta"
+    const val storyPagePhoto = "story-page-photo"
+    const val storyPageText = "story-page-text"
+    const val storyStudyBlock = "story-study-block"
     const val hiddenAdminWrap = "hidden-admin-wrap"
     const val hiddenAdminButton = "hidden-admin-button"
 
@@ -2058,7 +2071,7 @@ object Styles {
             min-width: 0;
         }
         .${homeExploreCard} .${materialSymbols} {
-            font-size: 18px;
+            font-size: 24px;
             flex: 0 0 auto;
         }
         .${homeExploreTitle} {
@@ -3249,6 +3262,88 @@ object Styles {
             gap: 12px;
             padding: 24px 8px 40px;
             text-align: center;
+        }
+        .${storiesGrid} {
+            display: grid;
+            grid-template-columns: 1fr 1fr;
+            gap: 12px;
+            margin: 8px 0 24px;
+        }
+        .${storyCoverCard} {
+            display: flex;
+            flex-direction: column;
+            align-items: stretch;
+            gap: 8px;
+            padding: 0;
+            border: none;
+            background: var(--md-sys-color-surface-container);
+            border-radius: 16px;
+            overflow: hidden;
+            cursor: pointer;
+            text-align: left;
+            color: inherit;
+        }
+        .${storyCoverThumb}, .${storyCoverPlaceholder} {
+            width: 100%;
+            aspect-ratio: 3 / 4;
+            object-fit: cover;
+            background: var(--md-sys-color-surface-container-high);
+        }
+        .${storyCoverPlaceholder} {
+            display: flex;
+            align-items: center;
+            justify-content: center;
+            font-size: 36px;
+            color: var(--md-sys-color-primary);
+        }
+        .${storyCoverTitle} {
+            font-weight: 700;
+            padding: 0 10px;
+        }
+        .${storyCoverCategory} {
+            padding: 0 10px 12px;
+            font-size: 13px;
+            color: var(--md-sys-color-on-surface-variant);
+        }
+        .${storyReaderCover}, .${storyPagePhoto} {
+            width: 100%;
+            border-radius: 16px;
+            object-fit: cover;
+            margin-bottom: 12px;
+        }
+        .${storyReaderCover} {
+            aspect-ratio: 3 / 4;
+        }
+        .${storyLearningRow} {
+            display: flex;
+            align-items: center;
+            gap: 8px;
+            margin: 12px 0 16px;
+            cursor: pointer;
+        }
+        .${storyReaderNav} {
+            display: flex;
+            align-items: center;
+            gap: 12px;
+            width: 100%;
+        }
+        .${storyReaderNav} .${btnPrimary} {
+            flex: 1;
+        }
+        .${storyPageMeta} {
+            font-size: 13px;
+            color: var(--md-sys-color-on-surface-variant);
+            margin: 0 0 8px;
+        }
+        .${storyPageText} {
+            font-size: 18px;
+            line-height: 1.55;
+            white-space: pre-wrap;
+        }
+        .${storyStudyBlock} {
+            margin-top: 20px;
+            padding-top: 12px;
+            border-top: 1px solid var(--md-sys-color-outline-variant);
         }
         .${storiesSoon} h2 {
             margin: 0;

@@ -164,6 +164,88 @@ class DashScopeQwenClientTest {
     }
 
     @Test
+    fun transientHttpClose_detectsPrematureConnectionClose() {
+        val closed = java.io.EOFException(
+            "Failed to parse HTTP response: the server prematurely closed the connection",
+        )
+        assertTrue(DashScopeQwenClient.isTransientHttpClose(closed))
+        assertTrue(DashScopeQwenClient.isTransientHttpClose(RuntimeException("wrap", closed)))
+        assertTrue(!DashScopeQwenClient.isTransientHttpClose(QwenException("invalid prompt")))
+    }
+
+    @Test
+    fun multimodalGenerate_retriesWhenDashScopeClosesTheConnection() = runBlocking {
+        val attempts = AtomicInteger()
+        val engine = MockEngine { request ->
+            val url = request.url.toString()
+            when {
+                url.contains("multimodal-generation") -> {
+                    if (attempts.getAndIncrement() == 0) {
+                        throw java.io.EOFException(
+                            "Failed to parse HTTP response: the server prematurely closed the connection",
+                        )
+                    }
+                    assertEquals("enable", request.headers["X-DashScope-Async"])
+                    respond(
+                        content = """{"output":{"task_id":"task-cover-1","task_status":"PENDING"}}""",
+                        status = HttpStatusCode.OK,
+                        headers = headersOf(HttpHeaders.ContentType, "application/json"),
+                    )
+                }
+                url.contains("/tasks/task-cover-1") -> {
+                    respond(
+                        content = """
+                            {
+                              "output": {
+                                "task_status": "SUCCEEDED",
+                                "choices": [
+                                  {
+                                    "message": {
+                                      "content": [
+                                        {
+                                          "image": "https://dashscope-result.example.test/cover.png",
+                                          "type": "image"
+                                        }
+                                      ]
+                                    }
+                                  }
+                                ]
+                              }
+                            }
+                        """.trimIndent(),
+                        status = HttpStatusCode.OK,
+                        headers = headersOf(HttpHeaders.ContentType, "application/json"),
+                    )
+                }
+                url.contains("dashscope-result.example.test") -> {
+                    respond(
+                        content = ByteReadChannel(byteArrayOf(4, 4, 4)),
+                        status = HttpStatusCode.OK,
+                        headers = headersOf(HttpHeaders.ContentType, "image/png"),
+                    )
+                }
+                else -> error("Unexpected request: $url")
+            }
+        }
+        val client = HttpClient(engine)
+        val qwen = DashScopeQwenClient(
+            config = QwenImageConfig(
+                endpoint = "https://dashscope.aliyuncs.com/api/v1/services/aigc/text2image/image-synthesis",
+                apiKey = "test-key",
+                model = "wan2.7-image",
+                r2iEndpoint = "https://dashscope.aliyuncs.com/api/v1/services/aigc/multimodal-generation/generation",
+                r2iModel = "wan2.7-image",
+            ),
+            client = client,
+            pollIntervalMs = 1,
+        )
+        val image = qwen.generate("Lan by the pool at dusk")
+        assertEquals(2, attempts.get())
+        assertTrue(image.bytes.contentEquals(byteArrayOf(4, 4, 4)))
+        client.close()
+    }
+
+    @Test
     fun decodeDataUrl_readsBase64Png() {
         val bytes = byteArrayOf(1, 2, 3, 4)
         val dataUrl = "data:image/png;base64," + Base64.getEncoder().encodeToString(bytes)

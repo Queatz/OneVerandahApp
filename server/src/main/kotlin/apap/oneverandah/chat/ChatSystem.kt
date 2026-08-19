@@ -5,10 +5,9 @@ import apap.oneverandah.data.Catalog
 import apap.oneverandah.images.qwen.DashScopeQwenClient
 import apap.oneverandah.images.qwen.PlaceholderQwenClient
 import apap.oneverandah.images.qwen.QwenClient
+import apap.oneverandah.http.longRunningHttpClient
 import apap.oneverandah.images.storage.StorageService
 import io.ktor.client.HttpClient
-import io.ktor.client.engine.cio.CIO
-import io.ktor.client.plugins.HttpTimeout
 import io.ktor.client.plugins.websocket.WebSockets
 import kotlinx.coroutines.CoroutineScope
 import kotlinx.coroutines.Dispatchers
@@ -50,15 +49,8 @@ class ChatSystem(
             storage: StorageService? = null,
         ): ChatSystem {
             val scope = CoroutineScope(SupervisorJob() + Dispatchers.IO)
-            val client = HttpClient(CIO) {
-                install(HttpTimeout) {
-                    // Multimodal image gen (esp. reference-to-image) regularly exceeds 2 minutes.
-                    requestTimeoutMillis = 300_000
-                    connectTimeoutMillis = 30_000
-                    socketTimeoutMillis = 300_000
-                }
+            val client = longRunningHttpClient {
                 install(WebSockets)
-                expectSuccess = false
             }
             val arangoRepository = ArangoChatRepository.connect(config.arango, client)
             val arangoDeviceRepository = ArangoDeviceRepository.connect(config.arango, client)

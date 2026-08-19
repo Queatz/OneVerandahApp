@@ -11,12 +11,11 @@ import apap.oneverandah.images.storage.AliyunOssStorageService
 import apap.oneverandah.images.storage.LocalImageCache
 import apap.oneverandah.images.storage.LocalStorageService
 import apap.oneverandah.images.storage.StorageService
+import apap.oneverandah.http.longRunningHttpClient
 import apap.oneverandah.search.InMemorySearchRepository
 import apap.oneverandah.search.SearchRepository
 import apap.oneverandah.search.arango.ArangoSearchRepository
 import io.ktor.client.HttpClient
-import io.ktor.client.engine.cio.CIO
-import io.ktor.client.plugins.HttpTimeout
 import kotlinx.coroutines.CoroutineScope
 import kotlinx.coroutines.Dispatchers
 import kotlinx.coroutines.SupervisorJob
@@ -128,14 +127,7 @@ class ImageSystem private constructor(
          * infrastructure; it degrades to local/in-memory backends instead.
          */
         suspend fun create(config: AppConfig): ImageSystem {
-            val httpClient = HttpClient(CIO) {
-                install(HttpTimeout) {
-                    requestTimeoutMillis = 120_000
-                    connectTimeoutMillis = 15_000
-                    socketTimeoutMillis = 120_000
-                }
-                expectSuccess = false
-            }
+            val httpClient = longRunningHttpClient()
 
             val arangoRepository = ArangoImageRepository.connect(config.arango, httpClient)
             if (arangoRepository == null && config.isProduction) {

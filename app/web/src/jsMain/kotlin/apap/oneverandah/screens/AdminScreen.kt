@@ -24,6 +24,8 @@ import apap.oneverandah.model.LocalizedText
 import apap.oneverandah.phrases.GeneratePhraseImageRequest
 import apap.oneverandah.phrases.Phrase
 import apap.oneverandah.phrases.PhraseDefaults
+import apap.oneverandah.api.StoryApi
+import apap.oneverandah.stories.Story
 import apap.oneverandah.phrases.PhraseLocations
 import apap.oneverandah.phrases.PhraseUpsertRequest
 import apap.oneverandah.phrases.ReferencePhoto
@@ -62,6 +64,7 @@ fun AdminScreen(onBack: () -> Unit) {
     var phrases by remember { mutableStateOf<List<Phrase>>(emptyList()) }
     var photos by remember { mutableStateOf<List<ReferencePhoto>>(emptyList()) }
     var voices by remember { mutableStateOf<List<ClonedVoice>>(emptyList()) }
+    var stories by remember { mutableStateOf<List<Story>>(emptyList()) }
     var coverImageUrl by remember { mutableStateOf<String?>(null) }
     var loading by remember { mutableStateOf(false) }
     var editing by remember { mutableStateOf<Phrase?>(null) }
@@ -83,6 +86,7 @@ fun AdminScreen(onBack: () -> Unit) {
                 coverImageUrl = response.coverImageUrl
                 photos = PhraseApi.fetchReferencePhotos()
                 voices = runCatching { PhraseApi.fetchClonedVoices() }.getOrDefault(emptyList())
+                stories = runCatching { StoryApi.fetchAdminStories() }.getOrDefault(emptyList())
             } catch (e: PhraseApiException) {
                 if (e.message?.contains("authentication", ignoreCase = true) == true) {
                     AdminAuth.clear()
@@ -338,6 +342,12 @@ fun AdminScreen(onBack: () -> Unit) {
                     attr("type", "button")
                     onClick { tab = AdminTab.VOICES }
                 }) { Text(strings.adminVoicesTab) }
+                Button(attrs = {
+                    classes(Styles.chip)
+                    if (tab == AdminTab.STORIES) classes(Styles.chipActive)
+                    attr("type", "button")
+                    onClick { tab = AdminTab.STORIES }
+                }) { Text(strings.adminStoriesTab) }
             }
             Button(attrs = {
                 classes(Styles.btnText)
@@ -348,6 +358,7 @@ fun AdminScreen(onBack: () -> Unit) {
                     phrases = emptyList()
                     photos = emptyList()
                     voices = emptyList()
+                    stories = emptyList()
                     coverImageUrl = null
                 }
             }) { Text(strings.adminLogout) }
@@ -437,6 +448,13 @@ fun AdminScreen(onBack: () -> Unit) {
                     loading = loading,
                     onUploaded = { refresh() },
                     onDeleteRequest = { pendingDeletePhoto = it },
+                )
+            }
+            AdminTab.STORIES -> {
+                AdminStoriesPanel(
+                    stories = stories,
+                    loading = loading,
+                    onRefresh = { refresh() },
                 )
             }
             AdminTab.VOICES -> {
@@ -1099,4 +1117,4 @@ private fun AdminArea(label: String, value: String, onChange: (String) -> Unit) 
     }
 }
 
-private enum class AdminTab { PHRASES, PHOTOS, VOICES }
+private enum class AdminTab { PHRASES, PHOTOS, VOICES, STORIES }

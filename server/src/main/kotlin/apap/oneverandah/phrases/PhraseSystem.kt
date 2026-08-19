@@ -6,11 +6,10 @@ import apap.oneverandah.images.qwen.PlaceholderQwenClient
 import apap.oneverandah.images.qwen.QwenClient
 import apap.oneverandah.images.storage.StorageService
 import apap.oneverandah.model.LocalizedText
+import apap.oneverandah.http.longRunningHttpClient
 import apap.oneverandah.phrases.arango.ArangoPhraseRepository
 import apap.oneverandah.phrases.arango.ArangoReferencePhotoRepository
 import io.ktor.client.HttpClient
-import io.ktor.client.engine.cio.CIO
-import io.ktor.client.plugins.HttpTimeout
 import kotlinx.coroutines.CoroutineScope
 import kotlinx.coroutines.Dispatchers
 import kotlinx.coroutines.SupervisorJob
@@ -131,14 +130,7 @@ class PhraseSystem private constructor(
             sharedHttpClient: HttpClient? = null,
         ): PhraseSystem {
             val ownsClient = sharedHttpClient == null
-            val client = sharedHttpClient ?: HttpClient(CIO) {
-                install(HttpTimeout) {
-                    requestTimeoutMillis = 120_000
-                    connectTimeoutMillis = 15_000
-                    socketTimeoutMillis = 120_000
-                }
-                expectSuccess = false
-            }
+            val client = sharedHttpClient ?: longRunningHttpClient()
 
             val arangoPhrases = ArangoPhraseRepository.connect(config.arango, client)
             if (arangoPhrases == null && config.isProduction) {

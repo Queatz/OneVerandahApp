@@ -11,6 +11,8 @@ import apap.oneverandah.routes.asrRoutes
 import apap.oneverandah.routes.deviceRoutes
 import apap.oneverandah.routes.phraseRoutes
 import apap.oneverandah.routes.searchRoutes
+import apap.oneverandah.routes.storyRoutes
+import apap.oneverandah.stories.StorySystem
 import io.ktor.http.HttpHeaders
 import io.ktor.http.HttpMethod
 import io.ktor.http.HttpStatusCode
@@ -193,6 +195,17 @@ fun Application.module(
         asrRoutes(chatSystem.asrRelay)
         deviceRoutes(chatSystem.deviceService)
         phraseRoutes(phraseSystem, config, chatSystem.clonedVoicesService)
+        val storySystem = runBlocking {
+            StorySystem.create(
+                config = config,
+                storage = imageSystem.storage,
+                phraseSystem = phraseSystem,
+                studyService = chatSystem.studyService,
+                studySessionsService = chatSystem.studySessionsService,
+                httpClient = imageSystem.httpClient,
+            )
+        }
+        storyRoutes(storySystem, config)
     }
 }
 
