@@ -25,6 +25,8 @@ import org.jetbrains.compose.web.dom.Input
 import org.jetbrains.compose.web.dom.P
 import org.jetbrains.compose.web.dom.Span
 import org.jetbrains.compose.web.dom.Text
+import kotlinx.browser.document
+import org.w3c.dom.HTMLVideoElement
 
 @Composable
 fun AdminChallengesPanel(
@@ -149,10 +151,13 @@ private fun AdminSubmissionRow(
     onDelete: () -> Unit,
 ) {
     val strings = Localization.strings
-    Div(attrs = { classes(Styles.adminPhotoCard) }) {
+    Div(attrs = { classes(Styles.adminPhotoCard, Styles.adminChallengeRow) }) {
+        if (submission.videoUrl.isNotBlank()) {
+            AdminChallengeVideo(submission.videoUrl, submission.thumbnailUrl)
+        }
         Span { Text(submission.challengerName) }
         P(attrs = { classes(Styles.homePrompt) }) {
-            Text("${submission.status} · ${submission.challengeName.ifBlank { strings.challengesUntitled }}")
+            Text("${ChallengeLogic.statusLabel(submission.status)} · ${submission.challengeName.ifBlank { strings.challengesUntitled }}")
         }
         Div(attrs = { classes(Styles.adminRowActions) }) {
             if (onPublish != null) {
@@ -165,4 +170,25 @@ private fun AdminSubmissionRow(
             }) { Text(strings.adminDeleteSubmission) }
         }
     }
+}
+
+@Composable
+private fun AdminChallengeVideo(url: String, poster: String?) {
+    Div(attrs = {
+        ref { element ->
+            val video = document.createElement("video") as HTMLVideoElement
+            video.src = url
+            video.controls = true
+            video.preload = "metadata"
+            video.setAttribute("playsinline", "true")
+            if (!poster.isNullOrBlank()) video.poster = poster
+            video.className = Styles.adminChallengeVideo
+            element.appendChild(video)
+            onDispose {
+                video.pause()
+                video.src = ""
+                element.removeChild(video)
+            }
+        }
+    })
 }

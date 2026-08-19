@@ -61,6 +61,7 @@ data class ChallengeCard(
     val id: String,
     val name: String = "",
     val coverImageUrl: String? = null,
+    val coverVideoUrl: String? = null,
     val topVoteCount: Int = 0,
     val submissionCount: Int = 0,
     val lastActivityAt: Long = 0,

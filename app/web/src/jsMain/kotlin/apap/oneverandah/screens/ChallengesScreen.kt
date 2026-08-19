@@ -23,6 +23,8 @@ import apap.oneverandah.components.PrimaryButton
 import apap.oneverandah.components.Scaffold
 import apap.oneverandah.i18n.Localization
 import apap.oneverandah.state.Toaster
+import kotlinx.browser.document
+import kotlinx.browser.window
 import kotlinx.coroutines.launch
 import org.jetbrains.compose.web.attributes.InputType
 import org.jetbrains.compose.web.dom.Button
@@ -33,6 +35,7 @@ import org.jetbrains.compose.web.dom.P
 import org.jetbrains.compose.web.dom.Span
 import org.jetbrains.compose.web.dom.Text
 import org.w3c.dom.HTMLInputElement
+import org.w3c.dom.HTMLVideoElement
 import org.w3c.files.File
 
 @Composable
@@ -60,6 +63,7 @@ fun ChallengesScreen(
         title = strings.challengesTitle,
         onBack = onBack,
         onHome = onHome,
+        showPhrasesAction = false,
         scrollKey = "challenges",
         lockScroll = composerOpen,
         overlay = {
@@ -125,10 +129,8 @@ private fun ChallengeCardButton(card: ChallengeCard, onClick: () -> Unit) {
         attr("type", "button")
         onClick { onClick() }
     }) {
-        if (!card.coverImageUrl.isNullOrBlank()) {
-            Div(attrs = { classes(Styles.challengeCover) }) {
-                CoverImage(card.coverImageUrl!!)
-            }
+        if (!card.coverVideoUrl.isNullOrBlank() || !card.coverImageUrl.isNullOrBlank()) {
+            ChallengeCoverMedia(imageUrl = card.coverImageUrl, videoUrl = card.coverVideoUrl)
         } else {
             Div(attrs = { classes(Styles.storyCoverPlaceholder) }) {
                 MaterialSymbol("emoji_events")
@@ -177,8 +179,15 @@ fun ChallengeUploadDialog(
     val scope = rememberCoroutineScope()
     var name by remember { mutableStateOf("") }
     var file by remember { mutableStateOf<File?>(null) }
+    var previewUrl by remember { mutableStateOf<String?>(null) }
     var progress by remember { mutableStateOf(0) }
     var busy by remember { mutableStateOf(false) }
+
+    fun setPicked(picked: File?) {
+        previewUrl?.let { window.asDynamic().URL.revokeObjectURL(it) }
+        file = picked
+        previewUrl = picked?.let { window.asDynamic().URL.createObjectURL(it) as String }
+    }
 
     BottomDialog(
         visible = visible,
@@ -205,13 +214,20 @@ fun ChallengeUploadDialog(
                     onInput { name = it.value }
                 }
             }
-            Label(attrs = { classes(Styles.btnText) }) {
-                Text(file?.name ?: strings.challengesPickVideo)
+            Label(attrs = { classes(Styles.challengePickVideo) }) {
+                val preview = previewUrl
+                if (preview != null) {
+                    ChallengePreviewVideo(preview)
+                    Span { Text(file?.name ?: strings.challengesPickVideo) }
+                } else {
+                    MaterialSymbol("movie")
+                    Span { Text(strings.challengesPickVideo) }
+                }
                 Input(type = InputType.File) {
                     attr("accept", "video/*")
                     style { property("display", "none") }
                     onChange {
-                        file = (it.nativeEvent.target as? HTMLInputElement)?.firstFileOrNull()
+                        setPicked((it.nativeEvent.target as? HTMLInputElement)?.firstFileOrNull())
                     }
                 }
             }
@@ -251,7 +267,7 @@ fun ChallengeUploadDialog(
                         )
                         Toaster.show(strings.challengesInReview)
                         name = ""
-                        file = null
+                        setPicked(null)
                         onUploaded()
                     } catch (e: ChallengeApiException) {
                         Toaster.show(e.message ?: strings.challengesSubmitError)
@@ -264,4 +280,49 @@ fun ChallengeUploadDialog(
             }
         }
     }
+}
+
+@Composable
+private fun ChallengeCoverMedia(imageUrl: String?, videoUrl: String?) {
+    Div(attrs = {
+        classes(Styles.challengeCover)
+        ref { element ->
+            val video = document.createElement("video") as HTMLVideoElement
+            video.muted = true
+            video.controls = false
+            video.preload = "metadata"
+            video.setAttribute("playsinline", "true")
+            video.setAttribute("webkit-playsinline", "true")
+            if (!imageUrl.isNullOrBlank()) video.poster = imageUrl
+            if (!videoUrl.isNullOrBlank()) video.src = videoUrl
+            video.className = Styles.challengeCoverMedia
+            element.appendChild(video)
+            onDispose {
+                video.pause()
+                video.src = ""
+                element.removeChild(video)
+            }
+        }
+    })
+}
+
+@Composable
+private fun ChallengePreviewVideo(url: String) {
+    Div(attrs = {
+        ref { element ->
+            val video = document.createElement("video") as HTMLVideoElement
+            video.src = url
+            video.muted = true
+            video.controls = true
+            video.preload = "metadata"
+            video.setAttribute("playsinline", "true")
+            video.className = Styles.challengePickPreview
+            element.appendChild(video)
+            onDispose {
+                video.pause()
+                video.src = ""
+                element.removeChild(video)
+            }
+        }
+    })
 }

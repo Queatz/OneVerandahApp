@@ -4,6 +4,7 @@ import androidx.compose.runtime.Composable
 import androidx.compose.runtime.DisposableEffect
 import androidx.compose.runtime.LaunchedEffect
 import androidx.compose.runtime.getValue
+import androidx.compose.runtime.key
 import androidx.compose.runtime.mutableStateOf
 import androidx.compose.runtime.remember
 import androidx.compose.runtime.rememberCoroutineScope
@@ -47,6 +48,7 @@ fun ChallengePlayerScreen(
     var flying by remember { mutableStateOf<List<FlyingEmoji>>(emptyList()) }
     var videoEl by remember { mutableStateOf<HTMLVideoElement?>(null) }
     var dragStartY by remember { mutableStateOf<Double?>(null) }
+    var lastAdvanceAt by remember { mutableStateOf(0.0) }
     var enterOpen by remember { mutableStateOf(false) }
 
     LaunchedEffect(challengeId) {
@@ -60,6 +62,9 @@ fun ChallengePlayerScreen(
     val next = submissions.getOrNull(index + 1)
 
     fun goNext() {
+        val now = window.performance.now()
+        if (!ChallengeLogic.canAdvance(now.toLong(), lastAdvanceAt.toLong())) return
+        lastAdvanceAt = now
         val following = ChallengeLogic.nextIndexOrDone(index, submissions.size)
         if (following == null) onBack() else {
             index = following
@@ -129,22 +134,35 @@ fun ChallengePlayerScreen(
                 if (start != null && end != null && end - start > 72) goNext()
             }
             onWheel { event ->
+                event.preventDefault()
                 val wheel = event.nativeEvent as WheelEvent
                 if (wheel.deltaY > 40) goNext()
             }
         }) {
-            ChallengeVideo(
-                url = current.videoUrl,
-                poster = current.thumbnailUrl,
-                onReady = { el ->
-                    videoEl = el
-                    el.play()
-                    burst(current)
-                },
-                onTime = { ms -> caption = ChallengeLogic.captionAt(current.words, ms) },
-            )
-            next?.videoUrl?.takeIf { it.isNotBlank() }?.let { preload ->
-                ChallengeVideo(url = preload, poster = next.thumbnailUrl, hidden = true, onReady = {}, onTime = {})
+            key(current.id) {
+                ChallengeVideo(
+                    url = current.videoUrl,
+                    poster = current.thumbnailUrl,
+                    onReady = { el ->
+                        videoEl = el
+                        el.play()
+                        burst(current)
+                    },
+                    onTime = { ms -> caption = ChallengeLogic.captionAt(current.words, ms) },
+                )
+            }
+            next?.let { upcoming ->
+                if (upcoming.videoUrl.isNotBlank()) {
+                    key("preload-${upcoming.id}") {
+                        ChallengeVideo(
+                            url = upcoming.videoUrl,
+                            poster = upcoming.thumbnailUrl,
+                            hidden = true,
+                            onReady = {},
+                            onTime = {},
+                        )
+                    }
+                }
             }
 
             flying.forEach { flake ->
@@ -182,9 +200,23 @@ fun ChallengePlayerScreen(
             if (paused) {
                 Div(attrs = { classes(Styles.challengePauseHint) }) { MaterialSymbol("play_arrow") }
             }
-        }
 
-        Div(attrs = { classes(Styles.challengeDock) }) {
+            if (next != null) {
+                Button(attrs = {
+                    classes(Styles.challengeNextBtn)
+                    attr("type", "button")
+                    attr("aria-label", strings.challengesNext)
+                    onClick { event ->
+                        event.stopPropagation()
+                        goNext()
+                    }
+                }) { MaterialSymbol("keyboard_arrow_down") }
+            }
+
+            Div(attrs = {
+                classes(Styles.challengeDock)
+                onClick { event -> event.stopPropagation() }
+            }) {
             if (showEmojis) {
                 Div(attrs = { classes(Styles.challengeEmojiRow) }) {
                     ChallengeLogic.EMOJI_IDS.forEach { id ->
@@ -227,13 +259,19 @@ fun ChallengePlayerScreen(
                 attr("type", "button")
                 onClick { enterOpen = true }
             }) { Text(strings.challengesEnter) }
+            }
         }
 
         ChallengeUploadDialog(
             visible = enterOpen,
             challengeId = challengeId,
             onDismiss = { enterOpen = false },
-            onUploaded = { enterOpen = false },
+            onUploaded = {
+                enterOpen = false
+                scope.launch {
+                    ChallengeApi.fetchChallenge(challengeId)?.let { detail = it }
+                }
+            },
         )
     }
     }
@@ -261,6 +299,7 @@ private fun ChallengeVideo(
             video.setAttribute("playsinline", "true")
             video.setAttribute("webkit-playsinline", "true")
             video.controls = false
+            video.loop = true
             video.preload = if (hidden) "auto" else "auto"
             video.autoplay = !hidden
             if (!poster.isNullOrBlank()) video.poster = poster

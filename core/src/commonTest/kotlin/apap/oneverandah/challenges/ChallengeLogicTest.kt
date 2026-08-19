@@ -29,10 +29,11 @@ class ChallengeLogicTest {
     @Test
     fun coverUsesFirstFrameOfCurrentLeader() {
         val challenge = Challenge(id = "c", name = "Swim")
-        val silver = submission("s", challengeId = "c", voteCount = 2, thumbnailUrl = "silver.jpg", createdAt = 1)
-        val gold = submission("g", challengeId = "c", voteCount = 5, thumbnailUrl = "gold.jpg", createdAt = 2)
+        val silver = submission("s", challengeId = "c", voteCount = 2, thumbnailUrl = "silver.jpg", videoUrl = "silver.mp4", createdAt = 1)
+        val gold = submission("g", challengeId = "c", voteCount = 5, thumbnailUrl = "gold.jpg", videoUrl = "gold.mp4", createdAt = 2)
         val card = ChallengeLogic.publicCards(listOf(challenge), listOf(silver, gold)).single()
         assertEquals("gold.jpg", card.coverImageUrl)
+        assertEquals("gold.mp4", card.coverVideoUrl)
         assertEquals(5, card.topVoteCount)
         assertEquals(2, card.submissionCount)
     }
@@ -120,6 +121,21 @@ class ChallengeLogicTest {
     }
 
     @Test
+    fun canAdvanceIgnoresRapidRepeatsFromOneScroll() {
+        assertTrue(ChallengeLogic.canAdvance(nowMs = 1_000, lastAdvanceMs = 200))
+        assertTrue(!ChallengeLogic.canAdvance(nowMs = 1_000, lastAdvanceMs = 800))
+        assertTrue(ChallengeLogic.canAdvance(nowMs = 1_000, lastAdvanceMs = 1_000 - ChallengeLogic.ADVANCE_COOLDOWN_MS))
+    }
+
+    @Test
+    fun statusLabelIsHumanReadable() {
+        assertEquals("In Review", ChallengeLogic.statusLabel(ChallengeLogic.STATUS_IN_REVIEW))
+        assertEquals("Processing", ChallengeLogic.statusLabel(ChallengeLogic.STATUS_PROCESSING))
+        assertEquals("Published", ChallengeLogic.statusLabel(ChallengeLogic.STATUS_PUBLISHED))
+        assertEquals("Failed", ChallengeLogic.statusLabel(ChallengeLogic.STATUS_FAILED))
+    }
+
+    @Test
     fun toViewHidesTokenAndMarksMineAndVote() {
         val submission = submission("s", deviceTokenHash = "secret", voteCount = 4)
         val vote = ChallengeVote(
@@ -160,12 +176,14 @@ class ChallengeLogicTest {
         createdAt: Long = 0,
         publishedAt: Long? = if (status == ChallengeLogic.STATUS_PUBLISHED) createdAt else null,
         thumbnailUrl: String? = null,
+        videoUrl: String = "",
         deviceTokenHash: String = "dev",
     ) = ChallengeSubmission(
         id = id,
         challengeId = challengeId,
         challengerName = "Lan",
         deviceTokenHash = deviceTokenHash,
+        videoUrl = videoUrl,
         thumbnailUrl = thumbnailUrl,
         status = status,
         voteCount = voteCount,

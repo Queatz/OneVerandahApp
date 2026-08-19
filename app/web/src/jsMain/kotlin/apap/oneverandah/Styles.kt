@@ -297,6 +297,8 @@ object Styles {
     const val adminActions = "admin-actions"
     const val adminRowActions = "admin-row-actions"
     const val adminPhotoCard = "admin-photo-card"
+    const val adminChallengeRow = "admin-challenge-row"
+    const val adminChallengeVideo = "admin-challenge-video"
     const val adminPhotoThumb = "admin-photo-thumb"
     const val adminUploadBlock = "admin-upload-block"
     const val adminCoverCard = "admin-cover-card"
@@ -392,6 +394,9 @@ object Styles {
     const val storiesGrid = "stories-grid"
     const val challengeStartCard = "challenge-start-card"
     const val challengeCover = "challenge-cover"
+    const val challengeCoverMedia = "challenge-cover-media"
+    const val challengePickVideo = "challenge-pick-video"
+    const val challengePickPreview = "challenge-pick-preview"
     const val challengesReviewList = "challenges-review-list"
     const val challengeReviewCard = "challenge-review-card"
     const val challengeReviewThumb = "challenge-review-thumb"
@@ -415,6 +420,7 @@ object Styles {
     const val challengeCaption = "challenge-caption"
     const val challengePauseHint = "challenge-pause-hint"
     const val challengeDock = "challenge-dock"
+    const val challengeNextBtn = "challenge-next-btn"
     const val challengeEmojiRow = "challenge-emoji-row"
     const val challengeEmojiBtn = "challenge-emoji-btn"
     const val challengeEmojiBtnActive = "challenge-emoji-btn-active"
@@ -2525,6 +2531,17 @@ object Styles {
             background: var(--md-sys-color-surface);
             border: 1px solid #ffffff16;
         }
+        .${adminChallengeRow} {
+            flex-direction: column;
+            align-items: stretch;
+        }
+        .${adminChallengeVideo} {
+            width: 100%;
+            max-height: 320px;
+            border-radius: 12px;
+            background: #000;
+            object-fit: contain;
+        }
         .${adminPhotoThumb} {
             width: 64px;
             height: 64px;
@@ -3429,6 +3446,40 @@ object Styles {
             width: 100%;
             aspect-ratio: 1 / 1;
             overflow: hidden;
+            background: #111;
+        }
+        .${challengeCoverMedia} {
+            position: absolute;
+            inset: 0;
+            width: 100%;
+            height: 100%;
+            object-fit: cover;
+            display: block;
+            background: #111;
+        }
+        .${challengePickVideo} {
+            display: flex;
+            flex-direction: column;
+            align-items: center;
+            justify-content: center;
+            gap: 10px;
+            width: 100%;
+            min-height: 132px;
+            box-sizing: border-box;
+            padding: 14px;
+            border: 2px solid var(--md-sys-color-outline);
+            border-radius: 16px;
+            background: var(--md-sys-color-surface-container);
+            cursor: pointer;
+            text-align: center;
+        }
+        .${challengePickPreview} {
+            width: 100%;
+            max-height: 220px;
+            border-radius: 12px;
+            object-fit: cover;
+            background: #000;
+            display: block;
         }
         .${challengesReviewList} {
             display: flex;
@@ -3475,6 +3526,8 @@ object Styles {
             min-height: 100%;
             background: #111;
             color: #fff;
+            padding: 10px;
+            box-sizing: border-box;
         }
         .${challengePlayerEmpty} {
             margin: auto;
@@ -3485,6 +3538,7 @@ object Styles {
             flex: 1;
             overflow: hidden;
             background: #000;
+            border-radius: 24px;
         }
         .${challengeVideoWrap}, .${challengeVideo} {
             position: absolute;
@@ -3492,6 +3546,7 @@ object Styles {
             width: 100%;
             height: 100%;
             object-fit: cover;
+            border-radius: 24px;
         }
         .${challengePreload} {
             position: absolute;
@@ -3525,6 +3580,7 @@ object Styles {
             border-radius: 999px;
             width: 40px;
             height: 40px;
+            line-height: 0;
         }
         .${challengeTopMeta} {
             position: absolute;
@@ -3553,7 +3609,7 @@ object Styles {
             position: absolute;
             left: 16px;
             right: 16px;
-            bottom: 28%;
+            bottom: 148px;
             z-index: 3;
             font-size: 34px;
             line-height: 1.1;
@@ -3564,7 +3620,7 @@ object Styles {
             position: absolute;
             left: 16px;
             right: 16px;
-            bottom: 18%;
+            bottom: 108px;
             z-index: 3;
             font-size: 20px;
             text-align: center;
@@ -3581,12 +3637,35 @@ object Styles {
             pointer-events: none;
         }
         .${challengeDock} {
+            position: absolute;
+            left: 0;
+            right: 0;
+            bottom: 0;
+            z-index: 5;
             display: flex;
             flex-direction: column;
             align-items: center;
             gap: 10px;
-            padding: 12px 16px 20px;
+            padding: 28px 16px 20px;
             background: linear-gradient(transparent, rgba(0,0,0,0.72));
+            border-radius: 0 0 24px 24px;
+        }
+        .${challengeNextBtn} {
+            position: absolute;
+            right: 16px;
+            bottom: 118px;
+            z-index: 6;
+            width: 48px;
+            height: 48px;
+            border: none;
+            border-radius: 999px;
+            background: rgba(255,255,255,0.2);
+            color: #fff;
+            display: flex;
+            align-items: center;
+            justify-content: center;
+            backdrop-filter: blur(8px);
+            cursor: pointer;
         }
         .${challengeEmojiRow} {
             display: flex;

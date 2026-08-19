@@ -94,12 +94,24 @@ class FfmpegChallengeMedia : ChallengeMediaProcessor {
             val thumbOk = runLogged(
                 "ffmpeg",
                 "-y",
+                "-ss",
+                "1",
                 "-i",
                 input.absolutePath,
-                "-ss",
-                "0",
                 "-frames:v",
                 "1",
+                "-q:v",
+                "3",
+                thumbOut.absolutePath,
+            ) || runLogged(
+                "ffmpeg",
+                "-y",
+                "-i",
+                input.absolutePath,
+                "-frames:v",
+                "1",
+                "-q:v",
+                "3",
                 thumbOut.absolutePath,
             )
             val audioOut = File(work, "audio.wav")

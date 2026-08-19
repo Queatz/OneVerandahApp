@@ -38,6 +38,7 @@ object ChallengeLogic {
     const val MAX_NAME_WORDS = 4
     const val CAPTION_HOLD_MS = 800L
     const val MAX_FLYING_EMOJIS = 24
+    const val ADVANCE_COOLDOWN_MS = 700L
 
     fun isPublished(submission: ChallengeSubmission): Boolean =
         submission.status == STATUS_PUBLISHED
@@ -137,6 +138,7 @@ object ChallengeLogic {
         id = challenge.id,
         name = challenge.name,
         coverImageUrl = top?.thumbnailUrl,
+        coverVideoUrl = top?.videoUrl?.takeIf { it.isNotBlank() },
         topVoteCount = top?.voteCount ?: 0,
         submissionCount = published.size,
         lastActivityAt = challenge.lastActivityAt,
@@ -238,6 +240,19 @@ object ChallengeLogic {
         if (total <= 0) return null
         val next = currentIndex + 1
         return if (next >= total) null else next
+    }
+
+    /** Blocks a second swipe/wheel from skipping past the next clip. */
+    fun canAdvance(nowMs: Long, lastAdvanceMs: Long, cooldownMs: Long = ADVANCE_COOLDOWN_MS): Boolean =
+        nowMs - lastAdvanceMs >= cooldownMs
+
+    fun statusLabel(status: String): String = when (status) {
+        STATUS_PROCESSING -> "Processing"
+        STATUS_IN_REVIEW -> "In Review"
+        STATUS_PUBLISHED -> "Published"
+        STATUS_FAILED -> "Failed"
+        else -> status.replace('_', ' ').split(' ').filter { it.isNotEmpty() }
+            .joinToString(" ") { word -> word.replaceFirstChar { it.uppercase() } }
     }
 
     private fun bestFirst(): Comparator<ChallengeSubmission> =
