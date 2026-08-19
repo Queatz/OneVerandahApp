@@ -3,11 +3,11 @@
 # init.sh — one-time provisioning for the One Verandah image backend on a fresh
 #           Ubuntu Lightnode (22.04+).
 #
-# Installs a JDK, (optionally) ArangoDB, and prepares the application directory.
+# Installs a JDK, ffmpeg/ffprobe, (optionally) ArangoDB, and prepares the application directory.
 # Safe to re-run: every step is idempotent.
 #
 # Usage:
-#   sudo ./deploy/init.sh                 # JDK + app dir only
+#   sudo ./deploy/init.sh                 # JDK + ffmpeg + app dir only
 #   INSTALL_ARANGO=1 sudo ./deploy/init.sh   # also install ArangoDB
 # =============================================================================
 set -euo pipefail
@@ -51,7 +51,7 @@ sudo apt-get update -y \
     -o Acquire::AllowInsecureRepositories=true \
     -o Acquire::AllowDowngradeToInsecureRepositories=true
 sudo DEBIAN_FRONTEND=noninteractive apt-get install -y \
-    openjdk-21-jdk-headless curl wget git unzip ca-certificates
+    openjdk-21-jdk-headless curl wget git unzip ca-certificates ffmpeg
 sudo update-alternatives --set java "$(update-alternatives --list java | grep -m1 'java-21')" 2>/dev/null || true
 
 if [ "$INSTALL_ARANGO" = "1" ]; then

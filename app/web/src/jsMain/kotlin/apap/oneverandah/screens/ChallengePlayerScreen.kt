@@ -59,7 +59,15 @@ fun ChallengePlayerScreen(
 
     val submissions = detail?.submissions.orEmpty()
     val current = submissions.getOrNull(index)
+    val previous = submissions.getOrNull(index - 1)
     val next = submissions.getOrNull(index + 1)
+
+    fun resetPlaybackChrome() {
+        caption = ""
+        paused = false
+        showEmojis = false
+        flying = emptyList()
+    }
 
     fun goNext() {
         val now = window.performance.now()
@@ -68,11 +76,17 @@ fun ChallengePlayerScreen(
         val following = ChallengeLogic.nextIndexOrDone(index, submissions.size)
         if (following == null) onBack() else {
             index = following
-            caption = ""
-            paused = false
-            showEmojis = false
-            flying = emptyList()
+            resetPlaybackChrome()
         }
+    }
+
+    fun goPrev() {
+        val now = window.performance.now()
+        if (!ChallengeLogic.canAdvance(now.toLong(), lastAdvanceAt.toLong())) return
+        val prior = ChallengeLogic.previousIndex(index) ?: return
+        lastAdvanceAt = now
+        index = prior
+        resetPlaybackChrome()
     }
 
     fun burst(submission: ChallengeSubmissionView) {
@@ -86,9 +100,10 @@ fun ChallengePlayerScreen(
         val onKey: (Event) -> Unit = { event ->
             val key = event.asDynamic().key as? String
             if (key == "Escape") onBack()
-            if (key == "ArrowDown" || key == " ") {
+            if (key == "ArrowDown" || key == "ArrowUp" || key == " ") {
                 event.preventDefault()
                 if (key == "ArrowDown") goNext()
+                if (key == "ArrowUp") goPrev()
             }
         }
         window.addEventListener("keydown", onKey)
@@ -131,12 +146,17 @@ fun ChallengePlayerScreen(
                 val start = dragStartY
                 val end = event.changedTouches.item(0)?.clientY?.toDouble()
                 dragStartY = null
-                if (start != null && end != null && end - start > 72) goNext()
+                if (start != null && end != null) {
+                    val delta = end - start
+                    if (delta > 72) goNext()
+                    else if (delta < -72) goPrev()
+                }
             }
             onWheel { event ->
                 event.preventDefault()
                 val wheel = event.nativeEvent as WheelEvent
                 if (wheel.deltaY > 40) goNext()
+                else if (wheel.deltaY < -40) goPrev()
             }
         }) {
             key(current.id) {
@@ -151,12 +171,12 @@ fun ChallengePlayerScreen(
                     onTime = { ms -> caption = ChallengeLogic.captionAt(current.words, ms) },
                 )
             }
-            next?.let { upcoming ->
-                if (upcoming.videoUrl.isNotBlank()) {
-                    key("preload-${upcoming.id}") {
+            listOfNotNull(previous, next).forEach { nearby ->
+                if (nearby.videoUrl.isNotBlank()) {
+                    key("preload-${nearby.id}") {
                         ChallengeVideo(
-                            url = upcoming.videoUrl,
-                            poster = upcoming.thumbnailUrl,
+                            url = nearby.videoUrl,
+                            poster = nearby.thumbnailUrl,
                             hidden = true,
                             onReady = {},
                             onTime = {},
@@ -193,24 +213,42 @@ fun ChallengePlayerScreen(
                 }
             }
 
-            Div(attrs = { classes(Styles.challengeName) }) { Text(current.challengerName) }
-            if (caption.isNotBlank()) {
-                Div(attrs = { classes(Styles.challengeCaption) }) { Text(caption) }
-            }
             if (paused) {
                 Div(attrs = { classes(Styles.challengePauseHint) }) { MaterialSymbol("play_arrow") }
             }
 
-            if (next != null) {
-                Button(attrs = {
-                    classes(Styles.challengeNextBtn)
-                    attr("type", "button")
-                    attr("aria-label", strings.challengesNext)
-                    onClick { event ->
-                        event.stopPropagation()
-                        goNext()
+            Div(attrs = { classes(Styles.challengeBottom) }) {
+            Div(attrs = { classes(Styles.challengeOverlayBar) }) {
+                Div(attrs = { classes(Styles.challengeName) }) { Text(current.challengerName) }
+                if (previous != null || next != null) {
+                    Div(attrs = { classes(Styles.challengeNavBtns) }) {
+                        if (previous != null) {
+                            Button(attrs = {
+                                classes(Styles.challengeNextBtn)
+                                attr("type", "button")
+                                attr("aria-label", strings.challengesPrevious)
+                                onClick { event ->
+                                    event.stopPropagation()
+                                    goPrev()
+                                }
+                            }) { MaterialSymbol("keyboard_arrow_up") }
+                        }
+                        if (next != null) {
+                            Button(attrs = {
+                                classes(Styles.challengeNextBtn)
+                                attr("type", "button")
+                                attr("aria-label", strings.challengesNext)
+                                onClick { event ->
+                                    event.stopPropagation()
+                                    goNext()
+                                }
+                            }) { MaterialSymbol("keyboard_arrow_down") }
+                        }
                     }
-                }) { MaterialSymbol("keyboard_arrow_down") }
+                }
+            }
+            if (caption.isNotBlank()) {
+                Div(attrs = { classes(Styles.challengeCaption) }) { Text(caption) }
             }
 
             Div(attrs = {
@@ -259,6 +297,7 @@ fun ChallengePlayerScreen(
                 attr("type", "button")
                 onClick { enterOpen = true }
             }) { Text(strings.challengesEnter) }
+            }
             }
         }
 
@@ -315,13 +354,25 @@ private fun ChallengeVideo(
                 onTime((video.currentTime * 1000).toLong())
             }
             val onSeeking: (Event) -> Unit = {
-                if (kotlin.math.abs(video.currentTime - lastTime) > 0.35) {
+                val target = video.currentTime
+                if (
+                    !ChallengeLogic.isNaturalLoopSeek(target, lastTime) &&
+                    kotlin.math.abs(target - lastTime) > 0.35
+                ) {
                     video.currentTime = lastTime
+                } else if (ChallengeLogic.isNaturalLoopSeek(target, lastTime)) {
+                    lastTime = target
                 }
+            }
+            val onEnded: (Event) -> Unit = {
+                lastTime = 0.0
+                video.currentTime = 0.0
+                video.play()
             }
             val onLoaded: (Event) -> Unit = { if (!hidden) onReady(video) }
             video.addEventListener("timeupdate", onTimeUpdate)
             video.addEventListener("seeking", onSeeking)
+            video.addEventListener("ended", onEnded)
             video.addEventListener("loadeddata", onLoaded)
             element.appendChild(video)
             if (!hidden) {
@@ -331,6 +382,7 @@ private fun ChallengeVideo(
                 video.pause()
                 video.removeEventListener("timeupdate", onTimeUpdate)
                 video.removeEventListener("seeking", onSeeking)
+                video.removeEventListener("ended", onEnded)
                 video.removeEventListener("loadeddata", onLoaded)
                 video.src = ""
                 element.removeChild(video)

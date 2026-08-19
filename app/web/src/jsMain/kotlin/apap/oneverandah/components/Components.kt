@@ -182,10 +182,6 @@ private fun NavMenuItems(
         onNavigate()
         router.navigate("/chat")
     }
-    DrawerItem("import_contacts", strings.phrasesTitle) {
-        onNavigate()
-        router.navigate("/phrases")
-    }
     DrawerItem("auto_stories", strings.storiesTitle) {
         onNavigate()
         router.navigate("/stories")
@@ -193,6 +189,10 @@ private fun NavMenuItems(
     DrawerItem("emoji_events", strings.challengesTitle) {
         onNavigate()
         router.navigate("/challenges")
+    }
+    DrawerItem("import_contacts", strings.phrasesTitle) {
+        onNavigate()
+        router.navigate("/phrases")
     }
     DrawerItem("info", strings.menuAbout) {
         onNavigate()

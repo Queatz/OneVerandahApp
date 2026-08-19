@@ -54,6 +54,10 @@ fun ServiceCard(
         Div(attrs = {
             classes(Styles.serviceCardCover)
             if (cover != null) classes(Styles.serviceCardCovered)
+
+            onClick {
+                onBook()
+            }
         }) {
             if (cover != null) {
                 CoverImage(cover)

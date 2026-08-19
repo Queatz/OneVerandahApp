@@ -22,6 +22,7 @@ import apap.oneverandah.components.MaterialSymbol
 import apap.oneverandah.components.PrimaryButton
 import apap.oneverandah.components.Scaffold
 import apap.oneverandah.i18n.Localization
+import apap.oneverandah.state.ChallengerNameStore
 import apap.oneverandah.state.Toaster
 import kotlinx.browser.document
 import kotlinx.browser.window
@@ -177,11 +178,18 @@ fun ChallengeUploadDialog(
 ) {
     val strings = Localization.strings
     val scope = rememberCoroutineScope()
-    var name by remember { mutableStateOf("") }
+    var name by remember { mutableStateOf(ChallengerNameStore.peek()) }
     var file by remember { mutableStateOf<File?>(null) }
     var previewUrl by remember { mutableStateOf<String?>(null) }
     var progress by remember { mutableStateOf(0) }
     var busy by remember { mutableStateOf(false) }
+
+    LaunchedEffect(visible) {
+        if (visible) {
+            val saved = ChallengerNameStore.peek()
+            if (saved.isNotBlank()) name = saved
+        }
+    }
 
     fun setPicked(picked: File?) {
         previewUrl?.let { window.asDynamic().URL.revokeObjectURL(it) }
@@ -265,8 +273,8 @@ fun ChallengeUploadDialog(
                             challengeId = challengeId,
                             onProgress = { progress = it },
                         )
+                        ChallengerNameStore.save(name.trim())
                         Toaster.show(strings.challengesInReview)
-                        name = ""
                         setPicked(null)
                         onUploaded()
                     } catch (e: ChallengeApiException) {

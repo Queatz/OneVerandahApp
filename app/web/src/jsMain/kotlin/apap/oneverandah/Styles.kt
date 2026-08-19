@@ -419,6 +419,9 @@ object Styles {
     const val challengeName = "challenge-name"
     const val challengeCaption = "challenge-caption"
     const val challengePauseHint = "challenge-pause-hint"
+    const val challengeBottom = "challenge-bottom"
+    const val challengeOverlayBar = "challenge-overlay-bar"
+    const val challengeNavBtns = "challenge-nav-btns"
     const val challengeDock = "challenge-dock"
     const val challengeNextBtn = "challenge-next-btn"
     const val challengeEmojiRow = "challenge-emoji-row"
@@ -3524,7 +3527,6 @@ object Styles {
             flex-direction: column;
             height: 100%;
             min-height: 100%;
-            background: #111;
             color: #fff;
             padding: 10px;
             box-sizing: border-box;
@@ -3606,22 +3608,14 @@ object Styles {
             text-shadow: 0 1px 6px rgba(0,0,0,0.6);
         }
         .${challengeName} {
-            position: absolute;
-            left: 16px;
-            right: 16px;
-            bottom: 148px;
-            z-index: 3;
+            flex: 1;
+            min-width: 0;
             font-size: 34px;
             line-height: 1.1;
             font-weight: 800;
             text-shadow: 0 2px 16px rgba(0,0,0,0.7);
         }
         .${challengeCaption} {
-            position: absolute;
-            left: 16px;
-            right: 16px;
-            bottom: 108px;
-            z-index: 3;
             font-size: 20px;
             text-align: center;
             text-shadow: 0 1px 10px rgba(0,0,0,0.75);
@@ -3636,7 +3630,7 @@ object Styles {
             opacity: 0.8;
             pointer-events: none;
         }
-        .${challengeDock} {
+        .${challengeBottom} {
             position: absolute;
             left: 0;
             right: 0;
@@ -3644,17 +3638,34 @@ object Styles {
             z-index: 5;
             display: flex;
             flex-direction: column;
-            align-items: center;
+            align-items: stretch;
             gap: 10px;
             padding: 28px 16px 20px;
             background: linear-gradient(transparent, rgba(0,0,0,0.72));
             border-radius: 0 0 24px 24px;
+            pointer-events: none;
+        }
+        .${challengeOverlayBar} {
+            display: flex;
+            align-items: flex-end;
+            justify-content: space-between;
+            gap: 12px;
+        }
+        .${challengeNavBtns} {
+            display: flex;
+            flex-direction: column;
+            gap: 8px;
+            flex: 0 0 auto;
+            pointer-events: auto;
+        }
+        .${challengeDock} {
+            display: flex;
+            flex-direction: column;
+            align-items: center;
+            gap: 10px;
+            pointer-events: auto;
         }
         .${challengeNextBtn} {
-            position: absolute;
-            right: 16px;
-            bottom: 118px;
-            z-index: 6;
             width: 48px;
             height: 48px;
             border: none;
@@ -3666,6 +3677,7 @@ object Styles {
             justify-content: center;
             backdrop-filter: blur(8px);
             cursor: pointer;
+            pointer-events: auto;
         }
         .${challengeEmojiRow} {
             display: flex;

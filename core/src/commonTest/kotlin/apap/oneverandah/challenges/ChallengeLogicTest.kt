@@ -121,6 +121,23 @@ class ChallengeLogicTest {
     }
 
     @Test
+    fun previousIndexStaysOnFirstSubmission() {
+        assertNull(ChallengeLogic.previousIndex(0))
+        assertEquals(0, ChallengeLogic.previousIndex(1))
+        assertEquals(2, ChallengeLogic.previousIndex(3))
+        assertNull(ChallengeLogic.previousIndex(-1))
+    }
+
+    @Test
+    fun naturalLoopSeekAllowsEndToStartButBlocksScrubs() {
+        assertTrue(ChallengeLogic.isNaturalLoopSeek(0.0, 29.8))
+        assertTrue(ChallengeLogic.isNaturalLoopSeek(0.12, 4.9))
+        assertTrue(!ChallengeLogic.isNaturalLoopSeek(12.04, 11.96))
+        assertTrue(!ChallengeLogic.isNaturalLoopSeek(15.0, 10.0))
+        assertTrue(!ChallengeLogic.isNaturalLoopSeek(10.0, 15.0))
+    }
+
+    @Test
     fun canAdvanceIgnoresRapidRepeatsFromOneScroll() {
         assertTrue(ChallengeLogic.canAdvance(nowMs = 1_000, lastAdvanceMs = 200))
         assertTrue(!ChallengeLogic.canAdvance(nowMs = 1_000, lastAdvanceMs = 800))

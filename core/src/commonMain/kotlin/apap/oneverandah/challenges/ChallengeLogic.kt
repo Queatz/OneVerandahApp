@@ -242,6 +242,16 @@ object ChallengeLogic {
         return if (next >= total) null else next
     }
 
+    fun previousIndex(currentIndex: Int): Int? =
+        if (currentIndex <= 0) null else currentIndex - 1
+
+    /**
+     * HTML `loop` seeks from near the end back to 0. That jump is not a
+     * manual scrub and must be allowed or the last frames will repeat.
+     */
+    fun isNaturalLoopSeek(currentTimeSec: Double, lastTimeSec: Double): Boolean =
+        currentTimeSec < 0.5 && lastTimeSec > currentTimeSec + 0.35
+
     /** Blocks a second swipe/wheel from skipping past the next clip. */
     fun canAdvance(nowMs: Long, lastAdvanceMs: Long, cooldownMs: Long = ADVANCE_COOLDOWN_MS): Boolean =
         nowMs - lastAdvanceMs >= cooldownMs
