@@ -597,6 +597,7 @@ private fun ClonedVoicesPanel(
         Language.JAPANESE.tag to "日本語",
         Language.KOREAN.tag to "한국어",
         Language.RUSSIAN.tag to "Русский",
+        Language.SPANISH.tag to "Español",
     )
 
     SectionTitle(strings.adminVoicesTab)
