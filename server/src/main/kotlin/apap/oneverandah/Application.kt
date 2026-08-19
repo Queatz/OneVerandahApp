@@ -11,7 +11,9 @@ import apap.oneverandah.routes.asrRoutes
 import apap.oneverandah.routes.deviceRoutes
 import apap.oneverandah.routes.phraseRoutes
 import apap.oneverandah.routes.searchRoutes
+import apap.oneverandah.routes.challengeRoutes
 import apap.oneverandah.routes.storyRoutes
+import apap.oneverandah.challenges.ChallengeSystem
 import apap.oneverandah.stories.StorySystem
 import io.ktor.http.HttpHeaders
 import io.ktor.http.HttpMethod
@@ -206,6 +208,14 @@ fun Application.module(
             )
         }
         storyRoutes(storySystem, config)
+        val challengeSystem = runBlocking {
+            ChallengeSystem.create(
+                config = config,
+                storage = imageSystem.storage,
+                httpClient = imageSystem.httpClient,
+            )
+        }
+        challengeRoutes(challengeSystem, config)
     }
 }
 

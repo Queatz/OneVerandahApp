@@ -206,7 +206,7 @@ private fun StoryCover(
         }
         Text(strings.storiesLearningMode)
     }
-    PrimaryButton(label = strings.storiesContinue, icon = "play_arrow", onClick = onContinue)
+    PrimaryButton(label = strings.storiesContinue, icon = "auto_stories", onClick = onContinue)
     if (hasProgress) {
         Button(attrs = {
             classes(Styles.btnText)

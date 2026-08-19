@@ -390,6 +390,36 @@ object Styles {
     const val studyStoryContinue = "study-story-continue"
     const val storiesSoon = "stories-soon"
     const val storiesGrid = "stories-grid"
+    const val challengeStartCard = "challenge-start-card"
+    const val challengeCover = "challenge-cover"
+    const val challengesReviewList = "challenges-review-list"
+    const val challengeReviewCard = "challenge-review-card"
+    const val challengeReviewThumb = "challenge-review-thumb"
+    const val challengeProgressTrack = "challenge-progress-track"
+    const val challengeProgressFill = "challenge-progress-fill"
+    const val challengePlayer = "challenge-player"
+    const val challengePlayerEmpty = "challenge-player-empty"
+    const val challengeStage = "challenge-stage"
+    const val challengeVideoWrap = "challenge-video-wrap"
+    const val challengeVideo = "challenge-video"
+    const val challengePreload = "challenge-preload"
+    const val challengeFlyEmoji = "challenge-fly-emoji"
+    const val challengeClose = "challenge-close"
+    const val challengeTopMeta = "challenge-top-meta"
+    const val challengeMedal = "challenge-medal"
+    const val challengeMedalGold = "challenge-medal-gold"
+    const val challengeMedalSilver = "challenge-medal-silver"
+    const val challengeMedalBronze = "challenge-medal-bronze"
+    const val challengeVoteCount = "challenge-vote-count"
+    const val challengeName = "challenge-name"
+    const val challengeCaption = "challenge-caption"
+    const val challengePauseHint = "challenge-pause-hint"
+    const val challengeDock = "challenge-dock"
+    const val challengeEmojiRow = "challenge-emoji-row"
+    const val challengeEmojiBtn = "challenge-emoji-btn"
+    const val challengeEmojiBtnActive = "challenge-emoji-btn-active"
+    const val challengeVoteBtn = "challenge-vote-btn"
+    const val challengeVoteBtnOn = "challenge-vote-btn-on"
     const val storyCoverCard = "story-cover-card"
     const val storyCoverThumb = "story-cover-thumb"
     const val storyCoverPlaceholder = "story-cover-placeholder"
@@ -3380,6 +3410,213 @@ object Styles {
         .${hiddenAdminButton}:hover {
             opacity: 1;
             cursor: pointer;
+        }
+        .${challengeStartCard} {
+            display: flex;
+            flex-direction: column;
+            align-items: center;
+            justify-content: center;
+            gap: 10px;
+            min-height: 180px;
+            border: 2px dashed var(--md-sys-color-outline-variant);
+            background: var(--md-sys-color-surface-container);
+            border-radius: 16px;
+            cursor: pointer;
+            color: inherit;
+        }
+        .${challengeCover} {
+            position: relative;
+            width: 100%;
+            aspect-ratio: 1 / 1;
+            overflow: hidden;
+        }
+        .${challengesReviewList} {
+            display: flex;
+            flex-direction: column;
+            gap: 10px;
+            margin: 0 0 16px;
+        }
+        .${challengeReviewCard} {
+            display: flex;
+            gap: 12px;
+            align-items: center;
+            padding: 10px;
+            border-radius: 14px;
+            background: var(--md-sys-color-surface-container);
+        }
+        .${challengeReviewThumb} {
+            position: relative;
+            width: 64px;
+            height: 64px;
+            border-radius: 10px;
+            overflow: hidden;
+            background: var(--md-sys-color-surface-container-high);
+            display: flex;
+            align-items: center;
+            justify-content: center;
+        }
+        .${challengeProgressTrack} {
+            height: 8px;
+            border-radius: 99px;
+            background: var(--md-sys-color-surface-container-high);
+            overflow: hidden;
+            margin: 12px 0 6px;
+        }
+        .${challengeProgressFill} {
+            height: 100%;
+            background: var(--md-sys-color-primary);
+            transition: width 180ms ease;
+        }
+        .${challengePlayer} {
+            position: relative;
+            display: flex;
+            flex-direction: column;
+            height: 100%;
+            min-height: 100%;
+            background: #111;
+            color: #fff;
+        }
+        .${challengePlayerEmpty} {
+            margin: auto;
+            padding: 24px;
+        }
+        .${challengeStage} {
+            position: relative;
+            flex: 1;
+            overflow: hidden;
+            background: #000;
+        }
+        .${challengeVideoWrap}, .${challengeVideo} {
+            position: absolute;
+            inset: 0;
+            width: 100%;
+            height: 100%;
+            object-fit: cover;
+        }
+        .${challengePreload} {
+            position: absolute;
+            width: 1px;
+            height: 1px;
+            overflow: hidden;
+            opacity: 0;
+            pointer-events: none;
+        }
+        .${challengeFlyEmoji} {
+            position: absolute;
+            bottom: 28%;
+            font-size: 28px;
+            animation: challenge-fly 2.2s ease-out forwards;
+            pointer-events: none;
+            z-index: 3;
+        }
+        @keyframes challenge-fly {
+            0% { transform: translateY(0) scale(0.8); opacity: 0; }
+            12% { opacity: 1; }
+            100% { transform: translateY(-220px) scale(1.15); opacity: 0; }
+        }
+        .${challengeClose} {
+            position: absolute;
+            top: 12px;
+            left: 12px;
+            z-index: 4;
+            border: none;
+            background: rgba(0,0,0,0.35);
+            color: #fff;
+            border-radius: 999px;
+            width: 40px;
+            height: 40px;
+        }
+        .${challengeTopMeta} {
+            position: absolute;
+            top: 16px;
+            right: 16px;
+            z-index: 4;
+            display: flex;
+            gap: 8px;
+            align-items: center;
+        }
+        .${challengeMedal} {
+            padding: 4px 10px;
+            border-radius: 999px;
+            font-weight: 700;
+            font-size: 13px;
+        }
+        .${challengeMedalGold} { background: #f5c518; color: #2b2100; }
+        .${challengeMedalSilver} { background: #cfd4da; color: #222; }
+        .${challengeMedalBronze} { background: #cd7f32; color: #fff; }
+        .${challengeVoteCount} {
+            font-size: 18px;
+            font-weight: 700;
+            text-shadow: 0 1px 6px rgba(0,0,0,0.6);
+        }
+        .${challengeName} {
+            position: absolute;
+            left: 16px;
+            right: 16px;
+            bottom: 28%;
+            z-index: 3;
+            font-size: 34px;
+            line-height: 1.1;
+            font-weight: 800;
+            text-shadow: 0 2px 16px rgba(0,0,0,0.7);
+        }
+        .${challengeCaption} {
+            position: absolute;
+            left: 16px;
+            right: 16px;
+            bottom: 18%;
+            z-index: 3;
+            font-size: 20px;
+            text-align: center;
+            text-shadow: 0 1px 10px rgba(0,0,0,0.75);
+        }
+        .${challengePauseHint} {
+            position: absolute;
+            inset: 0;
+            display: flex;
+            align-items: center;
+            justify-content: center;
+            font-size: 64px;
+            opacity: 0.8;
+            pointer-events: none;
+        }
+        .${challengeDock} {
+            display: flex;
+            flex-direction: column;
+            align-items: center;
+            gap: 10px;
+            padding: 12px 16px 20px;
+            background: linear-gradient(transparent, rgba(0,0,0,0.72));
+        }
+        .${challengeEmojiRow} {
+            display: flex;
+            gap: 8px;
+        }
+        .${challengeEmojiBtn} {
+            border: none;
+            background: rgba(255,255,255,0.12);
+            font-size: 24px;
+            width: 44px;
+            height: 44px;
+            border-radius: 999px;
+        }
+        .${challengeEmojiBtnActive} {
+            background: rgba(255,255,255,0.35);
+        }
+        .${challengeVoteBtn} {
+            border: none;
+            background: #fff;
+            color: #111;
+            border-radius: 999px;
+            padding: 12px 22px;
+            font-weight: 700;
+            display: flex;
+            align-items: center;
+            gap: 8px;
+        }
+        .${challengeVoteBtnOn} {
+            background: #ff4d6d;
+            color: #fff;
         }
     """.trimIndent()
 }

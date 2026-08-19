@@ -1,0 +1,175 @@
+package apap.oneverandah.challenges
+
+import kotlin.test.Test
+import kotlin.test.assertEquals
+import kotlin.test.assertNull
+import kotlin.test.assertTrue
+
+class ChallengeLogicTest {
+    @Test
+    fun publicCardsHideUnpublishedAndSortByRecentSubmission() {
+        val swimming = Challenge(id = "swim", name = "Pool laps", lastActivityAt = 1)
+        val writing = Challenge(id = "write", name = "Story hour", lastActivityAt = 2)
+        val empty = Challenge(id = "empty", name = "Silent", lastActivityAt = 99)
+        val submissions = listOf(
+            submission("old-pub", challengeId = "swim", status = ChallengeLogic.STATUS_PUBLISHED, publishedAt = 10, voteCount = 3, thumbnailUrl = "old.jpg"),
+            submission("new-pub", challengeId = "write", status = ChallengeLogic.STATUS_PUBLISHED, publishedAt = 50, voteCount = 1, thumbnailUrl = "new.jpg"),
+            submission("review", challengeId = "swim", status = ChallengeLogic.STATUS_IN_REVIEW, createdAt = 80),
+            submission("only-review", challengeId = "empty", status = ChallengeLogic.STATUS_IN_REVIEW),
+        )
+
+        val cards = ChallengeLogic.publicCards(listOf(swimming, writing, empty), submissions)
+
+        assertEquals(listOf("write", "swim"), cards.map { it.id })
+        assertEquals("new.jpg", cards.first().coverImageUrl)
+        assertEquals(1, cards.first().submissionCount)
+        assertEquals(3, cards.last().topVoteCount)
+    }
+
+    @Test
+    fun coverUsesFirstFrameOfCurrentLeader() {
+        val challenge = Challenge(id = "c", name = "Swim")
+        val silver = submission("s", challengeId = "c", voteCount = 2, thumbnailUrl = "silver.jpg", createdAt = 1)
+        val gold = submission("g", challengeId = "c", voteCount = 5, thumbnailUrl = "gold.jpg", createdAt = 2)
+        val card = ChallengeLogic.publicCards(listOf(challenge), listOf(silver, gold)).single()
+        assertEquals("gold.jpg", card.coverImageUrl)
+        assertEquals(5, card.topVoteCount)
+        assertEquals(2, card.submissionCount)
+    }
+
+    @Test
+    fun medalsFollowVoteCountThenEarlierEntry() {
+        val gold = submission("g", voteCount = 4, createdAt = 30)
+        val silver = submission("s", voteCount = 4, createdAt = 10)
+        val bronze = submission("b", voteCount = 1, createdAt = 1)
+        val leftover = submission("x", voteCount = 0, createdAt = 2)
+
+        val medals = ChallengeLogic.medals(listOf(gold, silver, bronze, leftover))
+
+        assertEquals(ChallengeLogic.MEDAL_GOLD, medals["s"])
+        assertEquals(ChallengeLogic.MEDAL_SILVER, medals["g"])
+        assertEquals(ChallengeLogic.MEDAL_BRONZE, medals["b"])
+        assertNull(medals["x"])
+    }
+
+    @Test
+    fun playbackOrderPutsLeaderFirstThenNewest() {
+        val leader = submission("lead", voteCount = 9, createdAt = 1)
+        val older = submission("old", voteCount = 1, createdAt = 2)
+        val newer = submission("new", voteCount = 2, createdAt = 8)
+
+        val order = ChallengeLogic.playbackOrder(listOf(older, newer, leader))
+
+        assertEquals(listOf("lead", "new", "old"), order.map { it.id })
+    }
+
+    @Test
+    fun captionFollowsWordTimingsAndHoldsBriefly() {
+        val words = listOf(
+            ChallengeWord("Hello", 0, 400),
+            ChallengeWord("neighbors", 400, 900),
+        )
+        assertEquals("", ChallengeLogic.captionAt(words, -10))
+        assertEquals("Hello", ChallengeLogic.captionAt(words, 120))
+        assertEquals("neighbors", ChallengeLogic.captionAt(words, 400))
+        assertEquals("neighbors", ChallengeLogic.captionAt(words, 1_200))
+        assertEquals("", ChallengeLogic.captionAt(words, 2_000))
+        assertEquals("", ChallengeLogic.captionAt(emptyList(), 10))
+    }
+
+    @Test
+    fun sanitizeChallengeNameKeepsTwoToFourWords() {
+        assertEquals("", ChallengeLogic.sanitizeChallengeName("   "))
+        assertEquals("Pool laps", ChallengeLogic.sanitizeChallengeName("Pool laps!!!"))
+        assertEquals("Night swim race fun", ChallengeLogic.sanitizeChallengeName("Night swim race fun extra words"))
+        assertEquals("Swimming", ChallengeLogic.sanitizeChallengeName("Swimming"))
+    }
+
+    @Test
+    fun ownerInReviewListsOnlyThatDeviceHiddenEntries() {
+        val mine = listOf(
+            submission("proc", status = ChallengeLogic.STATUS_PROCESSING, deviceTokenHash = "me", createdAt = 2),
+            submission("rev", status = ChallengeLogic.STATUS_IN_REVIEW, deviceTokenHash = "me", createdAt = 5),
+            submission("fail", status = ChallengeLogic.STATUS_FAILED, deviceTokenHash = "me", createdAt = 1),
+            submission("live", status = ChallengeLogic.STATUS_PUBLISHED, deviceTokenHash = "me", createdAt = 9),
+            submission("other", status = ChallengeLogic.STATUS_IN_REVIEW, deviceTokenHash = "them", createdAt = 8),
+        )
+        assertEquals(listOf("rev", "proc", "fail"), ChallengeLogic.ownerInReview(mine, "me").map { it.id })
+        assertTrue(ChallengeLogic.ownerInReview(mine, null).isEmpty())
+    }
+
+    @Test
+    fun applyVoteCountsMovesASingleVote() {
+        val a = submission("a", voteCount = 3)
+        val b = submission("b", voteCount = 1)
+        val previous = ChallengeVote(id = "v", challengeId = "c", submissionId = "a", deviceTokenHash = "me")
+
+        val moved = ChallengeLogic.applyVoteCounts(listOf(a, b), previous, "b")
+        assertEquals(2, moved.first { it.id == "a" }.voteCount)
+        assertEquals(2, moved.first { it.id == "b" }.voteCount)
+
+        val same = ChallengeLogic.applyVoteCounts(listOf(a, b), previous, "a")
+        assertEquals(listOf(3, 1), same.map { it.voteCount })
+    }
+
+    @Test
+    fun nextIndexReturnsNullAfterLastSubmission() {
+        assertEquals(1, ChallengeLogic.nextIndexOrDone(0, 2))
+        assertNull(ChallengeLogic.nextIndexOrDone(1, 2))
+        assertNull(ChallengeLogic.nextIndexOrDone(0, 0))
+    }
+
+    @Test
+    fun toViewHidesTokenAndMarksMineAndVote() {
+        val submission = submission("s", deviceTokenHash = "secret", voteCount = 4)
+        val vote = ChallengeVote(
+            id = "v",
+            challengeId = "c",
+            submissionId = "s",
+            deviceTokenHash = "secret",
+            emoji = ChallengeLogic.EMOJI_WOW,
+        )
+        val view = ChallengeLogic.toView(
+            submission = submission,
+            challengeName = "Pool laps",
+            medal = ChallengeLogic.MEDAL_GOLD,
+            myVote = vote,
+            votes = listOf(vote),
+            viewerHash = "secret",
+        )
+        assertTrue(view.mine)
+        assertTrue(view.votedByMe)
+        assertEquals(ChallengeLogic.EMOJI_WOW, view.myEmoji)
+        assertEquals(ChallengeLogic.MEDAL_GOLD, view.medal)
+        assertEquals("Pool laps", view.challengeName)
+        assertEquals(1, view.emojis.single().count)
+    }
+
+    @Test
+    fun normalizeEmojiFallsBackToHeart() {
+        assertEquals(ChallengeLogic.EMOJI_STRONG, ChallengeLogic.normalizeEmoji("Strong"))
+        assertEquals(ChallengeLogic.EMOJI_HEART, ChallengeLogic.normalizeEmoji("???") )
+        assertEquals("💪", ChallengeLogic.emojiGlyph("strong"))
+    }
+
+    private fun submission(
+        id: String,
+        challengeId: String = "c",
+        status: String = ChallengeLogic.STATUS_PUBLISHED,
+        voteCount: Int = 0,
+        createdAt: Long = 0,
+        publishedAt: Long? = if (status == ChallengeLogic.STATUS_PUBLISHED) createdAt else null,
+        thumbnailUrl: String? = null,
+        deviceTokenHash: String = "dev",
+    ) = ChallengeSubmission(
+        id = id,
+        challengeId = challengeId,
+        challengerName = "Lan",
+        deviceTokenHash = deviceTokenHash,
+        thumbnailUrl = thumbnailUrl,
+        status = status,
+        voteCount = voteCount,
+        createdAt = createdAt,
+        publishedAt = publishedAt,
+    )
+}

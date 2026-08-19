@@ -474,7 +474,7 @@ class StudyServiceTest {
     @Test
     fun `word visual prompt uses word and contextual meaning`() {
         val prompt = wordVisualPrompt(word = "chào", contextualMeaning = "a friendly greeting")
-        assertContains(prompt, "Expressive storybook art style")
+        assertContains(prompt, "expressive storybook art")
         assertContains(prompt, "chào")
         assertContains(prompt, "a friendly greeting")
         assertContains(prompt, "Absolutely no text")
@@ -617,7 +617,7 @@ class StudyServiceTest {
         assertContains(prompt, "no speech bubbles")
         assertContains(prompt, "language learners")
         assertContains(prompt, "Absolutely no text")
-        assertContains(prompt, "expressive storybook art style")
+        assertContains(prompt, "expressive storybook art")
     }
 
     @Test

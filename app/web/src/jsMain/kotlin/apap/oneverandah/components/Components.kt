@@ -130,6 +130,12 @@ fun AppBar(
             Span(attrs = {
                 classes(Styles.materialSymbols, Styles.appBarIcon)
                 attr("role", "button")
+                attr("aria-label", strings.challengesTitle)
+                onClick { router.navigate("/challenges") }
+            }) { Text("emoji_events") }
+            Span(attrs = {
+                classes(Styles.materialSymbols, Styles.appBarIcon)
+                attr("role", "button")
                 attr("aria-label", strings.storiesTitle)
                 onClick { router.navigate("/stories") }
             }) { Text("auto_stories") }
@@ -183,6 +189,10 @@ private fun NavMenuItems(
     DrawerItem("auto_stories", strings.storiesTitle) {
         onNavigate()
         router.navigate("/stories")
+    }
+    DrawerItem("emoji_events", strings.challengesTitle) {
+        onNavigate()
+        router.navigate("/challenges")
     }
     DrawerItem("info", strings.menuAbout) {
         onNavigate()
