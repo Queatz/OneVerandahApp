@@ -450,6 +450,7 @@ fun AdminScreen(onBack: () -> Unit) {
                         Img(src = url, alt = strings.adminCoverTitle, attrs = {
                             classes(Styles.adminCoverPreview)
                         })
+                        Spacer()
                     }
                     PrimaryButton(
                         label = strings.adminGenerateCover,
@@ -530,6 +531,7 @@ fun AdminScreen(onBack: () -> Unit) {
                 AdminCharactersPanel(
                     characters = characters,
                     loading = loading,
+                    onUploaded = { refresh() },
                     onRenameRequest = { renamingCharacter = it },
                     onDeleteRequest = { pendingDeleteCharacter = it },
                 )
@@ -814,14 +816,64 @@ private fun ReferencePhotosPanel(
 private fun AdminCharactersPanel(
     characters: List<StoryCharacter>,
     loading: Boolean,
+    onUploaded: () -> Unit,
     onRenameRequest: (StoryCharacter) -> Unit,
     onDeleteRequest: (StoryCharacter) -> Unit,
 ) {
     val strings = Localization.strings
+    val scope = rememberCoroutineScope()
+    var name by remember { mutableStateOf("") }
+    var selectedFile by remember { mutableStateOf<File?>(null) }
+    var uploading by remember { mutableStateOf(false) }
 
     SectionTitle(strings.adminCharactersTab)
     P(attrs = { classes(Styles.homePrompt) }) {
         Text(strings.adminCharactersHint)
+    }
+
+    Div(attrs = { classes(Styles.textField) }) {
+        Label(attrs = { classes(Styles.textLabel) }) { Text(strings.adminCharacterName) }
+        Input(type = InputType.Text) {
+            classes(Styles.textInput)
+            value(name)
+            onInput { name = it.value }
+        }
+    }
+
+    Div(attrs = { classes(Styles.textField) }) {
+        Label(attrs = { classes(Styles.textLabel) }) { Text(strings.adminPhotoFile) }
+        Input(type = InputType.File) {
+            classes(Styles.textInput)
+            attr("accept", "image/*")
+            onChange {
+                val el = it.nativeEvent.target as? HTMLInputElement
+                selectedFile = el?.firstFileOrNull()
+            }
+        }
+    }
+
+    Div(attrs = { classes(Styles.adminUploadBlock) }) {
+        PrimaryButton(
+            label = if (uploading) strings.adminUploading else strings.adminUploadCharacter,
+            icon = "upload",
+            enabled = !uploading && name.isNotBlank() && selectedFile != null,
+        ) {
+            val file = selectedFile ?: return@PrimaryButton
+            scope.launch {
+                uploading = true
+                try {
+                    StoryApi.uploadCharacter(name.trim(), file)
+                    name = ""
+                    selectedFile = null
+                    Toaster.show(strings.adminSaved)
+                    onUploaded()
+                } catch (e: Throwable) {
+                    Toaster.show(e.message ?: strings.adminError)
+                } finally {
+                    uploading = false
+                }
+            }
+        }
     }
 
     if (loading && characters.isEmpty()) {
@@ -845,6 +897,10 @@ private fun AdminCharactersPanel(
                         attr("type", "button")
                         onClick { onDeleteRequest(character) }
                     }) { Text(strings.adminDelete) }
+                } else {
+                    Span(attrs = { classes(Styles.phraseRawAsk) }) {
+                        Text(strings.adminCharacterStudyLocked)
+                    }
                 }
             }
         },
