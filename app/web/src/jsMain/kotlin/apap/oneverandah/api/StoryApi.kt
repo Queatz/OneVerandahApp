@@ -63,6 +63,16 @@ object StoryApi {
         null
     }
 
+    suspend fun fetchPageStudy(storyId: String, pageId: String, languageTag: String): StudySessionResponse? = try {
+        val response = client.get("${base()}/api/v1/stories/$storyId/pages/$pageId/study?languageTag=$languageTag")
+        val text = response.bodyAsText()
+        if (!response.status.isSuccess()) return null
+        json.decodeFromString(StudySessionResponse.serializer(), text)
+    } catch (e: Throwable) {
+        console.error("Failed to load story study: ${e.message}")
+        null
+    }
+
     suspend fun uploadCastPhoto(file: File): String {
         val form = FormData()
         form.append("file", file)

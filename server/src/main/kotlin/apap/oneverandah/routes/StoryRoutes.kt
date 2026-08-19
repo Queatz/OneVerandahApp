@@ -34,6 +34,7 @@ import io.ktor.server.routing.route
  * Public:
  *  - `GET  /api/v1/stories`
  *  - `GET  /api/v1/stories/{id}` (increments open count)
+ *  - `GET  /api/v1/stories/{id}/pages/{pageId}/study?languageTag=`
  *  - `POST /api/v1/stories/cast-photos` (multipart file for featured submissions)
  *
  * Admin (Bearer JWT):
@@ -83,6 +84,19 @@ fun Route.storyRoutes(system: StorySystem, config: AppConfig) {
                 return@get
             }
             call.respond(story)
+        }
+
+        get("/{id}/pages/{pageId}/study") {
+            val id = call.parameters["id"].orEmpty()
+            val pageId = call.parameters["pageId"].orEmpty()
+            val languageTag = call.request.queryParameters["languageTag"]
+            try {
+                call.respond(service.studyPage(id, pageId, languageTag.orEmpty()))
+            } catch (e: IllegalStateException) {
+                call.respond(HttpStatusCode.NotFound, StoryApiError(e.message ?: "Not found"))
+            } catch (e: IllegalArgumentException) {
+                call.respond(HttpStatusCode.BadRequest, StoryApiError(e.message ?: "Cannot study this page"))
+            }
         }
     }
 

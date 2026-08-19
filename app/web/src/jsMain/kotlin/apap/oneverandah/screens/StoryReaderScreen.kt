@@ -22,10 +22,12 @@ import apap.oneverandah.stories.Story
 import apap.oneverandah.stories.StoryLogic
 import apap.oneverandah.stories.StoryPage
 import kotlinx.browser.document
+import org.jetbrains.compose.web.attributes.InputType
 import org.jetbrains.compose.web.dom.Button
 import org.jetbrains.compose.web.dom.Div
 import org.jetbrains.compose.web.dom.H2
 import org.jetbrains.compose.web.dom.Img
+import org.jetbrains.compose.web.dom.Input
 import org.jetbrains.compose.web.dom.Label
 import org.jetbrains.compose.web.dom.P
 import org.jetbrains.compose.web.dom.Span
@@ -82,9 +84,6 @@ fun StoryReaderScreen(
                         classes(Styles.btnText)
                         attr("type", "button")
                         attr("aria-label", strings.storiesPreviousPage)
-                        if (phase == ReaderPhase.PAGE && StoryLogic.previousPageIndex(pageIndex) == null) {
-                            attr("disabled", "")
-                        }
                         onClick {
                             if (phase == ReaderPhase.END) {
                                 pageIndex = current.pages.lastIndex
@@ -198,7 +197,7 @@ private fun StoryCover(
         attr("aria-checked", learningMode.toString())
         onClick { onLearningMode(!learningMode) }
     }) {
-        org.jetbrains.compose.web.dom.Input(type = org.jetbrains.compose.web.attributes.InputType.Checkbox) {
+        Input(type = InputType.Checkbox) {
             if (learningMode) attr("checked", "true")
             onChange {
                 val el = it.nativeEvent.target as? HTMLInputElement
@@ -238,7 +237,15 @@ private fun StoryPageView(
         Img(src = page.photoUrl!!, alt = "", attrs = { classes(Styles.storyPagePhoto) })
     }
 
-    val session = page.session
+    val readerLanguage = Localization.language.tag
+    var studySession by remember(story.id, page.id, readerLanguage) { mutableStateOf(page.session) }
+    LaunchedEffect(story.id, page.id, learningMode, readerLanguage) {
+        if (!learningMode) return@LaunchedEffect
+        val studied = StoryApi.fetchPageStudy(story.id, page.id, readerLanguage)
+        if (studied != null) studySession = studied
+    }
+
+    val session = studySession
     if (learningMode && session != null && session.sentences.isNotEmpty()) {
         Div(attrs = { classes(Styles.languageSentence) }) {
             session.sentences.forEach { sentence ->

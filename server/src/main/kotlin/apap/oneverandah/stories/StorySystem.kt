@@ -10,6 +10,7 @@ import apap.oneverandah.phrases.PhraseSystem
 import apap.oneverandah.phrases.ReferencePhotoRepository
 import apap.oneverandah.stories.arango.ArangoStoryCharacterRepository
 import apap.oneverandah.stories.arango.ArangoStoryRepository
+import apap.oneverandah.stories.arango.ArangoStoryStudyCache
 import io.ktor.client.HttpClient
 import kotlinx.coroutines.CoroutineScope
 import kotlinx.coroutines.Dispatchers
@@ -168,10 +169,19 @@ class StorySystem(
                         if (config.arango.enabled) "fallback " else "",
                     )
                 }
+            val studyCache = ArangoStoryStudyCache.connect(config.arango, httpClient)
+                ?: InMemoryStoryStudyCache().also {
+                    log.info(
+                        "Story study cache using {}in-memory store",
+                        if (config.arango.enabled) "fallback " else "",
+                    )
+                }
             val service = StoryService(
                 stories = storyRepo,
                 characters = characterRepo,
                 tokenizer = StoryService.tokenizerFrom(studyService),
+                dissector = StoryService.dissectorFrom(studyService),
+                studyCache = studyCache,
                 languageDetector = StoryService.detectorFrom(studyService),
                 studyCharacterSource = StoryCharacterSource { studySessionsService.listRecentCharacters() },
             )

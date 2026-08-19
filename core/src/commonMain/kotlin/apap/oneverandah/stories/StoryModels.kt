@@ -26,7 +26,7 @@ data class Story(
     val updatedAt: Long = 0,
 )
 
-/** One illustrated page. [session] is filled when the book is published. */
+/** One illustrated page. [session] holds the shared study skeleton after publish. */
 @Serializable
 data class StoryPage(
     val id: String,

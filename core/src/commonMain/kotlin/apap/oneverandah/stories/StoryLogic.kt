@@ -1,5 +1,9 @@
 package apap.oneverandah.stories
 
+import apap.oneverandah.api.StudySessionResponse
+import apap.oneverandah.api.StudySentence
+import apap.oneverandah.api.StudyToken
+import apap.oneverandah.api.StudyTokenStatus
 import apap.oneverandah.model.Language
 
 /**
@@ -101,6 +105,55 @@ object StoryLogic {
     }
 
     fun normalizeLanguageTag(tag: String?): String = Language.fromTag(tag).tag
+
+    /**
+     * Shared clickable words only — no learner-language glosses.
+     *
+     * Publish stores this skeleton. Learning Mode later dissects it for
+     * each reader's UI language.
+     */
+    fun toSkeleton(session: StudySessionResponse): StudySessionResponse =
+        session.copy(
+            sentences = session.sentences.map { sentence ->
+                StudySentence(
+                    text = sentence.text,
+                    tokens = sentence.tokens.map(::toSkeletonToken),
+                )
+            },
+            characters = emptyList(),
+            playScenarios = emptyList(),
+        )
+
+    fun isSkeleton(session: StudySessionResponse): Boolean =
+        session.sentences.all { sentence ->
+            sentence.tokens.none(::hasLearnerMeaning)
+        }
+
+    fun studyCacheKey(storyId: String, pageId: String, languageTag: String): String =
+        "${storyId.trim()}:${pageId.trim()}:${normalizeLanguageTag(languageTag)}"
+
+    private fun toSkeletonToken(token: StudyToken): StudyToken =
+        token.copy(
+            status = if (token.status == StudyTokenStatus.PLAIN) {
+                StudyTokenStatus.PLAIN
+            } else {
+                StudyTokenStatus.PENDING
+            },
+            literalMeaning = "",
+            register = "",
+            contextualMeaning = "",
+            nearSynonyms = emptyList(),
+            exampleSentences = emptyList(),
+            imageId = null,
+            imageUrl = null,
+        )
+
+    private fun hasLearnerMeaning(token: StudyToken): Boolean =
+        token.literalMeaning.isNotBlank() ||
+            token.contextualMeaning.isNotBlank() ||
+            token.register.isNotBlank() ||
+            token.nearSynonyms.isNotEmpty() ||
+            token.exampleSentences.isNotEmpty()
 
     /**
      * Study-session roles reuse ids like `"main"`. Mix in the portrait URL so

@@ -129,6 +129,55 @@ class StoryLogicTest {
     }
 
     @Test
+    fun toSkeletonStripsMeaningsAndKeepsClickableWords() {
+        val dissected = StudySessionResponse(
+            text = "Lan waves.",
+            textLanguageTag = "en",
+            sentences = listOf(
+                StudySentence(
+                    text = "Lan waves.",
+                    tokens = listOf(
+                        StudyToken(
+                            text = "Lan",
+                            status = StudyTokenStatus.READY,
+                            literalMeaning = "Lan",
+                            contextualMeaning = "a neighbor named Lan",
+                            nearSynonyms = listOf("she"),
+                        ),
+                        StudyToken(text = ".", status = StudyTokenStatus.PLAIN, literalMeaning = "period"),
+                    ),
+                ),
+            ),
+        )
+
+        val skeleton = StoryLogic.toSkeleton(dissected)
+        val tokens = skeleton.sentences.single().tokens
+
+        assertEquals("en", skeleton.textLanguageTag)
+        assertEquals(listOf("Lan", "."), tokens.map { it.text })
+        assertEquals(StudyTokenStatus.PENDING, tokens[0].status)
+        assertEquals("", tokens[0].literalMeaning)
+        assertEquals("", tokens[0].contextualMeaning)
+        assertTrue(tokens[0].nearSynonyms.isEmpty())
+        assertEquals(StudyTokenStatus.PLAIN, tokens[1].status)
+        assertEquals("", tokens[1].literalMeaning)
+        assertTrue(StoryLogic.isSkeleton(skeleton))
+        assertFalse(StoryLogic.isSkeleton(dissected))
+    }
+
+    @Test
+    fun studyCacheKeyUsesNormalizedReaderLanguage() {
+        assertEquals(
+            "story-1:page-2:vi",
+            StoryLogic.studyCacheKey("story-1", "page-2", "vi-VN"),
+        )
+        assertEquals(
+            StoryLogic.studyCacheKey("s", "p", "en"),
+            StoryLogic.studyCacheKey("s", "p", "en-US"),
+        )
+    }
+
+    @Test
     fun languageFallbackPrefersScriptSpecificMatches() {
         assertEquals("en", StoryLogic.detectLanguageFallback("  "))
         assertEquals("en", StoryLogic.detectLanguageFallback("A quiet garden story"))

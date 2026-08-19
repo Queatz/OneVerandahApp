@@ -3281,6 +3281,7 @@ object Styles {
             padding: 0;
             border: none;
             background: var(--md-sys-color-surface-container);
+            box-shadow: 8px 8px 4px var(--md-shadow);
             border-radius: 16px;
             overflow: hidden;
             cursor: pointer;
@@ -3340,8 +3341,8 @@ object Styles {
             margin: 0 0 8px;
         }
         .${storyPageText} {
-            font-size: 18px;
-            line-height: 1.55;
+            font-size: 24px;
+            line-height: 1.65;
             white-space: pre-wrap;
         }
         .${storyStudyBlock} {

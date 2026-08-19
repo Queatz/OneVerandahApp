@@ -328,6 +328,60 @@ class StoryRoutesTest {
         assertEquals(1, json.decodeFromString(StoriesResponse.serializer(), listed.bodyAsText()).stories.size)
     }
 
+    @Test
+    fun publicStudyUsesReaderLanguageAndDoesNotExposeBakedMeanings() = testApplication {
+        var dissectCalls = 0
+        val config = AppConfig.load()
+        val system = testSystem(
+            dissector = StoryDissector { skeleton, readerLanguage ->
+                dissectCalls += 1
+                val meaning = if (readerLanguage == "vi") "chào" else "hello"
+                skeleton.copy(
+                    sentences = skeleton.sentences.map { sentence ->
+                        sentence.copy(
+                            tokens = sentence.tokens.map { token ->
+                                token.copy(status = StudyTokenStatus.READY, literalMeaning = meaning)
+                            },
+                        )
+                    },
+                )
+            },
+        )
+        application {
+            install(ContentNegotiation) { json(json) }
+            routing { storyRoutes(system, config) }
+        }
+        val created = system.service.create(
+            StoryUpsertRequest(
+                name = "Lobby Ghost",
+                category = "Mystery",
+                pages = listOf(StoryPageUpsert(id = "p1", text = "The lift chimed once.")),
+            ),
+        )
+        val token = AdminJwt.issue(config.adminJwtSecret)
+        val started = client.post("/api/v1/admin/stories/${created.id}/publish") {
+            header(HttpHeaders.Authorization, "Bearer $token")
+            contentType(ContentType.Application.Json)
+            setBody(json.encodeToString(StoryPublishRequest.serializer(), StoryPublishRequest("en")))
+        }
+        val pending = json.decodeFromString(StoryPublishResponse.serializer(), started.bodyAsText())
+        pollPublishJob(client, token, pending.jobId!!)
+
+        val opened = client.get("/api/v1/stories/${created.id}")
+        val book = json.decodeFromString(Story.serializer(), opened.bodyAsText())
+        assertTrue(StoryLogic.isSkeleton(book.pages.single().session!!))
+
+        val studied = client.get("/api/v1/stories/${created.id}/pages/p1/study?languageTag=vi")
+        assertEquals(HttpStatusCode.OK, studied.status)
+        val session = json.decodeFromString(StudySessionResponse.serializer(), studied.bodyAsText())
+        assertEquals("en", session.textLanguageTag)
+        assertEquals("chào", session.sentences.single().tokens.single().literalMeaning)
+
+        val again = client.get("/api/v1/stories/${created.id}/pages/p1/study?languageTag=vi-VN")
+        assertEquals(HttpStatusCode.OK, again.status)
+        assertEquals(1, dissectCalls)
+    }
+
     private suspend fun pollPublishJob(
         client: io.ktor.client.HttpClient,
         token: String,
@@ -363,6 +417,7 @@ class StoryRoutesTest {
                 ),
             )
         },
+        dissector: StoryDissector? = null,
     ): StorySystem {
         val stories = InMemoryStoryRepository()
         val characters = InMemoryStoryCharacterRepository()
@@ -370,6 +425,7 @@ class StoryRoutesTest {
             stories = stories,
             characters = characters,
             tokenizer = tokenizer,
+            dissector = dissector,
         )
         return StorySystem(
             service = service,

@@ -8,9 +8,16 @@ import apap.oneverandah.api.StudyStoryCharacter
 import apap.oneverandah.chat.StudyService
 import apap.oneverandah.model.Language
 import java.util.UUID
+import java.util.concurrent.ConcurrentHashMap
+import kotlinx.coroutines.sync.Mutex
+import kotlinx.coroutines.sync.withLock
 
 fun interface StoryTokenizer {
     suspend fun tokenize(text: String, languageTag: String): StudySessionResponse
+}
+
+fun interface StoryDissector {
+    suspend fun dissect(skeleton: StudySessionResponse, readerLanguageTag: String): StudySessionResponse
 }
 
 fun interface StoryLanguageDetector {
@@ -31,11 +38,15 @@ class StoryService(
     private val stories: StoryRepository,
     private val characters: StoryCharacterRepository,
     private val tokenizer: StoryTokenizer? = null,
+    private val dissector: StoryDissector? = null,
+    private val studyCache: StoryStudyCache = InMemoryStoryStudyCache(),
     private val languageDetector: StoryLanguageDetector? = null,
     private val studyCharacterSource: StoryCharacterSource? = null,
     private val clock: () -> Long = System::currentTimeMillis,
     private val idGenerator: () -> String = { UUID.randomUUID().toString() },
 ) {
+    private val studyLocks = ConcurrentHashMap<String, Mutex>()
+
     suspend fun listPublic(): List<Story> =
         StoryLogic.publishedNewestFirst(stories.findAll()).map(StoryLogic::toPublicSummary)
 
@@ -45,7 +56,11 @@ class StoryService(
         val existing = stories.findById(id)?.takeIf { it.published } ?: return null
         val opened = existing.copy(openCount = existing.openCount + 1)
         stories.save(opened)
-        return opened
+        return opened.copy(
+            pages = opened.pages.map { page ->
+                page.copy(session = page.session?.let(StoryLogic::toSkeleton))
+            },
+        )
     }
 
     suspend fun getAdmin(id: String): Story? = stories.findById(id)
@@ -82,10 +97,20 @@ class StoryService(
             updatedAt = clock(),
         )
         stories.save(updated)
+        existing.pages.forEach { previous ->
+            val next = updated.pages.firstOrNull { it.id == previous.id }
+            if (next == null || next.session == null) {
+                studyCache.evictPage(id, previous.id)
+            }
+        }
         return updated
     }
 
-    suspend fun delete(id: String): Boolean = stories.delete(id)
+    suspend fun delete(id: String): Boolean {
+        val removed = stories.delete(id)
+        if (removed) studyCache.evictStory(id)
+        return removed
+    }
 
     suspend fun detectLanguage(id: String): String {
         val story = stories.findById(id) ?: error("Story '$id' not found")
@@ -133,7 +158,7 @@ class StoryService(
             if (text.isEmpty()) {
                 page.copy(text = "", session = null)
             } else {
-                page.copy(text = text, session = tokenize.tokenize(text, language))
+                page.copy(text = text, session = StoryLogic.toSkeleton(tokenize.tokenize(text, language)))
             }
         }
         val now = clock()
@@ -146,7 +171,35 @@ class StoryService(
             updatedAt = now,
         )
         stories.save(published)
+        studyCache.evictStory(id)
         return published
+    }
+
+    /**
+     * Learning Mode meanings for one page, in the reader's UI language.
+     *
+     * The shared skeleton stays on the book. The first reader for a language
+     * pays the AI cost; later readers reuse [studyCache].
+     */
+    suspend fun studyPage(storyId: String, pageId: String, languageTag: String): StudySessionResponse {
+        val story = stories.findById(storyId)?.takeIf { it.published }
+            ?: error("Story '$storyId' not found")
+        val page = story.pages.firstOrNull { it.id == pageId }
+            ?: error("Page '$pageId' not found")
+        val text = page.text.trim()
+        require(text.isNotEmpty()) { "This page has no text to study" }
+        val readerLanguage = StoryLogic.normalizeLanguageTag(languageTag)
+        val lock = studyLocks.getOrPut(StoryLogic.studyCacheKey(storyId, pageId, readerLanguage)) { Mutex() }
+        return lock.withLock {
+            studyCache.get(storyId, pageId, readerLanguage)?.let { return@withLock it }
+            val skeleton = page.session?.let(StoryLogic::toSkeleton)
+                ?: tokenizer?.tokenize(text, story.languageTag)?.let(StoryLogic::toSkeleton)
+                ?: error("Story tokenizer is unavailable")
+            val dissect = dissector ?: error("Story study is unavailable")
+            val studied = dissect.dissect(skeleton, readerLanguage)
+            studyCache.put(storyId, pageId, readerLanguage, studied)
+            studied
+        }
     }
 
     suspend fun unpublish(id: String): Story {
@@ -261,20 +314,28 @@ class StoryService(
 
         fun tokenizerFrom(study: StudyService): StoryTokenizer = StoryTokenizer { text, languageTag ->
             val language = StoryLogic.normalizeLanguageTag(languageTag)
-            val skeleton = study.skeleton(StudySessionRequest(text = text, languageTag = language))
+            StoryLogic.toSkeleton(
+                study.skeleton(StudySessionRequest(text = text, languageTag = language))
+                    .copy(text = text, textLanguageTag = language),
+            )
+        }
+
+        fun dissectorFrom(study: StudyService): StoryDissector = StoryDissector { skeleton, readerLanguageTag ->
+            val textLanguage = StoryLogic.normalizeLanguageTag(skeleton.textLanguageTag)
+            val readerLanguage = StoryLogic.normalizeLanguageTag(readerLanguageTag)
             val sentences = skeleton.sentences.map { sentence ->
                 val dissected = study.dissectSentence(
                     StudyDissectSentenceRequest(
-                        text = text,
+                        text = skeleton.text,
                         sentenceText = sentence.text,
                         tokens = sentence.tokens.map { it.text },
-                        textLanguageTag = language,
-                        languageTag = language,
+                        textLanguageTag = textLanguage,
+                        languageTag = readerLanguage,
                     ),
                 )
                 StudySentence(text = dissected.sentenceText, tokens = dissected.tokens)
             }
-            skeleton.copy(text = text, textLanguageTag = language, sentences = sentences)
+            skeleton.copy(sentences = sentences)
         }
 
         fun detectorFrom(study: StudyService): StoryLanguageDetector = StoryLanguageDetector { text ->

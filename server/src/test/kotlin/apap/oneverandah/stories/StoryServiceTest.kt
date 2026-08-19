@@ -57,14 +57,122 @@ class StoryServiceTest {
         assertEquals(1, tokenizeCalls)
         assertNotNull(published.pages.first().session)
         assertEquals("vi", published.pages.first().session?.textLanguageTag)
+        assertTrue(StoryLogic.isSkeleton(published.pages.first().session!!))
         assertNull(published.pages.last().session)
 
         val firstOpen = service.getPublic(created.id)
         val secondOpen = service.getPublic(created.id)
         assertEquals(1, firstOpen?.openCount)
         assertEquals(2, secondOpen?.openCount)
+        assertTrue(StoryLogic.isSkeleton(firstOpen!!.pages.first().session!!))
         assertTrue(service.listPublic().single().pages.isEmpty())
         assertFalse(published.publishing)
+    }
+
+    @Test
+    fun studyPageUsesReaderLanguageAndCachesTheResult() = runBlocking {
+        var dissectCalls = 0
+        val service = service(
+            dissector = StoryDissector { skeleton, readerLanguage ->
+                dissectCalls += 1
+                dissected(skeleton, readerLanguage)
+            },
+        )
+        val created = service.create(
+            StoryUpsertRequest(
+                name = "Garden Walk",
+                category = "Bedtime",
+                pages = listOf(StoryPageUpsert(id = "p1", text = "We walk slowly.")),
+            ),
+        )
+        service.publish(created.id, "en")
+
+        val vietnamese = service.studyPage(created.id, "p1", "vi-VN")
+        assertEquals("en", vietnamese.textLanguageTag)
+        assertEquals("chào", vietnamese.sentences.single().tokens.first().literalMeaning)
+        assertEquals(1, dissectCalls)
+
+        val cached = service.studyPage(created.id, "p1", "vi")
+        assertEquals("chào", cached.sentences.single().tokens.first().literalMeaning)
+        assertEquals(1, dissectCalls)
+
+        val english = service.studyPage(created.id, "p1", "en")
+        assertEquals("hello", english.sentences.single().tokens.first().literalMeaning)
+        assertEquals(2, dissectCalls)
+    }
+
+    @Test
+    fun bakedEnglishMeaningsAreNotServedToVietnameseReaders() = runBlocking {
+        val stories = InMemoryStoryRepository()
+        val service = StoryService(
+            stories = stories,
+            characters = InMemoryStoryCharacterRepository(),
+            tokenizer = StoryTokenizer { text, language -> session(text, language) },
+            dissector = StoryDissector { skeleton, readerLanguage -> dissected(skeleton, readerLanguage) },
+            clock = { 1_700_000_000_000L },
+            idGenerator = { "fixed" },
+        )
+        val created = service.create(
+            StoryUpsertRequest(
+                name = "Old Book",
+                category = "Mystery",
+                pages = listOf(StoryPageUpsert(id = "p1", text = "Lan waves.")),
+            ),
+        )
+        stories.save(
+            created.copy(
+                published = true,
+                languageTag = "en",
+                pages = listOf(
+                    StoryPage(
+                        id = "p1",
+                        text = "Lan waves.",
+                        session = session("Lan waves.", "en"),
+                    ),
+                ),
+            ),
+        )
+
+        val opened = service.getPublic(created.id)
+        assertTrue(StoryLogic.isSkeleton(opened!!.pages.single().session!!))
+        assertEquals("", opened.pages.single().session!!.sentences.single().tokens.first().literalMeaning)
+
+        val studied = service.studyPage(created.id, "p1", "vi")
+        assertEquals("chào", studied.sentences.single().tokens.first().literalMeaning)
+        assertTrue(studied.sentences.single().tokens.none { it.literalMeaning == "Lan" })
+    }
+
+    @Test
+    fun editingPageTextInvalidatesCachedStudy() = runBlocking {
+        var dissectCalls = 0
+        val service = service(
+            dissector = StoryDissector { skeleton, readerLanguage ->
+                dissectCalls += 1
+                dissected(skeleton, readerLanguage)
+            },
+        )
+        val created = service.create(
+            StoryUpsertRequest(
+                name = "Edit Me",
+                category = "Mystery",
+                pages = listOf(StoryPageUpsert(id = "p1", text = "First draft.")),
+            ),
+        )
+        service.publish(created.id, "en")
+        service.studyPage(created.id, "p1", "vi")
+        assertEquals(1, dissectCalls)
+
+        service.update(
+            created.id,
+            StoryUpsertRequest(
+                name = "Edit Me",
+                category = "Mystery",
+                pages = listOf(StoryPageUpsert(id = "p1", text = "Second draft.")),
+            ),
+        )
+        service.publish(created.id, "en")
+        service.studyPage(created.id, "p1", "vi")
+        assertEquals(2, dissectCalls)
     }
 
     @Test
@@ -272,12 +380,14 @@ class StoryServiceTest {
 
     private fun service(
         tokenizer: StoryTokenizer = StoryTokenizer { text, language -> session(text, language) },
+        dissector: StoryDissector? = StoryDissector { skeleton, readerLanguage -> dissected(skeleton, readerLanguage) },
         detector: StoryLanguageDetector? = null,
         studyCharacters: List<StudyStoryCharacter> = emptyList(),
     ) = StoryService(
         stories = InMemoryStoryRepository(),
         characters = InMemoryStoryCharacterRepository(),
         tokenizer = tokenizer,
+        dissector = dissector,
         languageDetector = detector,
         studyCharacterSource = StoryCharacterSource { studyCharacters },
         clock = { 1_700_000_000_000L },
@@ -296,4 +406,18 @@ class StoryServiceTest {
             ),
         ),
     )
+
+    private fun dissected(skeleton: StudySessionResponse, readerLanguage: String): StudySessionResponse {
+        val meaning = if (StoryLogic.normalizeLanguageTag(readerLanguage) == "vi") "chào" else "hello"
+        return skeleton.copy(
+            sentences = skeleton.sentences.map { sentence ->
+                sentence.copy(
+                    tokens = sentence.tokens.map { token ->
+                        if (token.status == StudyTokenStatus.PLAIN) token
+                        else token.copy(status = StudyTokenStatus.READY, literalMeaning = meaning)
+                    },
+                )
+            },
+        )
+    }
 }
