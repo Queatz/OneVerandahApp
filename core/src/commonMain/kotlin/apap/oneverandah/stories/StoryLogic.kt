@@ -58,8 +58,15 @@ object StoryLogic {
         return null
     }
 
-    /** Drop heavy page payloads from the public grid. */
-    fun toPublicSummary(story: Story): Story = story.copy(pages = emptyList())
+    /** Drop heavy page payloads from the public grid, keep a page count. */
+    fun toPublicSummary(story: Story): Story = story.copy(
+        pageCount = pageCount(story),
+        pages = emptyList(),
+    )
+
+    /** Prefer live pages when present; otherwise the stored public-shelf count. */
+    fun pageCount(story: Story): Int =
+        if (story.pages.isNotEmpty()) story.pages.size else story.pageCount.coerceAtLeast(0)
 
     /**
      * Page the reader should open for [savedIndex].

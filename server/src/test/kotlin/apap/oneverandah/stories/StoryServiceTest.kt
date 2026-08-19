@@ -65,7 +65,10 @@ class StoryServiceTest {
         assertEquals(1, firstOpen?.openCount)
         assertEquals(2, secondOpen?.openCount)
         assertTrue(StoryLogic.isSkeleton(firstOpen!!.pages.first().session!!))
-        assertTrue(service.listPublic().single().pages.isEmpty())
+        val listed = service.listPublic().single()
+        assertTrue(listed.pages.isEmpty())
+        assertEquals(2, listed.pageCount)
+        assertEquals("vi", listed.languageTag)
         assertFalse(published.publishing)
     }
 
@@ -107,8 +110,8 @@ class StoryServiceTest {
         val service = StoryService(
             stories = stories,
             characters = InMemoryStoryCharacterRepository(),
-            tokenizer = StoryTokenizer { text, language -> session(text, language) },
-            dissector = StoryDissector { skeleton, readerLanguage -> dissected(skeleton, readerLanguage) },
+            tokenizer = { text, language -> session(text, language) },
+            dissector = { skeleton, readerLanguage -> dissected(skeleton, readerLanguage) },
             clock = { 1_700_000_000_000L },
             idGenerator = { "fixed" },
         )

@@ -20,6 +20,7 @@ data class Story(
     val published: Boolean = false,
     val publishing: Boolean = false,
     val languageTag: String = "en",
+    val pageCount: Int = 0,
     val openCount: Int = 0,
     val pages: List<StoryPage> = emptyList(),
     val createdAt: Long = 0,

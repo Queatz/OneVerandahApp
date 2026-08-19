@@ -203,6 +203,9 @@ private fun StoryCover(
                 val el = it.nativeEvent.target as? HTMLInputElement
                 onLearningMode(el?.checked == true)
             }
+            onClick {
+                onContinue()
+            }
         }
         Text(strings.storiesLearningMode)
     }

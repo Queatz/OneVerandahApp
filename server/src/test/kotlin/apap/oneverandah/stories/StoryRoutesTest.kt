@@ -90,6 +90,8 @@ class StoryRoutesTest {
         val body = json.decodeFromString(StoriesResponse.serializer(), listed.bodyAsText())
         assertEquals(1, body.stories.size)
         assertTrue(body.stories.single().pages.isEmpty())
+        assertEquals(1, body.stories.single().pageCount)
+        assertEquals("en", body.stories.single().languageTag)
 
         val opened = client.get("/api/v1/stories/${created.id}")
         assertEquals(HttpStatusCode.OK, opened.status)

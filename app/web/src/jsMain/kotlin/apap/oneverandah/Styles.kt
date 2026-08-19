@@ -395,6 +395,7 @@ object Styles {
     const val storyCoverPlaceholder = "story-cover-placeholder"
     const val storyCoverTitle = "story-cover-title"
     const val storyCoverCategory = "story-cover-category"
+    const val storyCoverMeta = "story-cover-meta"
     const val storyReaderCover = "story-reader-cover"
     const val storyReaderNav = "story-reader-nav"
     const val storyLearningRow = "story-learning-row"
@@ -1979,6 +1980,7 @@ object Styles {
             font-family: inherit;
             font-size: 15px;
             font-weight: 700;
+            text-align: center;
             padding: 14px 20px;
             border-radius: 100px;
             cursor: pointer;
@@ -2197,6 +2199,7 @@ object Styles {
             flex-wrap: wrap;
             gap: 8px;
             font-size: 14px;
+            cursor: pointer;
         }
         .${serviceCardProviderLabel} {
             font-weight: 700;
@@ -3306,6 +3309,11 @@ object Styles {
             padding: 0 10px;
         }
         .${storyCoverCategory} {
+            padding: 0 10px;
+            font-size: 13px;
+            color: var(--md-sys-color-on-surface-variant);
+        }
+        .${storyCoverMeta} {
             padding: 0 10px 12px;
             font-size: 13px;
             color: var(--md-sys-color-on-surface-variant);

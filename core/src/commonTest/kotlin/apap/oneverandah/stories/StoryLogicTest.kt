@@ -70,6 +70,7 @@ class StoryLogicTest {
         val full = story(
             "s",
             published = true,
+            languageTag = "ja",
             pages = listOf(
                 StoryPage(
                     id = "p1",
@@ -91,6 +92,10 @@ class StoryLogicTest {
         val summary = StoryLogic.toPublicSummary(full)
         assertTrue(summary.pages.isEmpty())
         assertEquals("s", summary.id)
+        assertEquals(1, summary.pageCount)
+        assertEquals("ja", summary.languageTag)
+        assertEquals(1, StoryLogic.pageCount(summary))
+        assertEquals(3, StoryLogic.pageCount(story("empty", pages = emptyList()).copy(pageCount = 3)))
     }
 
     @Test
@@ -194,6 +199,7 @@ class StoryLogicTest {
         id: String,
         name: String = "Book $id",
         published: Boolean = false,
+        languageTag: String = "en",
         releaseDate: Long? = null,
         updatedAt: Long = 0,
         pages: List<StoryPage> = listOf(StoryPage("p-$id", text = "Hello")),
@@ -202,6 +208,7 @@ class StoryLogicTest {
         name = name,
         category = "Mystery",
         published = published,
+        languageTag = languageTag,
         releaseDate = releaseDate,
         updatedAt = updatedAt,
         pages = pages,

@@ -12,6 +12,27 @@ import org.jetbrains.compose.web.dom.P
 import org.jetbrains.compose.web.dom.Span
 import org.jetbrains.compose.web.dom.Text
 
+/** Deep link to a provider profile, used by the provider-details sheet. */
+internal fun providerProfileUrl(origin: String, providerId: String): String {
+    val base = origin.trimEnd('/')
+    if (providerId.isBlank()) return base
+    return "$base/provider/$providerId"
+}
+
+/**
+ * Which service's provider-details sheet is showing.
+ * [service] stays set after [dismiss] so the dialog can play its exit animation.
+ */
+internal data class ProviderDetailsSheet(
+    val service: Service? = null,
+    val visible: Boolean = false,
+) {
+    val provider get() = service?.provider
+    val currentServiceId: String? get() = service?.id
+    fun open(service: Service) = copy(service = service, visible = true)
+    fun dismiss() = copy(visible = false)
+}
+
 /**
  * Feed-style service card used on the Home screen.
  *
@@ -25,6 +46,7 @@ fun ServiceCard(
     language: Language,
     strings: UiStrings,
     onBook: () -> Unit,
+    onProviderClick: () -> Unit,
 ) {
     val cover = ImageStore.coverFor(service.id)
 
@@ -51,7 +73,11 @@ fun ServiceCard(
                 Span { Text(" ") }
                 Span { Text(service.basePrice.format(language)) }
             }
-            Div(attrs = { classes(Styles.serviceCardProvider) }) {
+            Div(attrs = {
+                classes(Styles.serviceCardProvider)
+                attr("role", "button")
+                onClick { onProviderClick() }
+            }) {
                 Span(attrs = { classes(Styles.serviceCardProviderLabel) }) {
                     Text("${strings.providedBy} ")
                 }

@@ -18,6 +18,7 @@ import apap.oneverandah.components.BookingDialog
 import apap.oneverandah.components.OfferToolbar
 import apap.oneverandah.components.ShareDialog
 import apap.oneverandah.components.ProviderDetailsDialog
+import apap.oneverandah.components.providerProfileUrl
 import org.jetbrains.compose.web.dom.Span
 import apap.oneverandah.components.PriceSummaryView
 import apap.oneverandah.components.PrimaryButton
@@ -203,7 +204,7 @@ fun OfferScreen(
                     onServiceSelected(id)
                 },
                 onCopyLink = {
-                    val providerLink = "${window.location.origin}/provider/${service.provider.id}"
+                    val providerLink = providerProfileUrl(window.location.origin, service.provider.id)
                     val clipboard = window.navigator.asDynamic().clipboard
                     if (clipboard != null) {
                         try {

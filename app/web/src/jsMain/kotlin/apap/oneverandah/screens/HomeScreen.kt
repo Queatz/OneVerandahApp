@@ -14,14 +14,19 @@ import apap.oneverandah.components.BottomDialog
 import apap.oneverandah.components.ChatInput
 import apap.oneverandah.components.CoverImage
 import apap.oneverandah.components.MaterialSymbol
+import apap.oneverandah.components.ProviderDetailsDialog
+import apap.oneverandah.components.ProviderDetailsSheet
 import apap.oneverandah.components.Scaffold
 import apap.oneverandah.components.ServiceCard
+import apap.oneverandah.components.providerProfileUrl
 import apap.oneverandah.data.Catalog
 import apap.oneverandah.i18n.Localization
 import apap.oneverandah.i18n.UiStrings
 import apap.oneverandah.model.Service
 import apap.oneverandah.state.ImageStore
 import apap.oneverandah.state.PinnedStore
+import apap.oneverandah.state.Toaster
+import kotlinx.browser.window
 import org.jetbrains.compose.web.dom.Button
 import org.jetbrains.compose.web.dom.Div
 import org.jetbrains.compose.web.dom.H2
@@ -89,6 +94,7 @@ fun HomeScreen(
     val language = Localization.language
     var searchQuery by remember { mutableStateOf("") }
     var showClearConfirm by remember { mutableStateOf(false) }
+    var providerSheet by remember { mutableStateOf(ProviderDetailsSheet()) }
     var browseMode by remember { mutableStateOf(HomeBrowseMode.SERVICES) }
     var feedVisibleCount by remember { mutableStateOf(HOME_FEED_PAGE_SIZE) }
     var feedLoadingMore by remember { mutableStateOf(false) }
@@ -115,7 +121,7 @@ fun HomeScreen(
 
             // Pick a random category or service name, avoiding an immediate repeat.
             val names = Catalog.categories.map { it.title.resolve(language) } +
-                Catalog.services.map { it.title.resolve(language) }
+                    Catalog.services.map { it.title.resolve(language) }
             val nextName = names.filter { it != lastName }.randomOrNull()
                 ?: names.randomOrNull()
                 ?: strings.searchPlaceholder
@@ -135,7 +141,7 @@ fun HomeScreen(
         title = strings.appTitle,
         showBanner = true,
         scrollKey = "home",
-        lockScroll = showClearConfirm,
+        lockScroll = showClearConfirm || providerSheet.visible,
         overlay = {
             ClearAllConfirmDialog(
                 visible = showClearConfirm,
@@ -146,6 +152,33 @@ fun HomeScreen(
                     showClearConfirm = false
                 },
             )
+            providerSheet.service?.let { service ->
+                val provider = service.provider
+                ProviderDetailsDialog(
+                    visible = providerSheet.visible,
+                    provider = provider,
+                    language = language,
+                    strings = strings,
+                    currentServiceId = service.id,
+                    onDismiss = { providerSheet = providerSheet.dismiss() },
+                    onServiceSelected = { id ->
+                        providerSheet = providerSheet.dismiss()
+                        onServiceSelected(id)
+                    },
+                    onCopyLink = {
+                        val providerLink = providerProfileUrl(window.location.origin, provider.id)
+                        val clipboard = window.navigator.asDynamic().clipboard
+                        if (clipboard != null) {
+                            try {
+                                clipboard.writeText(providerLink)
+                            } catch (t: Throwable) {
+                                console.log("Failed to copy link: $t")
+                            }
+                        }
+                        Toaster.show(strings.copiedToast)
+                    },
+                )
+            }
         },
     ) {
         P(attrs = { classes(Styles.homePrompt, Styles.homePromptLarge) }) { Text(strings.homePrompt) }
@@ -266,6 +299,7 @@ fun HomeScreen(
                                 language = language,
                                 strings = strings,
                                 onBook = { onServiceSelected(service.id) },
+                                onProviderClick = { providerSheet = providerSheet.open(service) },
                             )
                         }
 
@@ -351,11 +385,11 @@ fun HomeScreen(
                 val descZh = service.description.zh.lowercase().filter { !it.isWhitespace() }
 
                 titleEn.contains(normalizedQuery) ||
-                titleVi.contains(normalizedQuery) ||
-                titleZh.contains(normalizedQuery) ||
-                descEn.contains(normalizedQuery) ||
-                descVi.contains(normalizedQuery) ||
-                descZh.contains(normalizedQuery)
+                        titleVi.contains(normalizedQuery) ||
+                        titleZh.contains(normalizedQuery) ||
+                        descEn.contains(normalizedQuery) ||
+                        descVi.contains(normalizedQuery) ||
+                        descZh.contains(normalizedQuery)
             }
 
             if (matchedServices.isEmpty()) {

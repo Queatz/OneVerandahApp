@@ -15,6 +15,7 @@ import apap.oneverandah.components.PrimaryButton
 import apap.oneverandah.components.Scaffold
 import apap.oneverandah.components.SectionTitle
 import apap.oneverandah.i18n.Localization
+import apap.oneverandah.model.Language
 import apap.oneverandah.state.Toaster
 import apap.oneverandah.stories.Story
 import apap.oneverandah.stories.StoryLogic
@@ -92,6 +93,14 @@ fun StoriesScreen(
                             Span(attrs = { classes(Styles.storyCoverTitle) }) { Text(story.name) }
                             if (story.category.isNotBlank()) {
                                 Span(attrs = { classes(Styles.storyCoverCategory) }) { Text(story.category) }
+                            }
+                            Span(attrs = { classes(Styles.storyCoverMeta) }) {
+                                Text(
+                                    listOf(
+                                        strings.storiesPages(StoryLogic.pageCount(story)),
+                                        Language.fromTag(story.languageTag).displayName,
+                                    ).joinToString(" · "),
+                                )
                             }
                         }
                     }
