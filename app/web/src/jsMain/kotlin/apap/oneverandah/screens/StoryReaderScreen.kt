@@ -186,10 +186,10 @@ private fun StoryCover(
     if (!story.coverImageUrl.isNullOrBlank()) {
         Img(src = story.coverImageUrl!!, alt = story.name, attrs = {
             classes(Styles.storyReaderCover)
+            onClick {
+                onContinue()
+            }
         })
-    }
-    if (story.category.isNotBlank()) {
-        P(attrs = { classes(Styles.storyCoverCategory) }) { Text(story.category) }
     }
     Label(attrs = {
         classes(Styles.storyLearningRow)
@@ -202,9 +202,6 @@ private fun StoryCover(
             onChange {
                 val el = it.nativeEvent.target as? HTMLInputElement
                 onLearningMode(el?.checked == true)
-            }
-            onClick {
-                onContinue()
             }
         }
         Text(strings.storiesLearningMode)
