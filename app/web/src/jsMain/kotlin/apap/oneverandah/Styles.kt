@@ -3580,8 +3580,8 @@ object Styles {
             background: rgba(0,0,0,0.35);
             color: #fff;
             border-radius: 999px;
-            width: 40px;
-            height: 40px;
+            width: 48px;
+            height: 48px;
             line-height: 0;
         }
         .${challengeTopMeta} {

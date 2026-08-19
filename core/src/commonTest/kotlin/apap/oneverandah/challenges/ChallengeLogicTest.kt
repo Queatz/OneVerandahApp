@@ -118,6 +118,10 @@ class ChallengeLogicTest {
         assertEquals(1, ChallengeLogic.nextIndexOrDone(0, 2))
         assertNull(ChallengeLogic.nextIndexOrDone(1, 2))
         assertNull(ChallengeLogic.nextIndexOrDone(0, 0))
+        assertTrue(ChallengeLogic.shouldExitAfterLast(1, 2))
+        assertTrue(ChallengeLogic.shouldExitAfterLast(0, 1))
+        assertTrue(!ChallengeLogic.shouldExitAfterLast(0, 2))
+        assertTrue(!ChallengeLogic.shouldExitAfterLast(0, 0))
     }
 
     @Test

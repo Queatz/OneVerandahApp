@@ -8,6 +8,7 @@ import androidx.compose.runtime.key
 import androidx.compose.runtime.mutableStateOf
 import androidx.compose.runtime.remember
 import androidx.compose.runtime.rememberCoroutineScope
+import androidx.compose.runtime.rememberUpdatedState
 import androidx.compose.runtime.setValue
 import apap.oneverandah.Styles
 import apap.oneverandah.api.ChallengeApi
@@ -72,11 +73,15 @@ fun ChallengePlayerScreen(
     fun goNext() {
         val now = window.performance.now()
         if (!ChallengeLogic.canAdvance(now.toLong(), lastAdvanceAt.toLong())) return
-        lastAdvanceAt = now
-        val following = ChallengeLogic.nextIndexOrDone(index, submissions.size)
-        if (following == null) onBack() else {
+        val total = detail?.submissions.orEmpty().size
+        val following = ChallengeLogic.nextIndexOrDone(index, total)
+        if (following != null) {
+            lastAdvanceAt = now
             index = following
             resetPlaybackChrome()
+        } else if (ChallengeLogic.shouldExitAfterLast(index, total)) {
+            lastAdvanceAt = now
+            onBack()
         }
     }
 
@@ -96,14 +101,18 @@ fun ChallengePlayerScreen(
         }
     }
 
+    val latestOnBack = rememberUpdatedState(onBack)
+    val latestGoNext = rememberUpdatedState { goNext() }
+    val latestGoPrev = rememberUpdatedState { goPrev() }
+
     DisposableEffect(Unit) {
         val onKey: (Event) -> Unit = { event ->
             val key = event.asDynamic().key as? String
-            if (key == "Escape") onBack()
+            if (key == "Escape") latestOnBack.value()
             if (key == "ArrowDown" || key == "ArrowUp" || key == " ") {
                 event.preventDefault()
-                if (key == "ArrowDown") goNext()
-                if (key == "ArrowUp") goPrev()
+                if (key == "ArrowDown") latestGoNext.value()
+                if (key == "ArrowUp") latestGoPrev.value()
             }
         }
         window.addEventListener("keydown", onKey)

@@ -242,6 +242,10 @@ object ChallengeLogic {
         return if (next >= total) null else next
     }
 
+    /** Leave the player only after the last real clip, never while the list is empty. */
+    fun shouldExitAfterLast(currentIndex: Int, total: Int): Boolean =
+        total > 0 && currentIndex + 1 >= total
+
     fun previousIndex(currentIndex: Int): Int? =
         if (currentIndex <= 0) null else currentIndex - 1
 
