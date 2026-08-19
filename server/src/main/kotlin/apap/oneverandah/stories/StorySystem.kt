@@ -35,6 +35,7 @@ class StorySystem(
 ) {
     private val log = LoggerFactory.getLogger(StorySystem::class.java)
     private val jobs = ConcurrentHashMap<String, GenerateStoryImageResponse>()
+    private val publishJobs = ConcurrentHashMap<String, StoryPublishResponse>()
 
     /** Start Qwen in the background so the admin request can return immediately. */
     fun enqueueGenerate(request: GenerateStoryImageRequest): GenerateStoryImageResponse {
@@ -63,6 +64,40 @@ class StorySystem(
     }
 
     fun generateJob(jobId: String): GenerateStoryImageResponse? = jobs[jobId]
+
+    /** Tokenize in the background so the admin request can return immediately. */
+    suspend fun enqueuePublish(id: String, languageTag: String): StoryPublishResponse {
+        val started = service.beginPublish(id)
+        val jobId = "pubjob-${jobIdGenerator()}"
+        val pending = StoryPublishResponse(
+            story = started,
+            jobId = jobId,
+            status = StoryLogic.PUBLISH_JOB_PENDING,
+        )
+        publishJobs[jobId] = pending
+        scope.launch {
+            try {
+                val published = service.publish(id, languageTag)
+                publishJobs[jobId] = StoryPublishResponse(
+                    story = published,
+                    jobId = jobId,
+                    status = StoryLogic.PUBLISH_JOB_READY,
+                )
+            } catch (e: Throwable) {
+                log.warn("Story publish job {} failed: {}", jobId, e.message)
+                val failedStory = runCatching { service.failPublish(id) }.getOrNull()
+                publishJobs[jobId] = StoryPublishResponse(
+                    story = failedStory,
+                    jobId = jobId,
+                    status = StoryLogic.PUBLISH_JOB_FAILED,
+                    error = e.message ?: "Publishing failed",
+                )
+            }
+        }
+        return pending
+    }
+
+    fun publishJob(jobId: String): StoryPublishResponse? = publishJobs[jobId]
 
     suspend fun generateImage(request: GenerateStoryImageRequest): GenerateStoryImageResponse {
         val prompt = request.prompt.trim()

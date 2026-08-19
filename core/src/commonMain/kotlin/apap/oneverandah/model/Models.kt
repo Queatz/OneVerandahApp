@@ -14,6 +14,10 @@ enum class Language(val tag: String) {
     KOREAN("ko"),
     RUSSIAN("ru");
 
+    /** Capitalized English name for menus — never the ISO tag. */
+    val displayName: String
+        get() = name.lowercase().replaceFirstChar { it.titlecase() }
+
     companion object {
         /** The language used when nothing else matches. */
         val DEFAULT: Language = ENGLISH

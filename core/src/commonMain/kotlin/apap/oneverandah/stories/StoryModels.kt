@@ -18,6 +18,7 @@ data class Story(
     val coverImageUrl: String? = null,
     val releaseDate: Long? = null,
     val published: Boolean = false,
+    val publishing: Boolean = false,
     val languageTag: String = "en",
     val openCount: Int = 0,
     val pages: List<StoryPage> = emptyList(),
@@ -58,6 +59,14 @@ data class StoryPageUpsert(
 @Serializable
 data class StoryPublishRequest(
     val languageTag: String,
+)
+
+@Serializable
+data class StoryPublishResponse(
+    val story: Story? = null,
+    val jobId: String? = null,
+    val status: String = StoryLogic.PUBLISH_JOB_READY,
+    val error: String? = null,
 )
 
 @Serializable

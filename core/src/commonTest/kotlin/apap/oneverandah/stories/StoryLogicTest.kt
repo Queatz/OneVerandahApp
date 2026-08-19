@@ -39,6 +39,19 @@ class StoryLogicTest {
     }
 
     @Test
+    fun adminListStatusPrefersPublishingOverDraft() {
+        val draft = story("draft", published = false)
+        val publishing = draft.copy(publishing = true)
+        val live = story("live", published = true)
+
+        assertEquals(StoryLogic.LIST_STATUS_DRAFT, StoryLogic.adminListStatus(draft))
+        assertEquals(StoryLogic.LIST_STATUS_PUBLISHING, StoryLogic.adminListStatus(publishing))
+        assertEquals(StoryLogic.LIST_STATUS_PUBLISHED, StoryLogic.adminListStatus(live))
+        assertFalse(StoryLogic.canStartPublish(publishing))
+        assertTrue(StoryLogic.canStartPublish(draft.copy(pages = listOf(StoryPage("p1", text = "Once")))))
+    }
+
+    @Test
     fun cannotPublishWithoutNameOrPageText() {
         assertEquals("A book name is required", StoryLogic.publishError(story("x", name = "  ")))
         assertEquals(

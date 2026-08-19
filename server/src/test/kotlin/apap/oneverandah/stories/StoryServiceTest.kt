@@ -64,6 +64,38 @@ class StoryServiceTest {
         assertEquals(1, firstOpen?.openCount)
         assertEquals(2, secondOpen?.openCount)
         assertTrue(service.listPublic().single().pages.isEmpty())
+        assertFalse(published.publishing)
+    }
+
+    @Test
+    fun beginPublishMarksBookWithoutTokenizing() = runBlocking {
+        var tokenizeCalls = 0
+        val service = service(
+            tokenizer = StoryTokenizer { text, language ->
+                tokenizeCalls += 1
+                session(text, language)
+            },
+        )
+        val created = service.create(
+            StoryUpsertRequest(
+                name = "Poolside",
+                category = "Social",
+                pages = listOf(StoryPageUpsert(text = "Lan waves from the deck.")),
+            ),
+        )
+
+        val started = service.beginPublish(created.id)
+        assertTrue(started.publishing)
+        assertFalse(started.published)
+        assertEquals(0, tokenizeCalls)
+        assertTrue(service.listPublic().isEmpty())
+
+        assertFailsWith<IllegalArgumentException> { service.beginPublish(created.id) }
+
+        val failed = service.failPublish(created.id)
+        assertFalse(failed.publishing)
+        assertFalse(failed.published)
+        assertEquals(0, tokenizeCalls)
     }
 
     @Test

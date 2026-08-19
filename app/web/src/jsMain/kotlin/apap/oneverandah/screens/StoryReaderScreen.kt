@@ -270,13 +270,6 @@ private fun StoryPageView(
                 }
             }
         }
-        Div(attrs = { classes(Styles.storyStudyBlock) }) {
-            Span(attrs = { classes(Styles.sectionTitle) }) { Text(strings.storiesStudyThisPage) }
-            P(attrs = { classes(Styles.homePrompt) }) { Text(strings.chatStoryTab) }
-            session.sentences.forEach { sentence ->
-                P(attrs = { classes(Styles.studyStorySentence) }) { Text(sentence.text) }
-            }
-        }
     } else {
         P(attrs = { classes(Styles.storyPageText) }) { Text(page.text) }
     }

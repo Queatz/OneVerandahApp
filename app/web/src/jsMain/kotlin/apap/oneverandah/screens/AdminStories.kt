@@ -10,6 +10,7 @@ import androidx.compose.runtime.setValue
 import apap.oneverandah.Styles
 import apap.oneverandah.api.PhraseApi
 import apap.oneverandah.api.StoryApi
+import apap.oneverandah.api.StoryApiException
 import apap.oneverandah.api.firstFileOrNull
 import apap.oneverandah.components.BottomDialog
 import apap.oneverandah.components.MaterialSymbol
@@ -17,7 +18,9 @@ import apap.oneverandah.components.PrimaryButton
 import apap.oneverandah.components.SectionTitle
 import apap.oneverandah.components.Spacer
 import apap.oneverandah.i18n.Localization
+import apap.oneverandah.i18n.flagFor
 import apap.oneverandah.model.Language
+import apap.oneverandah.stories.StoryLogic
 import apap.oneverandah.phrases.ReferencePhoto
 import apap.oneverandah.state.Toaster
 import apap.oneverandah.stories.GenerateStoryImageRequest
@@ -26,6 +29,7 @@ import apap.oneverandah.stories.StoryCharacter
 import apap.oneverandah.stories.StoryPage
 import apap.oneverandah.stories.StoryPageUpsert
 import apap.oneverandah.stories.StoryUpsertRequest
+import kotlinx.coroutines.delay
 import kotlinx.coroutines.launch
 import org.jetbrains.compose.web.attributes.InputType
 import org.jetbrains.compose.web.attributes.selected
@@ -57,6 +61,15 @@ fun AdminStoriesPanel(
     var showEditor by remember { mutableStateOf(false) }
     var pendingDelete by remember { mutableStateOf<Story?>(null) }
     var publishTarget by remember { mutableStateOf<Story?>(null) }
+    var publishingIds by remember { mutableStateOf(setOf<String>()) }
+
+    LaunchedEffect(stories.any { it.publishing } || publishingIds.isNotEmpty()) {
+        if (stories.none { it.publishing } && publishingIds.isEmpty()) return@LaunchedEffect
+        while (true) {
+            delay(2_000)
+            onRefresh()
+        }
+    }
 
     PrimaryButton(label = strings.adminAddBook, icon = "add") {
         editing = null
@@ -83,7 +96,13 @@ fun AdminStoriesPanel(
                     Text(
                         buildString {
                             if (story.category.isNotBlank()) append(story.category).append(" · ")
-                            append(if (story.published) strings.storiesPublished else strings.storiesDraft)
+                            append(
+                                when (StoryLogic.adminListStatus(story.copy(publishing = story.publishing || story.id in publishingIds))) {
+                                    StoryLogic.LIST_STATUS_PUBLISHING -> strings.adminPublishing
+                                    StoryLogic.LIST_STATUS_PUBLISHED -> strings.storiesPublished
+                                    else -> strings.storiesDraft
+                                },
+                            )
                             append(" · ")
                             append(strings.storiesOpens(story.openCount))
                         },
@@ -99,7 +118,8 @@ fun AdminStoriesPanel(
                         showEditor = true
                     }
                 }) { Text(strings.adminEdit) }
-                if (story.published) {
+                val isPublishing = story.publishing || story.id in publishingIds
+                if (story.published && !isPublishing) {
                     Button(attrs = {
                         classes(Styles.btnText)
                         attr("type", "button")
@@ -115,7 +135,7 @@ fun AdminStoriesPanel(
                             }
                         }
                     }) { Text(strings.adminUnpublish) }
-                } else {
+                } else if (!isPublishing) {
                     Button(attrs = {
                         classes(Styles.btnText)
                         attr("type", "button")
@@ -147,9 +167,21 @@ fun AdminStoriesPanel(
     PublishStoryDialog(
         story = publishTarget,
         onDismiss = { publishTarget = null },
-        onPublished = {
+        onStarted = { storyId, jobId ->
             publishTarget = null
+            publishingIds = publishingIds + storyId
             onRefresh()
+            scope.launch {
+                try {
+                    watchPublishJob(jobId)
+                    Toaster.show(strings.adminSaved)
+                } catch (e: Throwable) {
+                    Toaster.show(e.message ?: strings.adminError)
+                } finally {
+                    publishingIds = publishingIds - storyId
+                    onRefresh()
+                }
+            }
         },
     )
     if (pendingDelete != null) {
@@ -199,7 +231,7 @@ private fun ConfirmStoryDelete(title: String, onDismiss: () -> Unit, onConfirm: 
 private fun PublishStoryDialog(
     story: Story?,
     onDismiss: () -> Unit,
-    onPublished: () -> Unit,
+    onStarted: (storyId: String, jobId: String) -> Unit,
 ) {
     val strings = Localization.strings
     val scope = rememberCoroutineScope()
@@ -226,7 +258,7 @@ private fun PublishStoryDialog(
                 Language.entries.forEach { language ->
                     Option(language.tag, attrs = {
                         if (language.tag == languageTag) selected()
-                    }) { Text("${language.name.lowercase()} (${language.tag})") }
+                    }) { Text("${flagFor(language)} ${language.displayName}") }
                 }
             }
         }
@@ -237,7 +269,7 @@ private fun PublishStoryDialog(
                 onClick { if (!busy) onDismiss() }
             }) { Text(strings.close) }
             PrimaryButton(
-                label = if (busy) strings.adminPublishing else strings.adminPublish,
+                label = strings.adminPublish,
                 icon = "publish",
                 enabled = !busy && story != null,
             ) {
@@ -245,9 +277,13 @@ private fun PublishStoryDialog(
                 scope.launch {
                     busy = true
                     try {
-                        StoryApi.publish(target.id, languageTag)
-                        Toaster.show(strings.adminSaved)
-                        onPublished()
+                        val started = StoryApi.startPublish(target.id, languageTag)
+                        val jobId = started.jobId?.trim().orEmpty()
+                        if (jobId.isEmpty()) throw StoryApiException(started.error ?: strings.adminError)
+                        if (started.status == StoryLogic.PUBLISH_JOB_FAILED) {
+                            throw StoryApiException(started.error ?: strings.adminError)
+                        }
+                        onStarted(target.id, jobId)
                     } catch (e: Throwable) {
                         Toaster.show(e.message ?: strings.adminError)
                     } finally {
@@ -257,6 +293,19 @@ private fun PublishStoryDialog(
             }
         }
     }
+}
+
+private suspend fun watchPublishJob(jobId: String) {
+    repeat(180) {
+        val job = StoryApi.fetchPublishJob(jobId)
+        when (job.status) {
+            StoryLogic.PUBLISH_JOB_READY -> return
+            StoryLogic.PUBLISH_JOB_FAILED ->
+                throw StoryApiException(job.error ?: Localization.strings.adminError)
+        }
+        delay(2_000)
+    }
+    throw StoryApiException("Publishing timed out")
 }
 
 @Composable
@@ -321,9 +370,11 @@ private fun StoryEditorDialog(
             AdminStoryField(strings.adminBookCategory, category, strings.adminBookCategoryPlaceholder) { category = it }
             if (coverUrl.isNotBlank()) {
                 Img(src = coverUrl, alt = "", attrs = { classes(Styles.adminCoverPreview) })
+                Spacer()
             }
             if (generatingCover) {
                 P(attrs = { classes(Styles.homePrompt) }) { Text(strings.adminGenerating) }
+                Spacer()
             }
             Div(attrs = { classes(Styles.adminRowActions) }) {
                 PrimaryButton(label = strings.adminGenerateCover, icon = "auto_awesome") {

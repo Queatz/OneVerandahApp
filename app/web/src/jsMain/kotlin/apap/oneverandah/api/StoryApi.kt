@@ -12,6 +12,7 @@ import apap.oneverandah.stories.StoryImageUploadResponse
 import apap.oneverandah.stories.StoryLanguageResponse
 import apap.oneverandah.stories.StoryLogic
 import apap.oneverandah.stories.StoryPublishRequest
+import apap.oneverandah.stories.StoryPublishResponse
 import apap.oneverandah.stories.StoryUpsertRequest
 import apap.oneverandah.state.AdminAuth
 import io.ktor.client.HttpClient
@@ -118,14 +119,45 @@ object StoryApi {
     }
 
     suspend fun publish(id: String, languageTag: String): Story {
+        val started = startPublish(id, languageTag)
+        val jobId = started.jobId?.trim().orEmpty()
+        if (jobId.isEmpty() || started.status == StoryLogic.PUBLISH_JOB_READY) {
+            return started.story ?: throw StoryApiException("Publishing failed")
+        }
+        if (started.status == StoryLogic.PUBLISH_JOB_FAILED) {
+            throw StoryApiException(started.error ?: "Publishing failed")
+        }
+        repeat(180) {
+            delay(2_000)
+            val job = fetchPublishJob(jobId)
+            when (job.status) {
+                StoryLogic.PUBLISH_JOB_READY ->
+                    return job.story ?: throw StoryApiException("Publishing failed")
+                StoryLogic.PUBLISH_JOB_FAILED ->
+                    throw StoryApiException(job.error ?: "Publishing failed")
+            }
+        }
+        throw StoryApiException("Publishing timed out")
+    }
+
+    suspend fun startPublish(id: String, languageTag: String): StoryPublishResponse {
         val response = client.post("${base()}/api/v1/admin/stories/$id/publish") {
             authed()
             contentType(ContentType.Application.Json)
             setBody(json.encodeToString(StoryPublishRequest.serializer(), StoryPublishRequest(languageTag)))
         }
         val text = response.bodyAsText()
+        if (!response.status.isSuccess() && response.status.value != 202) {
+            throw StoryApiException(errorMessage(text, response.status.value))
+        }
+        return json.decodeFromString(StoryPublishResponse.serializer(), text)
+    }
+
+    suspend fun fetchPublishJob(jobId: String): StoryPublishResponse {
+        val response = client.get("${base()}/api/v1/admin/stories/publish/$jobId") { authed() }
+        val text = response.bodyAsText()
         if (!response.status.isSuccess()) throw StoryApiException(errorMessage(text, response.status.value))
-        return json.decodeFromString(Story.serializer(), text)
+        return json.decodeFromString(StoryPublishResponse.serializer(), text)
     }
 
     suspend fun unpublish(id: String): Story {

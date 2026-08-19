@@ -74,9 +74,16 @@ class StoryRoutesTest {
             contentType(ContentType.Application.Json)
             setBody(json.encodeToString(StoryPublishRequest.serializer(), StoryPublishRequest("en")))
         }
-        assertEquals(HttpStatusCode.OK, published.status)
-        val book = json.decodeFromString(Story.serializer(), published.bodyAsText())
+        assertEquals(HttpStatusCode.Accepted, published.status)
+        val started = json.decodeFromString(StoryPublishResponse.serializer(), published.bodyAsText())
+        assertEquals(StoryLogic.PUBLISH_JOB_PENDING, started.status)
+        assertFalse(started.jobId.isNullOrBlank())
+        assertTrue(started.story?.publishing == true)
+        assertFalse(started.story?.published == true)
+
+        val book = pollPublishJob(client, token, started.jobId!!)
         assertTrue(book.published)
+        assertFalse(book.publishing)
         assertFalse(book.pages.first().session?.sentences.isNullOrEmpty())
 
         val listed = client.get("/api/v1/stories")
@@ -260,15 +267,13 @@ class StoryRoutesTest {
         assertEquals(listOf("Minh Anh"), characters.characters.map { it.name })
     }
 
-    private fun testSystem(
-        qwen: apap.oneverandah.images.qwen.QwenClient = PlaceholderQwenClient(),
-    ): StorySystem {
-        val stories = InMemoryStoryRepository()
-        val characters = InMemoryStoryCharacterRepository()
-        val service = StoryService(
-            stories = stories,
-            characters = characters,
+    @Test
+    fun publishStaysPendingUntilTokenizeFinishes() = testApplication {
+        val config = AppConfig.load()
+        val gate = kotlinx.coroutines.CompletableDeferred<Unit>()
+        val system = testSystem(
             tokenizer = StoryTokenizer { text, language ->
+                gate.await()
                 StudySessionResponse(
                     text = text,
                     textLanguageTag = language,
@@ -280,6 +285,91 @@ class StoryRoutesTest {
                     ),
                 )
             },
+        )
+        application {
+            install(ContentNegotiation) { json(json) }
+            routing { storyRoutes(system, config) }
+        }
+        val created = system.service.create(
+            StoryUpsertRequest(
+                name = "Slow Publish",
+                category = "Mystery",
+                pages = listOf(StoryPageUpsert(text = "The lift chimed once.")),
+            ),
+        )
+        val token = AdminJwt.issue(config.adminJwtSecret)
+
+        val started = client.post("/api/v1/admin/stories/${created.id}/publish") {
+            header(HttpHeaders.Authorization, "Bearer $token")
+            contentType(ContentType.Application.Json)
+            setBody(json.encodeToString(StoryPublishRequest.serializer(), StoryPublishRequest("en")))
+        }
+        assertEquals(HttpStatusCode.Accepted, started.status)
+        val pending = json.decodeFromString(StoryPublishResponse.serializer(), started.bodyAsText())
+        assertEquals(StoryLogic.PUBLISH_JOB_PENDING, pending.status)
+        assertTrue(pending.story?.publishing == true)
+
+        val stillPubliclyHidden = client.get("/api/v1/stories")
+        assertTrue(json.decodeFromString(StoriesResponse.serializer(), stillPubliclyHidden.bodyAsText()).stories.isEmpty())
+
+        val adminListed = client.get("/api/v1/admin/stories") {
+            header(HttpHeaders.Authorization, "Bearer $token")
+        }
+        val adminBooks = json.decodeFromString(StoriesResponse.serializer(), adminListed.bodyAsText())
+        assertTrue(adminBooks.stories.single().publishing)
+        assertFalse(adminBooks.stories.single().published)
+
+        gate.complete(Unit)
+        val book = pollPublishJob(client, token, pending.jobId!!)
+        assertTrue(book.published)
+        assertFalse(book.publishing)
+
+        val listed = client.get("/api/v1/stories")
+        assertEquals(1, json.decodeFromString(StoriesResponse.serializer(), listed.bodyAsText()).stories.size)
+    }
+
+    private suspend fun pollPublishJob(
+        client: io.ktor.client.HttpClient,
+        token: String,
+        jobId: String,
+    ): Story {
+        var ready: StoryPublishResponse? = null
+        repeat(50) {
+            val polled = client.get("/api/v1/admin/stories/publish/$jobId") {
+                header(HttpHeaders.Authorization, "Bearer $token")
+            }
+            val body = json.decodeFromString(StoryPublishResponse.serializer(), polled.bodyAsText())
+            if (body.status == StoryLogic.PUBLISH_JOB_READY) {
+                ready = body
+                return@repeat
+            }
+            kotlinx.coroutines.delay(20)
+        }
+        val finished = ready ?: error("publish job $jobId did not become ready")
+        return finished.story ?: error("ready publish job $jobId had no story")
+    }
+
+    private fun testSystem(
+        qwen: apap.oneverandah.images.qwen.QwenClient = PlaceholderQwenClient(),
+        tokenizer: StoryTokenizer = StoryTokenizer { text, language ->
+            StudySessionResponse(
+                text = text,
+                textLanguageTag = language,
+                sentences = listOf(
+                    StudySentence(
+                        text = text,
+                        tokens = listOf(StudyToken(text = text, status = StudyTokenStatus.READY)),
+                    ),
+                ),
+            )
+        },
+    ): StorySystem {
+        val stories = InMemoryStoryRepository()
+        val characters = InMemoryStoryCharacterRepository()
+        val service = StoryService(
+            stories = stories,
+            characters = characters,
+            tokenizer = tokenizer,
         )
         return StorySystem(
             service = service,

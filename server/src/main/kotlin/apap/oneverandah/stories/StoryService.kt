@@ -105,6 +105,23 @@ class StoryService(
         }
     }
 
+    suspend fun beginPublish(id: String): Story {
+        val existing = stories.findById(id) ?: error("Story '$id' not found")
+        if (existing.publishing) throw IllegalArgumentException("This book is already publishing")
+        val error = StoryLogic.publishError(existing)
+        if (error != null) throw IllegalArgumentException(error)
+        val started = existing.copy(publishing = true, updatedAt = clock())
+        stories.save(started)
+        return started
+    }
+
+    suspend fun failPublish(id: String): Story {
+        val existing = stories.findById(id) ?: error("Story '$id' not found")
+        val failed = existing.copy(publishing = false, updatedAt = clock())
+        stories.save(failed)
+        return failed
+    }
+
     suspend fun publish(id: String, languageTag: String): Story {
         val existing = stories.findById(id) ?: error("Story '$id' not found")
         val error = StoryLogic.publishError(existing)
@@ -122,6 +139,7 @@ class StoryService(
         val now = clock()
         val published = existing.copy(
             published = true,
+            publishing = false,
             languageTag = language,
             releaseDate = existing.releaseDate ?: now,
             pages = pages,
@@ -133,7 +151,7 @@ class StoryService(
 
     suspend fun unpublish(id: String): Story {
         val existing = stories.findById(id) ?: error("Story '$id' not found")
-        val updated = existing.copy(published = false, updatedAt = clock())
+        val updated = existing.copy(published = false, publishing = false, updatedAt = clock())
         stories.save(updated)
         return updated
     }

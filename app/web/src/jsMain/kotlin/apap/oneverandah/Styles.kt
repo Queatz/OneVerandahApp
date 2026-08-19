@@ -425,6 +425,8 @@ object Styles {
             --md-sys-color-primary-container: #EADDFF;
             --md-sys-color-on-primary-container: #21005D;
             --md-sys-color-surface: #FEF7FF;
+            --md-sys-color-surface-container: #F3EDF7;
+            --md-sys-color-surface-container-high: #ECE6F0;
             --md-sys-color-on-surface: #1D1B20;
             --md-sys-color-on-surface-variant: #49454F;
             --md-sys-color-surface-variant: #E7E0EC;
@@ -445,6 +447,8 @@ object Styles {
                 --md-sys-color-primary-container: #4F378B;
                 --md-sys-color-on-primary-container: #EADDFF;
                 --md-sys-color-surface: #141218;
+                --md-sys-color-surface-container: #211F26;
+                --md-sys-color-surface-container-high: #2B2930;
                 --md-sys-color-on-surface: #E6E0E9;
                 --md-sys-color-on-surface-variant: #CAC4D0;
                 --md-sys-color-surface-variant: #2B2930;

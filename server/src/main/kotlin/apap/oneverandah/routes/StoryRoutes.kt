@@ -43,7 +43,8 @@ import io.ktor.server.routing.route
  *  - `PUT    /api/v1/admin/stories/{id}`
  *  - `DELETE /api/v1/admin/stories/{id}`
  *  - `POST   /api/v1/admin/stories/{id}/detect-language`
- *  - `POST   /api/v1/admin/stories/{id}/publish`
+ *  - `POST   /api/v1/admin/stories/{id}/publish` (starts a background job)
+ *  - `GET    /api/v1/admin/stories/publish/{jobId}`
  *  - `POST   /api/v1/admin/stories/{id}/unpublish`
  *  - `POST   /api/v1/admin/stories/generate-image` (starts a background job)
  *  - `GET    /api/v1/admin/stories/generate-image/{jobId}`
@@ -162,14 +163,23 @@ fun Route.storyRoutes(system: StorySystem, config: AppConfig) {
                 return@post
             }
             try {
-                call.respond(service.publish(id, body.languageTag))
+                call.respond(HttpStatusCode.Accepted, system.enqueuePublish(id, body.languageTag))
             } catch (e: IllegalStateException) {
                 call.respond(HttpStatusCode.NotFound, StoryApiError(e.message ?: "Not found"))
             } catch (e: IllegalArgumentException) {
                 call.respond(HttpStatusCode.BadRequest, StoryApiError(e.message ?: "Cannot publish"))
-            } catch (e: Throwable) {
-                call.respond(HttpStatusCode.BadGateway, StoryApiError(e.message ?: "Tokenization failed"))
             }
+        }
+
+        get("/stories/publish/{jobId}") {
+            if (!requireAdmin(config)) return@get
+            val jobId = call.parameters["jobId"].orEmpty()
+            val job = system.publishJob(jobId)
+            if (job == null) {
+                call.respond(HttpStatusCode.NotFound, StoryApiError("Publish job '$jobId' not found"))
+                return@get
+            }
+            call.respond(job)
         }
 
         post("/stories/{id}/unpublish") {

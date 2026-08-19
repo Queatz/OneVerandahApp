@@ -13,6 +13,12 @@ object StoryLogic {
     const val IMAGE_JOB_PENDING = "pending"
     const val IMAGE_JOB_READY = "ready"
     const val IMAGE_JOB_FAILED = "failed"
+    const val PUBLISH_JOB_PENDING = "pending"
+    const val PUBLISH_JOB_READY = "ready"
+    const val PUBLISH_JOB_FAILED = "failed"
+    const val LIST_STATUS_DRAFT = "draft"
+    const val LIST_STATUS_PUBLISHING = "publishing"
+    const val LIST_STATUS_PUBLISHED = "published"
 
     /** Public shelf: published only, newest release first, then newest update. */
     fun publishedNewestFirst(stories: List<Story>): List<Story> =
@@ -33,6 +39,14 @@ object StoryLogic {
         )
 
     fun canPublish(story: Story): Boolean = publishError(story) == null
+
+    fun canStartPublish(story: Story): Boolean = !story.publishing && canPublish(story)
+
+    fun adminListStatus(story: Story): String = when {
+        story.publishing -> LIST_STATUS_PUBLISHING
+        story.published -> LIST_STATUS_PUBLISHED
+        else -> LIST_STATUS_DRAFT
+    }
 
     fun publishError(story: Story): String? {
         if (story.name.isBlank()) return "A book name is required"
