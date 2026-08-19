@@ -33,6 +33,7 @@ import javax.imageio.ImageIO
 import kotlin.test.Test
 import kotlin.test.assertEquals
 import kotlin.test.assertNotNull
+import kotlin.test.assertNull
 import kotlin.test.assertTrue
 
 class DashScopeQwenClientTest {
@@ -193,34 +194,12 @@ class DashScopeQwenClientTest {
                             "Failed to parse HTTP response: the server prematurely closed the connection",
                         )
                     }
-                    assertEquals("enable", request.headers["X-DashScope-Async"])
-                    respond(
-                        content = """{"output":{"task_id":"task-cover-1","task_status":"PENDING"}}""",
-                        status = HttpStatusCode.OK,
-                        headers = headersOf(HttpHeaders.ContentType, "application/json"),
+                    assertNull(
+                        request.headers["X-DashScope-Async"],
+                        "multimodal-generation does not support DashScope async",
                     )
-                }
-                url.contains("/tasks/task-cover-1") -> {
                     respond(
-                        content = """
-                            {
-                              "output": {
-                                "task_status": "SUCCEEDED",
-                                "choices": [
-                                  {
-                                    "message": {
-                                      "content": [
-                                        {
-                                          "image": "https://dashscope-result.example.test/cover.png",
-                                          "type": "image"
-                                        }
-                                      ]
-                                    }
-                                  }
-                                ]
-                              }
-                            }
-                        """.trimIndent(),
+                        content = """{"output":{"choices":[{"message":{"content":[{"image":"https://dashscope-result.example.test/cover.png","type":"image"}]}}]}}""",
                         status = HttpStatusCode.OK,
                         headers = headersOf(HttpHeaders.ContentType, "application/json"),
                     )

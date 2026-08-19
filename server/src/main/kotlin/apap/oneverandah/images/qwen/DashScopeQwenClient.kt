@@ -206,8 +206,9 @@ class DashScopeQwenClient(
      * Multimodal still-image generation (text-only or reference-grounded).
      *
      * Shared by playground/catalog comics (`wan2.7-image` text-to-image) and
-     * phrase/cover R2I. Handles both synchronous choices payloads and async
-     * task_id responses.
+     * phrase/cover R2I. This endpoint rejects `X-DashScope-Async` (`AccessDenied:
+     * current user api does not support asynchronous calls`), so the HTTP call
+     * itself is synchronous. User-facing asynchrony lives in StorySystem jobs.
      */
     private suspend fun generateMultimodal(
         prompt: String,
@@ -255,13 +256,9 @@ class DashScopeQwenClient(
             )
         }
 
-        // Hold the HTTP connection only long enough to enqueue the job. Sync
-        // multimodal generation regularly outlives CIO/proxy idle limits and
-        // surfaces as "the server prematurely closed the connection".
         val response: HttpResponse = withTransientHttpRetry {
             client.post(endpoint) {
                 header(HttpHeaders.Authorization, "Bearer ${config.apiKey}")
-                header(HEADER_ASYNC, "enable")
                 if (usesOss) header(HEADER_OSS_RESOLVE, "enable")
                 contentType(ContentType.Application.Json)
                 setBody(json.encodeToString(JsonObject.serializer(), requestBody))
