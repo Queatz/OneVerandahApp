@@ -12,6 +12,7 @@ import apap.oneverandah.challenges.AdminChallengeView
 import apap.oneverandah.challenges.AdminChallengesResponse
 import apap.oneverandah.challenges.ChallengeLogic
 import apap.oneverandah.challenges.ChallengeSubmissionView
+import apap.oneverandah.components.BottomDialog
 import apap.oneverandah.components.PrimaryButton
 import apap.oneverandah.components.SectionTitle
 import apap.oneverandah.i18n.Localization
@@ -38,6 +39,8 @@ fun AdminChallengesPanel(
     val scope = rememberCoroutineScope()
     var renaming by remember { mutableStateOf<AdminChallengeView?>(null) }
     var renameValue by remember { mutableStateOf("") }
+    var pendingDeleteChallenge by remember { mutableStateOf<AdminChallengeView?>(null) }
+    var pendingDeleteSubmission by remember { mutableStateOf<ChallengeSubmissionView?>(null) }
 
     if (loading) {
         P { Text(strings.challengesLoading) }
@@ -58,13 +61,7 @@ fun AdminChallengesPanel(
                             .onFailure { Toaster.show(it.message ?: strings.challengesSubmitError) }
                     }
                 },
-                onDelete = {
-                    scope.launch {
-                        runCatching { ChallengeApi.deleteSubmission(submission.id) }
-                            .onSuccess { onRefresh() }
-                            .onFailure { Toaster.show(it.message ?: strings.challengesSubmitError) }
-                    }
-                },
+                onDelete = { pendingDeleteSubmission = submission },
             )
         }
     }
@@ -109,13 +106,7 @@ fun AdminChallengesPanel(
                     Button(attrs = {
                         classes(Styles.btnText)
                         attr("type", "button")
-                        onClick {
-                            scope.launch {
-                                runCatching { ChallengeApi.deleteChallenge(challenge.id) }
-                                    .onSuccess { onRefresh() }
-                                    .onFailure { Toaster.show(it.message ?: strings.challengesSubmitError) }
-                            }
-                        }
+                        onClick { pendingDeleteChallenge = challenge }
                     }) { Text(strings.adminDeleteChallenge) }
                 }
             }
@@ -131,15 +122,69 @@ fun AdminChallengesPanel(
                             }
                         }
                     } else null,
-                    onDelete = {
-                        scope.launch {
-                            runCatching { ChallengeApi.deleteSubmission(submission.id) }
-                                .onSuccess { onRefresh() }
-                                .onFailure { Toaster.show(it.message ?: strings.challengesSubmitError) }
-                        }
-                    },
+                    onDelete = { pendingDeleteSubmission = submission },
                 )
             }
+        }
+    }
+
+    ConfirmDeleteDialog(
+        visible = pendingDeleteChallenge != null,
+        title = strings.adminDeleteChallenge,
+        onDismiss = { pendingDeleteChallenge = null },
+        onConfirm = {
+            val id = pendingDeleteChallenge?.id ?: return@ConfirmDeleteDialog
+            pendingDeleteChallenge = null
+            scope.launch {
+                runCatching { ChallengeApi.deleteChallenge(id) }
+                    .onSuccess { onRefresh() }
+                    .onFailure { Toaster.show(it.message ?: strings.challengesSubmitError) }
+            }
+        },
+    )
+    ConfirmDeleteDialog(
+        visible = pendingDeleteSubmission != null,
+        title = strings.adminDeleteSubmission,
+        onDismiss = { pendingDeleteSubmission = null },
+        onConfirm = {
+            val id = pendingDeleteSubmission?.id ?: return@ConfirmDeleteDialog
+            pendingDeleteSubmission = null
+            scope.launch {
+                runCatching { ChallengeApi.deleteSubmission(id) }
+                    .onSuccess { onRefresh() }
+                    .onFailure { Toaster.show(it.message ?: strings.challengesSubmitError) }
+            }
+        },
+    )
+}
+
+@Composable
+private fun ConfirmDeleteDialog(
+    visible: Boolean,
+    title: String,
+    onDismiss: () -> Unit,
+    onConfirm: () -> Unit,
+) {
+    val strings = Localization.strings
+    BottomDialog(
+        visible = visible,
+        closeLabel = strings.close,
+        onDismiss = onDismiss,
+    ) {
+        Div(attrs = { classes(Styles.dialogHeader) }) {
+            P(attrs = { classes(Styles.dialogTitle) }) { Text(title) }
+        }
+        Div(attrs = { classes(Styles.dialogActions) }) {
+            Button(attrs = {
+                classes(Styles.btnText)
+                attr("type", "button")
+                onClick { onDismiss() }
+            }) { Text(strings.close) }
+            Button(attrs = {
+                classes(Styles.btnPrimary)
+                attr("type", "button")
+                onClick { onConfirm() }
+            }) { Text(strings.adminDelete) }
         }
     }
 }

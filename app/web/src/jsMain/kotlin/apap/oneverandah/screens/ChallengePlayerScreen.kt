@@ -138,6 +138,11 @@ fun ChallengePlayerScreen(
 
         Div(attrs = {
             classes(Styles.challengeStage)
+            if (!current.thumbnailUrl.isNullOrBlank()) {
+                style {
+                    property("background-image", "url('${current.thumbnailUrl}')")
+                }
+            }
             onClick {
                 val video = videoEl ?: return@onClick
                 if (video.paused) {
@@ -156,9 +161,11 @@ fun ChallengePlayerScreen(
                 val end = event.changedTouches.item(0)?.clientY?.toDouble()
                 dragStartY = null
                 if (start != null && end != null) {
-                    val delta = end - start
-                    if (delta > 72) goNext()
-                    else if (delta < -72) goPrev()
+                    when (ChallengeLogic.swipeGoesNext(end - start)) {
+                        true -> goNext()
+                        false -> goPrev()
+                        null -> Unit
+                    }
                 }
             }
             onWheel { event ->
@@ -168,27 +175,27 @@ fun ChallengePlayerScreen(
                 else if (wheel.deltaY < -40) goPrev()
             }
         }) {
-            key(current.id) {
-                ChallengeVideo(
-                    url = current.videoUrl,
-                    poster = current.thumbnailUrl,
-                    onReady = { el ->
-                        videoEl = el
-                        el.play()
-                        burst(current)
-                    },
-                    onTime = { ms -> caption = ChallengeLogic.captionAt(current.words, ms) },
-                )
-            }
-            listOfNotNull(previous, next).forEach { nearby ->
-                if (nearby.videoUrl.isNotBlank()) {
-                    key("preload-${nearby.id}") {
+            submissions.forEachIndexed { i, nearby ->
+                if (nearby.videoUrl.isNotBlank() && kotlin.math.abs(i - index) <= 1) {
+                    key(nearby.id) {
                         ChallengeVideo(
                             url = nearby.videoUrl,
                             poster = nearby.thumbnailUrl,
-                            hidden = true,
-                            onReady = {},
-                            onTime = {},
+                            active = i == index,
+                            onReady = { el ->
+                                if (i == index) {
+                                    videoEl = el
+                                    burst(nearby)
+                                }
+                            },
+                            onTime = { ms ->
+                                if (i == index) {
+                                    caption = ChallengeLogic.captionAt(
+                                        ChallengeLogic.captionWords(nearby.words, nearby.transcript, nearby.durationMs),
+                                        ms,
+                                    )
+                                }
+                            },
                         )
                     }
                 }
@@ -336,31 +343,46 @@ fun ChallengePlayerScreen(
 private fun ChallengeVideo(
     url: String,
     poster: String?,
-    hidden: Boolean = false,
+    active: Boolean,
     onReady: (HTMLVideoElement) -> Unit,
     onTime: (Long) -> Unit,
 ) {
+    var videoEl by remember { mutableStateOf<HTMLVideoElement?>(null) }
+    val latestOnTime = rememberUpdatedState(onTime)
+    val latestOnReady = rememberUpdatedState(onReady)
+    val latestActive = rememberUpdatedState(active)
+
+    LaunchedEffect(active, videoEl) {
+        val video = videoEl ?: return@LaunchedEffect
+        if (active) {
+            video.muted = false
+            video.currentTime = 0.0
+            video.play()
+            latestOnReady.value(video)
+        } else {
+            video.pause()
+            video.muted = true
+        }
+    }
+
     Div(attrs = {
-        if (hidden) classes(Styles.challengePreload) else classes(Styles.challengeVideoWrap)
+        if (active) classes(Styles.challengeVideoWrap) else classes(Styles.challengePreload)
         ref { element ->
             val video = kotlinx.browser.document.createElement("video") as HTMLVideoElement
             video.setAttribute("playsinline", "true")
             video.setAttribute("webkit-playsinline", "true")
             video.controls = false
             video.loop = true
-            video.preload = if (hidden) "auto" else "auto"
-            video.autoplay = !hidden
+            video.preload = "auto"
+            video.autoplay = false
+            video.muted = !active
             if (!poster.isNullOrBlank()) video.poster = poster
             video.src = url
             video.className = Styles.challengeVideo
-            if (hidden) {
-                video.muted = true
-                video.style.display = "none"
-            }
             var lastTime = 0.0
             val onTimeUpdate: (Event) -> Unit = {
                 lastTime = video.currentTime
-                onTime((video.currentTime * 1000).toLong())
+                if (latestActive.value) latestOnTime.value((video.currentTime * 1000).toLong())
             }
             val onSeeking: (Event) -> Unit = {
                 val target = video.currentTime
@@ -376,17 +398,18 @@ private fun ChallengeVideo(
             val onEnded: (Event) -> Unit = {
                 lastTime = 0.0
                 video.currentTime = 0.0
-                video.play()
+                if (latestActive.value) video.play()
             }
-            val onLoaded: (Event) -> Unit = { if (!hidden) onReady(video) }
+            val onLoaded: (Event) -> Unit = {
+                if (latestActive.value) latestOnReady.value(video)
+            }
             video.addEventListener("timeupdate", onTimeUpdate)
             video.addEventListener("seeking", onSeeking)
             video.addEventListener("ended", onEnded)
             video.addEventListener("loadeddata", onLoaded)
             element.appendChild(video)
-            if (!hidden) {
-                video.play()
-            }
+            videoEl = video
+            video.load()
             onDispose {
                 video.pause()
                 video.removeEventListener("timeupdate", onTimeUpdate)
@@ -395,6 +418,7 @@ private fun ChallengeVideo(
                 video.removeEventListener("loadeddata", onLoaded)
                 video.src = ""
                 element.removeChild(video)
+                videoEl = null
             }
         }
     })

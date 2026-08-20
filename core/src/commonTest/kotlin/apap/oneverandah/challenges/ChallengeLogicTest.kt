@@ -65,6 +65,34 @@ class ChallengeLogicTest {
     }
 
     @Test
+    fun playbackUsesWidelySupported720pH264() {
+        assertEquals(720, ChallengeLogic.TARGET_HEIGHT)
+        assertEquals("libx264", ChallengeLogic.VIDEO_CODEC)
+        assertEquals("main", ChallengeLogic.VIDEO_PROFILE)
+        assertEquals("yuv420p", ChallengeLogic.VIDEO_PIXEL_FORMAT)
+        assertEquals("avc1", ChallengeLogic.VIDEO_TAG)
+    }
+
+    @Test
+    fun captionWordsFallBackToEvenTranscriptTimings() {
+        val existing = listOf(ChallengeWord("kept", 0, 400))
+        assertEquals(existing, ChallengeLogic.captionWords(existing, "ignored text", 1_000))
+        val generated = ChallengeLogic.captionWords(emptyList(), "pool day fun", 900)
+        assertEquals(listOf("pool", "day", "fun"), generated.map { it.text })
+        assertEquals(0, generated.first().startMs)
+        assertEquals(900, generated.last().endMs)
+        assertTrue(ChallengeLogic.timedWordsFromText("   ", 1_000).isEmpty())
+    }
+
+    @Test
+    fun swipeUpGoesToNextClipLikeTikTok() {
+        assertEquals(true, ChallengeLogic.swipeGoesNext(-80.0))
+        assertEquals(false, ChallengeLogic.swipeGoesNext(80.0))
+        assertNull(ChallengeLogic.swipeGoesNext(-20.0))
+        assertNull(ChallengeLogic.swipeGoesNext(20.0))
+    }
+
+    @Test
     fun captionFollowsWordTimingsAndHoldsBriefly() {
         val words = listOf(
             ChallengeWord("Hello", 0, 400),

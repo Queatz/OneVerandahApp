@@ -400,6 +400,7 @@ object Styles {
     const val challengesReviewList = "challenges-review-list"
     const val challengeReviewCard = "challenge-review-card"
     const val challengeReviewThumb = "challenge-review-thumb"
+    const val challengeReviewThumbImg = "challenge-review-thumb-img"
     const val challengeProgressTrack = "challenge-progress-track"
     const val challengeProgressFill = "challenge-progress-fill"
     const val challengePlayer = "challenge-player"
@@ -508,11 +509,11 @@ object Styles {
             margin: 0;
             padding: 0;
             height: 100%;
+            background-color: var(--md-app-background);
         }
 
         body {
             font-family: 'Quicksand', sans-serif;
-            background-color: var(--md-app-background);
             color: var(--md-sys-color-on-surface);
         }
 
@@ -3497,9 +3498,11 @@ object Styles {
             padding: 10px;
             border-radius: 14px;
             background: var(--md-sys-color-surface-container);
+            overflow: hidden;
         }
         .${challengeReviewThumb} {
             position: relative;
+            flex: 0 0 64px;
             width: 64px;
             height: 64px;
             border-radius: 10px;
@@ -3508,6 +3511,13 @@ object Styles {
             display: flex;
             align-items: center;
             justify-content: center;
+        }
+        .${challengeReviewThumbImg} {
+            width: 100%;
+            height: 100%;
+            object-fit: cover;
+            display: block;
+            border-radius: 0;
         }
         .${challengeProgressTrack} {
             height: 8px;
@@ -3540,6 +3550,8 @@ object Styles {
             flex: 1;
             overflow: hidden;
             background: #000;
+            background-size: cover;
+            background-position: center;
             border-radius: 24px;
         }
         .${challengeVideoWrap}, .${challengeVideo} {
@@ -3549,14 +3561,17 @@ object Styles {
             height: 100%;
             object-fit: cover;
             border-radius: 24px;
+            z-index: 1;
         }
         .${challengePreload} {
             position: absolute;
-            width: 1px;
-            height: 1px;
+            inset: 0;
+            width: 100%;
+            height: 100%;
             overflow: hidden;
             opacity: 0;
             pointer-events: none;
+            z-index: 0;
         }
         .${challengeFlyEmoji} {
             position: absolute;

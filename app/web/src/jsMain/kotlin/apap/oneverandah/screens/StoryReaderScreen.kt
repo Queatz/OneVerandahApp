@@ -23,6 +23,8 @@ import apap.oneverandah.stories.StoryLogic
 import apap.oneverandah.stories.StoryPage
 import kotlinx.browser.document
 import org.jetbrains.compose.web.attributes.InputType
+import org.jetbrains.compose.web.css.percent
+import org.jetbrains.compose.web.css.width
 import org.jetbrains.compose.web.dom.Button
 import org.jetbrains.compose.web.dom.Div
 import org.jetbrains.compose.web.dom.H2
@@ -211,6 +213,9 @@ private fun StoryCover(
         Button(attrs = {
             classes(Styles.btnText)
             attr("type", "button")
+            style {
+                width(100.percent)
+            }
             onClick { onReadAgain() }
         }) { Text(strings.storiesReadAgain) }
     }

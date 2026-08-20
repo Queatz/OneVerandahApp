@@ -10,7 +10,7 @@ import kotlin.coroutines.resume
 
 /**
  * Validates duration and, when the browser can, reports local processing
- * progress before upload. Server-side ffmpeg still downscales to 480p.
+ * progress before upload. Server-side ffmpeg still downscales to 720p H.264.
  */
 suspend fun prepareChallengeVideo(file: File, onProgress: (Int) -> Unit): File {
     onProgress(6)

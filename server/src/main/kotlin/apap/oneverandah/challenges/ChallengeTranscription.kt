@@ -62,8 +62,45 @@ fun parseChallengeTranscript(raw: String, durationMs: Long = 0): ChallengeTransc
     val text = texts.firstOrNull { it.isNotBlank() }?.trim().orEmpty().ifBlank {
         words.joinToString(" ") { it.text }.trim()
     }
-    val timed = if (words.isNotEmpty()) words else evenlyTimedWords(text, durationMs)
+    val timed = normalizeTranscriptTimings(
+        if (words.isNotEmpty()) words else ChallengeLogic.timedWordsFromText(text, durationMs),
+        durationMs,
+    )
     return ChallengeTranscript(text = text, words = timed)
+}
+
+internal fun findTranscriptionUrl(raw: String): String? {
+    val json = Json { ignoreUnknownKeys = true }
+    val root = runCatching { json.parseToJsonElement(raw) }.getOrNull() ?: return null
+    return findTranscriptionUrl(root)
+}
+
+private fun findTranscriptionUrl(element: JsonElement): String? = when (element) {
+    is JsonObject -> {
+        element["transcription_url"]?.jsonPrimitive?.contentOrNull
+            ?.takeIf { it.startsWith("http") }
+            ?: element.values.firstNotNullOfOrNull { findTranscriptionUrl(it) }
+    }
+    is JsonArray -> element.firstNotNullOfOrNull { findTranscriptionUrl(it) }
+    else -> null
+}
+
+/**
+ * DashScope sometimes reports seconds (including fractional seconds). Video
+ * captions are always compared in milliseconds.
+ */
+internal fun normalizeTranscriptTimings(words: List<ChallengeWord>, durationMs: Long): List<ChallengeWord> {
+    if (words.isEmpty()) return words
+    val maxEnd = words.maxOf { maxOf(it.endMs, it.startMs) }
+    val scaled = if (durationMs > 2_000 && maxEnd > 0 && maxEnd * 10 < durationMs) {
+        words.map { it.copy(startMs = it.startMs * 1_000, endMs = it.endMs * 1_000) }
+    } else {
+        words
+    }
+    return scaled.map { word ->
+        val start = word.startMs.coerceAtLeast(0)
+        word.copy(startMs = start, endMs = word.endMs.coerceAtLeast(start + 80))
+    }
 }
 
 private fun collectTranscript(element: JsonElement, words: MutableList<ChallengeWord>, texts: MutableList<String>) {
@@ -92,18 +129,18 @@ private fun timeMs(obj: JsonObject, vararg keys: String): Long {
     val raw = keys.firstNotNullOfOrNull { key ->
         obj[key]?.jsonPrimitive?.let { it.doubleOrNull ?: it.longOrNull?.toDouble() }
     } ?: 0.0
+    return parseTimestampMs(raw)
+}
+
+internal fun parseTimestampMs(raw: Double): Long {
+    if (raw != raw.toLong().toDouble() && raw < 10_000) {
+        return (raw * 1_000).toLong().coerceAtLeast(0)
+    }
     return raw.toLong().coerceAtLeast(0)
 }
 
-internal fun evenlyTimedWords(text: String, durationMs: Long): List<ChallengeWord> {
-    val tokens = text.split(Regex("\\s+")).filter { it.isNotBlank() }
-    if (tokens.isEmpty()) return emptyList()
-    val span = durationMs.coerceAtLeast(tokens.size * 250L)
-    val each = span / tokens.size
-    return tokens.mapIndexed { index, token ->
-        ChallengeWord(text = token, startMs = index * each, endMs = (index + 1) * each)
-    }
-}
+internal fun evenlyTimedWords(text: String, durationMs: Long): List<ChallengeWord> =
+    ChallengeLogic.timedWordsFromText(text, durationMs)
 
 /**
  * Qwen long-format file transcription (async DashScope audio ASR).
@@ -157,6 +194,7 @@ class QwenFileTranscriptionClient(
                 buildJsonObject {
                     put("channel_id", buildJsonArray { add(JsonPrimitive(0)) })
                     put("enable_itn", JsonPrimitive(true))
+                    put("timestamp_alignment_enabled", JsonPrimitive(true))
                 },
             )
         }
@@ -182,6 +220,15 @@ class QwenFileTranscriptionClient(
                 ?.jsonPrimitive?.contentOrNull
                 ?.uppercase()
             if (status == "SUCCEEDED" || status == "SUCCESS") {
+                val remoteUrl = findTranscriptionUrl(bodyText)
+                if (!remoteUrl.isNullOrBlank()) {
+                    return try {
+                        parseChallengeTranscript(client.get(remoteUrl).bodyAsText(), durationMs)
+                    } catch (e: Exception) {
+                        log.warn("Failed to download transcription file: {}", e.message)
+                        parseChallengeTranscript(bodyText, durationMs)
+                    }
+                }
                 return parseChallengeTranscript(bodyText, durationMs)
             }
             if (status == "FAILED" || status == "CANCELED") {
@@ -217,7 +264,18 @@ class QwenFileTranscriptionClient(
                     )
                 },
             )
-            put("parameters", buildJsonObject { put("asr_options", buildJsonObject { put("enable_itn", JsonPrimitive(true)) }) })
+            put(
+                "parameters",
+                buildJsonObject {
+                    put(
+                        "asr_options",
+                        buildJsonObject {
+                            put("enable_itn", JsonPrimitive(true))
+                            put("enable_words", JsonPrimitive(true))
+                        },
+                    )
+                },
+            )
         }
         val response = client.post(multimodalEndpoint) {
             header(HttpHeaders.Authorization, "Bearer ${config.apiKey}")

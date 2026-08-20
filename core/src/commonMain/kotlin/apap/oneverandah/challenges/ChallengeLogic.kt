@@ -34,11 +34,16 @@ object ChallengeLogic {
     )
 
     const val MAX_DURATION_MS = 5 * 60 * 1000L
-    const val TARGET_HEIGHT = 480
+    const val TARGET_HEIGHT = 720
+    const val VIDEO_CODEC = "libx264"
+    const val VIDEO_PROFILE = "main"
+    const val VIDEO_PIXEL_FORMAT = "yuv420p"
+    const val VIDEO_TAG = "avc1"
     const val MAX_NAME_WORDS = 4
     const val CAPTION_HOLD_MS = 800L
     const val MAX_FLYING_EMOJIS = 24
     const val ADVANCE_COOLDOWN_MS = 700L
+    const val SWIPE_THRESHOLD_PX = 72.0
 
     fun isPublished(submission: ChallengeSubmission): Boolean =
         submission.status == STATUS_PUBLISHED
@@ -167,6 +172,23 @@ object ChallengeLogic {
         return if (timeMs < last.endMs + CAPTION_HOLD_MS) last.text else ""
     }
 
+    /** Prefer timed ASR words; otherwise spread the transcript across the clip. */
+    fun captionWords(
+        words: List<ChallengeWord>,
+        transcript: String,
+        durationMs: Long,
+    ): List<ChallengeWord> = if (words.isNotEmpty()) words else timedWordsFromText(transcript, durationMs)
+
+    fun timedWordsFromText(text: String, durationMs: Long): List<ChallengeWord> {
+        val tokens = text.split(Regex("\\s+")).filter { it.isNotBlank() }
+        if (tokens.isEmpty()) return emptyList()
+        val span = durationMs.coerceAtLeast(tokens.size * 250L)
+        val each = span / tokens.size
+        return tokens.mapIndexed { index, token ->
+            ChallengeWord(text = token, startMs = index * each, endMs = (index + 1) * each)
+        }
+    }
+
     fun flyingEmojis(emojis: List<ChallengeEmojiBurst>): List<String> {
         val glyphs = mutableListOf<String>()
         for (burst in emojis) {
@@ -248,6 +270,18 @@ object ChallengeLogic {
 
     fun previousIndex(currentIndex: Int): Int? =
         if (currentIndex <= 0) null else currentIndex - 1
+
+    /**
+     * TikTok-style vertical swipe: finger moving up (negative delta) goes to
+     * the next clip; finger moving down goes to the previous one.
+     *
+     * @return `true` for next, `false` for previous, `null` if the gesture is too small.
+     */
+    fun swipeGoesNext(deltaY: Double, threshold: Double = SWIPE_THRESHOLD_PX): Boolean? = when {
+        deltaY <= -threshold -> true
+        deltaY >= threshold -> false
+        else -> null
+    }
 
     /**
      * HTML `loop` seeks from near the end back to 0. That jump is not a

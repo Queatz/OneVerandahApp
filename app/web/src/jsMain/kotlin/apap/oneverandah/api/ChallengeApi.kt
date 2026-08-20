@@ -4,7 +4,6 @@ import apap.oneverandah.challenges.AdminChallengesResponse
 import apap.oneverandah.challenges.Challenge
 import apap.oneverandah.challenges.ChallengeApiError
 import apap.oneverandah.challenges.ChallengeDetailResponse
-import apap.oneverandah.challenges.ChallengeLogic
 import apap.oneverandah.challenges.ChallengeRenameRequest
 import apap.oneverandah.challenges.ChallengeUploadResponse
 import apap.oneverandah.challenges.ChallengeVoteRequest
@@ -22,7 +21,6 @@ import io.ktor.http.ContentType
 import io.ktor.http.HttpHeaders
 import io.ktor.http.contentType
 import io.ktor.http.isSuccess
-import kotlinx.coroutines.delay
 import kotlinx.coroutines.suspendCancellableCoroutine
 import kotlinx.serialization.json.Json
 import org.w3c.files.File
@@ -80,8 +78,8 @@ object ChallengeApi {
         form.append("name", name)
         form.append("file", file)
         val accepted = xhrPost(path, form, token, onProgress)
-        val pending = json.decodeFromString(ChallengeUploadResponse.serializer(), accepted)
-        return pollJob(pending.jobId, onProgress)
+        onProgress(100)
+        return json.decodeFromString(ChallengeUploadResponse.serializer(), accepted)
     }
 
     suspend fun vote(challengeId: String, submissionId: String, emoji: String): ChallengeDetailResponse {
@@ -133,22 +131,6 @@ object ChallengeApi {
         if (!response.status.isSuccess() && response.status.value != 204) {
             throw ChallengeApiException(errorMessage(response.bodyAsText(), response.status.value))
         }
-    }
-
-    private suspend fun pollJob(jobId: String, onProgress: (Int) -> Unit): ChallengeUploadResponse {
-        repeat(80) {
-            val response = client.get("${base()}/api/v1/challenges/jobs/$jobId")
-            val text = response.bodyAsText()
-            if (!response.status.isSuccess()) throw ChallengeApiException(errorMessage(text, response.status.value))
-            val job = json.decodeFromString(ChallengeUploadResponse.serializer(), text)
-            onProgress(90 + (job.progress.coerceIn(0, 100) / 10))
-            when (job.status) {
-                ChallengeLogic.JOB_READY -> return job
-                ChallengeLogic.JOB_FAILED -> throw ChallengeApiException(job.error ?: "Processing failed")
-            }
-            delay(400)
-        }
-        throw ChallengeApiException("Processing is taking longer than expected")
     }
 
     private suspend fun xhrPost(

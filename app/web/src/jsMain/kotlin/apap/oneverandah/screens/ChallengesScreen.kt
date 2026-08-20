@@ -12,12 +12,12 @@ import apap.oneverandah.api.ChallengeApi
 import apap.oneverandah.api.ChallengeApiException
 import apap.oneverandah.api.firstFileOrNull
 import apap.oneverandah.api.prepareChallengeVideo
+import apap.oneverandah.api.sendContactMessage
 import apap.oneverandah.challenges.ChallengeCard
 import apap.oneverandah.challenges.ChallengeLogic
 import apap.oneverandah.challenges.ChallengeSubmissionView
 import apap.oneverandah.challenges.ChallengesFeedResponse
 import apap.oneverandah.components.BottomDialog
-import apap.oneverandah.components.CoverImage
 import apap.oneverandah.components.MaterialSymbol
 import apap.oneverandah.components.PrimaryButton
 import apap.oneverandah.components.Scaffold
@@ -30,6 +30,7 @@ import kotlinx.coroutines.launch
 import org.jetbrains.compose.web.attributes.InputType
 import org.jetbrains.compose.web.dom.Button
 import org.jetbrains.compose.web.dom.Div
+import org.jetbrains.compose.web.dom.Img
 import org.jetbrains.compose.web.dom.Input
 import org.jetbrains.compose.web.dom.Label
 import org.jetbrains.compose.web.dom.P
@@ -155,7 +156,7 @@ private fun InReviewCard(item: ChallengeSubmissionView) {
     Div(attrs = { classes(Styles.challengeReviewCard) }) {
         Div(attrs = { classes(Styles.challengeReviewThumb) }) {
             if (!item.thumbnailUrl.isNullOrBlank()) {
-                CoverImage(item.thumbnailUrl!!)
+                Img(src = item.thumbnailUrl!!, alt = "", attrs = { classes(Styles.challengeReviewThumbImg) })
             } else {
                 MaterialSymbol("hourglass_top")
             }
@@ -267,7 +268,7 @@ fun ChallengeUploadDialog(
                     progress = 2
                     try {
                         val ready = prepareChallengeVideo(picked) { progress = it }
-                        ChallengeApi.upload(
+                        val uploaded = ChallengeApi.upload(
                             name = name.trim(),
                             file = ready,
                             challengeId = challengeId,
@@ -277,6 +278,23 @@ fun ChallengeUploadDialog(
                         Toaster.show(strings.challengesInReview)
                         setPicked(null)
                         onUploaded()
+                        val challenger = name.trim()
+                        scope.launch {
+                            runCatching {
+                                sendContactMessage(
+                                    name = challenger,
+                                    email = "challenges@oneverandah.app",
+                                    service = "Challenge submission",
+                                    message = buildString {
+                                        appendLine("New challenge submission")
+                                        appendLine("Challenger: $challenger")
+                                        appendLine("Challenge ID: ${challengeId ?: uploaded.challenge?.id ?: "new"}")
+                                        appendLine("Submission: ${uploaded.submission?.id ?: uploaded.jobId}")
+                                        appendLine("File: ${picked.name}")
+                                    },
+                                )
+                            }
+                        }
                     } catch (e: ChallengeApiException) {
                         Toaster.show(e.message ?: strings.challengesSubmitError)
                     } catch (t: Throwable) {

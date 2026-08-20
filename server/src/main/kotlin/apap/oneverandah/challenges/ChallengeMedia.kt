@@ -36,8 +36,9 @@ class PassthroughChallengeMedia : ChallengeMediaProcessor {
 }
 
 /**
- * Downscales to 480p, grabs the first frame, and extracts mono 16 kHz audio
- * when `ffmpeg` / `ffprobe` are on the PATH.
+ * Downscales to 720p H.264/AAC (yuv420p, Main, avc1) so phones and desktop
+ * browsers can play the result, grabs a cover frame, and extracts mono 16 kHz
+ * audio when `ffmpeg` / `ffprobe` are on the PATH.
  */
 class FfmpegChallengeMedia : ChallengeMediaProcessor {
     private val log = LoggerFactory.getLogger(FfmpegChallengeMedia::class.java)
@@ -62,32 +63,12 @@ class FfmpegChallengeMedia : ChallengeMediaProcessor {
                 error("Videos can be at most 5 minutes long")
             }
             val videoOut = File(work, "video.mp4")
-            val scaled = runLogged(
-                "ffmpeg",
-                "-y",
-                "-i",
-                input.absolutePath,
-                "-vf",
-                "scale=-2:${ChallengeLogic.TARGET_HEIGHT}",
-                "-c:v",
-                "libx264",
-                "-preset",
-                "veryfast",
-                "-crf",
-                "28",
-                "-c:a",
-                "aac",
-                "-b:a",
-                "96k",
-                "-movflags",
-                "+faststart",
-                "-t",
-                "300",
-                videoOut.absolutePath,
-            )
+            val scaled = encodeCompatibleMp4(input, videoOut, withAudio = true) ||
+                encodeCompatibleMp4(input, videoOut, withAudio = false)
             val videoBytes = if (scaled && videoOut.exists() && videoOut.length() > 0) {
                 videoOut.readBytes()
             } else {
+                log.warn("Compatible H.264 encode failed; storing the original upload")
                 bytes
             }
             val thumbOut = File(work, "thumb.jpg")
@@ -142,6 +123,50 @@ class FfmpegChallengeMedia : ChallengeMediaProcessor {
         }
     }
 
+    /**
+     * Baseline-compatible MP4: H.264 Main + yuv420p + AAC-LC + faststart.
+     * High 4:4:4 or HEVC output is what breaks iOS / Android Chrome.
+     */
+    private fun encodeCompatibleMp4(input: File, output: File, withAudio: Boolean): Boolean {
+        val command = buildList {
+            addAll(
+                listOf(
+                    "ffmpeg",
+                    "-y",
+                    "-i",
+                    input.absolutePath,
+                    "-vf",
+                    "scale=-2:${ChallengeLogic.TARGET_HEIGHT}:flags=lanczos,format=${ChallengeLogic.VIDEO_PIXEL_FORMAT}",
+                    "-c:v",
+                    ChallengeLogic.VIDEO_CODEC,
+                    "-profile:v",
+                    ChallengeLogic.VIDEO_PROFILE,
+                    "-level",
+                    "4.0",
+                    "-pix_fmt",
+                    ChallengeLogic.VIDEO_PIXEL_FORMAT,
+                    "-preset",
+                    "veryfast",
+                    "-crf",
+                    "23",
+                    "-tag:v",
+                    ChallengeLogic.VIDEO_TAG,
+                    "-movflags",
+                    "+faststart",
+                    "-t",
+                    "300",
+                ),
+            )
+            if (withAudio) {
+                addAll(listOf("-c:a", "aac", "-profile:a", "aac_low", "-ac", "2", "-ar", "44100", "-b:a", "128k"))
+            } else {
+                add("-an")
+            }
+            add(output.absolutePath)
+        }
+        return runLogged(*command.toTypedArray())
+    }
+
     private fun probeDurationMs(input: File): Long {
         if (!hasBinary("ffprobe")) return 0
         return try {
@@ -172,7 +197,7 @@ class FfmpegChallengeMedia : ChallengeMediaProcessor {
     private fun runLogged(vararg command: String): Boolean {
         return try {
             val process = ProcessBuilder(*command).redirectErrorStream(true).start()
-            val finished = process.waitFor(120, TimeUnit.SECONDS)
+            val finished = process.waitFor(300, TimeUnit.SECONDS)
             val output = process.inputStream.bufferedReader().readText()
             if (!finished) {
                 process.destroyForcibly()

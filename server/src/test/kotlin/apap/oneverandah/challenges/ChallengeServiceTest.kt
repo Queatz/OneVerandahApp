@@ -143,6 +143,21 @@ class ChallengeServiceTest {
     }
 
     @Test
+    fun completeProcessingFillsCaptionWordsFromTranscriptText() = runBlocking {
+        val service = service()
+        val (_, created) = service.beginUpload(null, "Lan", "hash-lan")
+        service.attachMedia(created.id, "https://cdn/video.mp4", null, 900)
+        val completed = service.completeProcessing(
+            created.id,
+            ChallengeTranscript("pool day fun"),
+            "Pool day",
+        )
+        assertEquals(listOf("pool", "day", "fun"), completed.words.map { it.text })
+        assertEquals(0, completed.words.first().startMs)
+        assertEquals(900, completed.words.last().endMs)
+    }
+
+    @Test
     fun attachMediaStoresVideoAndThumbnail() = runBlocking {
         val service = service()
         val (_, created) = service.beginUpload(null, "Lan", "hash-lan")

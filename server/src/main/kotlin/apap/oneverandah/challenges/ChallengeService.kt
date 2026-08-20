@@ -106,9 +106,10 @@ class ChallengeService(
     ): ChallengeSubmission {
         val existing = repository.findSubmission(submissionId) ?: error("Submission '$submissionId' not found")
         val now = clock()
+        val words = ChallengeLogic.captionWords(transcript.words, transcript.text, existing.durationMs)
         val updated = existing.copy(
             transcript = transcript.text,
-            words = transcript.words,
+            words = words,
             status = ChallengeLogic.STATUS_IN_REVIEW,
             error = null,
             updatedAt = now,
