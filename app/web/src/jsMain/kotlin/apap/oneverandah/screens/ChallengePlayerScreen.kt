@@ -247,6 +247,9 @@ fun ChallengePlayerScreen(
             }
 
             Div(attrs = { classes(Styles.challengeBottom) }) {
+            if (caption.isNotBlank()) {
+                Div(attrs = { classes(Styles.challengeCaption) }) { Text(caption) }
+            }
             Div(attrs = { classes(Styles.challengeOverlayBar) }) {
                 Div(attrs = { classes(Styles.challengeName) }) { Text(current.challengerName) }
                 if (previous != null || next != null) {
@@ -275,9 +278,6 @@ fun ChallengePlayerScreen(
                         }
                     }
                 }
-            }
-            if (caption.isNotBlank()) {
-                Div(attrs = { classes(Styles.challengeCaption) }) { Text(caption) }
             }
 
             Div(attrs = {

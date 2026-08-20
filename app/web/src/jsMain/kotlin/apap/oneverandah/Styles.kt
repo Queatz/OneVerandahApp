@@ -1584,7 +1584,7 @@ object Styles {
 
         /* Booking dialog (modal bottom sheet) */
         .${dialogScrim} {
-            position: absolute;
+            position: fixed;
             inset: 0;
             background: var(--md-sys-color-scrim);
             display: flex;
@@ -3625,15 +3625,16 @@ object Styles {
         .${challengeName} {
             flex: 1;
             min-width: 0;
-            font-size: 34px;
+            font-size: 28px;
             line-height: 1.1;
             font-weight: 800;
-            text-shadow: 0 2px 16px rgba(0,0,0,0.7);
+            text-shadow: 0 1px 2px rgba(0,0,0,0.95);
         }
         .${challengeCaption} {
-            font-size: 20px;
+            font-size: 36px;
             text-align: center;
-            text-shadow: 0 1px 10px rgba(0,0,0,0.75);
+            font-weight: 700;
+            text-shadow: 0 1px 2px rgba(0,0,0,0.95);
         }
         .${challengePauseHint} {
             position: absolute;
@@ -3719,6 +3720,9 @@ object Styles {
             display: flex;
             align-items: center;
             gap: 8px;
+        }
+        .${challengeVoteBtn}:disabled {
+            opacity: .25;
         }
         .${challengeVoteBtnOn} {
             background: #ff4d6d;
