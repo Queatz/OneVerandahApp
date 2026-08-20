@@ -161,6 +161,15 @@ class ChallengeLogicTest {
     }
 
     @Test
+    fun indexFollowsSubmissionWhenLeaderboardReshuffles() {
+        val afterVote = listOf("new", "lead", "old")
+        assertEquals(0, ChallengeLogic.indexOfSubmission(afterVote, "new", fallback = 1))
+        assertEquals(1, ChallengeLogic.indexOfSubmission(afterVote, "lead", fallback = 0))
+        assertEquals(0, ChallengeLogic.indexOfSubmission(afterVote, "missing", fallback = 0))
+        assertEquals(0, ChallengeLogic.indexOfSubmission(emptyList(), "new", fallback = 3))
+    }
+
+    @Test
     fun naturalLoopSeekAllowsEndToStartButBlocksScrubs() {
         assertTrue(ChallengeLogic.isNaturalLoopSeek(0.0, 29.8))
         assertTrue(ChallengeLogic.isNaturalLoopSeek(0.12, 4.9))

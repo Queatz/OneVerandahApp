@@ -272,6 +272,17 @@ object ChallengeLogic {
         if (currentIndex <= 0) null else currentIndex - 1
 
     /**
+     * Keep watching the same clip after a vote reshuffles playback order.
+     * Unknown ids stay on [fallback], clamped to the list.
+     */
+    fun indexOfSubmission(ids: List<String>, submissionId: String, fallback: Int = 0): Int {
+        val found = ids.indexOf(submissionId)
+        if (found >= 0) return found
+        if (ids.isEmpty()) return 0
+        return fallback.coerceIn(0, ids.lastIndex)
+    }
+
+    /**
      * TikTok-style vertical swipe: finger moving up (negative delta) goes to
      * the next clip; finger moving down goes to the previous one.
      *

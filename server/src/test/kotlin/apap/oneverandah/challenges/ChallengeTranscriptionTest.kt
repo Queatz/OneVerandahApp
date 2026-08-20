@@ -1,7 +1,12 @@
 package apap.oneverandah.challenges
 
+import kotlinx.serialization.json.int
+import kotlinx.serialization.json.jsonArray
+import kotlinx.serialization.json.jsonObject
+import kotlinx.serialization.json.jsonPrimitive
 import kotlin.test.Test
 import kotlin.test.assertEquals
+import kotlin.test.assertNull
 import kotlin.test.assertTrue
 
 class ChallengeTranscriptionTest {
@@ -89,5 +94,60 @@ class ChallengeTranscriptionTest {
             findTranscriptionUrl(raw),
         )
         assertEquals(null, findTranscriptionUrl("""{"output":{"text":"hi"}}"""))
+    }
+
+    @Test
+    fun fileTranscriptionPayloadMatchesAudio30Spec() {
+        assertEquals(
+            "qwen-audio-3.0-asr-flash-filetrans",
+            QwenFileTranscriptionClient.DEFAULT_FILE_MODEL,
+        )
+        val payload = qwenFileTranscriptionPayload("https://cdn.example/audio.wav")
+        assertEquals("qwen-audio-3.0-asr-flash-filetrans", payload["model"]?.jsonPrimitive?.content)
+        val input = payload["input"]?.jsonObject
+        assertEquals(
+            listOf("https://cdn.example/audio.wav"),
+            input?.get("file_urls")?.jsonArray?.map { it.jsonPrimitive.content },
+        )
+        assertNull(input?.get("file_url"))
+        val params = payload["parameters"]?.jsonObject
+        assertEquals(listOf(0), params?.get("channel_id")?.jsonArray?.map { it.jsonPrimitive.int })
+        assertEquals(
+            listOf("zh", "en"),
+            params?.get("language_hints")?.jsonArray?.map { it.jsonPrimitive.content },
+        )
+        assertNull(params?.get("timestamp_alignment_enabled"))
+        assertNull(params?.get("enable_itn"))
+    }
+
+    @Test
+    fun parseAudio30TranscriptionFile() {
+        val raw = """
+            {
+              "file_url": "https://cdn.example/audio.wav",
+              "properties": {
+                "original_sampling_rate": 16000,
+                "original_duration_in_milliseconds": 3834
+              },
+              "transcripts": [{
+                "channel_id": 0,
+                "text": "Hello World",
+                "sentences": [{
+                  "begin_time": 760,
+                  "end_time": 3240,
+                  "text": "Hello World",
+                  "words": [
+                    {"begin_time": 760, "end_time": 1400, "text": "Hello"},
+                    {"begin_time": 1400, "end_time": 3240, "text": "World"}
+                  ]
+                }]
+              }]
+            }
+        """.trimIndent()
+        val parsed = parseChallengeTranscript(raw, durationMs = 3_834)
+        assertEquals("Hello World", parsed.text)
+        assertEquals(listOf("Hello", "World"), parsed.words.map { it.text })
+        assertEquals(760, parsed.words.first().startMs)
+        assertEquals(3240, parsed.words.last().endMs)
     }
 }

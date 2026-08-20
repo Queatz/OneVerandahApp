@@ -143,7 +143,34 @@ internal fun evenlyTimedWords(text: String, durationMs: Long): List<ChallengeWor
     ChallengeLogic.timedWordsFromText(text, durationMs)
 
 /**
- * Qwen long-format file transcription (async DashScope audio ASR).
+ * Builds the async DashScope payload for Qwen-Audio-3.0 file transcription.
+ * The 3.0 filetrans model takes `file_urls` (one URL) plus language hints.
+ */
+internal fun qwenFileTranscriptionPayload(
+    fileUrl: String,
+    model: String = QwenFileTranscriptionClient.DEFAULT_FILE_MODEL,
+): JsonObject = buildJsonObject {
+    put("model", model)
+    put(
+        "input",
+        buildJsonObject {
+            put("file_urls", buildJsonArray { add(JsonPrimitive(fileUrl)) })
+        },
+    )
+    put(
+        "parameters",
+        buildJsonObject {
+            put("channel_id", buildJsonArray { add(JsonPrimitive(0)) })
+            put("language_hints", buildJsonArray {
+                add(JsonPrimitive("zh"))
+                add(JsonPrimitive("en"))
+            })
+        },
+    )
+}
+
+/**
+ * Qwen-Audio-3.0 long-format file transcription (async DashScope ASR).
  *
  * Prefers a public [audioUrl] when the video is on OSS; otherwise posts the
  * extracted wav as base64 to the multimodal flash model as a fallback.
@@ -183,21 +210,7 @@ class QwenFileTranscriptionClient(
     }
 
     private suspend fun transcribeFile(fileUrl: String, durationMs: Long): ChallengeTranscript {
-        val payload = buildJsonObject {
-            put("model", fileModel)
-            put(
-                "input",
-                buildJsonObject { put("file_url", fileUrl) },
-            )
-            put(
-                "parameters",
-                buildJsonObject {
-                    put("channel_id", buildJsonArray { add(JsonPrimitive(0)) })
-                    put("enable_itn", JsonPrimitive(true))
-                    put("timestamp_alignment_enabled", JsonPrimitive(true))
-                },
-            )
-        }
+        val payload = qwenFileTranscriptionPayload(fileUrl, fileModel)
         val submitted = client.post(fileEndpoint) {
             header(HttpHeaders.Authorization, "Bearer ${config.apiKey}")
             header("X-DashScope-Async", "enable")
@@ -288,7 +301,7 @@ class QwenFileTranscriptionClient(
     companion object {
         const val DEFAULT_FILE_ENDPOINT =
             "https://dashscope.aliyuncs.com/api/v1/services/audio/asr/transcription"
-        const val DEFAULT_FILE_MODEL = "qwen3-asr-flash-filetrans"
+        const val DEFAULT_FILE_MODEL = "qwen-audio-3.0-asr-flash-filetrans"
         const val DEFAULT_MULTIMODAL_ENDPOINT =
             "https://dashscope.aliyuncs.com/api/v1/services/aigc/multimodal-generation/generation"
         const val DEFAULT_MULTIMODAL_MODEL = "qwen3-asr-flash"

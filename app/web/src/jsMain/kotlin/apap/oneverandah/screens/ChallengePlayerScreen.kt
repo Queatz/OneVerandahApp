@@ -22,12 +22,16 @@ import apap.oneverandah.state.Toaster
 import kotlinx.browser.window
 import kotlinx.coroutines.delay
 import kotlinx.coroutines.launch
+import org.jetbrains.compose.web.attributes.disabled
 import org.jetbrains.compose.web.dom.Button
 import org.jetbrains.compose.web.dom.Div
 import org.jetbrains.compose.web.dom.Span
 import org.jetbrains.compose.web.dom.Text
+import org.w3c.dom.Element
 import org.w3c.dom.HTMLVideoElement
+import org.w3c.dom.Node
 import org.w3c.dom.events.Event
+import org.w3c.dom.events.EventTarget
 import org.w3c.dom.events.WheelEvent
 import kotlin.random.Random
 
@@ -154,9 +158,17 @@ fun ChallengePlayerScreen(
                 }
             }
             onTouchStart { event ->
+                if (isPlayerChrome(event.nativeEvent.target)) {
+                    dragStartY = null
+                    return@onTouchStart
+                }
                 dragStartY = event.touches.item(0)?.clientY?.toDouble()
             }
             onTouchEnd { event ->
+                if (isPlayerChrome(event.nativeEvent.target)) {
+                    dragStartY = null
+                    return@onTouchEnd
+                }
                 val start = dragStartY
                 val end = event.changedTouches.item(0)?.clientY?.toDouble()
                 dragStartY = null
@@ -170,6 +182,7 @@ fun ChallengePlayerScreen(
             }
             onWheel { event ->
                 event.preventDefault()
+                if (isPlayerChrome(event.nativeEvent.target)) return@onWheel
                 val wheel = event.nativeEvent as WheelEvent
                 if (wheel.deltaY > 40) goNext()
                 else if (wheel.deltaY < -40) goPrev()
@@ -270,6 +283,15 @@ fun ChallengePlayerScreen(
             Div(attrs = {
                 classes(Styles.challengeDock)
                 onClick { event -> event.stopPropagation() }
+                onTouchStart { event ->
+                    event.stopPropagation()
+                    dragStartY = null
+                }
+                onTouchEnd { event -> event.stopPropagation() }
+                onWheel { event ->
+                    event.stopPropagation()
+                    event.preventDefault()
+                }
             }) {
             if (showEmojis) {
                 Div(attrs = { classes(Styles.challengeEmojiRow) }) {
@@ -278,12 +300,21 @@ fun ChallengePlayerScreen(
                             classes(Styles.challengeEmojiBtn)
                             if (current.myEmoji == id) classes(Styles.challengeEmojiBtnActive)
                             attr("type", "button")
-                            onClick {
+                            onClick { event ->
+                                event.stopPropagation()
+                                val submissionId = current.id
                                 scope.launch {
                                     try {
-                                        detail = ChallengeApi.vote(challengeId, current.id, id)
+                                        val updated = ChallengeApi.vote(challengeId, submissionId, id)
+                                        val nextIndex = ChallengeLogic.indexOfSubmission(
+                                            ids = updated.submissions.map { it.id },
+                                            submissionId = submissionId,
+                                            fallback = index,
+                                        )
+                                        index = nextIndex
+                                        detail = updated
                                         showEmojis = false
-                                        detail?.submissions?.getOrNull(index)?.let(::burst)
+                                        updated.submissions.getOrNull(nextIndex)?.let(::burst)
                                     } catch (t: Throwable) {
                                         Toaster.show(t.message ?: strings.challengesVoteError)
                                     }
@@ -297,10 +328,15 @@ fun ChallengePlayerScreen(
                 classes(Styles.challengeVoteBtn)
                 if (current.votedByMe) classes(Styles.challengeVoteBtnOn)
                 attr("type", "button")
-                onClick {
+                if (current.mine) {
+                    disabled()
+                }
+                onClick { event ->
+                    event.stopPropagation()
                     if (current.mine) {
                         Toaster.show(strings.challengesVoteError)
                     } else {
+                        dragStartY = null
                         showEmojis = !showEmojis
                     }
                 }
@@ -422,6 +458,15 @@ private fun ChallengeVideo(
             }
         }
     })
+}
+
+private fun isPlayerChrome(target: EventTarget?): Boolean {
+    val node = target as? Node ?: return false
+    val el = node as? Element ?: node.parentElement ?: return false
+    return el.closest("button") != null ||
+        el.closest(".${Styles.challengeDock}") != null ||
+        el.closest(".${Styles.challengeNavBtns}") != null ||
+        el.closest(".${Styles.challengeClose}") != null
 }
 
 private fun medalLabel(medal: String): String = when (medal) {
