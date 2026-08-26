@@ -126,10 +126,18 @@ class MeetRoutesTest {
 
         val reset = client.post("/api/v1/admin/meets/${created.id}/reset") {
             header(HttpHeaders.Authorization, "Bearer $token")
+            contentType(ContentType.Application.Json)
+            setBody(
+                json.encodeToString(
+                    ResetMeetRemainingRequest.serializer(),
+                    ResetMeetRemainingRequest(remainingPitches = 6),
+                ),
+            )
         }
         assertEquals(HttpStatusCode.OK, reset.status)
         val afterReset = json.decodeFromString(Meet.serializer(), reset.bodyAsText())
-        assertEquals(3, afterReset.remainingPitches)
+        assertEquals(6, afterReset.remainingPitches)
+        assertEquals(6, afterReset.maxPitches)
 
         val deleted = client.delete("/api/v1/admin/meets/${created.id}") {
             header(HttpHeaders.Authorization, "Bearer $token")

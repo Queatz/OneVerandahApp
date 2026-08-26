@@ -394,6 +394,7 @@ object Styles {
     const val storiesGrid = "stories-grid"
     const val challengeStartCard = "challenge-start-card"
     const val meetPitchClamp = "meet-pitch-clamp"
+    const val meetCardBody = "meet-card-body"
     const val meetDetailPhoto = "meet-detail-photo"
     const val meetPickPhoto = "meet-pick-photo"
     const val meetAdminPhoto = "meet-admin-photo"
@@ -3732,9 +3733,20 @@ object Styles {
             background: #ff4d6d;
             color: #fff;
         }
+        .${meetCardBody} {
+            display: flex;
+            flex-direction: column;
+            gap: 4px;
+            padding: 4px 16px 16px;
+            min-width: 0;
+        }
+        .${meetCardBody} .${storyCoverTitle},
+        .${meetCardBody} .${storyCoverMeta} {
+            padding: 0;
+        }
         .${meetPitchClamp} {
             margin: 0;
-            padding: 0 10px 12px;
+            padding: 0;
             font-size: 13px;
             line-height: 1.4;
             color: var(--md-sys-color-on-surface-variant);
@@ -3742,6 +3754,10 @@ object Styles {
             -webkit-line-clamp: 3;
             -webkit-box-orient: vertical;
             overflow: hidden;
+            overflow-wrap: anywhere;
+            word-break: break-word;
+            mask-image: linear-gradient(to right, #000 88%, transparent);
+            -webkit-mask-image: linear-gradient(to right, #000 88%, transparent);
         }
         .${meetDetailPhoto} {
             display: block;

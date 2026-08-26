@@ -76,8 +76,14 @@ data class MeetPitchView(
     val meetName: String = "",
     val message: String = "",
     val zaloNumber: String = "",
+    val meetZaloNumber: String = "",
     val status: String = MeetLogic.PITCH_PENDING,
     val createdAt: Long = 0,
+)
+
+@Serializable
+data class ResetMeetRemainingRequest(
+    val remainingPitches: Int? = null,
 )
 
 @Serializable

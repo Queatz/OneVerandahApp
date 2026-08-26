@@ -6,6 +6,7 @@ import apap.oneverandah.config.AppConfig
 import apap.oneverandah.meets.MeetApiError
 import apap.oneverandah.meets.MeetLogic
 import apap.oneverandah.meets.MeetSystem
+import apap.oneverandah.meets.ResetMeetRemainingRequest
 import apap.oneverandah.meets.SendMeetPitchRequest
 import io.ktor.http.HttpHeaders
 import io.ktor.http.HttpStatusCode
@@ -125,8 +126,11 @@ fun Route.meetRoutes(system: MeetSystem, config: AppConfig) {
         post("/meets/{id}/reset") {
             if (!requireAdmin(config)) return@post
             val id = call.parameters["id"].orEmpty()
+            val remaining = runCatching { call.receive<ResetMeetRemainingRequest>() }
+                .getOrNull()
+                ?.remainingPitches
             try {
-                call.respond(service.resetRemaining(id))
+                call.respond(service.resetRemaining(id, remaining))
             } catch (e: IllegalStateException) {
                 call.respond(HttpStatusCode.NotFound, MeetApiError(e.message ?: "Not found"))
             }

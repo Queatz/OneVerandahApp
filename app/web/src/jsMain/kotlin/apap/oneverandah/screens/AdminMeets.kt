@@ -14,13 +14,17 @@ import apap.oneverandah.components.SectionTitle
 import apap.oneverandah.i18n.Localization
 import apap.oneverandah.meets.AdminMeetView
 import apap.oneverandah.meets.AdminMeetsResponse
+import apap.oneverandah.meets.MeetLogic
 import apap.oneverandah.meets.MeetPitchView
 import apap.oneverandah.state.Toaster
 import kotlinx.coroutines.launch
+import org.jetbrains.compose.web.attributes.InputType
 import org.jetbrains.compose.web.dom.Button
 import org.jetbrains.compose.web.dom.Div
 import org.jetbrains.compose.web.dom.H2
 import org.jetbrains.compose.web.dom.Img
+import org.jetbrains.compose.web.dom.Input
+import org.jetbrains.compose.web.dom.Label
 import org.jetbrains.compose.web.dom.P
 import org.jetbrains.compose.web.dom.Span
 import org.jetbrains.compose.web.dom.Text
@@ -35,6 +39,8 @@ fun AdminMeetsPanel(
     val scope = rememberCoroutineScope()
     var pendingDeleteMeet by remember { mutableStateOf<AdminMeetView?>(null) }
     var pendingDeletePitch by remember { mutableStateOf<MeetPitchView?>(null) }
+    var resetMeet by remember { mutableStateOf<AdminMeetView?>(null) }
+    var resetRemainingValue by remember { mutableStateOf("") }
 
     if (loading) {
         P { Text(strings.meetsLoading) }
@@ -101,11 +107,8 @@ fun AdminMeetsPanel(
                     classes(Styles.btnText)
                     attr("type", "button")
                     onClick {
-                        scope.launch {
-                            runCatching { MeetApi.resetRemaining(meet.id) }
-                                .onSuccess { onRefresh(); Toaster.show(strings.adminSaved) }
-                                .onFailure { Toaster.show(it.message ?: strings.meetsSubmitError) }
-                        }
+                        resetMeet = meet
+                        resetRemainingValue = meet.remainingPitches.toString()
                     }
                 }) { Text(strings.adminResetRemaining) }
                 Button(attrs = {
@@ -117,6 +120,24 @@ fun AdminMeetsPanel(
         }
     }
 
+    ResetRemainingDialog(
+        visible = resetMeet != null,
+        value = resetRemainingValue,
+        onValueChange = { resetRemainingValue = it },
+        onDismiss = { resetMeet = null },
+        onConfirm = {
+            val id = resetMeet?.id ?: return@ResetRemainingDialog
+            val remaining = resetRemainingValue.trim().toIntOrNull()
+                ?.coerceIn(0, MeetLogic.MAX_PITCH_LIMIT)
+                ?: return@ResetRemainingDialog
+            resetMeet = null
+            scope.launch {
+                runCatching { MeetApi.resetRemaining(id, remaining) }
+                    .onSuccess { onRefresh(); Toaster.show(strings.adminSaved) }
+                    .onFailure { Toaster.show(it.message ?: strings.meetsSubmitError) }
+            }
+        },
+    )
     ConfirmMeetDeleteDialog(
         visible = pendingDeleteMeet != null,
         title = strings.adminDeleteMeet,
@@ -145,6 +166,51 @@ fun AdminMeetsPanel(
             }
         },
     )
+}
+
+@Composable
+private fun ResetRemainingDialog(
+    visible: Boolean,
+    value: String,
+    onValueChange: (String) -> Unit,
+    onDismiss: () -> Unit,
+    onConfirm: () -> Unit,
+) {
+    val strings = Localization.strings
+    val remainingValid = value.trim().toIntOrNull() != null
+    BottomDialog(
+        visible = visible,
+        closeLabel = strings.close,
+        onDismiss = onDismiss,
+    ) {
+        Div(attrs = { classes(Styles.dialogHeader) }) {
+            P(attrs = { classes(Styles.dialogTitle) }) { Text(strings.adminResetRemaining) }
+        }
+        Div(attrs = { classes(Styles.dialogBody) }) {
+            Div(attrs = { classes(Styles.textField) }) {
+                Label(attrs = { classes(Styles.textLabel) }) { Text(strings.adminResetRemainingHint) }
+                Input(type = InputType.Text) {
+                    classes(Styles.textInput)
+                    value(value)
+                    attr("inputmode", "numeric")
+                    onInput { onValueChange(it.value) }
+                }
+            }
+        }
+        Div(attrs = { classes(Styles.dialogActions) }) {
+            Button(attrs = {
+                classes(Styles.btnText)
+                attr("type", "button")
+                onClick { onDismiss() }
+            }) { Text(strings.close) }
+            PrimaryButton(
+                label = strings.adminSave,
+                icon = "save",
+                enabled = remainingValid,
+                onClick = onConfirm,
+            )
+        }
+    }
 }
 
 @Composable
@@ -216,7 +282,10 @@ private fun AdminPitchRow(
         Span { Text(pitch.meetName.ifBlank { strings.meetsUntitled }) }
         P { Text(pitch.message) }
         P(attrs = { classes(Styles.homePrompt) }) {
-            Text("${strings.adminMeetZalo}: ${pitch.zaloNumber}")
+            Text("${strings.adminMeetPosterZalo}: ${pitch.meetZaloNumber}")
+        }
+        P(attrs = { classes(Styles.homePrompt) }) {
+            Text("${strings.adminPitchReplyZalo}: ${pitch.zaloNumber}")
         }
         Div(attrs = { classes(Styles.adminRowActions) }) {
             PrimaryButton(label = strings.adminCompletePitch, icon = "done_all", onClick = onComplete)

@@ -68,13 +68,15 @@ fun MeetDetailScreen(
                     Text(strings.meetsCannotPitchOwn)
                 }
                 current.meet.status != MeetLogic.STATUS_PUBLISHED -> Unit
-                !current.canPitch && current.meet.remainingPitches <= 0 -> P(attrs = { classes(Styles.homePrompt) }) {
+                current.meet.remainingPitches <= 0 -> P(attrs = { classes(Styles.homePrompt) }) {
                     Text(strings.meetsNoRemaining)
+                }
+                !current.canPitch -> P(attrs = { classes(Styles.homePrompt) }) {
+                    Text(strings.meetsAlreadyPitched)
                 }
                 else -> PrimaryButton(
                     label = strings.meetsPitchPerson(current.meet.name.ifBlank { strings.meetsUntitled }),
                     icon = "handshake",
-                    enabled = current.canPitch,
                 ) { pitchOpen = true }
             }
         },
@@ -98,7 +100,6 @@ fun MeetDetailScreen(
                                 message = buildString {
                                     appendLine("New meet pitch")
                                     appendLine("Meet: ${current.meet.name}")
-                                    appendLine("Meet ID: $meetId")
                                     appendLine("Pitcher's Zalo: $zalo")
                                     appendLine()
                                     append(message)

@@ -121,8 +121,13 @@ class MeetService(
             .filter { it.status == MeetLogic.PITCH_PENDING }
             .sortedByDescending { it.createdAt }
             .map { pitch ->
-                val meetName = meets.firstOrNull { it.id == pitch.meetId }?.name.orEmpty()
-                MeetLogic.toPitchView(pitch, meetName = meetName, includeZalo = true)
+                val meet = meets.firstOrNull { it.id == pitch.meetId }
+                MeetLogic.toPitchView(
+                    pitch = pitch,
+                    meetName = meet?.name.orEmpty(),
+                    includeZalo = true,
+                    meetZaloNumber = meet?.zaloNumber.orEmpty(),
+                )
             }
         return AdminMeetsResponse(
             pendingMeets = pendingMeets,
@@ -160,9 +165,9 @@ class MeetService(
         return updated
     }
 
-    suspend fun resetRemaining(id: String): Meet {
+    suspend fun resetRemaining(id: String, remainingPitches: Int? = null): Meet {
         val existing = repository.findMeet(id) ?: error("Meet '$id' not found")
-        val updated = MeetLogic.resetRemaining(existing).copy(updatedAt = clock())
+        val updated = MeetLogic.resetRemaining(existing, remainingPitches).copy(updatedAt = clock())
         repository.saveMeet(updated)
         return updated
     }

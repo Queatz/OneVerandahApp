@@ -128,12 +128,14 @@ private fun MeetCardButton(card: MeetCard, onClick: () -> Unit) {
                 MaterialSymbol("handshake")
             }
         }
-        Span(attrs = { classes(Styles.storyCoverTitle) }) { Text(title) }
-        Span(attrs = { classes(Styles.storyCoverMeta) }) {
-            Text(strings.meetsRemaining(card.remainingPitches))
-        }
-        P(attrs = { classes(Styles.meetPitchClamp) }) {
-            Text(MeetLogic.ellipsize(card.pitch))
+        Div(attrs = { classes(Styles.meetCardBody) }) {
+            Span(attrs = { classes(Styles.storyCoverTitle) }) { Text(title) }
+            Span(attrs = { classes(Styles.storyCoverMeta) }) {
+                Text(strings.meetsRemaining(card.remainingPitches))
+            }
+            P(attrs = { classes(Styles.meetPitchClamp) }) {
+                Text(MeetLogic.ellipsize(card.pitch))
+            }
         }
     }
 }

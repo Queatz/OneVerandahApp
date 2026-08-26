@@ -6,6 +6,7 @@ import apap.oneverandah.meets.MeetApiError
 import apap.oneverandah.meets.MeetCard
 import apap.oneverandah.meets.MeetDetailResponse
 import apap.oneverandah.meets.MeetsFeedResponse
+import apap.oneverandah.meets.ResetMeetRemainingRequest
 import apap.oneverandah.meets.SendMeetPitchRequest
 import apap.oneverandah.state.AdminAuth
 import apap.oneverandah.state.DeviceTokenStore
@@ -112,8 +113,17 @@ object MeetApi {
         }
     }
 
-    suspend fun resetRemaining(id: String): Meet {
-        val response = client.post("${base()}/api/v1/admin/meets/$id/reset") { authed() }
+    suspend fun resetRemaining(id: String, remainingPitches: Int): Meet {
+        val response = client.post("${base()}/api/v1/admin/meets/$id/reset") {
+            authed()
+            contentType(ContentType.Application.Json)
+            setBody(
+                json.encodeToString(
+                    ResetMeetRemainingRequest.serializer(),
+                    ResetMeetRemainingRequest(remainingPitches = remainingPitches),
+                ),
+            )
+        }
         val text = response.bodyAsText()
         if (!response.status.isSuccess()) throw MeetApiException(errorMessage(text, response.status.value))
         return json.decodeFromString(Meet.serializer(), text)

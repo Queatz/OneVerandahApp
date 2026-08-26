@@ -50,6 +50,7 @@ object MeetLogic {
 
     fun publicCards(meets: List<Meet>, viewerHash: String? = null): List<MeetCard> =
         meets.filter(::isPublished)
+            .filter { it.remainingPitches > 0 }
             .sortedWith(newestFirst())
             .map { toPublicCard(it, viewerHash) }
 
@@ -87,19 +88,28 @@ object MeetLogic {
             status = meet.status,
             createdAt = meet.createdAt,
             updatedAt = meet.updatedAt,
-            pitches = pitches.sortedWith(newestPitchFirst()).map { toPitchView(it, meet.name, includeZalo = true) },
+            pitches = pitches.sortedWith(newestPitchFirst()).map {
+                toPitchView(
+                    pitch = it,
+                    meetName = meet.name,
+                    includeZalo = true,
+                    meetZaloNumber = meet.zaloNumber,
+                )
+            },
         )
 
     fun toPitchView(
         pitch: MeetPitch,
         meetName: String = "",
         includeZalo: Boolean = false,
+        meetZaloNumber: String = "",
     ): MeetPitchView = MeetPitchView(
         id = pitch.id,
         meetId = pitch.meetId,
         meetName = meetName,
         message = pitch.message,
         zaloNumber = if (includeZalo) pitch.zaloNumber else "",
+        meetZaloNumber = if (includeZalo) meetZaloNumber else "",
         status = pitch.status,
         createdAt = pitch.createdAt,
     )
@@ -127,8 +137,13 @@ object MeetLogic {
     fun decrementRemaining(meet: Meet): Meet =
         meet.copy(remainingPitches = (meet.remainingPitches - 1).coerceAtLeast(0))
 
-    fun resetRemaining(meet: Meet): Meet =
-        meet.copy(remainingPitches = meet.maxPitches.coerceAtLeast(0))
+    fun resetRemaining(meet: Meet, remaining: Int? = null): Meet {
+        val next = remaining?.coerceIn(0, MAX_PITCH_LIMIT) ?: meet.maxPitches.coerceAtLeast(0)
+        return meet.copy(
+            remainingPitches = next,
+            maxPitches = maxOf(meet.maxPitches, next),
+        )
+    }
 
     private fun newestFirst(): Comparator<Meet> =
         compareByDescending<Meet> { it.createdAt }.thenBy { it.id }

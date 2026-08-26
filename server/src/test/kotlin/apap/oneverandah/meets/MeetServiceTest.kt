@@ -87,6 +87,7 @@ class MeetServiceTest {
         val pitch = service.sendPitch(created.id, "Hello", "090222", "visitor")
         service.completePitch(pitch.id)
         assertEquals(0, service.getPublic(created.id, "other")?.meet?.remainingPitches)
+        assertTrue(service.feed("other").meets.none { it.id == created.id })
         assertFailsWith<IllegalArgumentException> {
             service.sendPitch(created.id, "Too late", "090333", "other")
         }
@@ -102,6 +103,9 @@ class MeetServiceTest {
         val reset = service.resetRemaining(created.id)
         assertEquals(4, reset.remainingPitches)
         assertEquals(4, reset.maxPitches)
+        val custom = service.resetRemaining(created.id, remainingPitches = 7)
+        assertEquals(7, custom.remainingPitches)
+        assertEquals(7, custom.maxPitches)
     }
 
     @Test
@@ -113,6 +117,7 @@ class MeetServiceTest {
         assertEquals("090111", admin.meets.single().zaloNumber)
         assertEquals(1, admin.pendingPitches.size)
         assertEquals("090222", admin.pendingPitches.single().zaloNumber)
+        assertEquals("090111", admin.pendingPitches.single().meetZaloNumber)
         assertEquals("River walk", admin.pendingPitches.single().message)
         assertTrue(admin.pendingMeets.isEmpty())
     }

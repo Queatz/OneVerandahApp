@@ -20,6 +20,16 @@ class MeetLogicTest {
     }
 
     @Test
+    fun publicCardsHideMeetsWithNoPitchesLeft() {
+        val open = meet("open", remainingPitches = 1)
+        val full = meet("full", remainingPitches = 0)
+
+        val cards = MeetLogic.publicCards(listOf(open, full))
+
+        assertEquals(listOf("open"), cards.map { it.id })
+    }
+
+    @Test
     fun ownerPendingShowsOnlyThisDevice() {
         val mine = meet("mine", status = MeetLogic.STATUS_PENDING, deviceTokenHash = "hash-lan")
         val other = meet("other", status = MeetLogic.STATUS_PENDING, deviceTokenHash = "hash-minh")
@@ -66,6 +76,10 @@ class MeetLogicTest {
         assertEquals(2, afterOne.remainingPitches)
         assertEquals(5, MeetLogic.resetRemaining(afterOne).remainingPitches)
         assertEquals(0, MeetLogic.decrementRemaining(meet.copy(remainingPitches = 0)).remainingPitches)
+        val custom = MeetLogic.resetRemaining(afterOne, remaining = 8)
+        assertEquals(8, custom.remainingPitches)
+        assertEquals(8, custom.maxPitches)
+        assertEquals(0, MeetLogic.resetRemaining(afterOne, remaining = 0).remainingPitches)
     }
 
     @Test
@@ -73,7 +87,7 @@ class MeetLogicTest {
         assertEquals("Lan Anh", MeetLogic.sanitizeName("  Lan   Anh  "))
         assertEquals("hi", MeetLogic.sanitizePitch("  hi  "))
         assertEquals("0901 234 567", MeetLogic.sanitizeZalo("0901 234 567abc"))
-        assertEquals(5, MeetLogic.parsePitchLimit(null))
+        assertEquals(MeetLogic.DEFAULT_PITCH_LIMIT, MeetLogic.parsePitchLimit(null))
         assertEquals(1, MeetLogic.parsePitchLimit("0"))
         assertEquals(50, MeetLogic.parsePitchLimit("999"))
         assertEquals(8, MeetLogic.parsePitchLimit("8"))
@@ -94,9 +108,11 @@ class MeetLogicTest {
         val admin = MeetLogic.toAdminView(meet, listOf(pitch))
         assertEquals("090111", admin.zaloNumber)
         assertEquals("090222", admin.pitches.single().zaloNumber)
+        assertEquals("090111", admin.pitches.single().meetZaloNumber)
         assertTrue(MeetLogic.hasPendingPitchFrom(listOf(pitch), "m", "visitor"))
         assertFalse(MeetLogic.hasPendingPitchFrom(listOf(pitch), "m", "other"))
         assertEquals("", MeetLogic.toPitchView(pitch, includeZalo = false).zaloNumber)
+        assertEquals("", MeetLogic.toPitchView(pitch, includeZalo = false).meetZaloNumber)
     }
 
     private fun meet(
