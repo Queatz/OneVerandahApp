@@ -393,6 +393,10 @@ object Styles {
     const val storiesSoon = "stories-soon"
     const val storiesGrid = "stories-grid"
     const val challengeStartCard = "challenge-start-card"
+    const val meetPitchClamp = "meet-pitch-clamp"
+    const val meetDetailPhoto = "meet-detail-photo"
+    const val meetPickPhoto = "meet-pick-photo"
+    const val meetAdminPhoto = "meet-admin-photo"
     const val challengeCover = "challenge-cover"
     const val challengeCoverMedia = "challenge-cover-media"
     const val challengePickVideo = "challenge-pick-video"
@@ -3727,6 +3731,41 @@ object Styles {
         .${challengeVoteBtnOn} {
             background: #ff4d6d;
             color: #fff;
+        }
+        .${meetPitchClamp} {
+            margin: 0;
+            padding: 0 10px 12px;
+            font-size: 13px;
+            line-height: 1.4;
+            color: var(--md-sys-color-on-surface-variant);
+            display: -webkit-box;
+            -webkit-line-clamp: 3;
+            -webkit-box-orient: vertical;
+            overflow: hidden;
+        }
+        .${meetDetailPhoto} {
+            display: block;
+            width: 100%;
+            aspect-ratio: 3 / 4;
+            object-fit: cover;
+            border-radius: 16px;
+            margin-bottom: 12px;
+            background: var(--md-sys-color-surface-container-high);
+        }
+        .${meetPickPhoto} {
+            display: block;
+            width: 100%;
+            max-height: 220px;
+            object-fit: cover;
+            border-radius: 12px;
+        }
+        .${meetAdminPhoto} {
+            display: block;
+            width: 100%;
+            max-height: 180px;
+            object-fit: cover;
+            border-radius: 12px;
+            margin-bottom: 8px;
         }
     """.trimIndent()
 }

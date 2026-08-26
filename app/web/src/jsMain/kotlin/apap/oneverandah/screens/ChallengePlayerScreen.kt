@@ -314,7 +314,9 @@ fun ChallengePlayerScreen(
                                         index = nextIndex
                                         detail = updated
                                         showEmojis = false
-                                        updated.submissions.getOrNull(nextIndex)?.let(::burst)
+                                        updated.submissions.getOrNull(nextIndex)
+                                            ?.takeIf { it.votedByMe }
+                                            ?.let(::burst)
                                     } catch (t: Throwable) {
                                         Toaster.show(t.message ?: strings.challengesVoteError)
                                     }

@@ -128,17 +128,21 @@ class ChallengeLogicTest {
     }
 
     @Test
-    fun applyVoteCountsMovesASingleVote() {
+    fun applyVoteCountAddsAndRemovesWithoutMoving() {
         val a = submission("a", voteCount = 3)
         val b = submission("b", voteCount = 1)
-        val previous = ChallengeVote(id = "v", challengeId = "c", submissionId = "a", deviceTokenHash = "me")
 
-        val moved = ChallengeLogic.applyVoteCounts(listOf(a, b), previous, "b")
-        assertEquals(2, moved.first { it.id == "a" }.voteCount)
-        assertEquals(2, moved.first { it.id == "b" }.voteCount)
+        val added = ChallengeLogic.applyVoteCount(listOf(a, b), "b", 1)
+        assertEquals(3, added.first { it.id == "a" }.voteCount)
+        assertEquals(2, added.first { it.id == "b" }.voteCount)
 
-        val same = ChallengeLogic.applyVoteCounts(listOf(a, b), previous, "a")
-        assertEquals(listOf(3, 1), same.map { it.voteCount })
+        val removed = ChallengeLogic.applyVoteCount(listOf(a, b), "a", -1)
+        assertEquals(2, removed.first { it.id == "a" }.voteCount)
+        assertEquals(1, removed.first { it.id == "b" }.voteCount)
+
+        val unchanged = ChallengeLogic.applyVoteCount(listOf(a, b), "a", 0)
+        assertEquals(listOf(3, 1), unchanged.map { it.voteCount })
+        assertEquals(0, ChallengeLogic.applyVoteCount(listOf(a), "a", -9).single().voteCount)
     }
 
     @Test

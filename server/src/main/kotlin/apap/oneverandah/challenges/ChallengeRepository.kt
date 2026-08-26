@@ -15,8 +15,9 @@ interface ChallengeRepository {
     suspend fun deleteSubmission(id: String): Boolean
 
     suspend fun findVotesByChallenge(challengeId: String): List<ChallengeVote>
-    suspend fun findVote(challengeId: String, tokenHash: String): ChallengeVote?
+    suspend fun findVote(submissionId: String, tokenHash: String): ChallengeVote?
     suspend fun saveVote(vote: ChallengeVote)
+    suspend fun deleteVote(id: String)
     suspend fun deleteVotesForSubmission(submissionId: String)
     suspend fun deleteVotesForChallenge(challengeId: String)
 }
@@ -64,11 +65,15 @@ class InMemoryChallengeRepository : ChallengeRepository {
     override suspend fun findVotesByChallenge(challengeId: String): List<ChallengeVote> =
         votes.values.filter { it.challengeId == challengeId }
 
-    override suspend fun findVote(challengeId: String, tokenHash: String): ChallengeVote? =
-        votes.values.firstOrNull { it.challengeId == challengeId && it.deviceTokenHash == tokenHash }
+    override suspend fun findVote(submissionId: String, tokenHash: String): ChallengeVote? =
+        votes.values.firstOrNull { it.submissionId == submissionId && it.deviceTokenHash == tokenHash }
 
     override suspend fun saveVote(vote: ChallengeVote) {
         votes[vote.id] = vote
+    }
+
+    override suspend fun deleteVote(id: String) {
+        votes.remove(id)
     }
 
     override suspend fun deleteVotesForSubmission(submissionId: String) {

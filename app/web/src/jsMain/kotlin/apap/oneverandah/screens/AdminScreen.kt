@@ -26,7 +26,9 @@ import apap.oneverandah.phrases.Phrase
 import apap.oneverandah.phrases.PhraseDefaults
 import apap.oneverandah.api.StoryApi
 import apap.oneverandah.api.ChallengeApi
+import apap.oneverandah.api.MeetApi
 import apap.oneverandah.challenges.AdminChallengesResponse
+import apap.oneverandah.meets.AdminMeetsResponse
 import apap.oneverandah.stories.Story
 import apap.oneverandah.stories.StoryCharacter
 import apap.oneverandah.phrases.PhraseLocations
@@ -70,6 +72,7 @@ fun AdminScreen(onBack: () -> Unit) {
     var voices by remember { mutableStateOf<List<ClonedVoice>>(emptyList()) }
     var stories by remember { mutableStateOf<List<Story>>(emptyList()) }
     var challengeAdmin by remember { mutableStateOf(AdminChallengesResponse()) }
+    var meetAdmin by remember { mutableStateOf(AdminMeetsResponse()) }
     var coverImageUrl by remember { mutableStateOf<String?>(null) }
     var loading by remember { mutableStateOf(false) }
     var editing by remember { mutableStateOf<Phrase?>(null) }
@@ -97,6 +100,7 @@ fun AdminScreen(onBack: () -> Unit) {
                 voices = runCatching { PhraseApi.fetchClonedVoices() }.getOrDefault(emptyList())
                 stories = runCatching { StoryApi.fetchAdminStories() }.getOrDefault(emptyList())
                 challengeAdmin = runCatching { ChallengeApi.fetchAdmin() }.getOrDefault(AdminChallengesResponse())
+                meetAdmin = runCatching { MeetApi.fetchAdmin() }.getOrDefault(AdminMeetsResponse())
             } catch (e: PhraseApiException) {
                 if (e.message?.contains("authentication", ignoreCase = true) == true) {
                     AdminAuth.clear()
@@ -432,6 +436,12 @@ fun AdminScreen(onBack: () -> Unit) {
                     attr("type", "button")
                     onClick { tab = AdminTab.CHALLENGES }
                 }) { Text(strings.adminChallengesTab) }
+                Button(attrs = {
+                    classes(Styles.chip)
+                    if (tab == AdminTab.MEETS) classes(Styles.chipActive)
+                    attr("type", "button")
+                    onClick { tab = AdminTab.MEETS }
+                }) { Text(strings.adminMeetsTab) }
             }
             Button(attrs = {
                 classes(Styles.btnText)
@@ -444,6 +454,8 @@ fun AdminScreen(onBack: () -> Unit) {
                     characters = emptyList()
                     voices = emptyList()
                     stories = emptyList()
+                    challengeAdmin = AdminChallengesResponse()
+                    meetAdmin = AdminMeetsResponse()
                     coverImageUrl = null
                 }
             }) { Text(strings.adminLogout) }
@@ -549,6 +561,13 @@ fun AdminScreen(onBack: () -> Unit) {
             AdminTab.STORIES -> {
                 AdminStoriesPanel(
                     stories = stories,
+                    loading = loading,
+                    onRefresh = { refresh() },
+                )
+            }
+            AdminTab.MEETS -> {
+                AdminMeetsPanel(
+                    data = meetAdmin,
                     loading = loading,
                     onRefresh = { refresh() },
                 )
@@ -1364,4 +1383,4 @@ private fun AdminArea(label: String, value: String, onChange: (String) -> Unit) 
     }
 }
 
-private enum class AdminTab { PHRASES, PHOTOS, CHARACTERS, VOICES, STORIES, CHALLENGES }
+private enum class AdminTab { PHRASES, PHOTOS, CHARACTERS, VOICES, STORIES, CHALLENGES, MEETS }

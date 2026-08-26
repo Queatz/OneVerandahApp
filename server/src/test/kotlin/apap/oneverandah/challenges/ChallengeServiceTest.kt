@@ -57,7 +57,7 @@ class ChallengeServiceTest {
     }
 
     @Test
-    fun voteIsOnePerDeviceAndCanMove() = runBlocking {
+    fun voteIsOnePerVideoAndSameEmojiRemovesIt() = runBlocking {
         val service = publishedPair()
         val challengeId = service.feed(null).challenges.single().id
         val detail = service.getPublic(challengeId, "voter")!!
@@ -71,11 +71,25 @@ class ChallengeServiceTest {
         assertEquals(ChallengeLogic.EMOJI_LAUGH, afterFirst.submissions.first { it.id == first.id }.myEmoji)
 
         service.vote(challengeId, second.id, "voter", ChallengeLogic.EMOJI_WOW)
-        val afterMove = service.getPublic(challengeId, "voter")!!
-        assertEquals(0, afterMove.submissions.first { it.id == first.id }.voteCount)
-        assertEquals(1, afterMove.submissions.first { it.id == second.id }.voteCount)
-        assertTrue(afterMove.submissions.first { it.id == second.id }.votedByMe)
-        assertFalse(afterMove.submissions.first { it.id == first.id }.votedByMe)
+        val afterBoth = service.getPublic(challengeId, "voter")!!
+        assertEquals(1, afterBoth.submissions.first { it.id == first.id }.voteCount)
+        assertEquals(1, afterBoth.submissions.first { it.id == second.id }.voteCount)
+        assertTrue(afterBoth.submissions.first { it.id == first.id }.votedByMe)
+        assertTrue(afterBoth.submissions.first { it.id == second.id }.votedByMe)
+        assertEquals(ChallengeLogic.EMOJI_LAUGH, afterBoth.submissions.first { it.id == first.id }.myEmoji)
+
+        service.vote(challengeId, first.id, "voter", ChallengeLogic.EMOJI_HEART)
+        val afterChange = service.getPublic(challengeId, "voter")!!
+        assertEquals(1, afterChange.submissions.first { it.id == first.id }.voteCount)
+        assertEquals(ChallengeLogic.EMOJI_HEART, afterChange.submissions.first { it.id == first.id }.myEmoji)
+
+        service.vote(challengeId, first.id, "voter", ChallengeLogic.EMOJI_HEART)
+        val afterRemove = service.getPublic(challengeId, "voter")!!
+        assertEquals(0, afterRemove.submissions.first { it.id == first.id }.voteCount)
+        assertFalse(afterRemove.submissions.first { it.id == first.id }.votedByMe)
+        assertEquals(null, afterRemove.submissions.first { it.id == first.id }.myEmoji)
+        assertEquals(1, afterRemove.submissions.first { it.id == second.id }.voteCount)
+        assertTrue(afterRemove.submissions.first { it.id == second.id }.votedByMe)
     }
 
     @Test

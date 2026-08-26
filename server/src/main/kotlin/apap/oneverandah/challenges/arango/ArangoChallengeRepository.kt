@@ -121,18 +121,27 @@ class ArangoChallengeRepository private constructor(
             ChallengeVote.serializer(),
         )
 
-    override suspend fun findVote(challengeId: String, tokenHash: String): ChallengeVote? =
+    override suspend fun findVote(submissionId: String, tokenHash: String): ChallengeVote? =
         query(
             VOTES,
-            "FOR doc IN $VOTES FILTER doc.challengeId == @challengeId AND doc.deviceTokenHash == @hash RETURN doc",
+            "FOR doc IN $VOTES FILTER doc.submissionId == @submissionId AND doc.deviceTokenHash == @hash RETURN doc",
             buildJsonObject {
-                put("challengeId", challengeId)
+                put("submissionId", submissionId)
                 put("hash", tokenHash)
             },
             ChallengeVote.serializer(),
         ).firstOrNull()
 
     override suspend fun saveVote(vote: ChallengeVote) = save(VOTES, vote.id, vote, ChallengeVote.serializer())
+
+    override suspend fun deleteVote(id: String) {
+        query<ChallengeVote>(
+            VOTES,
+            "FOR doc IN $VOTES FILTER doc.id == @id REMOVE doc IN $VOTES RETURN OLD",
+            buildJsonObject { put("id", id) },
+            ChallengeVote.serializer(),
+        )
+    }
 
     override suspend fun deleteVotesForSubmission(submissionId: String) {
         query<ChallengeVote>(
@@ -271,10 +280,18 @@ class ArangoChallengeRepository private constructor(
             buildJsonObject {
                 put("type", "persistent")
                 put("unique", false)
+                put("fields", buildJsonArray { add(kotlinx.serialization.json.JsonPrimitive("challengeId")) })
+            }.let { json.encodeToString(JsonObject.serializer(), it) },
+        )
+        postJson(
+            "$dbUrl/_api/index?collection=$VOTES",
+            buildJsonObject {
+                put("type", "persistent")
+                put("unique", true)
                 put(
                     "fields",
                     buildJsonArray {
-                        add(kotlinx.serialization.json.JsonPrimitive("challengeId"))
+                        add(kotlinx.serialization.json.JsonPrimitive("submissionId"))
                         add(kotlinx.serialization.json.JsonPrimitive("deviceTokenHash"))
                     },
                 )

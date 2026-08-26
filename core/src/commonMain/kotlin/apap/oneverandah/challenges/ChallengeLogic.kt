@@ -207,22 +207,18 @@ object ChallengeLogic {
             .map { ChallengeEmojiBurst(emoji = it.key, count = it.value) }
 
     /**
-     * One vote per device per challenge. Changing the pick moves the vote.
+     * One vote per device per video. [delta] is +1 when casting and -1 when
+     * removing; emoji-only changes leave counts untouched.
      */
-    fun applyVoteCounts(
+    fun applyVoteCount(
         submissions: List<ChallengeSubmission>,
-        previous: ChallengeVote?,
-        nextSubmissionId: String,
+        submissionId: String,
+        delta: Int,
     ): List<ChallengeSubmission> {
-        if (previous?.submissionId == nextSubmissionId) return submissions
+        if (delta == 0) return submissions
         return submissions.map { submission ->
-            when {
-                previous != null && submission.id == previous.submissionId ->
-                    submission.copy(voteCount = (submission.voteCount - 1).coerceAtLeast(0))
-                submission.id == nextSubmissionId ->
-                    submission.copy(voteCount = submission.voteCount + 1)
-                else -> submission
-            }
+            if (submission.id != submissionId) submission
+            else submission.copy(voteCount = (submission.voteCount + delta).coerceAtLeast(0))
         }
     }
 

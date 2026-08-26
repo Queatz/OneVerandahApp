@@ -23,6 +23,8 @@ import apap.oneverandah.screens.ChatScreen
 import apap.oneverandah.screens.PhrasesScreen
 import apap.oneverandah.screens.ChallengePlayerScreen
 import apap.oneverandah.screens.ChallengesScreen
+import apap.oneverandah.screens.MeetDetailScreen
+import apap.oneverandah.screens.MeetScreen
 import apap.oneverandah.screens.StoriesScreen
 import apap.oneverandah.screens.StoryReaderScreen
 import org.jetbrains.compose.web.renderComposable
@@ -153,6 +155,23 @@ fun App() {
             }
         }
 
+        route("meets") {
+            string { meetId ->
+                MeetDetailScreen(
+                    meetId = meetId,
+                    onBack = { router.navigate("/meets") },
+                    onHome = { router.navigate("/") },
+                )
+            }
+            noMatch {
+                MeetScreen(
+                    onBack = { router.navigate("/") },
+                    onHome = { router.navigate("/") },
+                    onOpenMeet = { id -> router.navigate("/meets/$id") },
+                )
+            }
+        }
+
         route("stories") {
             string { storyId ->
                 StoryReaderScreen(
@@ -198,6 +217,7 @@ fun App() {
                 onOpenPhrases = { router.navigate("/phrases") },
                 onOpenStories = { router.navigate("/stories") },
                 onOpenChallenges = { router.navigate("/challenges") },
+                onOpenMeets = { router.navigate("/meets") },
             )
         }
 
@@ -223,6 +243,7 @@ fun App() {
                 onOpenPhrases = { router.navigate("/phrases") },
                 onOpenStories = { router.navigate("/stories") },
                 onOpenChallenges = { router.navigate("/challenges") },
+                onOpenMeets = { router.navigate("/meets") },
             )
         }
     }

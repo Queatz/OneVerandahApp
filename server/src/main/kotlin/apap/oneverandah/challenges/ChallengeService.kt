@@ -29,12 +29,14 @@ class ChallengeService(
         val published = ChallengeLogic.publishedOf(repository.findSubmissionsByChallenge(id))
         if (published.isEmpty()) return null
         val votes = repository.findVotesByChallenge(id)
-        val myVote = deviceTokenHash?.let { repository.findVote(id, it) }
         val medals = ChallengeLogic.medals(published)
         val ordered = ChallengeLogic.playbackOrder(published)
         return ChallengeDetailResponse(
             challenge = ChallengeLogic.toCard(challenge, published),
             submissions = ordered.map { submission ->
+                val myVote = deviceTokenHash?.let { hash ->
+                    votes.firstOrNull { it.submissionId == submission.id && it.deviceTokenHash == hash }
+                }
                 ChallengeLogic.toView(
                     submission = submission,
                     challengeName = challenge.name,
@@ -154,25 +156,30 @@ class ChallengeService(
         require(ChallengeLogic.isPublished(submission)) { "Only published submissions can be voted on" }
         require(submission.deviceTokenHash != deviceTokenHash) { "You cannot vote for your own submission" }
 
-        val previous = repository.findVote(challengeId, deviceTokenHash)
+        val previous = repository.findVote(submissionId, deviceTokenHash)
         val now = clock()
         val normalized = ChallengeLogic.normalizeEmoji(emoji)
-        if (previous?.submissionId == submissionId) {
-            if (previous.emoji != normalized) {
+        when {
+            previous != null && previous.emoji == normalized -> {
+                repository.deleteVote(previous.id)
+                applyVoteDelta(challengeId, submissionId, -1)
+            }
+            previous != null -> {
                 repository.saveVote(previous.copy(emoji = normalized, createdAt = now))
             }
-        } else {
-            val siblings = repository.findSubmissionsByChallenge(challengeId)
-            ChallengeLogic.applyVoteCounts(siblings, previous, submissionId).forEach { repository.saveSubmission(it) }
-            val vote = (previous ?: ChallengeVote(
-                id = "vote-${idGenerator()}",
-                challengeId = challengeId,
-                submissionId = submissionId,
-                deviceTokenHash = deviceTokenHash,
-                emoji = normalized,
-                createdAt = now,
-            )).copy(submissionId = submissionId, emoji = normalized, createdAt = now)
-            repository.saveVote(vote)
+            else -> {
+                applyVoteDelta(challengeId, submissionId, 1)
+                repository.saveVote(
+                    ChallengeVote(
+                        id = "vote-${idGenerator()}",
+                        challengeId = challengeId,
+                        submissionId = submissionId,
+                        deviceTokenHash = deviceTokenHash,
+                        emoji = normalized,
+                        createdAt = now,
+                    ),
+                )
+            }
         }
         touchChallenge(challengeId, now)
         return getPublic(challengeId, deviceTokenHash)
@@ -247,6 +254,13 @@ class ChallengeService(
     }
 
     suspend fun findChallenge(id: String): Challenge? = repository.findChallenge(id)
+
+    private suspend fun applyVoteDelta(challengeId: String, submissionId: String, delta: Int) {
+        val siblings = repository.findSubmissionsByChallenge(challengeId)
+        ChallengeLogic.applyVoteCount(siblings, submissionId, delta)
+            .firstOrNull { it.id == submissionId }
+            ?.let { repository.saveSubmission(it) }
+    }
 
     private suspend fun touchChallenge(id: String, now: Long) {
         val existing = repository.findChallenge(id) ?: return

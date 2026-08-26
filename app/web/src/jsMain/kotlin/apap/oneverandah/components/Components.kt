@@ -182,6 +182,10 @@ private fun NavMenuItems(
         onNavigate()
         router.navigate("/chat")
     }
+    DrawerItem("handshake", strings.meetsTitle) {
+        onNavigate()
+        router.navigate("/meets")
+    }
     DrawerItem("auto_stories", strings.storiesTitle) {
         onNavigate()
         router.navigate("/stories")

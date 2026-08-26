@@ -90,6 +90,7 @@ fun HomeScreen(
     onOpenPhrases: () -> Unit = {},
     onOpenStories: () -> Unit = {},
     onOpenChallenges: () -> Unit = {},
+    onOpenMeets: () -> Unit = {},
 ) {
     val strings = Localization.strings
     val language = Localization.language
@@ -254,6 +255,18 @@ fun HomeScreen(
                     Div {
                         Span(attrs = { classes(Styles.homeExploreTitle) }) { Text(strings.chatExploreChallenges) }
                         Span(attrs = { classes(Styles.homeExploreSub) }) { Text(strings.chatExploreChallengesSub) }
+                    }
+                    MaterialSymbol("north_east")
+                }
+                Button(attrs = {
+                    classes(Styles.homeExploreCard)
+                    attr("type", "button")
+                    onClick { onOpenMeets() }
+                }) {
+                    MaterialSymbol("handshake")
+                    Div {
+                        Span(attrs = { classes(Styles.homeExploreTitle) }) { Text(strings.chatExploreMeets) }
+                        Span(attrs = { classes(Styles.homeExploreSub) }) { Text(strings.chatExploreMeetsSub) }
                     }
                     MaterialSymbol("north_east")
                 }
