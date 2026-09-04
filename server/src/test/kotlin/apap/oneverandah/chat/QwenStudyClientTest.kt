@@ -51,6 +51,33 @@ class QwenStudyClientTest {
     }
 
     @Test
+    fun `study text extraction uses the flash chat model`() = runBlocking {
+        val models = mutableListOf<String>()
+        val engine = MockEngine { request ->
+            val body = (request.body as OutgoingContent.ByteArrayContent).bytes().decodeToString()
+            models += Json.parseToJsonElement(body).jsonObject["model"]?.jsonPrimitive?.content.orEmpty()
+            respond(
+                content = qwenChatResponse("""{"text":"¿Cómo estás?"}"""),
+                status = HttpStatusCode.OK,
+                headers = headersOf(HttpHeaders.ContentType, "application/json"),
+            )
+        }
+        val client = HttpClient(engine)
+        val ai = DashScopeStudyAiClient(qwenConfig(), client)
+
+        val extracted = ai.extractStudyText(
+            StudyGenerationRequest(
+                text = "A natural greeting is ¿Cómo estás? when you meet someone.",
+                languageTag = "en",
+            ),
+        )
+
+        assertEquals("¿Cómo estás?", extracted)
+        assertEquals(listOf("qwen3.7-flash"), models)
+        client.close()
+    }
+
+    @Test
     fun `lighter study tasks use the default flash chat model`() = runBlocking {
         val models = mutableListOf<String>()
         val engine = MockEngine { request ->

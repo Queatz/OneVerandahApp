@@ -186,7 +186,7 @@ class ChatScreenStudyExampleTest {
         )
         assertEquals(
             "Xin chào bạn.",
-            studyTextFromChatMessage(message, learnerLanguageTag = "en"),
+            studyTextFromChatMessage(message),
         )
     }
 
@@ -205,12 +205,12 @@ class ChatScreenStudyExampleTest {
         )
         assertEquals(
             "Tôi đang học.",
-            studyTextFromChatMessage(message, learnerLanguageTag = "en"),
+            studyTextFromChatMessage(message),
         )
     }
 
     @Test
-    fun `study text extracts target-language lines when widget is missing`() {
+    fun `study text sends full message when widget is missing so server can extract any language`() {
         val message = studyChatMessage(
             text = """
                 Here's a natural way to talk about stickiness in Vietnamese:
@@ -223,19 +223,19 @@ class ChatScreenStudyExampleTest {
             """.trimIndent(),
         )
         assertEquals(
-            "Thời gian dính như mật ong.\nTạm biệt.",
-            studyTextFromChatMessage(message, learnerLanguageTag = "en"),
+            message.text.trim(),
+            studyTextFromChatMessage(message),
         )
     }
 
     @Test
-    fun `study text extracts quoted target language from an explanation`() {
+    fun `study text keeps mixed same-script explanations for server extraction`() {
         val message = studyChatMessage(
-            text = "A polite greeting is \"你好世界\" when you meet someone new.",
+            text = "A polite greeting is \"¿Cómo estás?\" when you meet someone new.",
         )
         assertEquals(
-            "你好世界",
-            studyTextFromChatMessage(message, learnerLanguageTag = "en"),
+            "A polite greeting is \"¿Cómo estás?\" when you meet someone new.",
+            studyTextFromChatMessage(message),
         )
     }
 
@@ -244,16 +244,7 @@ class ChatScreenStudyExampleTest {
         val message = studyChatMessage(text = "  Xin chào bạn. Tôi tên là An.  ")
         assertEquals(
             "Xin chào bạn. Tôi tên là An.",
-            studyTextFromChatMessage(message, learnerLanguageTag = "en"),
-        )
-    }
-
-    @Test
-    fun `study text keeps learner-language-only material so pasted study still works`() {
-        val message = studyChatMessage(text = "Practice this English paragraph about the park.")
-        assertEquals(
-            "Practice this English paragraph about the park.",
-            studyTextFromChatMessage(message, learnerLanguageTag = "en"),
+            studyTextFromChatMessage(message),
         )
     }
 }

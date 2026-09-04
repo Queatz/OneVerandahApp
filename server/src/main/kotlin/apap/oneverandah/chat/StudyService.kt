@@ -150,6 +150,12 @@ fun interface StudyPlaygroundImageGenerator {
 }
 
 interface StudyAiClient {
+    /**
+     * Pulls verbatim study-language material out of mixed chat/coaching text.
+     * Default keeps the original so tests and lighter fakes stay unchanged.
+     */
+    suspend fun extractStudyText(request: StudyGenerationRequest): String = request.text.trim()
+
     suspend fun generateSkeleton(request: StudyGenerationRequest): StudySessionResponse
     suspend fun dissectSentence(request: StudyDissectGenerationRequest): StudySentence
     suspend fun evaluateWordUsage(request: StudyWordPlaygroundGenerationRequest): StudyWordPlaygroundJudgment
@@ -174,13 +180,15 @@ class StudyService(
     /** Fast skeleton: language + sentences + tokens (no full dissections). */
     suspend fun skeleton(rawRequest: StudySessionRequest): StudySessionResponse {
         val request = requireNotNull(rawRequest.normalizedOrNull()) { "Study text must not be blank" }
-        val generated = aiClient.generateSkeleton(
-            StudyGenerationRequest(
-                text = request.text,
-                languageTag = request.languageTag,
-            ),
+        val generationRequest = StudyGenerationRequest(
+            text = request.text,
+            languageTag = request.languageTag,
         )
-        return generated.normalizedSkeleton(sourceText = request.text)
+        val extracted = aiClient.extractStudyText(generationRequest).trim().ifEmpty { request.text }
+        val generated = aiClient.generateSkeleton(
+            generationRequest.copy(text = extracted),
+        )
+        return generated.normalizedSkeleton(sourceText = extracted)
     }
 
     /** Full dissection for one skeleton sentence; tokens must match the skeleton order/text. */

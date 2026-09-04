@@ -1157,7 +1157,7 @@ fun ChatScreen(
     }
 
     fun openStudy(message: ChatMessage) {
-        val text = studyTextFromChatMessage(message, language.tag)
+        val text = studyTextFromChatMessage(message)
         if (text.isEmpty()) return
         studyTarget = message
         studySessionVisible = true
@@ -2447,13 +2447,10 @@ internal fun collectStoryMeaningNarrationTexts(
  * Source text for a study session opened from a chat message.
  *
  * Prefers the language-study widget (already in the target language). When the
- * widget has not arrived yet, extracts target-language spans from mixed chat
- * text so the session is not built from learner-language explanations.
+ * widget has not arrived yet, the full message is sent so the server can extract
+ * study-language material with AI for any language.
  */
-internal fun studyTextFromChatMessage(
-    message: ChatMessage,
-    learnerLanguageTag: String,
-): String {
+internal fun studyTextFromChatMessage(message: ChatMessage): String {
     val widget = message.miniApp as? LanguageStudyMiniApp
     val widgetSentence = widget?.sentence?.trim().orEmpty()
     if (widgetSentence.isNotEmpty()) return widgetSentence
@@ -2462,138 +2459,8 @@ internal fun studyTextFromChatMessage(
         ?.trim()
         .orEmpty()
     if (widgetTokens.isNotEmpty()) return widgetTokens
-    return extractTargetLanguageStudyText(message.text, learnerLanguageTag)
+    return message.text.trim()
 }
-
-/**
- * Keeps only the spans that look like a language other than the learner UI
- * language. Falls back to the original trimmed text when nothing distinctive
- * is found (already-monolingual study material).
- */
-internal fun extractTargetLanguageStudyText(
-    raw: String,
-    learnerLanguageTag: String,
-): String {
-    val text = raw.trim()
-    if (text.isEmpty()) return ""
-
-    val fromSegments = text.split('\n').mapNotNull { line ->
-        val trimmed = line.trim()
-        if (trimmed.isEmpty()) return@mapNotNull null
-        val sentences = splitStudyTextSentences(trimmed)
-            .filter { looksLikeTargetLanguageStudyText(it, learnerLanguageTag) }
-        sentences.joinToString(separator = " ").trim().takeIf { it.isNotEmpty() }
-    }
-    if (fromSegments.isNotEmpty()) {
-        return fromSegments.joinToString(separator = "\n")
-    }
-
-    val quoted = extractQuotedStudySpans(text)
-        .filter { looksLikeTargetLanguageStudyText(it, learnerLanguageTag) }
-    if (quoted.isNotEmpty()) {
-        return quoted.joinToString(separator = "\n")
-    }
-
-    return text
-}
-
-internal fun looksLikeTargetLanguageStudyText(text: String, learnerLanguageTag: String): Boolean {
-    val letters = text.filter { it.isLetter() }
-    if (letters.isEmpty()) return false
-    val counts = countStudyScripts(text)
-    val detected = dominantStudyScript(counts) ?: return false
-    val learner = learnerStudyScriptTag(learnerLanguageTag)
-    if (detected == learner) return false
-    val detectedCount = counts[detected] ?: 0
-    val total = letters.length
-    return when (detected) {
-        "vi" -> detectedCount >= 2 || (detectedCount >= 1 && total <= 12)
-        "latn" -> detectedCount * 2 >= total
-        else -> detectedCount * 2 >= total
-    }
-}
-
-private fun splitStudyTextSentences(line: String): List<String> {
-    val sentences = mutableListOf<String>()
-    val buffer = StringBuilder()
-    var index = 0
-    while (index < line.length) {
-        val ch = line[index]
-        buffer.append(ch)
-        val isEnd = ch == '.' || ch == '!' || ch == '?' || ch == '。' || ch == '！' || ch == '？'
-        if (isEnd) {
-            val hasFollowingSpace = index + 1 < line.length && line[index + 1].isWhitespace()
-            if (hasFollowingSpace || index == line.lastIndex) {
-                val sentence = buffer.toString().trim()
-                if (sentence.isNotEmpty()) sentences += sentence
-                buffer.clear()
-                while (index + 1 < line.length && line[index + 1].isWhitespace()) {
-                    index += 1
-                }
-            }
-        }
-        index += 1
-    }
-    val tail = buffer.toString().trim()
-    if (tail.isNotEmpty()) sentences += tail
-    return sentences.ifEmpty { listOf(line) }
-}
-
-private fun extractQuotedStudySpans(text: String): List<String> {
-    return STUDY_QUOTED_SPAN_REGEX.findAll(text).mapNotNull { match ->
-        match.groupValues.drop(1).firstOrNull { it.isNotEmpty() }?.trim()?.takeIf { it.isNotEmpty() }
-    }.toList()
-}
-
-private fun countStudyScripts(text: String): Map<String, Int> {
-    val counts = mutableMapOf<String, Int>()
-    for (ch in text) {
-        if (!ch.isLetter()) continue
-        val tag = studyScriptTagForChar(ch)
-        counts[tag] = (counts[tag] ?: 0) + 1
-    }
-    return counts
-}
-
-private fun dominantStudyScript(counts: Map<String, Int>): String? {
-    if (counts.isEmpty()) return null
-    return when {
-        (counts["ko"] ?: 0) > 0 -> "ko"
-        (counts["ja"] ?: 0) > 0 -> "ja"
-        (counts["zh"] ?: 0) > 0 -> "zh"
-        (counts["vi"] ?: 0) > 0 -> "vi"
-        (counts["ru"] ?: 0) > 0 -> "ru"
-        (counts["latn"] ?: 0) > 0 -> "latn"
-        else -> null
-    }
-}
-
-private fun learnerStudyScriptTag(tag: String): String =
-    when (tag.trim().lowercase().substringBefore('-')) {
-        "vi" -> "vi"
-        "zh" -> "zh"
-        "ja" -> "ja"
-        "ko" -> "ko"
-        "ru" -> "ru"
-        else -> "latn"
-    }
-
-private fun studyScriptTagForChar(ch: Char): String = when {
-    ch in VIETNAMESE_STUDY_LETTERS -> "vi"
-    ch in '\u3040'..'\u30FF' -> "ja"
-    ch in '\uAC00'..'\uD7A3' -> "ko"
-    ch in '\u4E00'..'\u9FFF' -> "zh"
-    ch in '\u0400'..'\u04FF' -> "ru"
-    else -> "latn"
-}
-
-private const val VIETNAMESE_STUDY_LETTERS =
-    "àáạảãâầấậẩẫăằắặẳẵèéẹẻẽêềếệểễìíịỉĩòóọỏõôồốộổỗơờớợởỡùúụủũưừứựửữỳýỵỷỹđ" +
-        "ÀÁẠẢÃÂẦẤẬẨẪĂẰẮẶẲẴÈÉẸẺẼÊỀẾỆỂỄÌÍỊỈĨÒÓỌỎÕÔỒỐỘỔỖƠỜỚỢỞỠÙÚỤỦŨƯỪỨỰỬỮỲÝỴỶỸĐ"
-
-private val STUDY_QUOTED_SPAN_REGEX = Regex(
-    "\"([^\"]{2,})\"|“([^”]{2,})”|「([^」]{2,})」|『([^』]{2,})』|«([^»]{2,})»",
-)
 
 @Composable
 private fun StudyStoryTab(

@@ -52,6 +52,8 @@ class StudyServiceTest {
 
         val response = service.skeleton(StudySessionRequest(text = "  Xin chào.  ", languageTag = "en-US"))
 
+        assertEquals("en", ai.lastExtractRequest?.languageTag)
+        assertEquals("Xin chào.", ai.lastExtractRequest?.text)
         assertEquals("en", ai.lastSkeletonRequest?.languageTag)
         assertEquals("Xin chào.", ai.lastSkeletonRequest?.text)
         assertEquals("Xin chào.", response.text)
@@ -71,6 +73,91 @@ class StudyServiceTest {
             service.skeleton(StudySessionRequest(text = "   ", languageTag = "en"))
         }
         Unit
+    }
+
+    @Test
+    fun `skeleton extracts study text before tokenization for any language`() = runBlocking {
+        val mixed = """
+            A natural greeting in Spanish is:
+
+            ¿Cómo estás?
+
+            You can also say:
+
+            Encantado de conocerte.
+        """.trimIndent()
+        val extracted = "¿Cómo estás?\nEncantado de conocerte."
+        val ai = FakeStudyAiClient(
+            extractedText = extracted,
+            skeleton = StudySessionResponse(
+                text = "ignored",
+                textLanguageTag = "es",
+                sentences = listOf(
+                    StudySentence(
+                        text = "¿Cómo estás?",
+                        tokens = listOf(StudyToken(text = "¿Cómo estás?", status = StudyTokenStatus.PENDING)),
+                    ),
+                    StudySentence(
+                        text = "Encantado de conocerte.",
+                        tokens = listOf(StudyToken(text = "Encantado de conocerte.", status = StudyTokenStatus.PENDING)),
+                    ),
+                ),
+            ),
+        )
+        val service = StudyService(ai)
+
+        val response = service.skeleton(StudySessionRequest(text = mixed, languageTag = "en"))
+
+        assertEquals(mixed, ai.lastExtractRequest?.text)
+        assertEquals("en", ai.lastExtractRequest?.languageTag)
+        assertEquals(extracted, ai.lastSkeletonRequest?.text)
+        assertEquals(extracted, response.text)
+        assertEquals("es", response.textLanguageTag)
+    }
+
+    @Test
+    fun `skeleton falls back to original text when extract is blank`() = runBlocking {
+        val ai = FakeStudyAiClient(
+            extractedText = "   ",
+            skeleton = StudySessionResponse(
+                text = "ignored",
+                textLanguageTag = "en",
+                sentences = listOf(
+                    StudySentence(
+                        text = "Practice this English paragraph about the park.",
+                        tokens = listOf(
+                            StudyToken(text = "Practice", status = StudyTokenStatus.PENDING),
+                        ),
+                    ),
+                ),
+            ),
+        )
+        val service = StudyService(ai)
+
+        val response = service.skeleton(
+            StudySessionRequest(text = "Practice this English paragraph about the park.", languageTag = "en"),
+        )
+
+        assertEquals("Practice this English paragraph about the park.", ai.lastSkeletonRequest?.text)
+        assertEquals("Practice this English paragraph about the park.", response.text)
+    }
+
+    @Test
+    fun `extract parser accepts fenced payload and studyText alias`() {
+        assertEquals(
+            "สวัสดีครับ",
+            QwenStudyExtractParser.parse(
+                """
+                ```json
+                {"studyText":"สวัสดีครับ"}
+                ```
+                """.trimIndent(),
+            ),
+        )
+        assertEquals(
+            "مرحبا",
+            QwenStudyExtractParser.parse("""{"text":"مرحبا"}"""),
+        )
     }
 
     @Test
@@ -1073,7 +1160,9 @@ private class FakeStudyAiClient(
         StudyExampleSentence(text = "Xin chào.", translation = "Hello."),
         StudyExampleSentence(text = "Tạm biệt.", translation = "Goodbye."),
     ),
+    private val extractedText: String? = null,
 ) : StudyAiClient {
+    var lastExtractRequest: StudyGenerationRequest? = null
     var lastSkeletonRequest: StudyGenerationRequest? = null
     var lastDissectRequest: StudyDissectGenerationRequest? = null
     var lastPlaygroundRequest: StudyWordPlaygroundGenerationRequest? = null
@@ -1083,6 +1172,11 @@ private class FakeStudyAiClient(
     var lastWriteCheckRequest: StudyWriteCheckGenerationRequest? = null
     var lastExpressCheckRequest: StudyExpressCheckGenerationRequest? = null
     var lastExpressGenerateRequest: StudyExpressGenerateGenerationRequest? = null
+
+    override suspend fun extractStudyText(request: StudyGenerationRequest): String {
+        lastExtractRequest = request
+        return extractedText ?: request.text
+    }
 
     override suspend fun generateSkeleton(request: StudyGenerationRequest): StudySessionResponse {
         lastSkeletonRequest = request

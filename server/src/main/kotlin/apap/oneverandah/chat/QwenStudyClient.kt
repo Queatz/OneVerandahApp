@@ -158,6 +158,27 @@ object QwenStudyReplyParser {
     fun parse(content: String): StudySessionResponse = QwenStudySkeletonParser.parse(content)
 }
 
+/** Lenient parser for study-text extraction JSON. */
+object QwenStudyExtractParser {
+    private val json = Json { ignoreUnknownKeys = true; explicitNulls = false; isLenient = true }
+
+    fun parse(content: String): String {
+        val root = parseRootObject(content)
+        val text = root.string("text")?.trim()?.takeIf { it.isNotEmpty() }
+            ?: root.string("studyText")?.trim()?.takeIf { it.isNotEmpty() }
+            ?: throw IllegalArgumentException("Qwen study extract missing text")
+        return text
+    }
+
+    private fun parseRootObject(content: String): JsonObject {
+        val normalized = stripJsonFences(content)
+        val element = runCatching { json.parseToJsonElement(normalized) }
+            .getOrElse { throw IllegalArgumentException("Qwen study extract is not valid JSON", it) }
+        return element as? JsonObject
+            ?: throw IllegalArgumentException("Qwen study extract root must be a JSON object")
+    }
+}
+
 private fun JsonObject.string(key: String): String? =
     this[key]?.jsonPrimitive?.contentOrNull
 
@@ -241,6 +262,20 @@ class DashScopeStudyAiClient(
     private val client: HttpClient,
 ) : StudyAiClient {
     private val json = Json { ignoreUnknownKeys = true; explicitNulls = false }
+
+    override suspend fun extractStudyText(request: StudyGenerationRequest): String {
+        val userContent = buildString {
+            appendLine("Learner language tag: ${request.languageTag}")
+            appendLine()
+            append(request.text)
+        }
+        val content = complete(
+            systemPrompt = extractStudyTextSystemPrompt(request.languageTag),
+            userContent = userContent,
+            label = "study extract",
+        )
+        return QwenStudyExtractParser.parse(content)
+    }
 
     override suspend fun generateSkeleton(request: StudyGenerationRequest): StudySessionResponse {
         val content = complete(
@@ -532,6 +567,22 @@ class DashScopeStudyAiClient(
             ?.get("content")?.jsonPrimitive?.content
             ?: throw QwenChatException("Qwen $label returned no structured content: $responseText")
     }
+
+    private fun extractStudyTextSystemPrompt(learnerLanguageTag: String): String = """
+        You extract the text a language learner should study from a chat message.
+        The learner's explanation / UI language tag is '$learnerLanguageTag'.
+        The message may mix coaching, translations, or commentary in that language with examples in another language.
+        Always return one JSON object and no markdown. The schema is exactly:
+        {"text":"verbatim study text"}
+        Rules:
+        - Copy study-language material verbatim. Never translate, paraphrase, transliterate, or invent wording.
+        - Study-language material is the language being taught: example sentences, quoted phrases, or any span that is not coaching in the learner language.
+        - Cover any natural language in the world. Do not limit yourself to a fixed script or language list.
+        - If several study spans exist, join them with newlines in original order.
+        - If the message is already only study material, including when it is written entirely in the learner language, return the whole trimmed message.
+        - Do not include headings, translations, romanizations, or meta commentary.
+        - Do not wrap the JSON in markdown.
+    """.trimIndent()
 
     private fun skeletonSystemPrompt(): String = """
         You are a precise language-study tokenizer for One Verandah residents.
