@@ -1,5 +1,9 @@
 package apap.oneverandah.screens
 
+import apap.oneverandah.api.ChatMessage
+import apap.oneverandah.api.ChatSender
+import apap.oneverandah.api.LanguageStudyMiniApp
+import apap.oneverandah.api.LanguageStudyToken
 import apap.oneverandah.api.StudyExampleSentence
 import apap.oneverandah.api.StudySentence
 import apap.oneverandah.api.StudySessionResponse
@@ -166,4 +170,101 @@ class ChatScreenStudyExampleTest {
             ).isEmpty(),
         )
     }
+
+    @Test
+    fun `study text prefers language-study widget sentence`() {
+        val message = studyChatMessage(
+            text = "Here's how to greet someone in Vietnamese.\n\nXin chào bạn.",
+            miniApp = LanguageStudyMiniApp(
+                sentence = "Xin chào bạn.",
+                targetLanguageTag = "vi",
+                tokens = listOf(
+                    LanguageStudyToken("Xin chào", "hello", "a greeting"),
+                    LanguageStudyToken("bạn", "you", "the listener"),
+                ),
+            ),
+        )
+        assertEquals(
+            "Xin chào bạn.",
+            studyTextFromChatMessage(message, learnerLanguageTag = "en"),
+        )
+    }
+
+    @Test
+    fun `study text uses widget tokens when sentence is blank`() {
+        val message = studyChatMessage(
+            text = "Let's practise this Vietnamese sentence.",
+            miniApp = LanguageStudyMiniApp(
+                sentence = "  ",
+                targetLanguageTag = "vi",
+                tokens = listOf(
+                    LanguageStudyToken("Tôi", "I", "the speaker"),
+                    LanguageStudyToken(" đang học.", "am studying", "now"),
+                ),
+            ),
+        )
+        assertEquals(
+            "Tôi đang học.",
+            studyTextFromChatMessage(message, learnerLanguageTag = "en"),
+        )
+    }
+
+    @Test
+    fun `study text extracts target-language lines when widget is missing`() {
+        val message = studyChatMessage(
+            text = """
+                Here's a natural way to talk about stickiness in Vietnamese:
+
+                Thời gian dính như mật ong.
+
+                You can also close with:
+
+                Tạm biệt.
+            """.trimIndent(),
+        )
+        assertEquals(
+            "Thời gian dính như mật ong.\nTạm biệt.",
+            studyTextFromChatMessage(message, learnerLanguageTag = "en"),
+        )
+    }
+
+    @Test
+    fun `study text extracts quoted target language from an explanation`() {
+        val message = studyChatMessage(
+            text = "A polite greeting is \"你好世界\" when you meet someone new.",
+        )
+        assertEquals(
+            "你好世界",
+            studyTextFromChatMessage(message, learnerLanguageTag = "en"),
+        )
+    }
+
+    @Test
+    fun `study text keeps monolingual material that is already the target language`() {
+        val message = studyChatMessage(text = "  Xin chào bạn. Tôi tên là An.  ")
+        assertEquals(
+            "Xin chào bạn. Tôi tên là An.",
+            studyTextFromChatMessage(message, learnerLanguageTag = "en"),
+        )
+    }
+
+    @Test
+    fun `study text keeps learner-language-only material so pasted study still works`() {
+        val message = studyChatMessage(text = "Practice this English paragraph about the park.")
+        assertEquals(
+            "Practice this English paragraph about the park.",
+            studyTextFromChatMessage(message, learnerLanguageTag = "en"),
+        )
+    }
 }
+
+private fun studyChatMessage(
+    text: String,
+    miniApp: LanguageStudyMiniApp? = null,
+): ChatMessage = ChatMessage(
+    id = "msg-1",
+    sender = ChatSender.AI,
+    text = text,
+    createdAt = 1L,
+    miniApp = miniApp,
+)

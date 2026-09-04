@@ -22,6 +22,8 @@ import apap.oneverandah.state.MeetProfileStore
 import apap.oneverandah.state.Toaster
 import kotlinx.coroutines.launch
 import org.jetbrains.compose.web.attributes.InputType
+import org.jetbrains.compose.web.attributes.autoFocus
+import org.jetbrains.compose.web.attributes.autofocus
 import org.jetbrains.compose.web.attributes.placeholder
 import org.jetbrains.compose.web.dom.Button
 import org.jetbrains.compose.web.dom.Div
@@ -168,6 +170,12 @@ private fun SendPitchDialog(
                     classes(Styles.textArea)
                     placeholder(strings.meetsPitchReplyPlaceholder)
                     onInput { message = it.value }
+                    autoFocus()
+                    ref {
+                        it.focus()
+
+                        onDispose { }
+                    }
                 }
             }
             Div(attrs = { classes(Styles.textField) }) {
