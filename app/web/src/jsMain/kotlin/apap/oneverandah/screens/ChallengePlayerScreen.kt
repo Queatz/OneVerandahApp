@@ -127,7 +127,6 @@ fun ChallengePlayerScreen(
         title = detail?.challenge?.name?.ifBlank { strings.challengesTitle } ?: strings.challengesTitle,
         onBack = onBack,
         onHome = onHome,
-        showChatAction = false,
         showPhrasesAction = false,
         lockScroll = true,
         scrollKey = "challenge-player",

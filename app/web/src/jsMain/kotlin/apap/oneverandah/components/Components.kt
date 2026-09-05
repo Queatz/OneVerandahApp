@@ -98,7 +98,6 @@ fun AppBar(
     onBack: (() -> Unit)? = null,
     onMenu: (() -> Unit)? = null,
     onLanguageClick: (() -> Unit)? = null,
-    showChatAction: Boolean = true,
     showPhrasesAction: Boolean = true,
     appBarAction: (@Composable () -> Unit)? = null,
 ) {
@@ -140,14 +139,6 @@ fun AppBar(
                 onClick { router.navigate("/stories") }
             }) { Text("auto_stories") }
         }
-        if (showChatAction) {
-            Span(attrs = {
-                classes(Styles.materialSymbols, Styles.appBarIcon)
-                attr("role", "button")
-                attr("aria-label", strings.chatTitle)
-                onClick { router.navigate("/chat") }
-            }) { Text("chat_bubble") }
-        }
         Button(attrs = {
             classes(Styles.langToggle)
             attr("aria-label", strings.menuLanguage)
@@ -177,10 +168,6 @@ private fun NavMenuItems(
     DrawerItem("home", strings.menuHome) {
         onNavigate()
         if (onHome != null) onHome() else router.navigate("/")
-    }
-    DrawerItem("chat_bubble", strings.chatTitle) {
-        onNavigate()
-        router.navigate("/chat")
     }
     DrawerItem("menu_book", strings.studyTitle) {
         onNavigate()
@@ -352,7 +339,6 @@ fun Scaffold(
     title: String? = null,
     onBack: (() -> Unit)? = null,
     onHome: (() -> Unit)? = null,
-    showChatAction: Boolean = true,
     showPhrasesAction: Boolean = true,
     appBarAction: (@Composable () -> Unit)? = null,
     showBanner: Boolean = false,
@@ -389,7 +375,6 @@ fun Scaffold(
                 // Hamburger only in mobile layout; desktop keeps the rail open.
                 onMenu = if (isDesktop) null else ({ drawerOpen = true }),
                 onLanguageClick = { languageDialogOpen = true },
-                showChatAction = showChatAction,
                 showPhrasesAction = showPhrasesAction,
                 appBarAction = appBarAction,
             )

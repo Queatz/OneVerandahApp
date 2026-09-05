@@ -129,7 +129,6 @@ fun AdminScreen(onBack: () -> Unit) {
     Scaffold(
         title = strings.adminTitle,
         onBack = onBack,
-        showChatAction = false,
         showPhrasesAction = false,
         lockScroll = anySheetOpen,
         overlay = {

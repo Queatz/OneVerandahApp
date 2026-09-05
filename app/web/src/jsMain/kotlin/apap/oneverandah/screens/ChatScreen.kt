@@ -242,7 +242,6 @@ fun ChatScreen(
     Scaffold(
         title = strings.chatTitle,
         onBack = onBack,
-        showChatAction = false,
         showPhrasesAction = false,
         onHome = onHome,
         appBarAction = {

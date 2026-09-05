@@ -27,8 +27,11 @@ internal object CatalogServices {
 
     // --- small local helpers to keep the data terse ----------------------
 
+    /** Multiplier applied to every catalog price. 1 = normal pricing. */
+    private const val SURGE_PRICING = 6
+
     private fun lt(en: String, vi: String, zh: String = en) = LocalizedText(en, vi, zh)
-    private fun vnd(thousands: Long) = Money.thousands(thousands)
+    private fun vnd(thousands: Long) = Money.thousands(thousands) * SURGE_PRICING
 
     private val trialAndFollowup = listOf(
         BookingTypeOption(
