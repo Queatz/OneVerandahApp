@@ -96,6 +96,15 @@ class ChatApiModelsTest {
     }
 
     @Test
+    fun `study intent response round trips as structured JSON`() {
+        val json = Json { encodeDefaults = true }
+        val original = StudyIntentResponse(text = "Anh thích em.\nChúng ta nói chuyện được không?")
+        val encoded = json.encodeToString(StudyIntentResponse.serializer(), original)
+        val decoded = json.decodeFromString(StudyIntentResponse.serializer(), encoded)
+        assertEquals(original, decoded)
+    }
+
+    @Test
     fun `blank study session request is rejected`() {
         assertNull(StudySessionRequest(text = "   ", languageTag = "en").normalizedOrNull())
     }

@@ -51,6 +51,33 @@ class QwenStudyClientTest {
     }
 
     @Test
+    fun `study intent generation uses the flash chat model`() = runBlocking {
+        val models = mutableListOf<String>()
+        val engine = MockEngine { request ->
+            val body = (request.body as OutgoingContent.ByteArrayContent).bytes().decodeToString()
+            models += Json.parseToJsonElement(body).jsonObject["model"]?.jsonPrimitive?.content.orEmpty()
+            respond(
+                content = qwenChatResponse("""{"text":"Anh thích em."}"""),
+                status = HttpStatusCode.OK,
+                headers = headersOf(HttpHeaders.ContentType, "application/json"),
+            )
+        }
+        val client = HttpClient(engine)
+        val ai = DashScopeStudyAiClient(qwenConfig(), client)
+
+        val composed = ai.generateStudyIntent(
+            StudyGenerationRequest(
+                text = "sentences about talking about relationships in Vietnamese",
+                languageTag = "en",
+            ),
+        )
+
+        assertEquals("Anh thích em.", composed)
+        assertEquals(listOf("qwen3.7-flash"), models)
+        client.close()
+    }
+
+    @Test
     fun `study text extraction uses the flash chat model`() = runBlocking {
         val models = mutableListOf<String>()
         val engine = MockEngine { request ->

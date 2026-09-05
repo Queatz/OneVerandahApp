@@ -17,6 +17,7 @@ import apap.oneverandah.chat.StudyCharacterDesign
 import apap.oneverandah.api.StudyStoryCharactersResponse
 import apap.oneverandah.api.StudyStoryCharactersRequest
 import apap.oneverandah.api.StudySentenceImageResponse
+import apap.oneverandah.api.StudyIntentResponse
 import apap.oneverandah.api.StudySessionRequest
 import apap.oneverandah.api.StudySessionResponse
 import apap.oneverandah.api.StudyToken
@@ -229,6 +230,54 @@ class ChatRoutesTest {
         assertEquals("Hello", session.text)
         assertEquals(StudyTokenStatus.PENDING, session.sentences.single().tokens.first().status)
         assertEquals("", session.sentences.single().tokens.first().literalMeaning)
+    }
+
+    @Test
+    fun `study intent endpoint validates and returns composed text`() = testApplication {
+        val chatService = ChatService(
+            repository = InMemoryChatRepository(),
+            aiClient = object : ChatAiClient {
+                override suspend fun generate(
+                    request: ChatGenerationRequest,
+                    onPartial: suspend (GeneratedChatReply) -> Unit,
+                ) = GeneratedChatReply("unused")
+            },
+            residentDirectory = ResidentDirectory(emptyList()),
+        )
+        val studyService = StudyService(
+            FakeStudyAiClient(composedText = "Anh thích em.\nChúng ta nói chuyện được không?"),
+        )
+        application {
+            install(ContentNegotiation) { json() }
+            routing {
+                chatRoutes(
+                    chatService = chatService,
+                    speechService = SpeechService(RouteSpeechClient()),
+                    studyService = studyService,
+                )
+            }
+        }
+
+        val invalid = client.post("/api/chat/study/intent") {
+            contentType(ContentType.Application.Json)
+            setBody("{\"text\":\"   \",\"languageTag\":\"en\"}")
+        }
+        assertEquals(HttpStatusCode.BadRequest, invalid.status)
+
+        val response = client.post("/api/chat/study/intent") {
+            contentType(ContentType.Application.Json)
+            setBody(
+                json.encodeToString(
+                    StudySessionRequest(
+                        "Give me Vietnamese sentences about talking about relationships.",
+                        "en",
+                    ),
+                ),
+            )
+        }
+        assertEquals(HttpStatusCode.OK, response.status)
+        val intent = json.decodeFromString<StudyIntentResponse>(response.bodyAsText())
+        assertEquals("Anh thích em.\nChúng ta nói chuyện được không?", intent.text)
     }
 
     @Test

@@ -110,6 +110,15 @@ fun Route.chatRoutes(
             call.respond(studyService.skeleton(request))
         }
 
+        post("/api/chat/study/intent") {
+            val request = call.receive<StudySessionRequest>()
+            if (request.normalizedOrNull() == null) {
+                call.respond(HttpStatusCode.BadRequest, ChatErrorResponse("Study text must not be blank"))
+                return@post
+            }
+            call.respond(studyService.intendedStudyText(request))
+        }
+
         post("/api/chat/study/dissect") {
             val request = call.receive<StudyDissectSentenceRequest>()
             if (request.normalizedOrNull() == null) {

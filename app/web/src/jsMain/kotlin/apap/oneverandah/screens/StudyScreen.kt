@@ -62,11 +62,13 @@ import org.jetbrains.compose.web.dom.Button
 import org.jetbrains.compose.web.dom.Div
 import org.jetbrains.compose.web.dom.Img
 import org.jetbrains.compose.web.dom.Input
+import org.jetbrains.compose.web.dom.Label
 import org.jetbrains.compose.web.dom.P
 import org.jetbrains.compose.web.dom.Span
 import org.jetbrains.compose.web.dom.Text
 import org.w3c.dom.HTMLAudioElement
 import org.w3c.dom.HTMLElement
+import org.w3c.dom.HTMLInputElement
 import kotlin.js.Date
 
 @Composable
@@ -104,6 +106,8 @@ fun StudyScreen(
     val studyPersistedBySourceId = remember { mutableStateMapOf<String, String>() }
     var studySessionItems by remember { mutableStateOf<List<SavedStudySession>>(emptyList()) }
     var studySessionsLoading by remember { mutableStateOf(false) }
+    // Exact = current behavior (study the typed text). Off (default from the list) parses first.
+    var studyStartExact by remember { mutableStateOf(true) }
 
     fun applyStudySessionItems(items: List<SavedStudySession>) {
         studySessionItems = items
@@ -1059,17 +1063,56 @@ fun StudyScreen(
         )
     }
 
-    fun startStudyFromText(raw: String?) {
+    fun startStudyFromText(raw: String?, exact: Boolean = true) {
         val text = raw?.trim().orEmpty()
         if (text.isEmpty()) return
-        openStudy(
-            ChatMessage(
-                id = "study-${Date.now().toLong()}",
-                sender = ChatSender.YOU,
-                text = text,
-                createdAt = Date.now().toLong(),
-            ),
+        studyStartExact = exact
+        if (exact) {
+            openStudy(
+                ChatMessage(
+                    id = "study-${Date.now().toLong()}",
+                    sender = ChatSender.YOU,
+                    text = text,
+                    createdAt = Date.now().toLong(),
+                ),
+            )
+            return
+        }
+        val messageId = "study-${Date.now().toLong()}"
+        val createdAt = Date.now().toLong()
+        studyTarget = ChatMessage(
+            id = messageId,
+            sender = ChatSender.YOU,
+            text = text,
+            createdAt = createdAt,
         )
+        studySessionVisible = true
+        studyError = null
+        studySession = null
+        studySentenceStatus.clear()
+        studyLoading = true
+        scope.launch {
+            runCatching {
+                ChatApi.studyIntent(StudySessionRequest(text = text, languageTag = language.tag))
+            }.onSuccess { intent ->
+                val studyText = intent.text.trim().ifEmpty { text }
+                if (studyTarget?.id != messageId || !studySessionVisible) return@onSuccess
+                studyStartExact = true
+                openStudy(
+                    ChatMessage(
+                        id = messageId,
+                        sender = ChatSender.YOU,
+                        text = studyText,
+                        createdAt = createdAt,
+                    ),
+                )
+            }.onFailure {
+                if (studyTarget?.id == messageId && studySessionVisible) {
+                    studyError = strings.chatStudyError
+                    studyLoading = false
+                }
+            }
+        }
     }
 
     fun removeStudySession(item: SavedStudySession) {
@@ -1148,7 +1191,14 @@ fun StudyScreen(
                 playLoading = studyTarget?.id?.let { studyPlayInFlight[it] == true } == true,
                 playFailed = studyTarget?.id?.let { studyPlayFailed[it] == true } == true,
                 strings = strings,
-                onRetry = { studyTarget?.let(::openStudy) },
+                onRetry = {
+                    val target = studyTarget ?: return@StudySessionPane
+                    if (studyStartExact) {
+                        openStudy(target)
+                    } else {
+                        startStudyFromText(target.text, exact = false)
+                    }
+                },
                 onRetrySentence = ::retryStudySentence,
                 onRetryPlay = {
                     val target = studyTarget ?: return@StudySessionPane
@@ -1184,11 +1234,12 @@ private fun StudySessionsList(
     items: List<SavedStudySession>,
     loading: Boolean,
     strings: UiStrings,
-    onStart: (String?) -> Unit,
+    onStart: (text: String?, exact: Boolean) -> Unit,
     onOpen: (SavedStudySession) -> Unit,
     onRemove: (SavedStudySession) -> Unit,
 ) {
     var draft by remember { mutableStateOf("") }
+    var exact by remember { mutableStateOf(false) }
 
     Div(attrs = { classes(Styles.savedPanelBody) }) {
         ChatInput(
@@ -1198,12 +1249,23 @@ private fun StudySessionsList(
                 val text = value?.trim().orEmpty()
                 if (text.isEmpty()) return@ChatInput
                 draft = ""
-                onStart(text)
+                onStart(text, exact)
             },
             placeholder = strings.chatStudySessionsPlaceholder,
             multiline = true,
             autoFocus = true,
         )
+        Label(attrs = { classes(Styles.studyExactRow) }) {
+            Input(type = InputType.Checkbox) {
+                if (exact) attr("checked", "true")
+                attr("aria-label", strings.chatStudyExactToggle)
+                onChange {
+                    val el = it.nativeEvent.target as? HTMLInputElement
+                    exact = el?.checked == true
+                }
+            }
+            Text(strings.chatStudyExactToggle)
+        }
         when {
             loading && items.isEmpty() -> {
                 Div(attrs = { classes(Styles.chatStatus) }) {

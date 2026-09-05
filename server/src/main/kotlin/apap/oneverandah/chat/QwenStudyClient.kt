@@ -277,6 +277,21 @@ class DashScopeStudyAiClient(
         return QwenStudyExtractParser.parse(content)
     }
 
+    override suspend fun generateStudyIntent(request: StudyGenerationRequest): String {
+        val userContent = buildString {
+            appendLine("Learner language tag: ${request.languageTag}")
+            appendLine()
+            append(request.text)
+        }
+        val content = complete(
+            systemPrompt = studyIntentSystemPrompt(request.languageTag),
+            userContent = userContent,
+            label = "study intent",
+            temperature = 0.6,
+        )
+        return QwenStudyExtractParser.parse(content)
+    }
+
     override suspend fun generateSkeleton(request: StudyGenerationRequest): StudySessionResponse {
         val content = complete(
             systemPrompt = skeletonSystemPrompt(),
@@ -581,6 +596,23 @@ class DashScopeStudyAiClient(
         - If several study spans exist, join them with newlines in original order.
         - If the message is already only study material, including when it is written entirely in the learner language, return the whole trimmed message.
         - Do not include headings, translations, romanizations, or meta commentary.
+        - Do not wrap the JSON in markdown.
+    """.trimIndent()
+
+    private fun studyIntentSystemPrompt(learnerLanguageTag: String): String = """
+        You prepare the text a language learner should study from their request.
+        The learner's explanation / UI language tag is '$learnerLanguageTag'.
+        The request may be a prompt (e.g. "sentences about talking about relationships in Vietnamese"), mixed coaching plus examples, or already-final study material.
+        Always return one JSON object and no markdown. The schema is exactly:
+        {"text":"study text"}
+        Rules:
+        - Output only the study-language material the learner should read, listen to, and practice.
+        - If the user asked you to create examples, sentences, a dialogue, a paragraph, or similar, WRITE that material in the requested language. Do not return the request itself.
+        - Prefer a short, natural set of sentences (about 4–8 unless the user asked for more or less).
+        - If they already provided study material, return that material verbatim. Never translate, paraphrase, or invent wording in that case.
+        - Cover any natural language in the world. Do not limit yourself to a fixed script or language list.
+        - Join multiple sentences with newlines.
+        - Do not include headings, translations, romanizations, numbered instructions, or meta commentary unless that language is the one being studied.
         - Do not wrap the JSON in markdown.
     """.trimIndent()
 

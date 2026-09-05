@@ -171,6 +171,18 @@ data class StudySessionRequest(
 }
 
 /**
+ * Study text produced from a learner prompt (parse mode).
+ *
+ * `POST /api/chat/study/intent` turns a request such as "sentences about
+ * talking about relationships in Vietnamese" into the actual study material,
+ * which the client then sends to [StudySessionRequest] as usual.
+ */
+@Serializable
+data class StudyIntentResponse(
+    val text: String,
+)
+
+/**
  * Named cast member for Study-tab story visuals.
  *
  * Designed once per session, then used as a reference portrait so every sentence

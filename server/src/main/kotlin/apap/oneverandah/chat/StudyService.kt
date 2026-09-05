@@ -21,6 +21,7 @@ import apap.oneverandah.api.StudyPlaygroundImageStatus
 import apap.oneverandah.api.StudySentence
 import apap.oneverandah.api.StudySentenceImageRequest
 import apap.oneverandah.api.StudySentenceImageResponse
+import apap.oneverandah.api.StudyIntentResponse
 import apap.oneverandah.api.StudySessionRequest
 import apap.oneverandah.api.StudySessionResponse
 import apap.oneverandah.api.StudyStoryCharacter
@@ -156,6 +157,13 @@ interface StudyAiClient {
      */
     suspend fun extractStudyText(request: StudyGenerationRequest): String = request.text.trim()
 
+    /**
+     * Turns a learner prompt into the study text they meant (e.g. generate
+     * example sentences). Default keeps the original so tests and fakes stay
+     * unchanged; exact-mode clients skip this entirely.
+     */
+    suspend fun generateStudyIntent(request: StudyGenerationRequest): String = request.text.trim()
+
     suspend fun generateSkeleton(request: StudyGenerationRequest): StudySessionResponse
     suspend fun dissectSentence(request: StudyDissectGenerationRequest): StudySentence
     suspend fun evaluateWordUsage(request: StudyWordPlaygroundGenerationRequest): StudyWordPlaygroundJudgment
@@ -176,6 +184,21 @@ class StudyService(
     private val log = LoggerFactory.getLogger(StudyService::class.java)
     /** Shared async job store for playground comics, character portraits, and sentence visuals. */
     private val studyImages = ConcurrentHashMap<String, StudyPlaygroundImageResponse>()
+
+    /**
+     * Parse-mode prep: generate the study text the learner asked for, which the
+     * client then sends through [skeleton] as usual.
+     */
+    suspend fun intendedStudyText(rawRequest: StudySessionRequest): StudyIntentResponse {
+        val request = requireNotNull(rawRequest.normalizedOrNull()) { "Study text must not be blank" }
+        val composed = aiClient.generateStudyIntent(
+            StudyGenerationRequest(
+                text = request.text,
+                languageTag = request.languageTag,
+            ),
+        ).trim().ifEmpty { request.text }
+        return StudyIntentResponse(text = composed)
+    }
 
     /** Fast skeleton: language + sentences + tokens (no full dissections). */
     suspend fun skeleton(rawRequest: StudySessionRequest): StudySessionResponse {

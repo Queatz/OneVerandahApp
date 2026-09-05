@@ -76,6 +76,40 @@ class StudyServiceTest {
     }
 
     @Test
+    fun `intended study text composes learner prompt before skeleton`() = runBlocking {
+        val prompt = "Give me a few Vietnamese sentences about talking about relationships."
+        val composed = "Anh thích em.\nChúng ta nói chuyện được không?"
+        val ai = FakeStudyAiClient(composedText = composed)
+        val service = StudyService(ai)
+
+        val response = service.intendedStudyText(StudySessionRequest(text = "  $prompt  ", languageTag = "en-US"))
+
+        assertEquals("en", ai.lastIntentRequest?.languageTag)
+        assertEquals(prompt, ai.lastIntentRequest?.text)
+        assertEquals(composed, response.text)
+        assertEquals(null, ai.lastSkeletonRequest)
+    }
+
+    @Test
+    fun `intended study text falls back to original when compose is blank`() = runBlocking {
+        val ai = FakeStudyAiClient(composedText = "   ")
+        val service = StudyService(ai)
+
+        val response = service.intendedStudyText(StudySessionRequest(text = "Xin chào.", languageTag = "en"))
+
+        assertEquals("Xin chào.", response.text)
+    }
+
+    @Test
+    fun `intended study text rejects blank prompt`() = runBlocking {
+        val service = StudyService(FakeStudyAiClient())
+        assertFailsWith<IllegalArgumentException> {
+            service.intendedStudyText(StudySessionRequest(text = "   ", languageTag = "en"))
+        }
+        Unit
+    }
+
+    @Test
     fun `skeleton extracts study text before tokenization for any language`() = runBlocking {
         val mixed = """
             A natural greeting in Spanish is:
@@ -1112,7 +1146,7 @@ class StudyServiceTest {
     }
 }
 
-private class FakeStudyAiClient(
+internal class FakeStudyAiClient(
     private val skeleton: StudySessionResponse = StudySessionResponse(
         text = "x",
         textLanguageTag = "en",
@@ -1161,8 +1195,10 @@ private class FakeStudyAiClient(
         StudyExampleSentence(text = "Tạm biệt.", translation = "Goodbye."),
     ),
     private val extractedText: String? = null,
+    private val composedText: String? = null,
 ) : StudyAiClient {
     var lastExtractRequest: StudyGenerationRequest? = null
+    var lastIntentRequest: StudyGenerationRequest? = null
     var lastSkeletonRequest: StudyGenerationRequest? = null
     var lastDissectRequest: StudyDissectGenerationRequest? = null
     var lastPlaygroundRequest: StudyWordPlaygroundGenerationRequest? = null
@@ -1176,6 +1212,11 @@ private class FakeStudyAiClient(
     override suspend fun extractStudyText(request: StudyGenerationRequest): String {
         lastExtractRequest = request
         return extractedText ?: request.text
+    }
+
+    override suspend fun generateStudyIntent(request: StudyGenerationRequest): String {
+        lastIntentRequest = request
+        return composedText ?: request.text
     }
 
     override suspend fun generateSkeleton(request: StudyGenerationRequest): StudySessionResponse {

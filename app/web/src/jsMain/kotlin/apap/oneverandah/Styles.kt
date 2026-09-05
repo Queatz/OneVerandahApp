@@ -324,6 +324,7 @@ object Styles {
     const val chatExploreSub = "chat-explore-sub"
     const val chatBookmarkBtn = "chat-bookmark-btn"
     const val savedPanelBody = "saved-panel-body"
+    const val studyExactRow = "study-exact-row"
     const val savedPanelEmpty = "saved-panel-empty"
     const val savedItem = "saved-item"
     const val savedItemSender = "saved-item-sender"
@@ -2760,6 +2761,15 @@ object Styles {
             flex-direction: column;
             gap: 12px;
             padding-bottom: 8px;
+        }
+        .${studyExactRow} {
+            display: flex;
+            align-items: center;
+            gap: 8px;
+            margin-top: -4px;
+            cursor: pointer;
+            font-size: 14px;
+            color: var(--md-sys-color-on-surface-variant);
         }
         .${savedPanelEmpty} {
             display: flex;
