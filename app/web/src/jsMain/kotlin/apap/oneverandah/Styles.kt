@@ -2753,8 +2753,8 @@ object Styles {
         .${chatBookmarkBtn} .${materialSymbols} {
             font-size: 18px;
         }
-        /* Saved / study-sessions list body inside BottomDialog. Content scrolls
-           via dialogContent — do not nest a second capped scroll region. */
+        /* Saved-message list body inside BottomDialog, and study-session list
+           on the Study screen. Do not nest a second capped scroll region. */
         .${savedPanelBody} {
             display: flex;
             flex-direction: column;
@@ -2825,8 +2825,7 @@ object Styles {
             color: var(--md-sys-color-error, #b3261e);
             border-color: color-mix(in srgb, var(--md-sys-color-error, #b3261e) 35%, var(--md-sys-color-outline));
         }
-        /* Study content scrolls via dialogContent; do not nest a second capped
-           scroll region or the sheet cannot expand toward the sheet max-height. */
+        /* Study session content scrolls with the scaffold pane. */
         .${studySessionBody} {
             display: flex;
             flex-direction: column;
