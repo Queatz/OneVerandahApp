@@ -73,7 +73,7 @@ class QwenStudyClientTest {
         )
 
         assertEquals("Anh thích em.", composed)
-        assertEquals(listOf("qwen3.7-flash"), models)
+        assertEquals(listOf("qwen3.8-flash"), models)
         client.close()
     }
 
@@ -100,7 +100,7 @@ class QwenStudyClientTest {
         )
 
         assertEquals("¿Cómo estás?", extracted)
-        assertEquals(listOf("qwen3.7-flash"), models)
+        assertEquals(listOf("qwen3.8-flash"), models)
         client.close()
     }
 
@@ -186,13 +186,13 @@ class QwenStudyClientTest {
 
         assertEquals(
             listOf(
-                "qwen3.7-flash",
-                "qwen3.7-flash",
-                "qwen3.7-flash",
-                "qwen3.7-flash",
-                "qwen3.7-flash",
-                "qwen3.7-flash",
-                "qwen3.7-flash",
+                "qwen3.8-flash",
+                "qwen3.8-flash",
+                "qwen3.8-flash",
+                "qwen3.8-flash",
+                "qwen3.8-flash",
+                "qwen3.8-flash",
+                "qwen3.8-flash",
             ),
             models,
         )
@@ -201,7 +201,7 @@ class QwenStudyClientTest {
 
     private fun qwenConfig() = QwenChatConfig(
         chatEndpoint = "https://example.test/chat",
-        chatModel = "qwen3.7-flash",
+        chatModel = "qwen3.8-flash",
         chatHeavyModel = "qwen3-max-preview",
         ttsEndpoint = "https://example.test/tts",
         ttsModel = "qwen-audio-3.0-tts-flash",

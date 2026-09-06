@@ -156,7 +156,7 @@ class ChatServiceTest {
         assertEquals(2, requestBodies.size)
         val systemPrompts = requestBodies.map { bodyText ->
             val body = Json.parseToJsonElement(bodyText).jsonObject
-            assertEquals("qwen3.7-flash", body["model"]?.jsonPrimitive?.content)
+            assertEquals("qwen3.8-flash", body["model"]?.jsonPrimitive?.content)
             body["messages"]?.jsonArray
                 ?.first()?.jsonObject
                 ?.get("content")?.jsonPrimitive?.content.orEmpty()
@@ -407,7 +407,7 @@ class ChatServiceTest {
 
     private fun qwenConfig() = QwenChatConfig(
         chatEndpoint = "https://example.test/chat",
-        chatModel = "qwen3.7-flash",
+        chatModel = "qwen3.8-flash",
         chatHeavyModel = "qwen3-max-preview",
         ttsEndpoint = "https://example.test/tts",
         ttsModel = "qwen-audio-3.0-tts-flash",

@@ -318,7 +318,7 @@ data class AppConfig(
                 chatEndpoint = source["QWEN_CHAT_ENDPOINT"]
                     ?: "https://dashscope.aliyuncs.com/compatible-mode/v1/chat/completions",
                 // Fast default for chat and lighter study tasks; heavy breakdown uses chatHeavyModel.
-                chatModel = source["QWEN_CHAT_MODEL"] ?: "qwen3.7-flash",
+                chatModel = source["QWEN_CHAT_MODEL"] ?: "qwen3.8-flash",
                 chatHeavyModel = source["QWEN_CHAT_HEAVY_MODEL"] ?: "qwen3-max-preview",
                 // Qwen-Audio-TTS shares the CosyVoice-compatible WebSocket synthesis protocol.
                 ttsEndpoint = "wss://dashscope.aliyuncs.com/api-ws/v1/inference/",

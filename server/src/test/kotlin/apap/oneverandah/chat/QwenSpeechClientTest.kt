@@ -50,7 +50,7 @@ class QwenSpeechClientTest {
 
         try {
             val config = AppConfig.load(emptyEnvFile).qwenChat
-            assertEquals("qwen3.7-flash", config.chatModel)
+            assertEquals("qwen3.8-flash", config.chatModel)
             assertEquals("qwen3-max-preview", config.chatHeavyModel)
         } finally {
             emptyEnvFile.delete()
@@ -206,7 +206,7 @@ class QwenSpeechClientTest {
         ttsVoice: String = "longanhuan_v3.6",
     ) = QwenChatConfig(
         chatEndpoint = "https://example.test/chat",
-        chatModel = "qwen3.7-flash",
+        chatModel = "qwen3.8-flash",
         chatHeavyModel = "qwen3-max-preview",
         ttsEndpoint = "https://example.test/tts",
         ttsModel = "qwen-audio-3.0-tts-flash",

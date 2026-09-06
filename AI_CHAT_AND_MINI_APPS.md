@@ -188,7 +188,7 @@ Adding a sealed subtype will force this dispatch to be updated at compile time. 
 
 `DashScopeChatAiClient` calls the OpenAI-compatible DashScope chat-completions endpoint with:
 
-- Model: `qwen3.7-flash` by default for chat and lighter study tasks; `qwen3-max-preview` only for heavy study-session breakdown (skeleton + per-sentence dissection).
+- Model: `qwen3.8-flash` by default for chat and lighter study tasks; `qwen3-max-preview` only for heavy study-session breakdown (skeleton + per-sentence dissection).
 - `response_format.type`: `json_object`.
 - Temperature: `0.4`.
 - **Two parallel completions per turn:**
@@ -480,7 +480,7 @@ The relevant configuration is resolved in `AppConfig`:
 | --- | --- |
 | `QWEN_API_KEY` | Required to enable Qwen chat and speech |
 | `QWEN_CHAT_ENDPOINT` | Defaults to the DashScope OpenAI-compatible chat-completions endpoint |
-| `QWEN_CHAT_MODEL` | Defaults to `qwen3.7-flash` (chat + lighter study tasks) |
+| `QWEN_CHAT_MODEL` | Defaults to `qwen3.8-flash` (chat + lighter study tasks) |
 | `QWEN_CHAT_HEAVY_MODEL` | Defaults to `qwen3-max-preview` (study skeleton + sentence dissection) |
 | `QWEN_TTS_MODEL` | Defaults to `qwen-audio-3.0-tts-flash` |
 | `QWEN_TTS_VOICE` | Defaults to `longanhuan_v3.6` |
