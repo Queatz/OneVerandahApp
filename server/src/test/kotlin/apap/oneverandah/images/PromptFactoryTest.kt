@@ -44,5 +44,44 @@ class PromptFactoryTest {
         assertTrue(!prompt.contains("panel 1 of 2"))
         assertContains(prompt, "Image 1 is main character \"Lan\"")
         assertContains(prompt, "pretty realistic expressive art")
+        assertContains(prompt, "NEW story beat")
+        assertContains(prompt, PromptFactory.STORY_SHOTS[0])
+        assertContains(prompt, "Story position: opening")
+    }
+
+    @Test
+    fun forSentence_variesCameraAcrossStoryBeats() {
+        val story = "Lan mỉm cười. Minh vẫy tay. Họ đi vào quán."
+        val prompts = listOf(
+            PromptFactory.forSentence(
+                sentence = "Lan mỉm cười.",
+                fullText = story,
+                sentenceIndex = 0,
+                sentenceCount = 3,
+            ),
+            PromptFactory.forSentence(
+                sentence = "Minh vẫy tay.",
+                fullText = story,
+                sentenceIndex = 1,
+                sentenceCount = 3,
+            ),
+            PromptFactory.forSentence(
+                sentence = "Họ đi vào quán.",
+                fullText = story,
+                sentenceIndex = 2,
+                sentenceCount = 3,
+            ),
+        )
+        assertContains(prompts[0], PromptFactory.STORY_SHOTS[0])
+        assertContains(prompts[1], PromptFactory.STORY_SHOTS[1])
+        assertContains(prompts[2], PromptFactory.STORY_SHOTS[2])
+        assertContains(prompts[0], "Story position: opening")
+        assertContains(prompts[1], "progressing beat 2")
+        assertContains(prompts[2], "Story position: ending")
+        assertTrue(prompts.distinct().size == prompts.size)
+        prompts.forEach { prompt ->
+            assertContains(prompt, "do not illustrate the whole story")
+            assertContains(prompt, "Never generate the same medium shot")
+        }
     }
 }

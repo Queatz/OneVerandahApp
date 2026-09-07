@@ -118,14 +118,16 @@ object PromptFactory {
         return finish(
             buildString {
                 append("Beautiful realistic expressive still for language learners. ")
-                append("This is scene $sceneNumber of $totalScenes in one continuous short story — keep the same people, wardrobe, and look. ")
+                append("This is scene $sceneNumber of $totalScenes in one continuous short story. ")
+                append("Keep the same people, wardrobe, and identity — but this is a NEW story beat, not a reprint of another scene. ")
                 if (fullText.isNotBlank()) {
-                    append("Full story text for continuity (do not render it): \"$fullText\". ")
+                    append("Full story text for continuity only (do not render it, and do not illustrate the whole story): \"$fullText\". ")
                 }
-                append("This scene's beat to depict (do not render the sentence): \"$sentence\". ")
+                append("THIS scene's unique beat to depict (do not render the sentence): \"$sentence\". ")
                 append(characterGuidance(characters))
-                append("Show a vivid story moment that captures the meaning with clear emotion and natural body language. ")
-                append("Setting: warm everyday life in Vietnam or Russia, whichever fits the text best. ")
+                append(sceneVariety(sentenceIndex, sentenceCount))
+                append("Show a vivid story moment that captures THIS beat's meaning with clear emotion and natural body language. ")
+                append("Setting: warm everyday life in Vietnam or Russia, whichever fits the text best — vary the room, street, weather, and props to match this beat. ")
                 append("Not a comic panel.")
             },
         )
@@ -169,6 +171,42 @@ object PromptFactory {
 
     private fun finish(body: String): String =
         "${body.trim()} Art style: $ART_STYLE. $NO_TEXT High quality square image."
+
+    /** Cycles across consecutive sentence stills so the camera never repeats the same setup. */
+    internal val STORY_SHOTS = listOf(
+        "wide establishing shot with environment storytelling, characters placed in a real space",
+        "medium shot at eye level, clear gesture and interaction, new foreground",
+        "intimate close-up of face and hands, shallow depth of field, emotion of this line",
+        "over-the-shoulder or three-quarter profile, layered foreground and background",
+        "low-angle or high-angle cinematic frame that changes the power of the moment",
+        "environmental insert: the beat's objects and setting take half the frame, character still present",
+        "two-shot with strong spatial gap or closeness that matches this beat's relationship",
+        "moment of motion — walking, reaching, turning — freeze a different body pose",
+    )
+
+    /**
+     * Film-like shot list so consecutive sentence stills do not collapse into the same
+     * medium portrait. Identity stays; camera, pose, and space change.
+     */
+    private fun sceneVariety(sentenceIndex: Int, sentenceCount: Int): String {
+        val index = sentenceIndex.coerceAtLeast(0)
+        val total = sentenceCount.coerceAtLeast(1)
+        val sceneNumber = index + 1
+        val shot = STORY_SHOTS[index % STORY_SHOTS.size]
+        val placeInStory = when {
+            total <= 1 -> "Story position: a complete cinematic moment."
+            sceneNumber == 1 -> "Story position: opening. Establish the world with a distinct location and first impression."
+            sceneNumber == total -> "Story position: ending. Different camera and emotional payoff — not a copy of the opening."
+            else -> "Story position: progressing beat $sceneNumber. Advance time, action, and space from earlier scenes."
+        }
+        return buildString {
+            append("Cinematic variety for this still: $shot. ")
+            append(placeInStory)
+            append(" Change the camera (wide vs close, high vs low, front vs side), the characters' poses, and the background arrangement. ")
+            append("If the sentence implies a new action or place, show that change. ")
+            append("Never generate the same medium shot of the same people standing in the same spot. ")
+        }
+    }
 
     private fun characterGuidance(characters: List<CharacterRef>): String = buildString {
         val refs = characters.filter { it.hasReferenceImage }
