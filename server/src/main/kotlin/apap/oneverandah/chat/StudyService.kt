@@ -33,6 +33,7 @@ import apap.oneverandah.api.StudyWordImageRequest
 import apap.oneverandah.api.StudyWordImageResponse
 import apap.oneverandah.api.StudyWordPlaygroundRequest
 import apap.oneverandah.api.StudyWordPlaygroundResponse
+import apap.oneverandah.images.PromptFactory
 import apap.oneverandah.model.Language
 import java.util.UUID
 import java.util.concurrent.ConcurrentHashMap
@@ -182,7 +183,7 @@ class StudyService(
     private val idGenerator: () -> String = { UUID.randomUUID().toString() },
 ) {
     private val log = LoggerFactory.getLogger(StudyService::class.java)
-    /** Shared async job store for playground comics, character portraits, and sentence visuals. */
+    /** Shared async job store for playground stills, character portraits, and sentence visuals. */
     private val studyImages = ConcurrentHashMap<String, StudyPlaygroundImageResponse>()
 
     /**
@@ -239,7 +240,7 @@ class StudyService(
 
     /**
      * Judges whether [rawRequest] uses the target word naturally, then starts an
-     * async comic-image job. Poll [playgroundImage] with the returned image id.
+     * async image job. Poll [playgroundImage] with the returned image id.
      */
     suspend fun playground(rawRequest: StudyWordPlaygroundRequest): StudyWordPlaygroundResponse {
         val request = requireNotNull(rawRequest.normalizedOrNull()) {
@@ -562,7 +563,7 @@ class StudyService(
         return StudyExpressGenerateResponse(sentences = sentences)
     }
 
-    /** Current comic/sentence/character-image job status (shared store). */
+    /** Current playground/sentence/character-image job status (shared store). */
     fun playgroundImage(imageId: String): StudyPlaygroundImageResponse? {
         val key = imageId.trim()
         if (key.isEmpty()) return null
@@ -579,7 +580,7 @@ class StudyService(
             imageId = imageId,
             prompt = playgroundComicPrompt(word = word, sentence = sentence, natural = natural),
             referenceImageUrls = emptyList(),
-            logLabel = "playground comic",
+            logLabel = "playground visual",
         )
     }
 
@@ -690,67 +691,23 @@ class StudyService(
     }
 }
 
-internal fun playgroundComicPrompt(word: String, sentence: String, natural: Boolean): String {
-    val sceneGuidance = if (natural) {
-        "Depict the learner's sentence as a vivid, natural everyday moment."
-    } else {
-        "Interpret the intended meaning of the learner's attempt and depict a corrected, natural everyday moment that uses the word correctly."
-    }
-    return buildString {
-        append("Expressive storybook art style single or double panel illustration for language learning. ")
-        append("Focus word/phrase: \"$word\". ")
-        append("Learner sentence: \"$sentence\". ")
-        append(sceneGuidance)
-        append(' ')
-        append("Art style: $STUDY_STORY_ART_STYLE. ")
-        append(
-            "Warm natural scene in storytelling vibe, clear character emotion, " +
-                "dynamic composition, no captions or letters, no border, no watermark, high quality square image.",
-        )
-    }
-}
+internal fun playgroundComicPrompt(word: String, sentence: String, natural: Boolean): String =
+    PromptFactory.forPlayground(word = word, sentence = sentence, natural = natural)
 
-/** Shared art direction so all study/catalog images stay in one expressive storybook world. */
-internal const val STUDY_STORY_ART_STYLE: String =
-    "expressive storybook art"
+/** Shared art direction so all study/catalog images stay in one realistic expressive world. */
+internal const val STUDY_STORY_ART_STYLE: String = PromptFactory.ART_STYLE
 
-/** Prompt for a single dissected word/phrase visual (word + contextual meaning). */
-internal fun wordVisualPrompt(word: String, contextualMeaning: String = ""): String = buildString {
-    append("Create an image to clearly illustrate the following in a helpful way. ")
-    appendLine()
-    append("**$word** ")
-    appendLine()
-    val meaning = contextualMeaning.trim()
-    if (meaning.isNotEmpty()) {
-        append("$meaning. ")
-    }
-    appendLine()
-    append("Style: $STUDY_STORY_ART_STYLE. ")
-    appendLine()
-    append(
-        "Absolutely no text, no letters, no numbers, no captions, no signs with writing, no logos, " +
-            "no speech bubbles, no border, no framing, no watermark, high quality square image.",
+/** Prompt for a single dissected word/phrase visual (meaning first; never title with the word). */
+internal fun wordVisualPrompt(word: String, contextualMeaning: String = ""): String =
+    PromptFactory.forWord(word = word, contextualMeaning = contextualMeaning)
+
+/** Character reference portrait used as a named identity anchor for later scenes. */
+internal fun characterPortraitPrompt(character: StudyCharacterDesign): String =
+    PromptFactory.forCharacterPortrait(
+        name = character.name,
+        role = character.role,
+        description = character.description,
     )
-}
-
-/** Character reference portrait used as a named identity anchor for later panels. */
-internal fun characterPortraitPrompt(character: StudyCharacterDesign): String = buildString {
-    val roleLabel = when (character.role.lowercase()) {
-        "secondary" -> "secondary supporting character"
-        else -> "main protagonist"
-    }
-    append("Character reference portrait for a continuous illustrated short story. ")
-    append("This image is ONLY a clean identity reference of one person. ")
-    append("Name: ${character.name}. Role: $roleLabel. ")
-    append("Appearance: ${character.description}. ")
-    append("Show a clear front three-quarter view, head-to-waist or full body, plain soft neutral background, ")
-    append("face and clothing highly readable, natural standing or gentle pose, no props that hide the face. ")
-    append("Art style: $STUDY_STORY_ART_STYLE. ")
-    append(
-        "Absolutely no text, no letters, no numbers, no captions, no name labels, no speech bubbles, " +
-            "no watermark, no border, no collage, high quality square image.",
-    )
-}
 
 /** Prompt for the Study-tab expressive visual attached to each source sentence. */
 internal fun sentenceVisualPrompt(
@@ -759,51 +716,13 @@ internal fun sentenceVisualPrompt(
     sentenceIndex: Int = 0,
     sentenceCount: Int = 1,
     characters: List<StudyStoryCharacter> = emptyList(),
-): String = buildString {
-    val panelNumber = sentenceIndex.coerceAtLeast(0) + 1
-    val totalPanels = sentenceCount.coerceAtLeast(1)
-    append("Expressive single-panel story illustration for language learners. ")
-    append("This is panel $panelNumber of $totalPanels in one continuous short story — keep the same people, wardrobe, and art style as the rest of the story. ")
-    if (fullText.isNotBlank()) {
-        append("Full story text for continuity: \"$fullText\". ")
-    }
-    append("This panel's beat / sentence to depict: \"$sentence\". ")
-
-    // Only characters with portrait URLs are attached as reference images (same order).
-    val refCharacters = characters.filter { !it.imageUrl.isNullOrBlank() }
-    if (refCharacters.isNotEmpty()) {
-        append("Named character reference images are attached in order. Match their identity exactly: ")
-        refCharacters.forEachIndexed { index, character ->
-            val roleLabel = if (character.role.equals("secondary", ignoreCase = true)) "secondary" else "main"
-            append("Image ${index + 1} is $roleLabel character \"${character.name}\"")
-            if (character.description.isNotBlank()) {
-                append(" (${character.description})")
-            }
-            append(". ")
-        }
-        append("Keep face, age, hair, skin, body type, and clothing consistent with those references. ")
-    } else if (characters.isNotEmpty()) {
-        append("Feature these named characters consistently: ")
-        characters.forEach { character ->
-            val roleLabel = if (character.role.equals("secondary", ignoreCase = true)) "secondary" else "main"
-            append("$roleLabel character \"${character.name}\"")
-            if (character.description.isNotBlank()) {
-                append(" — ${character.description}")
-            }
-            append(". ")
-        }
-    } else {
-        append("Invent one clear main character and keep them emotionally readable. ")
-    }
-
-    append("Show a vivid story moment that captures the meaning of this sentence with clear emotion and natural body language. ")
-    append("Setting: warm everyday life in Vietnam or Russia, whichever fits the text best. ")
-    append("Art style: $STUDY_STORY_ART_STYLE. ")
-    append(
-        "Absolutely no text, no letters, no numbers, no captions, no signs with writing, no logos, " +
-            "no speech bubbles, no border, no watermark, high quality square image.",
-    )
-}
+): String = PromptFactory.forSentence(
+    sentence = sentence,
+    fullText = fullText,
+    sentenceIndex = sentenceIndex,
+    sentenceCount = sentenceCount,
+    characters = characters.toImageCharacters(),
+)
 
 /** Backward-compatible overload used by older call sites/tests. */
 internal fun sentenceVisualPrompt(sentence: String): String =
@@ -821,49 +740,22 @@ internal fun playScenarioVisualPrompt(
     openingLine: String? = null,
     fullText: String = "",
     characters: List<StudyStoryCharacter> = emptyList(),
-): String = buildString {
-    append("Expressive single-panel story illustration for an interactive language role-play. ")
-    append("This is a continuous short story world — keep the same people, wardrobe, and art style. ")
-    if (fullText.isNotBlank()) {
-        append("Source study text for continuity: \"$fullText\". ")
+): String = PromptFactory.forPlayScenario(
+    description = description,
+    openingLine = openingLine,
+    fullText = fullText,
+    characters = characters.toImageCharacters(),
+)
+
+private fun List<StudyStoryCharacter>.toImageCharacters(): List<PromptFactory.CharacterRef> =
+    map { character ->
+        PromptFactory.CharacterRef(
+            name = character.name,
+            role = character.role,
+            description = character.description,
+            hasReferenceImage = !character.imageUrl.isNullOrBlank(),
+        )
     }
-    append("Scene setup to depict: \"$description\". ")
-    if (!openingLine.isNullOrBlank()) {
-        append("Spoken moment / dialogue vibe (do not render text): \"$openingLine\". ")
-    }
-    val refCharacters = characters.filter { !it.imageUrl.isNullOrBlank() }
-    if (refCharacters.isNotEmpty()) {
-        append("Named character reference images are attached in order. Match their identity exactly: ")
-        refCharacters.forEachIndexed { index, character ->
-            val roleLabel = if (character.role.equals("secondary", ignoreCase = true)) "secondary" else "main"
-            append("Image ${index + 1} is $roleLabel character \"${character.name}\"")
-            if (character.description.isNotBlank()) {
-                append(" (${character.description})")
-            }
-            append(". ")
-        }
-        append("Keep face, age, hair, skin, body type, and clothing consistent with those references. ")
-    } else if (characters.isNotEmpty()) {
-        append("Feature these named characters consistently: ")
-        characters.forEach { character ->
-            val roleLabel = if (character.role.equals("secondary", ignoreCase = true)) "secondary" else "main"
-            append("$roleLabel character \"${character.name}\"")
-            if (character.description.isNotBlank()) {
-                append(" — ${character.description}")
-            }
-            append(". ")
-        }
-    } else {
-        append("Invent clear characters that fit the scene and keep them emotionally readable. ")
-    }
-    append("Show a vivid conversational moment with clear emotion and natural body language. ")
-    append("Setting: warm everyday life in Vietnam or Russia, whichever fits the text best. ")
-    append("Art style: $STUDY_STORY_ART_STYLE. ")
-    append(
-        "Absolutely no text, no letters, no numbers, no captions, no signs with writing, no logos, " +
-            "no speech bubbles, no border, no watermark, high quality square image.",
-    )
-}
 
 internal fun normalizePlayScenarioDesigns(designs: List<StudyPlayScenarioDesign>): List<StudyPlayScenarioDesign> {
     val cleaned = designs.mapNotNull { design ->

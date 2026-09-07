@@ -110,7 +110,7 @@ class ChatSystem(
                 }
             } else {
                 log.warn(
-                    "Study playground comics disabled: ChatSystem.create() was called without a StorageService",
+                    "Study playground images disabled: ChatSystem.create() was called without a StorageService",
                 )
                 null
             }

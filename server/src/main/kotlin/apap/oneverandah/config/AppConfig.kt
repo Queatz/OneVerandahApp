@@ -85,8 +85,8 @@ data class OssConfig(
 /**
  * Qwen (DashScope) image-generation settings. [enabled] requires an API key.
  *
- * [model] / [endpoint] drive text-only generation (catalog covers, study playground
- * comics). Multimodal still models such as `qwen-image-3.0-pro` / `wan2.x-image` must not
+ * [model] / [endpoint] drive text-only generation (catalog covers, study stills).
+ * Multimodal still models such as `qwen-image-3.0-pro` / `wan2.x-image` must not
  * be paired with classic `text2image/image-synthesis` — DashScope rejects that with
  * `InvalidParameter: url error`. The client auto-routes those models through
  * [r2iEndpoint] (multimodal-generation) when needed.

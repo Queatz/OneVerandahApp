@@ -205,7 +205,7 @@ class DashScopeQwenClient(
     /**
      * Multimodal still-image generation (text-only or reference-grounded).
      *
-     * Shared by playground/catalog comics (`wan2.7-image` text-to-image) and
+     * Shared by playground/catalog stills (`qwen-image-3.0-pro` text-to-image) and
      * phrase/cover R2I. This endpoint rejects `X-DashScope-Async` (`AccessDenied:
      * current user api does not support asynchronous calls`), so the HTTP call
      * itself is synchronous. User-facing asynchrony lives in StorySystem jobs.

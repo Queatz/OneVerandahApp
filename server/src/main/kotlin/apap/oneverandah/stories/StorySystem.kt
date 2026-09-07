@@ -3,6 +3,7 @@ package apap.oneverandah.stories
 import apap.oneverandah.chat.StudyService
 import apap.oneverandah.chat.StudySessionsService
 import apap.oneverandah.config.AppConfig
+import apap.oneverandah.images.PromptFactory
 import apap.oneverandah.images.qwen.QwenClient
 import apap.oneverandah.images.storage.GeneratedImage
 import apap.oneverandah.images.storage.StorageService
@@ -111,13 +112,7 @@ class StorySystem(
             service.findCharacter(id)?.imageUrl?.takeIf { it.isNotBlank() }
         }
         val refs = (sceneUrls + characterUrls).distinct()
-        val fullPrompt = buildString {
-            append(prompt)
-            if (!prompt.contains(STORY_ART_STYLE, ignoreCase = true)) {
-                append(". Art style: $STORY_ART_STYLE, warm storytelling vibe, no text, no letters, no watermark.")
-            }
-        }
-        val generated = qwen.generate(fullPrompt, refs)
+        val generated = qwen.generate(PromptFactory.withArtDirection(prompt), refs)
         val objectKey = "stories/generated/${UUID.randomUUID()}.${generated.extension}"
         val imageUrl = storage.upload(objectKey, generated)
 
@@ -196,5 +191,3 @@ class StorySystem(
         }
     }
 }
-
-private const val STORY_ART_STYLE = "expressive storybook art"

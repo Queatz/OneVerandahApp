@@ -585,21 +585,25 @@ class StudyServiceTest {
     }
 
     @Test
-    fun `playground comic prompt mentions word and storybook style`() {
+    fun `playground prompt mentions word, sentence, and realistic style`() {
         val prompt = playgroundComicPrompt(word = "chào", sentence = "Xin chào!", natural = true)
-        assertContains(prompt, "Expressive storybook art style")
+        assertContains(prompt, "pretty realistic expressive art")
         assertContains(prompt, "chào")
         assertContains(prompt, "Xin chào!")
+        assertContains(prompt, "without writing either phrase")
+        assertContains(prompt, "zero written language")
     }
 
     @Test
-    fun `word visual prompt uses word and contextual meaning`() {
+    fun `word visual prompt uses meaning and forbids rendering the word`() {
         val prompt = wordVisualPrompt(word = "chào", contextualMeaning = "a friendly greeting")
-        assertContains(prompt, "expressive storybook art")
+        assertContains(prompt, "pretty realistic expressive art")
         assertContains(prompt, "chào")
         assertContains(prompt, "a friendly greeting")
+        assertContains(prompt, "Do not render these characters")
         assertContains(prompt, "Absolutely no text")
         assertContains(prompt, STUDY_STORY_ART_STYLE.take(20))
+        assertTrue(!prompt.contains("**chào**"))
     }
 
     @Test
@@ -738,7 +742,7 @@ class StudyServiceTest {
         assertContains(prompt, "no speech bubbles")
         assertContains(prompt, "language learners")
         assertContains(prompt, "Absolutely no text")
-        assertContains(prompt, "expressive storybook art")
+        assertContains(prompt, "pretty realistic expressive art")
     }
 
     @Test
@@ -765,7 +769,7 @@ class StudyServiceTest {
                 ),
             ),
         )
-        assertContains(prompt, "panel 1 of 2")
+        assertContains(prompt, "scene 1 of 2")
         assertContains(prompt, "Image 1 is main character \"Lan\"")
         assertContains(prompt, "Image 2 is secondary character \"Minh\"")
         assertContains(prompt, "Lan mỉm cười.")

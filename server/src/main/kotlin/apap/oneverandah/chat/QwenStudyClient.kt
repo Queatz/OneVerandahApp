@@ -673,7 +673,7 @@ class DashScopeStudyAiClient(
         - Include a secondary character (role "secondary", id "secondary") only when the text clearly involves another person, dialogue partner, family member, friend, or counterpart. Otherwise return only the main character.
         - Names must be short given names that fit the culture/setting of the source text (e.g. Vietnamese names for Vietnamese text, Russian names for Russian text).
         - "description" must be a concrete visual appearance in English: age range, gender presentation, ethnicity/region cues, hair, face, body type, and signature clothing/colors. Keep it under 40 words. No personality essays.
-        - Prefer everyday, warm, approachable people suitable for a language-learning storybook — not celebrities or copyrighted characters.
+        - Prefer everyday, warm, approachable people suitable for a language-learning story — not celebrities or copyrighted characters.
         - Do not invent a huge cast. Maximum two characters.
         - Do not wrap the JSON in markdown. Do not add extra keys.
     """.trimIndent()

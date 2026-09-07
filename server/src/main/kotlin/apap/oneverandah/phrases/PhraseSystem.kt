@@ -1,6 +1,7 @@
 package apap.oneverandah.phrases
 
 import apap.oneverandah.config.AppConfig
+import apap.oneverandah.images.PromptFactory
 import apap.oneverandah.images.qwen.DashScopeQwenClient
 import apap.oneverandah.images.qwen.PlaceholderQwenClient
 import apap.oneverandah.images.qwen.QwenClient
@@ -63,7 +64,7 @@ class PhraseSystem private constructor(
             .mapNotNull { id -> referencePhotos.findById(id)?.imageUrl?.takeIf { it.isNotBlank() } }
             .distinct()
 
-        val generated = qwen.generate(prompt, refUrls)
+        val generated = qwen.generate(PromptFactory.withArtDirection(prompt), refUrls)
         val objectKey = "phrases/generated/${UUID.randomUUID()}.${generated.extension}"
         val imageUrl = storage.upload(objectKey, generated)
 
