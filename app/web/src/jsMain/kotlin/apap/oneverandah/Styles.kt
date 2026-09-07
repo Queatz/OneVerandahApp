@@ -391,6 +391,17 @@ object Styles {
     const val studyStoryMeaningLabel = "study-story-meaning-label"
     const val studyStoryMeaning = "study-story-meaning"
     const val studyStoryContinue = "study-story-continue"
+    const val studyWatchPlayer = "study-watch-player"
+    const val studyWatchStage = "study-watch-stage"
+    const val studyWatchImage = "study-watch-image"
+    const val studyWatchStageStatus = "study-watch-stage-status"
+    const val studyWatchControls = "study-watch-controls"
+    const val studyWatchSeek = "study-watch-seek"
+    const val studyWatchSeekTrack = "study-watch-seek-track"
+    const val studyWatchSeekFill = "study-watch-seek-fill"
+    const val studyWatchSeekMarker = "study-watch-seek-marker"
+    const val studyWatchSeekThumb = "study-watch-seek-thumb"
+    const val studyWatchTime = "study-watch-time"
     const val storiesSoon = "stories-soon"
     const val storiesGrid = "stories-grid"
     const val challengeStartCard = "challenge-start-card"
@@ -3161,6 +3172,117 @@ object Styles {
             border-radius: 999px;
             font-size: 16px;
             font-weight: 700;
+        }
+        .${studyWatchPlayer} {
+            display: flex;
+            flex-direction: column;
+            align-items: stretch;
+            gap: 10px;
+            padding: 0 0 16px;
+            border-radius: 22px;
+            border: 1px solid color-mix(in srgb, var(--md-sys-color-primary) 22%, var(--md-sys-color-outline));
+            background:
+                radial-gradient(circle at top, color-mix(in srgb, var(--md-sys-color-primary) 14%, transparent), transparent 58%),
+                color-mix(in srgb, var(--md-sys-color-primary) 4%, var(--md-sys-color-surface));
+            box-shadow: 0 10px 28px color-mix(in srgb, var(--md-shadow) 35%, transparent);
+        }
+        .${studyWatchStage} {
+            position: relative;
+            width: 100%;
+            aspect-ratio: 16 / 9;
+            overflow: hidden;
+            border-radius: 21px 21px 0 0;
+            background: color-mix(in srgb, var(--md-sys-color-on-surface) 78%, var(--md-sys-color-surface));
+        }
+        .${studyWatchImage} {
+            position: absolute;
+            inset: 0;
+            width: 100%;
+            height: 100%;
+            display: block;
+            object-fit: cover;
+            object-position: center;
+            border: none;
+        }
+        .${studyWatchStageStatus} {
+            position: absolute;
+            inset: 0;
+            display: flex;
+            align-items: center;
+            justify-content: center;
+            gap: 10px;
+            color: var(--md-sys-color-on-surface-variant);
+            font-size: 13px;
+            background: color-mix(in srgb, var(--md-sys-color-surface-variant) 70%, transparent);
+        }
+        .${studyWatchControls} {
+            display: flex;
+            align-items: center;
+            gap: 12px;
+            padding: 0 16px;
+        }
+        .${studyWatchControls} .${sentencePlay} {
+            flex: 0 0 auto;
+            white-space: nowrap;
+        }
+        .${studyWatchPlayer} .${studyPreparingMeanings} {
+            padding: 0 16px;
+        }
+        .${studyWatchSeek} {
+            position: relative;
+            width: 100%;
+            flex: none;
+            height: 28px;
+            display: flex;
+            align-items: center;
+            cursor: pointer;
+            touch-action: none;
+            user-select: none;
+            padding: 0 16px;
+        }
+        .${studyWatchSeekTrack} {
+            position: relative;
+            width: 100%;
+            height: 6px;
+            border-radius: 99px;
+            background: color-mix(in srgb, var(--md-sys-color-outline) 55%, var(--md-sys-color-surface-variant));
+        }
+        .${studyWatchSeekFill} {
+            position: absolute;
+            left: 0;
+            top: 0;
+            bottom: 0;
+            border-radius: 99px;
+            background: var(--md-sys-color-primary);
+        }
+        .${studyWatchSeekMarker} {
+            position: absolute;
+            top: 50%;
+            width: 2px;
+            height: 12px;
+            transform: translate(-50%, -50%);
+            background: var(--md-sys-color-on-surface);
+            opacity: 0.55;
+            pointer-events: none;
+        }
+        .${studyWatchSeekThumb} {
+            position: absolute;
+            top: 50%;
+            width: 14px;
+            height: 14px;
+            border-radius: 50%;
+            transform: translate(-50%, -50%);
+            background: var(--md-sys-color-primary);
+            box-shadow: 0 0 0 3px color-mix(in srgb, var(--md-sys-color-primary) 22%, transparent);
+            pointer-events: none;
+        }
+        .${studyWatchTime} {
+            flex: 0 0 auto;
+            margin-left: auto;
+            font-size: 12px;
+            font-variant-numeric: tabular-nums;
+            color: var(--md-sys-color-on-surface-variant);
+            white-space: nowrap;
         }
         .${studyTokenDetail} {
             margin-top: 2px;

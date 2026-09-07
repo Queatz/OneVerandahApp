@@ -1,12 +1,14 @@
 package apap.oneverandah.screens
 
 import androidx.compose.runtime.Composable
+import androidx.compose.runtime.DisposableEffect
 import androidx.compose.runtime.LaunchedEffect
 import androidx.compose.runtime.getValue
 import androidx.compose.runtime.mutableStateMapOf
 import androidx.compose.runtime.mutableStateOf
 import androidx.compose.runtime.remember
 import androidx.compose.runtime.rememberCoroutineScope
+import androidx.compose.runtime.rememberUpdatedState
 import androidx.compose.runtime.setValue
 import apap.oneverandah.Styles
 import apap.oneverandah.api.ChatApi
@@ -49,6 +51,7 @@ import apap.oneverandah.i18n.Localization
 import apap.oneverandah.i18n.UiStrings
 import apap.oneverandah.state.Toaster
 import kotlinx.browser.document
+import kotlinx.browser.window
 import kotlinx.coroutines.async
 import kotlinx.coroutines.awaitAll
 import kotlinx.coroutines.coroutineScope
@@ -68,7 +71,9 @@ import org.jetbrains.compose.web.dom.Span
 import org.jetbrains.compose.web.dom.Text
 import org.w3c.dom.HTMLAudioElement
 import org.w3c.dom.HTMLElement
+import org.w3c.dom.HTMLImageElement
 import org.w3c.dom.HTMLInputElement
+import org.w3c.dom.events.Event
 import kotlin.js.Date
 
 @Composable
@@ -1397,7 +1402,7 @@ private fun StudySessionContent(
         mutableStateMapOf<String, String>()
     }
     var selectedRef by remember(session.text) { mutableStateOf<StudyTokenRef?>(null) }
-    var mode by remember(session.text) { mutableStateOf(StudySessionMode.STORY) }
+    var mode by remember(session.text) { mutableStateOf(StudySessionMode.WATCH) }
     var highlightedWord by remember(session.text) { mutableStateOf<String?>(null) }
     val speechItems = remember(session.text, session.textLanguageTag, session.sentences.map { it.text }) {
         session.sentences.mapIndexed { index, sentence -> "sentence-$index" to sentence.text }
@@ -1464,6 +1469,15 @@ private fun StudySessionContent(
     Div(attrs = { classes(Styles.studyModeTabs) }) {
         Button(attrs = {
             classes(Styles.chip)
+            if (mode == StudySessionMode.WATCH) classes(Styles.chipActive)
+            attr("type", "button")
+            onClick {
+                mode = StudySessionMode.WATCH
+                selectedRef = null
+            }
+        }) { Text(strings.chatWatchTab) }
+        Button(attrs = {
+            classes(Styles.chip)
             if (mode == StudySessionMode.STORY) classes(Styles.chipActive)
             attr("type", "button")
             onClick {
@@ -1516,6 +1530,15 @@ private fun StudySessionContent(
     }
 
     when (mode) {
+        StudySessionMode.WATCH -> {
+            StudyWatchTab(
+                session = session,
+                messageId = messageId,
+                imageFailed = imageFailed,
+                sentenceAudio = sentenceAudio,
+                strings = strings,
+            )
+        }
         StudySessionMode.STORY -> {
             StudyStoryTab(
                 session = session,
@@ -1760,7 +1783,112 @@ private fun StudySentenceVisual(
     }
 }
 
-private enum class StudySessionMode { STORY, STUDY, READ, WRITE, EXPRESS, PLAY }
+private enum class StudySessionMode { WATCH, STORY, STUDY, READ, WRITE, EXPRESS, PLAY }
+
+internal data class WatchSceneClip(
+    val sentenceIndex: Int,
+    val url: String,
+    val durationMs: Int,
+)
+
+internal data class WatchTimeline(
+    val clips: List<WatchSceneClip>,
+    val startsMs: List<Int>,
+    val totalMs: Int,
+)
+
+/** Prefers TTS word timings; falls back when the provider omitted them. */
+internal fun watchClipDurationMs(
+    words: List<SpeechWordTiming>,
+    fallbackMs: Int = 2_000,
+): Int {
+    if (words.isEmpty()) return fallbackMs.coerceAtLeast(1)
+    return words.maxOf { it.endMs }.coerceAtLeast(1)
+}
+
+internal fun buildWatchTimeline(clips: List<WatchSceneClip>): WatchTimeline {
+    var cursor = 0
+    val starts = ArrayList<Int>(clips.size)
+    val normalized = clips.map { clip ->
+        val duration = clip.durationMs.coerceAtLeast(1)
+        starts += cursor
+        cursor += duration
+        clip.copy(durationMs = duration)
+    }
+    return WatchTimeline(clips = normalized, startsMs = starts, totalMs = cursor)
+}
+
+internal fun watchSceneIndexAt(timeline: WatchTimeline, positionMs: Int): Int {
+    if (timeline.clips.isEmpty()) return 0
+    val pos = positionMs.coerceAtLeast(0)
+    timeline.clips.indices.forEach { index ->
+        val start = timeline.startsMs[index]
+        val end = start + timeline.clips[index].durationMs
+        if (pos < end) return index
+    }
+    return timeline.clips.lastIndex
+}
+
+internal fun watchLocalOffsetMs(timeline: WatchTimeline, positionMs: Int): Int {
+    if (timeline.clips.isEmpty()) return 0
+    val index = watchSceneIndexAt(timeline, positionMs)
+    val start = timeline.startsMs[index]
+    val duration = timeline.clips[index].durationMs
+    return (positionMs - start).coerceIn(0, duration)
+}
+
+/** Fractions along the seekbar for every scene after the first. */
+internal fun watchSceneMarkerFractions(timeline: WatchTimeline): List<Double> {
+    if (timeline.totalMs <= 0) return emptyList()
+    return timeline.startsMs.drop(1).map { start ->
+        (start.toDouble() / timeline.totalMs.toDouble()).coerceIn(0.0, 1.0)
+    }
+}
+
+internal fun formatWatchClock(ms: Int): String {
+    val totalSec = ms.coerceAtLeast(0) / 1_000
+    val minutes = totalSec / 60
+    val seconds = totalSec % 60
+    return "$minutes:${seconds.toString().padStart(2, '0')}"
+}
+
+internal const val WATCH_IMAGE_LOOKAHEAD = 3
+
+/** Current scene plus the next [lookahead] scenes so Watch can decode them before they appear. */
+internal fun watchPreloadIndexes(
+    currentIndex: Int,
+    sceneCount: Int,
+    lookahead: Int = WATCH_IMAGE_LOOKAHEAD,
+): List<Int> {
+    if (sceneCount <= 0) return emptyList()
+    val current = currentIndex.coerceIn(0, sceneCount - 1)
+    val last = (current + lookahead).coerceAtMost(sceneCount - 1)
+    return (current..last).toList()
+}
+
+private fun watchImageUrl(url: String?): String? =
+    url?.trim()?.takeIf { it.isNotEmpty() }
+
+private fun preloadWatchImages(
+    urls: Collection<String>,
+    holders: MutableMap<String, HTMLImageElement>,
+    decoded: MutableMap<String, Boolean>,
+) {
+    urls.forEach { url ->
+        if (url in holders) return@forEach
+        val img = document.createElement("img") as HTMLImageElement
+        img.onload = { _: Event -> decoded[url] = true }
+        img.src = url
+        holders[url] = img
+        if (img.complete && img.naturalWidth > 0) decoded[url] = true
+    }
+}
+
+private fun watchKeyboardTargetIsEditable(target: HTMLElement?): Boolean {
+    val tag = target?.tagName?.lowercase() ?: return false
+    if (tag == "input" || tag == "textarea" || tag == "select" || tag == "button") return true
+    return target.isContentEditable
+}
 
 private enum class StudyStoryPhase { WORDS, SENTENCES }
 
@@ -1818,6 +1946,329 @@ internal fun studyTextFromChatMessage(message: ChatMessage): String {
         .orEmpty()
     if (widgetTokens.isNotEmpty()) return widgetTokens
     return message.text.trim()
+}
+
+@Composable
+private fun StudyWatchTab(
+    session: StudySessionResponse,
+    messageId: String?,
+    imageFailed: Map<String, Boolean>,
+    sentenceAudio: Map<String, StudySentenceAudio>,
+    strings: UiStrings,
+) {
+    val measuredDurations = remember(session.text) { mutableStateMapOf<String, Int>() }
+    var sceneIndex by remember(session.text) { mutableStateOf(0) }
+    var positionMs by remember(session.text) { mutableStateOf(0) }
+    var wantPlaying by remember(session.text) { mutableStateOf(false) }
+    var didAutostart by remember(session.text) { mutableStateOf(false) }
+    var dragging by remember { mutableStateOf(false) }
+    var seekStartMs by remember(session.text) { mutableStateOf(0) }
+    var seekGeneration by remember(session.text) { mutableStateOf(0) }
+    val dragMsRef = remember { mutableStateOf(0) }
+
+    val clips = session.sentences.mapIndexedNotNull { index, _ ->
+        val key = "sentence-$index"
+        val clip = sentenceAudio[key] ?: return@mapIndexedNotNull null
+        val duration = measuredDurations[key] ?: watchClipDurationMs(clip.words)
+        WatchSceneClip(sentenceIndex = index, url = clip.url, durationMs = duration)
+    }
+    val timeline = remember(clips) { buildWatchTimeline(clips) }
+    val audioReady = session.sentences.isNotEmpty() &&
+        session.sentences.indices.all { index -> sentenceAudio.containsKey("sentence-$index") }
+    val latestTimeline by rememberUpdatedState(timeline)
+    val latestDragging by rememberUpdatedState(dragging)
+
+    fun previewSeek(ms: Int) {
+        val clamped = ms.coerceIn(0, timeline.totalMs.coerceAtLeast(0))
+        positionMs = clamped
+        dragMsRef.value = clamped
+    }
+
+    fun commitSeek(ms: Int) {
+        val clamped = ms.coerceIn(0, timeline.totalMs.coerceAtLeast(0))
+        sceneIndex = watchSceneIndexAt(timeline, clamped)
+        positionMs = clamped
+        seekStartMs = watchLocalOffsetMs(timeline, clamped)
+        seekGeneration += 1
+    }
+
+    val latestCommit = remember { mutableStateOf<(Int) -> Unit>({}) }
+    latestCommit.value = { ms -> commitSeek(ms) }
+
+    fun togglePlay() {
+        if (!audioReady || timeline.clips.isEmpty()) return
+        if (wantPlaying) {
+            val start = timeline.startsMs.getOrNull(sceneIndex) ?: 0
+            seekStartMs = (positionMs - start).coerceAtLeast(0)
+            wantPlaying = false
+            return
+        }
+        if (timeline.totalMs > 0 && positionMs >= timeline.totalMs) {
+            sceneIndex = 0
+            positionMs = 0
+            seekStartMs = 0
+        } else {
+            seekStartMs = watchLocalOffsetMs(timeline, positionMs)
+        }
+        wantPlaying = true
+        seekGeneration += 1
+    }
+
+    val latestTogglePlay = rememberUpdatedState { togglePlay() }
+    DisposableEffect(Unit) {
+        val onKey: (Event) -> Unit = { event ->
+            val key = event.asDynamic().key as? String
+            if (key == " " || key == "Spacebar") {
+                val target = event.target as? HTMLElement
+                if (!watchKeyboardTargetIsEditable(target)) {
+                    event.preventDefault()
+                    latestTogglePlay.value()
+                }
+            }
+        }
+        window.addEventListener("keydown", onKey)
+        onDispose { window.removeEventListener("keydown", onKey) }
+    }
+
+    LaunchedEffect(sentenceAudio.keys.joinToString()) {
+        sentenceAudio.forEach { (key, clip) ->
+            if (!measuredDurations.containsKey(key)) {
+                measuredDurations[key] = watchClipDurationMs(clip.words)
+            }
+            probeAudioDurationMs(clip.url) { ms ->
+                if (ms > 0) measuredDurations[key] = ms
+            }
+        }
+    }
+
+    DisposableEffect(Unit) {
+        stopActiveStudyAudio()
+        onDispose { stopActiveStudyAudio() }
+    }
+
+    LaunchedEffect(audioReady) {
+        if (audioReady && !didAutostart && timeline.clips.isNotEmpty()) {
+            didAutostart = true
+            wantPlaying = true
+        }
+    }
+
+    val currentClip = timeline.clips.getOrNull(sceneIndex) ?: timeline.clips.firstOrNull()
+    val latestSceneIndex by rememberUpdatedState(sceneIndex)
+
+    LaunchedEffect(wantPlaying, currentClip?.url, sceneIndex, seekGeneration, audioReady) {
+        val clip = currentClip ?: return@LaunchedEffect
+        if (!audioReady) return@LaunchedEffect
+        val startSec = seekStartMs / 1000.0
+        loadWatchAudioAt(
+            url = clip.url,
+            startSec = startSec,
+            play = wantPlaying,
+            onTime = { currentSec, durationSec ->
+                if (latestDragging) return@loadWatchAudioAt
+                if (durationSec > 0.0) {
+                    val durMs = (durationSec * 1000.0).toInt().coerceAtLeast(1)
+                    val key = "sentence-${clip.sentenceIndex}"
+                    if (measuredDurations[key] != durMs) {
+                        measuredDurations[key] = durMs
+                    }
+                }
+                val latest = latestTimeline
+                val index = latest.clips.indexOfFirst { it.sentenceIndex == clip.sentenceIndex }
+                    .takeIf { it >= 0 }
+                    ?: latestSceneIndex
+                val start = latest.startsMs.getOrNull(index) ?: 0
+                positionMs = start + (currentSec * 1000.0).toInt()
+            },
+            onEnded = {
+                val latest = latestTimeline
+                val index = latest.clips.indexOfFirst { it.sentenceIndex == clip.sentenceIndex }
+                    .takeIf { it >= 0 }
+                    ?: latestSceneIndex
+                val next = index + 1
+                if (next in latest.clips.indices) {
+                    sceneIndex = next
+                    positionMs = latest.startsMs.getOrNull(next) ?: positionMs
+                    seekStartMs = 0
+                } else {
+                    wantPlaying = false
+                    positionMs = latest.totalMs
+                    seekStartMs = latest.clips.lastOrNull()?.durationMs ?: 0
+                }
+            },
+        )
+    }
+
+    DisposableEffect(dragging) {
+        if (!dragging) {
+            return@DisposableEffect onDispose { }
+        }
+        val onUp: (org.w3c.dom.events.Event) -> Unit = {
+            dragging = false
+            latestCommit.value(dragMsRef.value)
+        }
+        document.addEventListener("mouseup", onUp)
+        document.addEventListener("touchend", onUp)
+        onDispose {
+            document.removeEventListener("mouseup", onUp)
+            document.removeEventListener("touchend", onUp)
+        }
+    }
+
+    val displayIndex = if (dragging) {
+        watchSceneIndexAt(timeline, positionMs).let { index ->
+            timeline.clips.getOrNull(index)?.sentenceIndex
+        }
+    } else {
+        currentClip?.sentenceIndex
+    } ?: sceneIndex.coerceIn(0, (session.sentences.size - 1).coerceAtLeast(0))
+    val sentence = session.sentences.getOrNull(displayIndex)
+    val imageFailKey = messageId?.let { "$it#$displayIndex" }
+    val visualFailed = imageFailKey != null && imageFailed[imageFailKey] == true
+    val targetImageUrl = watchImageUrl(sentence?.imageUrl)
+    val preloadUrls = watchPreloadIndexes(displayIndex, session.sentences.size).mapNotNull { index ->
+        watchImageUrl(session.sentences.getOrNull(index)?.imageUrl)
+    }
+    val decodedWatchImages = remember(session.text) { mutableStateMapOf<String, Boolean>() }
+    val watchImageHolders = remember(session.text) { mutableMapOf<String, HTMLImageElement>() }
+    var lastReadyImageUrl by remember(session.text) { mutableStateOf<String?>(null) }
+
+    LaunchedEffect(preloadUrls.joinToString(), targetImageUrl) {
+        val urls = buildList {
+            if (targetImageUrl != null) add(targetImageUrl)
+            addAll(preloadUrls)
+        }.distinct()
+        preloadWatchImages(urls, watchImageHolders, decodedWatchImages)
+    }
+
+    val targetDecoded = targetImageUrl != null && decodedWatchImages[targetImageUrl] == true
+    LaunchedEffect(targetImageUrl, targetDecoded, visualFailed) {
+        when {
+            targetDecoded -> lastReadyImageUrl = targetImageUrl
+            visualFailed && targetImageUrl == null -> lastReadyImageUrl = null
+        }
+    }
+
+    val progressPercent = if (timeline.totalMs <= 0) {
+        0.0
+    } else {
+        (positionMs.toDouble() / timeline.totalMs.toDouble() * 100.0).coerceIn(0.0, 100.0)
+    }
+    val markers = watchSceneMarkerFractions(timeline)
+    val overlayImageUrl = targetImageUrl?.takeIf { url ->
+        url != lastReadyImageUrl && decodedWatchImages[url] == true
+    }
+    val showWatchError = visualFailed && targetImageUrl == null && lastReadyImageUrl == null
+    val showWatchLoading = !showWatchError && lastReadyImageUrl == null && !targetDecoded
+
+    fun seekFromClientX(clientX: Double, element: HTMLElement) {
+        previewSeek(watchSeekMsFromClientX(clientX, element, timeline.totalMs))
+    }
+
+    Div(attrs = { classes(Styles.studyWatchPlayer) }) {
+        Div(attrs = { classes(Styles.studyWatchStage) }) {
+            lastReadyImageUrl?.let { url ->
+                Img(src = url, alt = strings.chatStudySentenceImageAlt, attrs = {
+                    classes(Styles.studyWatchImage)
+                })
+            }
+            overlayImageUrl?.let { url ->
+                Img(src = url, alt = strings.chatStudySentenceImageAlt, attrs = {
+                    classes(Styles.studyWatchImage)
+                })
+            }
+            if (showWatchError) {
+                Div(attrs = { classes(Styles.studyWatchStageStatus) }) {
+                    MaterialSymbol("image_not_supported")
+                    Span { Text(strings.chatStudySentenceImageError) }
+                }
+            } else if (showWatchLoading) {
+                Div(attrs = {
+                    classes(Styles.studyWatchStageStatus, Styles.studySentenceImageStatusBusy)
+                }) {
+                    MaterialSymbol("progress_activity")
+                    Span { Text(strings.chatStudySentenceImageLoading) }
+                }
+            }
+        }
+        Div(attrs = {
+            classes(Styles.studyWatchSeek)
+            attr("role", "slider")
+            attr("aria-label", strings.chatWatchSeekLabel)
+            attr("aria-valuemin", "0")
+            attr("aria-valuemax", timeline.totalMs.toString())
+            attr("aria-valuenow", positionMs.toString())
+            if (!audioReady) attr("aria-disabled", "true")
+            onMouseDown { event ->
+                if (!audioReady) return@onMouseDown
+                event.preventDefault()
+                val el = event.nativeEvent.currentTarget as? HTMLElement ?: return@onMouseDown
+                dragging = true
+                seekFromClientX(event.clientX.toDouble(), el)
+            }
+            onMouseMove { event ->
+                if (!dragging) return@onMouseMove
+                val el = event.nativeEvent.currentTarget as? HTMLElement ?: return@onMouseMove
+                seekFromClientX(event.clientX.toDouble(), el)
+            }
+            onTouchStart { event ->
+                if (!audioReady) return@onTouchStart
+                event.preventDefault()
+                val touch = event.touches.item(0) ?: return@onTouchStart
+                val el = event.nativeEvent.currentTarget as? HTMLElement ?: return@onTouchStart
+                dragging = true
+                seekFromClientX(touch.clientX.toDouble(), el)
+            }
+            onTouchMove { event ->
+                if (!dragging) return@onTouchMove
+                event.preventDefault()
+                val touch = event.touches.item(0) ?: return@onTouchMove
+                val el = event.nativeEvent.currentTarget as? HTMLElement ?: return@onTouchMove
+                seekFromClientX(touch.clientX.toDouble(), el)
+            }
+        }) {
+            Div(attrs = { classes(Styles.studyWatchSeekTrack) }) {
+                Div(attrs = {
+                    classes(Styles.studyWatchSeekFill)
+                    style { property("width", "$progressPercent%") }
+                })
+                markers.forEach { fraction ->
+                    Div(attrs = {
+                        classes(Styles.studyWatchSeekMarker)
+                        style { property("left", "${fraction * 100.0}%") }
+                    })
+                }
+                Div(attrs = {
+                    classes(Styles.studyWatchSeekThumb)
+                    style { property("left", "$progressPercent%") }
+                })
+            }
+        }
+        if (!audioReady) {
+            Div(attrs = { classes(Styles.studyPreparingMeanings) }) {
+                MaterialSymbol("progress_activity")
+                Text(strings.chatWatchPreparing)
+            }
+        }
+        Div(attrs = { classes(Styles.studyWatchControls) }) {
+            Button(attrs = {
+                classes(Styles.sentencePlay)
+                attr("type", "button")
+                if (!audioReady) attr("disabled", "")
+                attr(
+                    "aria-label",
+                    if (wantPlaying) strings.chatWatchPause else strings.chatWatchPlay,
+                )
+                onClick { togglePlay() }
+            }) {
+                MaterialSymbol(if (wantPlaying) "pause_circle" else "play_circle")
+                Text(if (wantPlaying) strings.chatWatchPause else strings.chatWatchPlay)
+            }
+            Span(attrs = { classes(Styles.studyWatchTime) }) {
+                Text("${formatWatchClock(positionMs)} / ${formatWatchClock(timeline.totalMs)}")
+            }
+        }
+    }
 }
 
 @Composable
@@ -3207,6 +3658,87 @@ private fun bindStudyAudioPlaybackState(
                 onEnded()
             }
         }
+    }
+}
+
+private fun watchSeekMsFromClientX(
+    clientX: Double,
+    element: HTMLElement,
+    totalMs: Int,
+): Int {
+    if (totalMs <= 0) return 0
+    val rect = element.getBoundingClientRect()
+    val width = rect.width
+    if (width <= 0.0) return 0
+    val fraction = ((clientX - rect.left) / width).coerceIn(0.0, 1.0)
+    return (fraction * totalMs).toInt()
+}
+
+private fun probeAudioDurationMs(url: String, onResult: (Int) -> Unit) {
+    val element = document.createElement("audio") as HTMLAudioElement
+    element.preload = "metadata"
+    element.src = url
+    element.asDynamic().onloadedmetadata = {
+        val duration = element.duration
+        if (duration.isFinite() && duration > 0) {
+            onResult((duration * 1000.0).toInt().coerceAtLeast(1))
+        }
+    }
+}
+
+private fun loadWatchAudioAt(
+    url: String,
+    startSec: Double,
+    play: Boolean,
+    onTime: (currentSec: Double, durationSec: Double) -> Unit,
+    onEnded: () -> Unit,
+) {
+    val existing = activeStudyAudio
+    val element = if (existing != null && activeStudyAudioUrl == url) {
+        existing
+    } else {
+        stopActiveStudyAudio()
+        (document.createElement("audio") as HTMLAudioElement).also { created ->
+            activeStudyAudio = created
+            activeStudyAudioUrl = url
+            created.src = url
+        }
+    }
+    clearStudyAudioHandlers(element)
+    if (play) {
+        studyAudioPlayingUrl = url
+    }
+    bindStudyAudioPlaybackState(element, url, onEnded)
+    element.asDynamic().ontimeupdate = {
+        if (activeStudyAudio === element) {
+            val duration = element.duration
+            val dur = if (duration.isFinite() && duration > 0) duration else 0.0
+            onTime(element.currentTime, dur)
+        }
+    }
+    fun applyStartAndMaybePlay() {
+        val duration = element.duration
+        val safeStart = if (duration.isFinite() && duration > 0) {
+            startSec.coerceIn(0.0, duration)
+        } else {
+            startSec.coerceAtLeast(0.0)
+        }
+        element.currentTime = safeStart
+        if (duration.isFinite() && duration > 0) {
+            onTime(safeStart, duration)
+        }
+        if (play) {
+            element.play()
+        } else {
+            element.pause()
+            studyAudioPlayingUrl = null
+        }
+    }
+    element.asDynamic().onloadedmetadata = {
+        applyStartAndMaybePlay()
+    }
+    if (element.readyState >= 1) {
+        applyStartAndMaybePlay()
     }
 }
 
