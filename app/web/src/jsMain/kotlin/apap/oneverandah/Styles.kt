@@ -463,6 +463,7 @@ object Styles {
     const val storyCoverCategory = "story-cover-category"
     const val storyCoverMeta = "story-cover-meta"
     const val storyReaderCover = "story-reader-cover"
+    const val storyReaderTitle = "story-reader-title"
     const val storyReaderNav = "story-reader-nav"
     const val storyLearningRow = "story-learning-row"
     const val storyPageMeta = "story-page-meta"
@@ -3536,6 +3537,9 @@ object Styles {
             gap: 12px;
             padding: 24px 8px 40px;
             text-align: center;
+            height: 100%;
+            justify-content: center;
+            align-items: center;
         }
         .${storiesGrid} {
             display: grid;
@@ -3593,6 +3597,13 @@ object Styles {
         }
         .${storyReaderCover} {
             aspect-ratio: 3 / 4;
+        }
+        .${storyReaderTitle} {
+            margin: 0 0 16px;
+            font-size: 32px;
+            font-weight: 700;
+            line-height: 1.2;
+            text-align: center;
         }
         .${storyLearningRow} {
             display: flex;

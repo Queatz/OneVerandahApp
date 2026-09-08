@@ -185,6 +185,7 @@ private fun StoryCover(
 ) {
     val strings = Localization.strings
     val hasProgress = StoryProgressStore.pageIndex(story.id) > 0
+    H2(attrs = { classes(Styles.storyReaderTitle) }) { Text(story.name) }
     if (!story.coverImageUrl.isNullOrBlank()) {
         Img(src = story.coverImageUrl!!, alt = story.name, attrs = {
             classes(Styles.storyReaderCover)
