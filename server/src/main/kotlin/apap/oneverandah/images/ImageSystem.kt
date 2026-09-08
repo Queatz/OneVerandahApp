@@ -186,15 +186,17 @@ class ImageSystem private constructor(
                 delayBetweenMs = config.generationDelayMs,
             )
 
-            // A FAILED image is only "permanently" failed until the next server
-            // restart: any image record left FAILED (e.g. from a previous run
-            // that ran out of retries) is reset to PENDING and re-queued here,
-            // so a fresh process always gives every image another chance
-            // instead of leaving it stuck forever.
-            runCatching { queue.rescheduleFailed() }
-                .onFailure {
-                    log.warn("Failed to reset FAILED images to PENDING on startup: {}", it.message)
-                }
+            // A fresh process always gives unfinished images another chance:
+            // FAILED records are reset and re-queued, and PENDING/GENERATING
+            // leftovers (the in-memory channel died with the previous process)
+            // are put back on the new workers. The hourly loop only retries
+            // FAILED so live waiting jobs are not duplicated.
+            runCatching {
+                queue.rescheduleFailed()
+                queue.resumeInterrupted()
+            }.onFailure {
+                log.warn("Failed to re-queue unfinished images on startup: {}", it.message)
+            }
 
             return ImageSystem(
                 config = config,

@@ -344,6 +344,82 @@ class ImageSystemTest {
     }
 
     @Test
+    fun seedEnqueueRequeuesPersistedPendingAfterRestart() = runBlocking {
+        val repo = InMemoryImageRepository()
+        val dir = Files.createTempDirectory("ov-pending-restart").toFile()
+        val generation = ImageGenerationService(
+            PlaceholderQwenClient(size = 32),
+            LocalStorageService(dir, "http://localhost"),
+            repo,
+            1,
+        )
+        val scope = CoroutineScope(SupervisorJob() + Dispatchers.Unconfined)
+        val queue = QueueService(generation, repo, scope, maxConcurrent = 1, delayBetweenMs = 0)
+
+        // Leftover from a previous process: the record is still PENDING in
+        // persistent storage, but the in-memory channel is empty.
+        val entity = ImageEntity(
+            id = "cat_massages",
+            targetId = "massages",
+            targetType = ImageTargetType.CATEGORY,
+            name = "Massages",
+            prompt = "p",
+            status = ImageStatus.PENDING,
+            createdAt = 1,
+            updatedAt = 1,
+        )
+        repo.save(entity)
+
+        queue.start()
+        // ImageSystem.seed() re-enqueues every catalog target on startup.
+        queue.enqueue(entity)
+
+        withTimeout(5_000) {
+            while (repo.findByImageId("cat_massages")?.status != ImageStatus.COMPLETED) {
+                delay(10)
+            }
+        }
+        scope.cancel()
+    }
+
+    @Test
+    fun resumeInterruptedRequeuesPersistedGeneratingAfterRestart() = runBlocking {
+        val repo = InMemoryImageRepository()
+        val dir = Files.createTempDirectory("ov-generating-restart").toFile()
+        val generation = ImageGenerationService(
+            PlaceholderQwenClient(size = 32),
+            LocalStorageService(dir, "http://localhost"),
+            repo,
+            1,
+        )
+        val scope = CoroutineScope(SupervisorJob() + Dispatchers.Unconfined)
+        val queue = QueueService(generation, repo, scope, maxConcurrent = 1, delayBetweenMs = 0)
+
+        repo.save(
+            ImageEntity(
+                id = "cat_massages",
+                targetId = "massages",
+                targetType = ImageTargetType.CATEGORY,
+                name = "Massages",
+                prompt = "p",
+                status = ImageStatus.GENERATING,
+                createdAt = 1,
+                updatedAt = 1,
+            ),
+        )
+
+        // ImageSystem.create() now resumes interrupted jobs before workers start.
+        queue.resumeInterrupted()
+        queue.start()
+        withTimeout(5_000) {
+            while (repo.findByImageId("cat_massages")?.status != ImageStatus.COMPLETED) {
+                delay(10)
+            }
+        }
+        scope.cancel()
+    }
+
+    @Test
     fun healthAndImagesEndpointsWork() = testApplication {
         val config = noEnvConfig()
         val system = ImageSystem.create(config)
