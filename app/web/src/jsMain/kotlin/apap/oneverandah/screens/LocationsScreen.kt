@@ -12,6 +12,7 @@ import apap.oneverandah.api.LocationApi
 import apap.oneverandah.components.MaterialSymbol
 import apap.oneverandah.components.Scaffold
 import apap.oneverandah.components.ShareDialog
+import apap.oneverandah.components.Spacer
 import apap.oneverandah.i18n.Localization
 import apap.oneverandah.locations.LocationCard
 import apap.oneverandah.locations.LocationLogic
@@ -119,6 +120,8 @@ fun LocationsScreen(
             }
         }
 
+        Spacer()
+
         when {
             loading -> P { Text(strings.locationsLoading) }
             visible.isEmpty() -> P(attrs = { classes(Styles.pinnedEmpty) }) { Text(strings.locationsEmpty) }
@@ -163,67 +166,67 @@ private fun LocationFeedCard(
         attr("role", "button")
         onClick { onOpen() }
     }) {
-        Div(attrs = { classes(Styles.locationCardPhotos) }) {
-            if (photos.isEmpty()) {
-                Div(attrs = { classes(Styles.locationCardPhotoFallback) }) {
-                    MaterialSymbol("location_on")
+        Div(attrs = { classes(Styles.locationCardMain) }) {
+            Div(attrs = { classes(Styles.locationCardPhotos) }) {
+                if (photos.isEmpty()) {
+                    Div(attrs = { classes(Styles.locationCardPhotoFallback) }) {
+                        MaterialSymbol("location_on")
+                    }
+                } else {
+                    photos.forEach { url ->
+                        Img(src = url, alt = card.name, attrs = { classes(Styles.locationCardPhoto) })
+                    }
                 }
-            } else {
-                photos.forEach { url ->
-                    Img(src = url, alt = card.name, attrs = { classes(Styles.locationCardPhoto) })
+                if (card.category.isNotBlank()) {
+                    Span(attrs = { classes(Styles.locationCardCategory) }) { Text(card.category) }
                 }
             }
-            if (card.category.isNotBlank()) {
-                Span(attrs = { classes(Styles.locationCardCategory) }) { Text(card.category) }
-            }
-        }
 
-        Div(attrs = { classes(Styles.locationCardBody) }) {
-            H2(attrs = { classes(Styles.locationCardName) }) {
-                Text(card.name.ifBlank { strings.locationsUntitled })
-            }
-            if (card.type.isNotBlank()) {
-                P(attrs = { classes(Styles.locationCardType) }) { Text(card.type) }
-            }
-            Span(attrs = {
-                classes(Styles.locationStatus)
-                classes(locationStatusClass(snapshot.displayStatus))
-            }) { Text(locationStatusLabel(snapshot.displayStatus, strings)) }
-            if (card.address.isNotBlank()) {
-                P(attrs = { classes(Styles.locationCardMeta) }) { Text(card.address) }
-            }
-            if (hours != null) {
-                P(attrs = { classes(Styles.locationCardHours) }) { Text(hours) }
-            }
-            card.highlights.take(3).forEach { highlight ->
-                P(attrs = { classes(Styles.locationCardHighlight) }) { Text("• $highlight") }
-            }
-            Div(attrs = {
-                classes(Styles.locationCardActions)
-                onClick { it.stopPropagation() }
-            }) {
-                Button(attrs = {
-                    classes(Styles.toolbarBtn)
-                    if (card.liked) classes(Styles.toolbarBtnActive)
-                    attr("type", "button")
-                    onClick { onLike() }
-                }) {
-                    Span(attrs = {
-                        classes(Styles.materialSymbols)
-                        if (card.liked) style { property("font-variation-settings", "'FILL' 1") }
-                    }) { Text("favorite") }
-                    Text("${card.likeCount}")
+            Div(attrs = { classes(Styles.locationCardBody) }) {
+                H2(attrs = { classes(Styles.locationCardName) }) {
+                    Text(card.name.ifBlank { strings.locationsUntitled })
                 }
-                Button(attrs = {
-                    classes(Styles.toolbarBtn)
-                    attr("type", "button")
-                    onClick { onShare() }
+                if (card.type.isNotBlank()) {
+                    P(attrs = { classes(Styles.locationCardType) }) { Text(card.type) }
+                }
+                Span(attrs = {
+                    classes(Styles.locationStatus)
+                    classes(locationStatusClass(snapshot.displayStatus))
+                }) { Text(locationStatusLabel(snapshot.displayStatus, strings)) }
+                if (hours != null) {
+                    P(attrs = { classes(Styles.locationCardHours) }) { Text(hours) }
+                }
+                if (card.address.isNotBlank()) {
+                    P(attrs = { classes(Styles.locationCardMeta) }) { Text(card.address) }
+                }
+                Div(attrs = {
+                    classes(Styles.locationCardActions)
+                    onClick { it.stopPropagation() }
                 }) {
-                    MaterialSymbol("ios_share")
-                    Text(strings.share)
+                    Button(attrs = {
+                        classes(Styles.toolbarBtn)
+                        if (card.liked) classes(Styles.toolbarBtnActive)
+                        attr("type", "button")
+                        onClick { onLike() }
+                    }) {
+                        Span(attrs = {
+                            classes(Styles.materialSymbols)
+                            if (card.liked) style { property("font-variation-settings", "'FILL' 1") }
+                        }) { Text("favorite") }
+                        Text("${card.likeCount}")
+                    }
+                    Button(attrs = {
+                        classes(Styles.toolbarBtn)
+                        attr("type", "button")
+                        onClick { onShare() }
+                    }) {
+                        MaterialSymbol("ios_share")
+                        Text(strings.share)
+                    }
                 }
             }
         }
+        LocationHighlights(card.highlights)
     }
 }
 

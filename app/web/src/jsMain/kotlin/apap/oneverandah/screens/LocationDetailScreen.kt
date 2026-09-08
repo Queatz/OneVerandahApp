@@ -29,6 +29,8 @@ import kotlinx.coroutines.delay
 import kotlinx.coroutines.launch
 import org.jetbrains.compose.web.attributes.InputType
 import org.jetbrains.compose.web.attributes.placeholder
+import org.jetbrains.compose.web.css.marginBottom
+import org.jetbrains.compose.web.css.px
 import org.jetbrains.compose.web.dom.Button
 import org.jetbrains.compose.web.dom.Div
 import org.jetbrains.compose.web.dom.H2
@@ -200,22 +202,24 @@ fun LocationDetailScreen(
                         }
                     }
                 }
-                H2 { Text(title) }
+                H2({
+                    style {
+                        marginBottom(0.px)
+                    }
+                }) { Text(title) }
                 if (card.type.isNotBlank()) {
                     P(attrs = { classes(Styles.locationCardType) }) { Text(card.type) }
                 }
-                Span(attrs = {
-                    classes(Styles.locationStatus)
-                    classes(locationStatusClass(snapshot?.displayStatus ?: card.displayStatus))
-                }) { Text(locationStatusLabel(snapshot?.displayStatus ?: card.displayStatus, strings)) }
+                LocationHoursSection(
+                    snapshot = snapshot ?: LocationLogic.hoursSnapshot(card.status, card.schedule, nowMs),
+                    schedule = card.schedule,
+                    nowMs = nowMs,
+                    strings = strings,
+                )
                 if (card.address.isNotBlank()) {
                     P(attrs = { classes(Styles.homePrompt) }) { Text(card.address) }
                 }
-                locationHoursLabel(snapshot ?: LocationLogic.hoursSnapshot(card.status, card.schedule, nowMs), strings)
-                    ?.let { hours -> P(attrs = { classes(Styles.locationCardHours) }) { Text(hours) } }
-                card.highlights.take(3).forEach { highlight ->
-                    P(attrs = { classes(Styles.locationCardHighlight) }) { Text("• $highlight") }
-                }
+                LocationHighlights(card.highlights)
                 Div(attrs = { classes(Styles.locationCardActions) }) {
                     Button(attrs = {
                         classes(Styles.toolbarBtn)

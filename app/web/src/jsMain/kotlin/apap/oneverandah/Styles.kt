@@ -420,6 +420,7 @@ object Styles {
     const val meetPickPhoto = "meet-pick-photo"
     const val meetAdminPhoto = "meet-admin-photo"
     const val locationCard = "location-card"
+    const val locationCardMain = "location-card-main"
     const val locationCardPhotos = "location-card-photos"
     const val locationCardPhoto = "location-card-photo"
     const val locationCardPhotoFallback = "location-card-photo-fallback"
@@ -429,8 +430,19 @@ object Styles {
     const val locationCardType = "location-card-type"
     const val locationCardMeta = "location-card-meta"
     const val locationCardHours = "location-card-hours"
-    const val locationCardHighlight = "location-card-highlight"
+    const val locationHoursInline = "location-hours-inline"
+    const val locationWeeklyHours = "location-weekly-hours"
+    const val locationWeeklyHoursRow = "location-weekly-hours-row"
+    const val locationWeeklyHoursDay = "location-weekly-hours-day"
+    const val locationWeeklyHoursTime = "location-weekly-hours-time"
+    const val locationWeeklyHoursClosed = "location-weekly-hours-closed"
+    const val locationWeeklyHoursToday = "location-weekly-hours-today"
     const val locationCardActions = "location-card-actions"
+    const val locationHighlights = "location-highlights"
+    const val locationHighlight = "location-highlight"
+    const val locationHighlightTone0 = "location-highlight-0"
+    const val locationHighlightTone1 = "location-highlight-1"
+    const val locationHighlightTone2 = "location-highlight-2"
     const val locationStatus = "location-status"
     const val locationStatusPlanning = "location-status-planning"
     const val locationStatusSoon = "location-status-soon"
@@ -2138,6 +2150,10 @@ object Styles {
             margin-top: 24px;
         }
         .${btnText} {
+            display: flex;
+            align-items: center;
+            justify-content: center;
+            gap: 8px;
             background: transparent;
             border: none;
             color: var(--md-sys-color-primary);
@@ -4027,7 +4043,6 @@ object Styles {
         .${meetAdminPhoto} {
             display: block;
             width: 100%;
-            max-height: 180px;
             object-fit: cover;
             border-radius: 12px;
             margin-bottom: 8px;
@@ -4038,12 +4053,18 @@ object Styles {
             padding: 12px;
             margin-bottom: 12px;
             display: flex;
-            gap: 12px;
+            flex-direction: column;
+            gap: 10px;
             cursor: pointer;
             border: 1px solid #ffffff16;
             box-shadow: 0 4px 8px -8px var(--md-shadow-light) inset;
             transition: background-color 0.2s, transform 0.1s, box-shadow 0.2s;
             user-select: none;
+        }
+        .${locationCardMain} {
+            display: flex;
+            gap: 12px;
+            min-width: 0;
         }
         .${locationCard}:hover {
             background-color: var(--md-sys-color-primary-container);
@@ -4109,14 +4130,55 @@ object Styles {
         }
         .${locationCardType},
         .${locationCardMeta},
-        .${locationCardHours},
-        .${locationCardHighlight} {
+        .${locationCardHours} {
             margin: 0;
             font-size: 13px;
             line-height: 1.35;
             color: var(--md-sys-color-on-surface-variant);
         }
         .${locationCardHours} { font-weight: 600; color: var(--md-sys-color-primary); }
+        .${locationHighlights} {
+            display: flex;
+            flex-direction: column;
+            gap: 6px;
+            width: 100%;
+            margin: 4px 0;
+        }
+        .${locationHighlight} {
+            display: flex;
+            align-items: center;
+            gap: 10px;
+            width: 100%;
+            margin: 0;
+            padding: 10px 14px;
+            border-radius: 16px;
+            font-size: 14px;
+            font-weight: 800;
+            line-height: 1.3;
+            letter-spacing: 0.01em;
+            box-sizing: border-box;
+        }
+        .${locationHighlight} .${materialSymbols} {
+            font-size: 18px;
+            flex: 0 0 auto;
+        }
+        .${locationHighlightTone0} {
+            background: linear-gradient(90deg, #ff8a6540, #ffcc8040);
+            color: #c45c26;
+        }
+        .${locationHighlightTone1} {
+            background: linear-gradient(90deg, #26a69a40, #80cbc440);
+            color: #0f766e;
+        }
+        .${locationHighlightTone2} {
+            background: linear-gradient(90deg, #7e57c240, #ce93d840);
+            color: #6a1b9a;
+        }
+        @media (prefers-color-scheme: dark) {
+            .${locationHighlightTone0} { color: #ffc59a; }
+            .${locationHighlightTone1} { color: #7ee0d0; }
+            .${locationHighlightTone2} { color: #e0b8ff; }
+        }
         .${locationCardActions} {
             display: flex;
             gap: 8px;
@@ -4127,7 +4189,7 @@ object Styles {
             align-self: flex-start;
             padding: 2px 8px;
             border-radius: 999px;
-            font-size: 11px;
+            font-size: 13px;
             font-weight: 700;
             letter-spacing: .02em;
         }
@@ -4135,6 +4197,50 @@ object Styles {
         .${locationStatusSoon} { background: #8ab4f533; color: #5b8def; }
         .${locationStatusOpen} { background: #7dcea033; color: #2e8b57; }
         .${locationStatusClosed} { background: #00000014; color: var(--md-sys-color-on-surface-variant); }
+        .${locationHoursInline} {
+            display: flex;
+            align-items: center;
+            gap: 8px;
+            flex-wrap: wrap;
+            margin: 4px 0 8px;
+        }
+        .${locationHoursInline} .${locationCardHours} { margin: 0; }
+        .${locationWeeklyHours} {
+            display: flex;
+            flex-direction: column;
+            gap: 2px;
+            width: 100%;
+            margin: 0 0 12px;
+            padding: 8px 12px;
+            box-sizing: border-box;
+            border-radius: 16px;
+            background: var(--md-sys-color-surface-container-high);
+        }
+        .${locationWeeklyHoursRow} {
+            display: flex;
+            align-items: baseline;
+            justify-content: space-between;
+            gap: 12px;
+            padding: 4px 0;
+            font-size: 13px;
+            line-height: 1.4;
+        }
+        .${locationWeeklyHoursDay} {
+            font-weight: 600;
+            min-width: 2.6em;
+            color: var(--md-sys-color-on-surface);
+        }
+        .${locationWeeklyHoursTime} {
+            color: var(--md-sys-color-on-surface-variant);
+            text-align: right;
+            font-variant-numeric: tabular-nums;
+        }
+        .${locationWeeklyHoursClosed} { color: var(--md-sys-color-outline); }
+        .${locationWeeklyHoursToday} .${locationWeeklyHoursDay},
+        .${locationWeeklyHoursToday} .${locationWeeklyHoursTime} {
+            color: var(--md-sys-color-primary);
+            font-weight: 700;
+        }
         .${locationDetailPhotos} {
             display: flex;
             gap: 8px;
@@ -4144,9 +4250,9 @@ object Styles {
             margin-bottom: 12px;
         }
         .${locationDetailPhoto} {
-            flex: 0 0 78%;
-            width: 78%;
-            aspect-ratio: 4 / 5;
+            flex: 0 0 1;
+            width: 100%;
+            aspect-ratio: 16 / 9;
             object-fit: cover;
             border-radius: 20px;
             scroll-snap-align: start;

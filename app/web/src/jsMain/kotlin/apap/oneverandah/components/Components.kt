@@ -170,10 +170,6 @@ private fun NavMenuItems(
         onNavigate()
         if (onHome != null) onHome() else router.navigate("/")
     }
-    DrawerItem("menu_book", strings.studyTitle) {
-        onNavigate()
-        router.navigate("/study")
-    }
     DrawerItem("location_on", strings.locationsTitle) {
         onNavigate()
         router.navigate("/locations")
@@ -181,6 +177,10 @@ private fun NavMenuItems(
     DrawerItem("handshake", strings.meetsTitle) {
         onNavigate()
         router.navigate("/meets")
+    }
+    DrawerItem("menu_book", strings.studyTitle) {
+        onNavigate()
+        router.navigate("/study")
     }
     DrawerItem("auto_stories", strings.storiesTitle) {
         onNavigate()
