@@ -24,6 +24,8 @@ import apap.oneverandah.screens.StudyScreen
 import apap.oneverandah.screens.PhrasesScreen
 import apap.oneverandah.screens.ChallengePlayerScreen
 import apap.oneverandah.screens.ChallengesScreen
+import apap.oneverandah.screens.LocationDetailScreen
+import apap.oneverandah.screens.LocationsScreen
 import apap.oneverandah.screens.MeetDetailScreen
 import apap.oneverandah.screens.MeetScreen
 import apap.oneverandah.screens.StoriesScreen
@@ -172,6 +174,23 @@ fun App() {
             }
         }
 
+        route("locations") {
+            string { locationId ->
+                LocationDetailScreen(
+                    locationId = locationId,
+                    onBack = { router.navigate("/locations") },
+                    onHome = { router.navigate("/") },
+                )
+            }
+            noMatch {
+                LocationsScreen(
+                    onBack = { router.navigate("/") },
+                    onHome = { router.navigate("/") },
+                    onOpenLocation = { id -> router.navigate("/locations/$id") },
+                )
+            }
+        }
+
         route("meets") {
             string { meetId ->
                 MeetDetailScreen(
@@ -234,6 +253,7 @@ fun App() {
                 onOpenStories = { router.navigate("/stories") },
                 onOpenChallenges = { router.navigate("/challenges") },
                 onOpenMeets = { router.navigate("/meets") },
+                onOpenLocations = { router.navigate("/locations") },
             )
         }
 
@@ -259,6 +279,7 @@ fun App() {
                 onOpenStories = { router.navigate("/stories") },
                 onOpenChallenges = { router.navigate("/challenges") },
                 onOpenMeets = { router.navigate("/meets") },
+                onOpenLocations = { router.navigate("/locations") },
             )
         }
     }

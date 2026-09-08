@@ -419,6 +419,33 @@ object Styles {
     const val meetDetailPhoto = "meet-detail-photo"
     const val meetPickPhoto = "meet-pick-photo"
     const val meetAdminPhoto = "meet-admin-photo"
+    const val locationCard = "location-card"
+    const val locationCardPhotos = "location-card-photos"
+    const val locationCardPhoto = "location-card-photo"
+    const val locationCardPhotoFallback = "location-card-photo-fallback"
+    const val locationCardCategory = "location-card-category"
+    const val locationCardBody = "location-card-body"
+    const val locationCardName = "location-card-name"
+    const val locationCardType = "location-card-type"
+    const val locationCardMeta = "location-card-meta"
+    const val locationCardHours = "location-card-hours"
+    const val locationCardHighlight = "location-card-highlight"
+    const val locationCardActions = "location-card-actions"
+    const val locationStatus = "location-status"
+    const val locationStatusPlanning = "location-status-planning"
+    const val locationStatusSoon = "location-status-soon"
+    const val locationStatusOpen = "location-status-open"
+    const val locationStatusClosed = "location-status-closed"
+    const val locationDetailPhotos = "location-detail-photos"
+    const val locationDetailPhoto = "location-detail-photo"
+    const val locationContentPhoto = "location-content-photo"
+    const val locationFooter = "location-footer"
+    const val locationMarkdown = "location-markdown"
+    const val locationMarkdownEm = "location-markdown-em"
+    const val locationAdminPhotos = "location-admin-photos"
+    const val locationAdminPhotoWrap = "location-admin-photo-wrap"
+    const val locationAdminPhoto = "location-admin-photo"
+    const val locationScheduleRow = "location-schedule-row"
     const val challengeCover = "challenge-cover"
     const val challengeCoverMedia = "challenge-cover-media"
     const val challengePickVideo = "challenge-pick-video"
@@ -4005,5 +4032,167 @@ object Styles {
             border-radius: 12px;
             margin-bottom: 8px;
         }
+        .${locationCard} {
+            background-color: var(--md-sys-color-surface-variant);
+            border-radius: 28px;
+            padding: 12px;
+            margin-bottom: 12px;
+            display: flex;
+            gap: 12px;
+            cursor: pointer;
+            border: 1px solid #ffffff16;
+            box-shadow: 0 4px 8px -8px var(--md-shadow-light) inset;
+            transition: background-color 0.2s, transform 0.1s, box-shadow 0.2s;
+            user-select: none;
+        }
+        .${locationCard}:hover {
+            background-color: var(--md-sys-color-primary-container);
+            box-shadow: 0 0 16px -4px #ffffff36;
+        }
+        .${locationCard}:active { transform: scale(0.99); }
+        .${locationCardPhotos} {
+            position: relative;
+            flex: 0 0 132px;
+            width: 132px;
+            height: 176px;
+            display: flex;
+            overflow-x: auto;
+            overflow-y: hidden;
+            scroll-snap-type: x mandatory;
+            -webkit-overflow-scrolling: touch;
+            border-radius: 20px;
+            background: var(--md-sys-color-surface-container-high);
+        }
+        .${locationCardPhoto} {
+            flex: 0 0 132px;
+            width: 132px;
+            height: 176px;
+            object-fit: cover;
+            scroll-snap-align: start;
+            display: block;
+        }
+        .${locationCardPhotoFallback} {
+            flex: 0 0 132px;
+            width: 132px;
+            height: 176px;
+            display: flex;
+            align-items: center;
+            justify-content: center;
+            color: var(--md-sys-color-primary);
+            font-size: 40px;
+        }
+        .${locationCardCategory} {
+            position: absolute;
+            left: 8px;
+            top: 8px;
+            z-index: 1;
+            padding: 4px 8px;
+            border-radius: 999px;
+            background: color-mix(in srgb, var(--md-sys-color-surface) 82%, transparent);
+            color: var(--md-sys-color-on-surface);
+            font-size: 11px;
+            font-weight: 600;
+            pointer-events: none;
+            backdrop-filter: blur(8px);
+        }
+        .${locationCardBody} {
+            flex: 1;
+            min-width: 0;
+            display: flex;
+            flex-direction: column;
+            gap: 4px;
+        }
+        .${locationCardName} {
+            margin: 0;
+            font-size: 18px;
+            line-height: 1.25;
+        }
+        .${locationCardType},
+        .${locationCardMeta},
+        .${locationCardHours},
+        .${locationCardHighlight} {
+            margin: 0;
+            font-size: 13px;
+            line-height: 1.35;
+            color: var(--md-sys-color-on-surface-variant);
+        }
+        .${locationCardHours} { font-weight: 600; color: var(--md-sys-color-primary); }
+        .${locationCardActions} {
+            display: flex;
+            gap: 8px;
+            margin-top: auto;
+            padding-top: 6px;
+        }
+        .${locationStatus} {
+            align-self: flex-start;
+            padding: 2px 8px;
+            border-radius: 999px;
+            font-size: 11px;
+            font-weight: 700;
+            letter-spacing: .02em;
+        }
+        .${locationStatusPlanning} { background: #f5d98a33; color: #c9a227; }
+        .${locationStatusSoon} { background: #8ab4f533; color: #5b8def; }
+        .${locationStatusOpen} { background: #7dcea033; color: #2e8b57; }
+        .${locationStatusClosed} { background: #00000014; color: var(--md-sys-color-on-surface-variant); }
+        .${locationDetailPhotos} {
+            display: flex;
+            gap: 8px;
+            overflow-x: auto;
+            scroll-snap-type: x mandatory;
+            -webkit-overflow-scrolling: touch;
+            margin-bottom: 12px;
+        }
+        .${locationDetailPhoto} {
+            flex: 0 0 78%;
+            width: 78%;
+            aspect-ratio: 4 / 5;
+            object-fit: cover;
+            border-radius: 20px;
+            scroll-snap-align: start;
+            background: var(--md-sys-color-surface-container-high);
+        }
+        .${locationContentPhoto} {
+            display: block;
+            width: 100%;
+            border-radius: 16px;
+            margin: 12px 0;
+            object-fit: cover;
+        }
+        .${locationFooter} {
+            display: flex;
+            gap: 8px;
+            align-items: stretch;
+        }
+        .${locationFooter} .${btnPrimary},
+        .${locationFooter} .${btnText} {
+            flex: 1;
+        }
+        .${locationMarkdown} p { margin: 0 0 12px; line-height: 1.55; }
+        .${locationMarkdown} h2, .${locationMarkdown} h3 { margin: 16px 0 8px; }
+        .${locationMarkdown} ul { margin: 0 0 12px; padding-left: 18px; }
+        .${locationMarkdownEm} { font-style: italic; }
+        .${locationAdminPhotos} {
+            display: flex;
+            gap: 8px;
+            flex-wrap: wrap;
+            margin-bottom: 8px;
+        }
+        .${locationAdminPhotoWrap} { width: 96px; }
+        .${locationAdminPhoto} {
+            width: 96px;
+            height: 96px;
+            object-fit: cover;
+            border-radius: 12px;
+            display: block;
+        }
+        .${locationScheduleRow} {
+            display: flex;
+            gap: 8px;
+            align-items: center;
+            margin-bottom: 8px;
+            flex-wrap: wrap;
+        }
+        .${locationScheduleRow} .${textInput} { width: 110px; flex: 0 0 auto; }
     """.trimIndent()
 }

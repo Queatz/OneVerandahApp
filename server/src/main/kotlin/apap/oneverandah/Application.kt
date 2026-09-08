@@ -12,9 +12,11 @@ import apap.oneverandah.routes.deviceRoutes
 import apap.oneverandah.routes.phraseRoutes
 import apap.oneverandah.routes.searchRoutes
 import apap.oneverandah.routes.challengeRoutes
+import apap.oneverandah.routes.locationRoutes
 import apap.oneverandah.routes.meetRoutes
 import apap.oneverandah.routes.storyRoutes
 import apap.oneverandah.challenges.ChallengeSystem
+import apap.oneverandah.locations.LocationSystem
 import apap.oneverandah.meets.MeetSystem
 import apap.oneverandah.stories.StorySystem
 import io.ktor.http.HttpHeaders
@@ -226,6 +228,14 @@ fun Application.module(
             )
         }
         meetRoutes(meetSystem, config)
+        val locationSystem = runBlocking {
+            LocationSystem.create(
+                config = config,
+                storage = imageSystem.storage,
+                httpClient = imageSystem.httpClient,
+            )
+        }
+        locationRoutes(locationSystem, config)
     }
 }
 
