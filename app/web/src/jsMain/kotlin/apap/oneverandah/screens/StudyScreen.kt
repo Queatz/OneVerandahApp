@@ -1247,6 +1247,9 @@ private fun StudySessionsList(
     var exact by remember { mutableStateOf(false) }
 
     Div(attrs = { classes(Styles.savedPanelBody) }) {
+        P(attrs = { classes(Styles.homePrompt, Styles.homePromptLarge) }) {
+            Text(strings.studyPrompt)
+        }
         ChatInput(
             value = draft,
             onValueChange = { draft = it },

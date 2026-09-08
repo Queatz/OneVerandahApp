@@ -234,6 +234,112 @@ class StoryRoutesTest {
     }
 
     @Test
+    fun generateCharacterStartsInBackgroundAndCanBePolled() = testApplication {
+        val gate = kotlinx.coroutines.CompletableDeferred<Unit>()
+        val config = AppConfig.load()
+        var capturedPrompt = ""
+        val system = testSystem(
+            qwen = object : apap.oneverandah.images.qwen.QwenClient {
+                override val kind: String = "slow"
+                override suspend fun generate(
+                    prompt: String,
+                    referenceImageUrls: List<String>,
+                ): GeneratedImage {
+                    capturedPrompt = prompt
+                    gate.await()
+                    return GeneratedImage(byteArrayOf(1, 2, 3), "image/png", "png")
+                }
+            },
+        )
+        application {
+            install(ContentNegotiation) { json(json) }
+            routing { storyRoutes(system, config) }
+        }
+        val token = AdminJwt.issue(config.adminJwtSecret)
+
+        val missingName = client.post("/api/v1/admin/story-characters/generate") {
+            header(HttpHeaders.Authorization, "Bearer $token")
+            contentType(ContentType.Application.Json)
+            setBody(
+                json.encodeToString(
+                    GenerateStoryCharacterRequest.serializer(),
+                    GenerateStoryCharacterRequest(name = "  ", prompt = "soft smile"),
+                ),
+            )
+        }
+        assertEquals(HttpStatusCode.BadRequest, missingName.status)
+
+        val missingPrompt = client.post("/api/v1/admin/story-characters/generate") {
+            header(HttpHeaders.Authorization, "Bearer $token")
+            contentType(ContentType.Application.Json)
+            setBody(
+                json.encodeToString(
+                    GenerateStoryCharacterRequest.serializer(),
+                    GenerateStoryCharacterRequest(name = "Lan", prompt = ""),
+                ),
+            )
+        }
+        assertEquals(HttpStatusCode.BadRequest, missingPrompt.status)
+
+        val started = client.post("/api/v1/admin/story-characters/generate") {
+            header(HttpHeaders.Authorization, "Bearer $token")
+            contentType(ContentType.Application.Json)
+            setBody(
+                json.encodeToString(
+                    GenerateStoryCharacterRequest.serializer(),
+                    GenerateStoryCharacterRequest(
+                        name = "Lan",
+                        prompt = "young woman with a soft smile and black hair",
+                    ),
+                ),
+            )
+        }
+        assertEquals(HttpStatusCode.Accepted, started.status)
+        val pending = json.decodeFromString(GenerateStoryCharacterResponse.serializer(), started.bodyAsText())
+        assertEquals(StoryLogic.IMAGE_JOB_PENDING, pending.status)
+        assertFalse(pending.jobId.isNullOrBlank())
+        assertEquals(null, pending.character)
+
+        val stillPending = client.get("/api/v1/admin/story-characters/generate/${pending.jobId}") {
+            header(HttpHeaders.Authorization, "Bearer $token")
+        }
+        assertEquals(HttpStatusCode.OK, stillPending.status)
+        assertEquals(
+            StoryLogic.IMAGE_JOB_PENDING,
+            json.decodeFromString(GenerateStoryCharacterResponse.serializer(), stillPending.bodyAsText()).status,
+        )
+
+        gate.complete(Unit)
+        var ready: GenerateStoryCharacterResponse? = null
+        repeat(50) {
+            val polled = client.get("/api/v1/admin/story-characters/generate/${pending.jobId}") {
+                header(HttpHeaders.Authorization, "Bearer $token")
+            }
+            val body = json.decodeFromString(GenerateStoryCharacterResponse.serializer(), polled.bodyAsText())
+            if (body.status == StoryLogic.IMAGE_JOB_READY) {
+                ready = body
+                return@repeat
+            }
+            kotlinx.coroutines.delay(20)
+        }
+        assertEquals(StoryLogic.IMAGE_JOB_READY, ready?.status)
+        val character = ready?.character ?: error("ready character job had no character")
+        assertEquals("Lan", character.name)
+        assertTrue(character.imageUrl.isNotBlank())
+        assertTrue(capturedPrompt.contains("Character reference portrait"))
+        assertTrue(capturedPrompt.contains("Lan"))
+        assertTrue(capturedPrompt.contains("young woman with a soft smile and black hair"))
+        assertTrue(capturedPrompt.contains("blank empty background"))
+        assertTrue(capturedPrompt.contains("Isolation override"))
+
+        val listed = client.get("/api/v1/admin/story-characters") {
+            header(HttpHeaders.Authorization, "Bearer $token")
+        }
+        val characters = json.decodeFromString(StoryCharactersResponse.serializer(), listed.bodyAsText())
+        assertEquals(listOf("Lan"), characters.characters.map { it.name })
+    }
+
+    @Test
     fun adminCanRenameCharacter() = testApplication {
         val config = AppConfig.load()
         val system = testSystem()

@@ -158,7 +158,6 @@ private fun SendPitchDialog(
         visible = visible,
         closeLabel = strings.close,
         onDismiss = { if (!busy) onDismiss() },
-        expanded = true,
     ) {
         Div(attrs = { classes(Styles.dialogHeader) }) {
             P(attrs = { classes(Styles.dialogTitle) }) { Text(strings.meetsPitchPerson(personName)) }

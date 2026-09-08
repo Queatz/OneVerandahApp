@@ -37,6 +37,7 @@ class StorySystem(
 ) {
     private val log = LoggerFactory.getLogger(StorySystem::class.java)
     private val jobs = ConcurrentHashMap<String, GenerateStoryImageResponse>()
+    private val characterJobs = ConcurrentHashMap<String, GenerateStoryCharacterResponse>()
     private val publishJobs = ConcurrentHashMap<String, StoryPublishResponse>()
 
     /** Start Qwen in the background so the admin request can return immediately. */
@@ -66,6 +67,56 @@ class StorySystem(
     }
 
     fun generateJob(jobId: String): GenerateStoryImageResponse? = jobs[jobId]
+
+    /** Start a study-style character portrait in the background. */
+    fun enqueueGenerateCharacter(request: GenerateStoryCharacterRequest): GenerateStoryCharacterResponse {
+        val name = request.name.trim()
+        require(name.isNotEmpty()) { "A character name is required" }
+        val prompt = request.prompt.trim()
+        require(prompt.isNotEmpty()) { "prompt is required" }
+        val jobId = "charjob-${jobIdGenerator()}"
+        val pending = GenerateStoryCharacterResponse(
+            jobId = jobId,
+            status = StoryLogic.IMAGE_JOB_PENDING,
+        )
+        characterJobs[jobId] = pending
+        scope.launch {
+            try {
+                val character = generateCharacter(request)
+                characterJobs[jobId] = GenerateStoryCharacterResponse(
+                    character = character,
+                    jobId = jobId,
+                    status = StoryLogic.IMAGE_JOB_READY,
+                )
+            } catch (e: Throwable) {
+                log.warn("Story character job {} failed: {}", jobId, e.message)
+                characterJobs[jobId] = GenerateStoryCharacterResponse(
+                    jobId = jobId,
+                    status = StoryLogic.IMAGE_JOB_FAILED,
+                    error = e.message ?: "Character generation failed",
+                )
+            }
+        }
+        return pending
+    }
+
+    fun characterJob(jobId: String): GenerateStoryCharacterResponse? = characterJobs[jobId]
+
+    suspend fun generateCharacter(request: GenerateStoryCharacterRequest): StoryCharacter {
+        val name = request.name.trim()
+        require(name.isNotEmpty()) { "A character name is required" }
+        val prompt = request.prompt.trim()
+        require(prompt.isNotEmpty()) { "prompt is required" }
+        val portraitPrompt = PromptFactory.forCharacterPortrait(
+            name = name,
+            role = "main",
+            description = prompt,
+        )
+        val generated = qwen.generate(portraitPrompt, emptyList())
+        val objectKey = "stories/characters/${UUID.randomUUID()}.${generated.extension}"
+        val imageUrl = storage.upload(objectKey, generated)
+        return service.addCharacter(name, imageUrl)
+    }
 
     /** Tokenize in the background so the admin request can return immediately. */
     suspend fun enqueuePublish(id: String, languageTag: String): StoryPublishResponse {

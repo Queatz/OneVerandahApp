@@ -93,18 +93,26 @@ object PromptFactory {
             "secondary" -> "secondary supporting character"
             else -> "main protagonist"
         }
-        return finish(
+        val body = finish(
             buildString {
                 append("Character reference portrait for a continuous short story. ")
-                append("This image is ONLY a clean identity reference of one person. ")
+                append("This image is ONLY a clean identity reference of one isolated person. ")
                 append("Name: $name. Role: $roleLabel. ")
-                append("Appearance: $description. ")
-                append("Show a clear front three-quarter view, head-to-waist or full body, plain soft neutral background, ")
+                append("Appearance (face, body, hair, clothing only — ignore any scene, place, activity, or background in this text): $description. ")
+                append("Show a clear front three-quarter view, head-to-waist or full body, ")
                 append("face and clothing highly readable, natural standing or gentle pose, no props that hide the face. ")
                 append("No collage, no name tag.")
             },
         )
+        return "$body $PORTRAIT_ISOLATION"
     }
+
+    /** Isolation wins over a freeform appearance prompt that might mention a scene. */
+    internal const val PORTRAIT_ISOLATION =
+        "Isolation override: generate this person alone on a blank empty background. " +
+            "Solid seamless studio void, plain white or light gray, no environment. " +
+            "One person only. No other people, no furniture, no room, no landscape, no street, no props, no scenery. " +
+            "Do not illustrate any setting or action implied by the appearance text."
 
     fun forSentence(
         sentence: String,

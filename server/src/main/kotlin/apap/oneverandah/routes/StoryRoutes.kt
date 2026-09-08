@@ -2,6 +2,7 @@ package apap.oneverandah.routes
 
 import apap.oneverandah.admin.AdminJwt
 import apap.oneverandah.config.AppConfig
+import apap.oneverandah.stories.GenerateStoryCharacterRequest
 import apap.oneverandah.stories.GenerateStoryImageRequest
 import apap.oneverandah.stories.StoriesResponse
 import apap.oneverandah.stories.StoryApiError
@@ -52,6 +53,8 @@ import io.ktor.server.routing.route
  *  - `POST   /api/v1/admin/stories/upload-image`
  *  - `GET    /api/v1/admin/story-characters`
  *  - `POST   /api/v1/admin/story-characters`
+ *  - `POST   /api/v1/admin/story-characters/generate` (starts a background job)
+ *  - `GET    /api/v1/admin/story-characters/generate/{jobId}`
  *  - `DELETE /api/v1/admin/story-characters/{id}`
  */
 fun Route.storyRoutes(system: StorySystem, config: AppConfig) {
@@ -282,6 +285,39 @@ fun Route.storyRoutes(system: StorySystem, config: AppConfig) {
             } catch (e: IllegalArgumentException) {
                 call.respond(HttpStatusCode.BadRequest, StoryApiError(e.message ?: "Invalid character"))
             }
+        }
+
+        post("/story-characters/generate") {
+            if (!requireAdmin(config)) return@post
+            val body = runCatching { call.receive<GenerateStoryCharacterRequest>() }.getOrNull()
+            if (body == null || body.name.isBlank() || body.prompt.isBlank()) {
+                call.respond(
+                    HttpStatusCode.BadRequest,
+                    StoryApiError(
+                        when {
+                            body == null || body.name.isBlank() -> "A character name is required"
+                            else -> "prompt is required"
+                        },
+                    ),
+                )
+                return@post
+            }
+            try {
+                call.respond(HttpStatusCode.Accepted, system.enqueueGenerateCharacter(body))
+            } catch (e: IllegalArgumentException) {
+                call.respond(HttpStatusCode.BadRequest, StoryApiError(e.message ?: "Invalid request"))
+            }
+        }
+
+        get("/story-characters/generate/{jobId}") {
+            if (!requireAdmin(config)) return@get
+            val jobId = call.parameters["jobId"].orEmpty()
+            val job = system.characterJob(jobId)
+            if (job == null) {
+                call.respond(HttpStatusCode.NotFound, StoryApiError("Character job '$jobId' not found"))
+                return@get
+            }
+            call.respond(job)
         }
 
         put("/story-characters/{id}") {

@@ -126,6 +126,21 @@ data class StoryCharacterRenameRequest(
     val name: String,
 )
 
+/** Admin request to generate a named character portrait from a prompt. */
+@Serializable
+data class GenerateStoryCharacterRequest(
+    val name: String,
+    val prompt: String,
+)
+
+@Serializable
+data class GenerateStoryCharacterResponse(
+    val character: StoryCharacter? = null,
+    val jobId: String? = null,
+    val status: String = StoryLogic.IMAGE_JOB_READY,
+    val error: String? = null,
+)
+
 @Serializable
 data class StoryImageUploadResponse(
     val imageUrl: String,

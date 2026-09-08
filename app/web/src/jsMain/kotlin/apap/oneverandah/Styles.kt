@@ -91,6 +91,13 @@ object Styles {
     const val successTitle = "success-title"
     const val successMessage = "success-message"
 
+    // Fullscreen photo viewer
+    const val photoDialog = "photo-dialog"
+    const val photoDialogVisible = "visible"
+    const val photoDialogImage = "photo-dialog-image"
+    const val photoDialogClose = "photo-dialog-close"
+    const val photoThumbButton = "photo-thumb-button"
+
     // Language flag
     const val langFlag = "lang-flag"
 
@@ -176,6 +183,8 @@ object Styles {
     const val dialogGrip = "dialog-grip"
     const val dialogHandle = "dialog-handle"
     const val dialogContent = "dialog-content"
+    const val dialogContentWithFooter = "dialog-content-with-footer"
+    const val dialogFooter = "dialog-footer"
     const val dialogHeader = "dialog-header"
     const val dialogTitle = "dialog-title"
     const val dialogService = "dialog-service"
@@ -1150,6 +1159,64 @@ object Styles {
         }
         .${successOverlay}.${successVisible} { opacity: 1; pointer-events: auto; }
 
+        /* Fullscreen photo viewer */
+        .${photoDialog} {
+            position: absolute;
+            inset: 0;
+            background: rgba(0, 0, 0, 0.92);
+            display: flex;
+            align-items: center;
+            justify-content: center;
+            padding: 56px 16px 16px;
+            opacity: 0;
+            pointer-events: none;
+            transition: opacity 0.25s ease;
+            z-index: 50;
+        }
+        .${photoDialog}.${photoDialogVisible} {
+            opacity: 1;
+            pointer-events: auto;
+        }
+        .${photoDialogImage} {
+            max-width: 100%;
+            max-height: 100%;
+            object-fit: contain;
+            border-radius: 12px;
+        }
+        .${photoDialogClose} {
+            position: absolute;
+            top: 12px;
+            right: 12px;
+            width: 44px;
+            height: 44px;
+            padding: 0;
+            border: none;
+            border-radius: 50%;
+            background: color-mix(in srgb, #000 45%, transparent);
+            color: #fff;
+            display: inline-flex;
+            align-items: center;
+            justify-content: center;
+            cursor: pointer;
+        }
+        .${photoDialogClose}:hover {
+            background: color-mix(in srgb, #000 65%, transparent);
+        }
+        .${photoThumbButton} {
+            display: block;
+            padding: 0;
+            border: none;
+            background: transparent;
+            cursor: pointer;
+            line-height: 0;
+            border-radius: 12px;
+            flex: 0 0 auto;
+            max-width: 100%;
+        }
+        .${photoThumbButton}:has(.${adminCoverPreview}) {
+            width: 100%;
+        }
+
         .${successCircle} {
             width: 96px;
             height: 96px;
@@ -1645,6 +1712,18 @@ object Styles {
             /* Allow the flex child to shrink so overflow-y scrolling works when
                the sheet is height-pinned (expanded). */
             min-height: 0;
+        }
+        .${dialogContent}.${dialogContentWithFooter} {
+            padding-bottom: 12px;
+        }
+        /* Pinned action row: stays below the scrollable body. */
+        .${dialogFooter} {
+            flex: 0 0 auto;
+            padding: 12px 24px 24px;
+            background-color: var(--md-sys-color-surface);
+        }
+        .${dialogFooter} .${dialogActions} {
+            margin-top: 0;
         }
         /* Grab area around the handle: large hit target, no native gestures. */
         .${dialogGrip} {
@@ -2587,7 +2666,6 @@ object Styles {
         }
         .${adminCoverPreview} {
             width: 100%;
-            max-height: 220px;
             object-fit: cover;
             border-radius: 16px;
             display: block;
@@ -2648,9 +2726,11 @@ object Styles {
             border-color: var(--md-sys-color-primary);
             box-shadow: 0 0 0 2px color-mix(in srgb, var(--md-sys-color-primary) 35%, transparent);
         }
+        .${adminRefTile} .${photoThumbButton} {
+            width: 100%;
+        }
         .${adminRefThumb} {
             width: 100%;
-            height: 88px;
             object-fit: cover;
             border-radius: 12px;
             display: block;

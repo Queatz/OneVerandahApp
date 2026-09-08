@@ -13,7 +13,10 @@ import apap.oneverandah.api.PhraseApi
 import apap.oneverandah.api.PhraseApiException
 import apap.oneverandah.api.firstFileOrNull
 import apap.oneverandah.components.BottomDialog
+import apap.oneverandah.components.FullscreenPhotoDialog
 import apap.oneverandah.components.MaterialSymbol
+import apap.oneverandah.components.PhotoPreview
+import apap.oneverandah.components.PhotoThumbButton
 import apap.oneverandah.components.PrimaryButton
 import apap.oneverandah.components.Scaffold
 import apap.oneverandah.components.SectionTitle
@@ -86,6 +89,7 @@ fun AdminScreen(onBack: () -> Unit) {
     var generateTarget by remember { mutableStateOf<GenerateTarget?>(null) }
     /** Latest generated image URL to inject into the open phrase editor. */
     var editorImageOverride by remember { mutableStateOf<String?>(null) }
+    var previewPhoto by remember { mutableStateOf<PhotoPreview?>(null) }
 
     fun refresh() {
         if (!AdminAuth.isSignedIn) return
@@ -124,7 +128,8 @@ fun AdminScreen(onBack: () -> Unit) {
 
     val anySheetOpen = showPassword || showEditor || pendingDeletePhrase != null ||
         pendingDeletePhoto != null || pendingDeleteCharacter != null || pendingDeleteVoice != null ||
-        renamingPhoto != null || renamingCharacter != null || generateTarget != null
+        renamingPhoto != null || renamingCharacter != null || generateTarget != null ||
+        previewPhoto != null
 
     Scaffold(
         title = strings.adminTitle,
@@ -205,6 +210,7 @@ fun AdminScreen(onBack: () -> Unit) {
                         },
                     )
                 },
+                onPhotoClick = { url, alt -> previewPhoto = PhotoPreview(url, alt) },
             )
 
             ConfirmDeleteDialog(
@@ -388,6 +394,13 @@ fun AdminScreen(onBack: () -> Unit) {
                     Toaster.show(strings.adminSaved)
                 },
             )
+
+            FullscreenPhotoDialog(
+                visible = previewPhoto != null,
+                imageUrl = previewPhoto?.url,
+                alt = previewPhoto?.alt.orEmpty(),
+                onDismiss = { previewPhoto = null },
+            )
         },
     ) {
         if (!AdminAuth.isSignedIn) {
@@ -468,9 +481,11 @@ fun AdminScreen(onBack: () -> Unit) {
                         Text(strings.adminCoverHint)
                     }
                     coverImageUrl?.let { url ->
-                        Img(src = url, alt = strings.adminCoverTitle, attrs = {
-                            classes(Styles.adminCoverPreview)
-                        })
+                        PhotoThumbButton(
+                            url = url,
+                            alt = strings.adminCoverTitle,
+                            thumbClass = Styles.adminCoverPreview,
+                        ) { previewPhoto = PhotoPreview(url, strings.adminCoverTitle) }
                         Spacer()
                     }
                     PrimaryButton(
@@ -495,9 +510,11 @@ fun AdminScreen(onBack: () -> Unit) {
                     Div(attrs = { classes(Styles.listCard) }) {
                         val thumb = phrase.imageUrl
                         if (!thumb.isNullOrBlank()) {
-                            Img(src = thumb, alt = phrase.spoken.en, attrs = {
-                                classes(Styles.adminPhraseThumb)
-                            })
+                            PhotoThumbButton(
+                                url = thumb,
+                                alt = phrase.spoken.en,
+                                thumbClass = Styles.adminPhraseThumb,
+                            ) { previewPhoto = PhotoPreview(thumb, phrase.spoken.en) }
                         } else {
                             MaterialSymbol(phrase.icon, extraClass = Styles.listIcon)
                         }
@@ -546,6 +563,7 @@ fun AdminScreen(onBack: () -> Unit) {
                     onUploaded = { refresh() },
                     onRenameRequest = { renamingPhoto = it },
                     onDeleteRequest = { pendingDeletePhoto = it },
+                    onPhotoClick = { previewPhoto = PhotoPreview(it.imageUrl, it.name) },
                 )
             }
             AdminTab.CHARACTERS -> {
@@ -555,6 +573,7 @@ fun AdminScreen(onBack: () -> Unit) {
                     onUploaded = { refresh() },
                     onRenameRequest = { renamingCharacter = it },
                     onDeleteRequest = { pendingDeleteCharacter = it },
+                    onPhotoClick = { previewPhoto = PhotoPreview(it.imageUrl, it.name) },
                 )
             }
             AdminTab.STORIES -> {
@@ -562,6 +581,7 @@ fun AdminScreen(onBack: () -> Unit) {
                     stories = stories,
                     loading = loading,
                     onRefresh = { refresh() },
+                    onPhotoClick = { url, alt -> previewPhoto = PhotoPreview(url, alt) },
                 )
             }
             AdminTab.MEETS -> {
@@ -633,6 +653,7 @@ private fun ClonedVoicesPanel(
         Language.KOREAN.tag to "한국어",
         Language.RUSSIAN.tag to "Русский",
         Language.SPANISH.tag to "Español",
+        Language.GERMAN.tag to "Deutsch",
     )
 
     SectionTitle(strings.adminVoicesTab)
@@ -761,6 +782,7 @@ private fun ReferencePhotosPanel(
     onUploaded: () -> Unit,
     onRenameRequest: (ReferencePhoto) -> Unit,
     onDeleteRequest: (ReferencePhoto) -> Unit,
+    onPhotoClick: (ReferencePhoto) -> Unit,
 ) {
     val strings = Localization.strings
     val scope = rememberCoroutineScope()
@@ -825,9 +847,11 @@ private fun ReferencePhotosPanel(
 
     photos.forEach { photo ->
         Div(attrs = { classes(Styles.adminPhotoCard) }) {
-            Img(src = photo.imageUrl, alt = photo.name, attrs = {
-                classes(Styles.adminPhotoThumb)
-            })
+            PhotoThumbButton(
+                url = photo.imageUrl,
+                alt = photo.name,
+                thumbClass = Styles.adminPhotoThumb,
+            ) { onPhotoClick(photo) }
             Div(attrs = { classes(Styles.listDetails) }) {
                 H2 { Text(photo.name) }
                 P { Text(photo.imageUrl) }
@@ -855,12 +879,16 @@ private fun AdminCharactersPanel(
     onUploaded: () -> Unit,
     onRenameRequest: (StoryCharacter) -> Unit,
     onDeleteRequest: (StoryCharacter) -> Unit,
+    onPhotoClick: (StoryCharacter) -> Unit,
 ) {
     val strings = Localization.strings
     val scope = rememberCoroutineScope()
     var name by remember { mutableStateOf("") }
+    var prompt by remember { mutableStateOf("") }
     var selectedFile by remember { mutableStateOf<File?>(null) }
     var uploading by remember { mutableStateOf(false) }
+    var generating by remember { mutableStateOf(false) }
+    val busy = uploading || generating
 
     SectionTitle(strings.adminCharactersTab)
     P(attrs = { classes(Styles.homePrompt) }) {
@@ -876,6 +904,8 @@ private fun AdminCharactersPanel(
         }
     }
 
+    AdminArea(strings.adminCharacterPrompt, prompt) { prompt = it }
+
     Div(attrs = { classes(Styles.textField) }) {
         Label(attrs = { classes(Styles.textLabel) }) { Text(strings.adminPhotoFile) }
         Input(type = InputType.File) {
@@ -888,25 +918,53 @@ private fun AdminCharactersPanel(
         }
     }
 
+    if (generating) {
+        P(attrs = { classes(Styles.homePrompt) }) { Text(strings.adminGenerating) }
+    }
+
     Div(attrs = { classes(Styles.adminUploadBlock) }) {
-        PrimaryButton(
-            label = if (uploading) strings.adminUploading else strings.adminUploadCharacter,
-            icon = "upload",
-            enabled = !uploading && name.isNotBlank() && selectedFile != null,
-        ) {
-            val file = selectedFile ?: return@PrimaryButton
-            scope.launch {
-                uploading = true
-                try {
-                    StoryApi.uploadCharacter(name.trim(), file)
-                    name = ""
-                    selectedFile = null
-                    Toaster.show(strings.adminSaved)
-                    onUploaded()
-                } catch (e: Throwable) {
-                    Toaster.show(e.message ?: strings.adminError)
-                } finally {
-                    uploading = false
+        Div(attrs = { classes(Styles.adminRowActions) }) {
+            PrimaryButton(
+                label = if (uploading) strings.adminUploading else strings.adminUploadCharacter,
+                icon = "upload",
+                enabled = !busy && name.isNotBlank() && selectedFile != null,
+            ) {
+                val file = selectedFile ?: return@PrimaryButton
+                scope.launch {
+                    uploading = true
+                    try {
+                        StoryApi.uploadCharacter(name.trim(), file)
+                        name = ""
+                        prompt = ""
+                        selectedFile = null
+                        Toaster.show(strings.adminSaved)
+                        onUploaded()
+                    } catch (e: Throwable) {
+                        Toaster.show(e.message ?: strings.adminError)
+                    } finally {
+                        uploading = false
+                    }
+                }
+            }
+            PrimaryButton(
+                label = if (generating) strings.adminGenerating else strings.adminGenerateCharacter,
+                icon = "auto_awesome",
+                enabled = !busy && name.isNotBlank() && prompt.isNotBlank(),
+            ) {
+                scope.launch {
+                    generating = true
+                    try {
+                        StoryApi.generateCharacter(name.trim(), prompt.trim())
+                        name = ""
+                        prompt = ""
+                        selectedFile = null
+                        Toaster.show(strings.adminSaved)
+                        onUploaded()
+                    } catch (e: Throwable) {
+                        Toaster.show(e.message ?: strings.adminError)
+                    } finally {
+                        generating = false
+                    }
                 }
             }
         }
@@ -920,6 +978,7 @@ private fun AdminCharactersPanel(
 
     AdminCharacterGrid(
         characters = characters,
+        onPhotoClick = onPhotoClick,
         actions = { character ->
             Div(attrs = { classes(Styles.adminRowActions) }) {
                 Button(attrs = {
@@ -1170,6 +1229,7 @@ private fun PhraseEditorDialog(
     onDismiss: () -> Unit,
     onSave: (PhraseUpsertRequest) -> Unit,
     onGeneratePhoto: (phraseId: String?, currentImageUrl: String?) -> Unit,
+    onPhotoClick: (url: String, alt: String) -> Unit,
 ) {
     val strings = Localization.strings
     val scope = rememberCoroutineScope()
@@ -1290,9 +1350,11 @@ private fun PhraseEditorDialog(
 
             AdminField(strings.adminImageUrl, imageUrl) { imageUrl = it }
             if (imageUrl.isNotBlank()) {
-                Img(src = imageUrl, alt = "", attrs = {
-                    classes(Styles.adminCoverPreview)
-                })
+                PhotoThumbButton(
+                    url = imageUrl,
+                    alt = spokenEn.ifBlank { strings.adminImageUrl },
+                    thumbClass = Styles.adminCoverPreview,
+                ) { onPhotoClick(imageUrl, spokenEn.ifBlank { strings.adminImageUrl }) }
             }
             Spacer()
             PrimaryButton(

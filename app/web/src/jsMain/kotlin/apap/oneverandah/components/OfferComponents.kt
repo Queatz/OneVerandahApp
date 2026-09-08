@@ -267,6 +267,8 @@ fun PriceSummaryView(
  * @param expanded when true, the sheet opens at max height and scrolls
  *   internally. Use for panels whose content starts short (loading) and later
  *   grows, so the sheet size stays stable.
+ * @param footer optional pinned action row rendered below the scrollable
+ *   content so Close/Save stay visible on tall sheets.
  */
 @Composable
 fun BottomDialog(
@@ -274,6 +276,7 @@ fun BottomDialog(
     closeLabel: String,
     onDismiss: () -> Unit,
     expanded: Boolean = false,
+    footer: (@Composable () -> Unit)? = null,
     content: @Composable () -> Unit,
 ) {
     // Drag-to-dismiss state for the bottom sheet handle.
@@ -379,8 +382,16 @@ fun BottomDialog(
             }
 
             // Scrollable content region; the grip handle above stays fixed.
-            Div(attrs = { classes(Styles.dialogContent) }) {
+            Div(attrs = {
+                classes(Styles.dialogContent)
+                if (footer != null) classes(Styles.dialogContentWithFooter)
+            }) {
                 content()
+            }
+            if (footer != null) {
+                Div(attrs = { classes(Styles.dialogFooter) }) {
+                    footer()
+                }
             }
         }
     }

@@ -84,4 +84,20 @@ class PromptFactoryTest {
             assertContains(prompt, "Never generate the same medium shot")
         }
     }
+
+    @Test
+    fun forCharacterPortrait_isolatesSubjectOnBlankBackground() {
+        val prompt = PromptFactory.forCharacterPortrait(
+            name = "Lan",
+            role = "main",
+            description = "tall sexy girl standing on a crowded beach at sunset",
+        )
+        assertContains(prompt, "Character reference portrait")
+        assertContains(prompt, "Lan")
+        assertContains(prompt, "tall sexy girl standing on a crowded beach at sunset")
+        assertContains(prompt, PromptFactory.PORTRAIT_ISOLATION)
+        assertContains(prompt, "blank empty background")
+        assertContains(prompt, "ignore any scene, place, activity, or background")
+        assertTrue(prompt.endsWith(PromptFactory.PORTRAIT_ISOLATION))
+    }
 }

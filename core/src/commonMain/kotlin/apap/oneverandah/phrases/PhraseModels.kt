@@ -75,7 +75,7 @@ data class PhraseReactRequest(
 @Serializable
 data class ReferencePhoto(
     val id: String,
-    /** Human-chosen label (e.g. `"infinity-pool-dusk"`). */
+    /** Human-chosen label (e.g. `"Infinity Pool Dusk"`). */
     val name: String,
     val imageUrl: String,
     val createdAt: Long = 0,

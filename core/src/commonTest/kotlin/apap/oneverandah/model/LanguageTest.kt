@@ -14,6 +14,7 @@ class LanguageTest {
         assertEquals("Korean", Language.KOREAN.displayName)
         assertEquals("Russian", Language.RUSSIAN.displayName)
         assertEquals("Spanish", Language.SPANISH.displayName)
+        assertEquals("German", Language.GERMAN.displayName)
         Language.entries.forEach { language ->
             assertFalse(language.displayName.contains(language.tag, ignoreCase = false))
             assertEquals(language.displayName.first(), language.displayName.first().uppercaseChar())
@@ -28,11 +29,28 @@ class LanguageTest {
     }
 
     @Test
+    fun fromTagResolvesGerman() {
+        assertEquals(Language.GERMAN, Language.fromTag("de"))
+        assertEquals(Language.GERMAN, Language.fromTag("de-DE"))
+        assertEquals(Language.GERMAN, Language.fromTag("de-AT"))
+        assertEquals(Language.GERMAN, Language.fromTag("de-CH"))
+    }
+
+    @Test
     fun localizedTextResolvesSpanish() {
         val textWithSpanish = LocalizedText(en = "Hello", vi = "Xin chào", es = "Hola")
         assertEquals("Hola", textWithSpanish.resolve(Language.SPANISH))
 
         val textDefaultSpanish = LocalizedText(en = "Hello", vi = "Xin chào")
         assertEquals("Hello", textDefaultSpanish.resolve(Language.SPANISH))
+    }
+
+    @Test
+    fun localizedTextResolvesGerman() {
+        val textWithGerman = LocalizedText(en = "Hello", vi = "Xin chào", de = "Hallo")
+        assertEquals("Hallo", textWithGerman.resolve(Language.GERMAN))
+
+        val textDefaultGerman = LocalizedText(en = "Hello", vi = "Xin chào")
+        assertEquals("Hello", textDefaultGerman.resolve(Language.GERMAN))
     }
 }

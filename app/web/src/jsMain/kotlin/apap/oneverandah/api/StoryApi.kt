@@ -1,5 +1,7 @@
 package apap.oneverandah.api
 
+import apap.oneverandah.stories.GenerateStoryCharacterRequest
+import apap.oneverandah.stories.GenerateStoryCharacterResponse
 import apap.oneverandah.stories.GenerateStoryImageRequest
 import apap.oneverandah.stories.GenerateStoryImageResponse
 import apap.oneverandah.stories.StoriesResponse
@@ -274,6 +276,50 @@ object StoryApi {
         val text = response.text().await()
         if (!response.ok) throw StoryApiException(errorMessage(text, response.status.toInt()))
         return json.decodeFromString(StoryCharacter.serializer(), text)
+    }
+
+    suspend fun generateCharacter(name: String, prompt: String): StoryCharacter {
+        val started = startGenerateCharacter(GenerateStoryCharacterRequest(name = name, prompt = prompt))
+        val jobId = started.jobId?.trim().orEmpty()
+        if (jobId.isEmpty() || started.status == StoryLogic.IMAGE_JOB_READY) {
+            return started.character ?: throw StoryApiException("Character generation failed")
+        }
+        if (started.status == StoryLogic.IMAGE_JOB_FAILED) {
+            throw StoryApiException(started.error ?: "Character generation failed")
+        }
+        repeat(180) {
+            delay(2_000)
+            val job = fetchCharacterJob(jobId)
+            when (job.status) {
+                StoryLogic.IMAGE_JOB_READY ->
+                    return job.character ?: throw StoryApiException("Character generation failed")
+                StoryLogic.IMAGE_JOB_FAILED ->
+                    throw StoryApiException(job.error ?: "Character generation failed")
+            }
+        }
+        throw StoryApiException("Character generation timed out")
+    }
+
+    private suspend fun startGenerateCharacter(
+        request: GenerateStoryCharacterRequest,
+    ): GenerateStoryCharacterResponse {
+        val response = client.post("${base()}/api/v1/admin/story-characters/generate") {
+            authed()
+            contentType(ContentType.Application.Json)
+            setBody(json.encodeToString(GenerateStoryCharacterRequest.serializer(), request))
+        }
+        val text = response.bodyAsText()
+        if (!response.status.isSuccess() && response.status.value != 202) {
+            throw StoryApiException(errorMessage(text, response.status.value))
+        }
+        return json.decodeFromString(GenerateStoryCharacterResponse.serializer(), text)
+    }
+
+    private suspend fun fetchCharacterJob(jobId: String): GenerateStoryCharacterResponse {
+        val response = client.get("${base()}/api/v1/admin/story-characters/generate/$jobId") { authed() }
+        val text = response.bodyAsText()
+        if (!response.status.isSuccess()) throw StoryApiException(errorMessage(text, response.status.value))
+        return json.decodeFromString(GenerateStoryCharacterResponse.serializer(), text)
     }
 
     suspend fun renameCharacter(id: String, name: String): StoryCharacter {

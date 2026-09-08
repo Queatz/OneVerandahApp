@@ -19,6 +19,7 @@ import org.jetbrains.compose.web.dom.Button
 import org.jetbrains.compose.web.dom.ContentBuilder
 import org.jetbrains.compose.web.dom.Div
 import org.jetbrains.compose.web.dom.H1
+import org.jetbrains.compose.web.dom.Img
 import org.jetbrains.compose.web.dom.P
 import org.jetbrains.compose.web.dom.Span
 import org.jetbrains.compose.web.dom.Text
@@ -572,6 +573,89 @@ fun SuccessOverlay(
             Div(attrs = { classes(Styles.footer) }) {
                 PrimaryButton(label = doneLabel, icon = "check_circle", onClick = onDone)
             }
+        }
+    }
+}
+
+data class PhotoPreview(val url: String, val alt: String = "")
+
+@Composable
+fun PhotoThumbButton(
+    url: String,
+    alt: String,
+    thumbClass: String,
+    onClick: () -> Unit,
+) {
+    Button(attrs = {
+        classes(Styles.photoThumbButton)
+        attr("type", "button")
+        onClick { onClick() }
+    }) {
+        Img(src = url, alt = alt, attrs = { classes(thumbClass) })
+    }
+}
+
+/**
+ * Fullscreen photo viewer with a close (X) button.
+ *
+ * Keep this composable mounted and toggle [visible] so the fade in/out plays.
+ * Clicking the dimmed backdrop or the X dismisses the dialog.
+ */
+@Composable
+fun FullscreenPhotoDialog(
+    visible: Boolean,
+    imageUrl: String?,
+    alt: String = "",
+    onDismiss: () -> Unit,
+) {
+    val strings = Localization.strings
+    var rendered by remember { mutableStateOf(visible) }
+    var open by remember { mutableStateOf(false) }
+    var shownUrl by remember { mutableStateOf(imageUrl) }
+    var shownAlt by remember { mutableStateOf(alt) }
+
+    LaunchedEffect(imageUrl, alt, visible) {
+        if (!imageUrl.isNullOrBlank()) {
+            shownUrl = imageUrl
+            shownAlt = alt
+        }
+        if (visible) {
+            rendered = true
+            open = false
+            delay(16)
+            open = true
+        } else if (rendered) {
+            open = false
+            delay(250)
+            rendered = false
+        }
+    }
+
+    val url = shownUrl
+    if (!rendered || url.isNullOrBlank()) return
+
+    Div(attrs = {
+        classes(Styles.photoDialog)
+        if (open) classes(Styles.photoDialogVisible)
+        attr("role", "dialog")
+        attr("aria-modal", "true")
+        attr("aria-label", shownAlt.ifBlank { strings.close })
+        onClick { onDismiss() }
+    }) {
+        Img(src = url, alt = shownAlt, attrs = {
+            classes(Styles.photoDialogImage)
+            onClick { it.stopPropagation() }
+        })
+        Button(attrs = {
+            classes(Styles.photoDialogClose)
+            attr("type", "button")
+            attr("aria-label", strings.close)
+            onClick {
+                it.stopPropagation()
+                onDismiss()
+            }
+        }) {
+            MaterialSymbol("close")
         }
     }
 }

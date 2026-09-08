@@ -14,6 +14,7 @@ import apap.oneverandah.api.StoryApiException
 import apap.oneverandah.api.firstFileOrNull
 import apap.oneverandah.components.BottomDialog
 import apap.oneverandah.components.MaterialSymbol
+import apap.oneverandah.components.PhotoThumbButton
 import apap.oneverandah.components.PrimaryButton
 import apap.oneverandah.components.SectionTitle
 import apap.oneverandah.components.Spacer
@@ -54,6 +55,7 @@ fun AdminStoriesPanel(
     stories: List<Story>,
     loading: Boolean,
     onRefresh: () -> Unit,
+    onPhotoClick: (url: String, alt: String) -> Unit,
 ) {
     val strings = Localization.strings
     val scope = rememberCoroutineScope()
@@ -84,9 +86,11 @@ fun AdminStoriesPanel(
     stories.forEach { story ->
         Div(attrs = { classes(Styles.listCard) }) {
             if (!story.coverImageUrl.isNullOrBlank()) {
-                Img(src = story.coverImageUrl!!, alt = story.name, attrs = {
-                    classes(Styles.adminPhraseThumb)
-                })
+                PhotoThumbButton(
+                    url = story.coverImageUrl!!,
+                    alt = story.name,
+                    thumbClass = Styles.adminPhraseThumb,
+                ) { onPhotoClick(story.coverImageUrl!!, story.name) }
             } else {
                 MaterialSymbol("auto_stories", extraClass = Styles.listIcon)
             }
@@ -163,6 +167,7 @@ fun AdminStoriesPanel(
             editing = null
             onRefresh()
         },
+        onPhotoClick = onPhotoClick,
     )
     PublishStoryDialog(
         story = publishTarget,
@@ -314,6 +319,7 @@ private fun StoryEditorDialog(
     initial: Story?,
     onDismiss: () -> Unit,
     onSaved: () -> Unit,
+    onPhotoClick: (url: String, alt: String) -> Unit,
 ) {
     val strings = Localization.strings
     val scope = rememberCoroutineScope()
@@ -359,7 +365,50 @@ private fun StoryEditorDialog(
         }
     }
 
-    BottomDialog(visible = visible, closeLabel = strings.close, onDismiss = onDismiss) {
+    BottomDialog(
+        visible = visible,
+        closeLabel = strings.close,
+        onDismiss = onDismiss,
+        footer = {
+            Div(attrs = { classes(Styles.dialogActions) }) {
+                Button(attrs = {
+                    classes(Styles.btnText)
+                    attr("type", "button")
+                    onClick { onDismiss() }
+                }) { Text(strings.close) }
+                PrimaryButton(
+                    label = strings.adminSave,
+                    icon = "save",
+                    enabled = name.isNotBlank() && !saving,
+                ) {
+                    scope.launch {
+                        saving = true
+                        try {
+                            val request = StoryUpsertRequest(
+                                name = name.trim(),
+                                category = category.trim(),
+                                coverImageUrl = coverUrl.trim().takeIf { it.isNotEmpty() },
+                                pages = pages.map { page ->
+                                    StoryPageUpsert(
+                                        id = page.id.takeUnless { it.startsWith("page-new-") },
+                                        photoUrl = page.photoUrl,
+                                        text = page.text,
+                                    )
+                                },
+                            )
+                            if (initial == null) StoryApi.createStory(request) else StoryApi.updateStory(initial.id, request)
+                            Toaster.show(strings.adminSaved)
+                            onSaved()
+                        } catch (e: Throwable) {
+                            Toaster.show(e.message ?: strings.adminError)
+                        } finally {
+                            saving = false
+                        }
+                    }
+                }
+            }
+        },
+    ) {
         Div(attrs = { classes(Styles.dialogHeader) }) {
             P(attrs = { classes(Styles.dialogTitle) }) {
                 Text(if (initial == null) strings.adminAddBook else strings.adminEditBook)
@@ -369,7 +418,11 @@ private fun StoryEditorDialog(
             AdminStoryField(strings.adminBookName, name) { name = it }
             AdminStoryField(strings.adminBookCategory, category, strings.adminBookCategoryPlaceholder) { category = it }
             if (coverUrl.isNotBlank()) {
-                Img(src = coverUrl, alt = "", attrs = { classes(Styles.adminCoverPreview) })
+                PhotoThumbButton(
+                    url = coverUrl,
+                    alt = name.ifBlank { strings.adminGenerateCover },
+                    thumbClass = Styles.adminCoverPreview,
+                ) { onPhotoClick(coverUrl, name.ifBlank { strings.adminGenerateCover }) }
                 Spacer()
             }
             if (generatingCover) {
@@ -405,7 +458,16 @@ private fun StoryEditorDialog(
             pages.forEachIndexed { index, page ->
                 Div(attrs = { classes(Styles.adminCoverCard) }) {
                     if (!page.photoUrl.isNullOrBlank()) {
-                        Img(src = page.photoUrl!!, alt = "", attrs = { classes(Styles.adminCoverPreview) })
+                        PhotoThumbButton(
+                            url = page.photoUrl!!,
+                            alt = page.text.take(80).ifBlank { strings.adminGeneratePhoto },
+                            thumbClass = Styles.adminCoverPreview,
+                        ) {
+                            onPhotoClick(
+                                page.photoUrl!!,
+                                page.text.take(80).ifBlank { strings.adminGeneratePhoto },
+                            )
+                        }
                     }
                     if (page.id in generatingPages) {
                         P(attrs = { classes(Styles.homePrompt) }) { Text(strings.adminGenerating) }
@@ -461,43 +523,6 @@ private fun StoryEditorDialog(
                 pages = pages + StoryPage(id = "page-new-${pages.size}", text = "")
             }
         }
-        Div(attrs = { classes(Styles.dialogActions) }) {
-            Button(attrs = {
-                classes(Styles.btnText)
-                attr("type", "button")
-                onClick { onDismiss() }
-            }) { Text(strings.close) }
-            PrimaryButton(
-                label = strings.adminSave,
-                icon = "save",
-                enabled = name.isNotBlank() && !saving,
-            ) {
-                scope.launch {
-                    saving = true
-                    try {
-                        val request = StoryUpsertRequest(
-                            name = name.trim(),
-                            category = category.trim(),
-                            coverImageUrl = coverUrl.trim().takeIf { it.isNotEmpty() },
-                            pages = pages.map { page ->
-                                StoryPageUpsert(
-                                    id = page.id.takeUnless { it.startsWith("page-new-") },
-                                    photoUrl = page.photoUrl,
-                                    text = page.text,
-                                )
-                            },
-                        )
-                        if (initial == null) StoryApi.createStory(request) else StoryApi.updateStory(initial.id, request)
-                        Toaster.show(strings.adminSaved)
-                        onSaved()
-                    } catch (e: Throwable) {
-                        Toaster.show(e.message ?: strings.adminError)
-                    } finally {
-                        saving = false
-                    }
-                }
-            }
-        }
     }
 
     StoryGeneratePhotoDialog(
@@ -537,7 +562,9 @@ private fun StoryGeneratePhotoDialog(
     var sceneName by remember { mutableStateOf("") }
     var sceneFile by remember { mutableStateOf<File?>(null) }
     var characterName by remember { mutableStateOf("") }
+    var characterPrompt by remember { mutableStateOf("") }
     var characterFile by remember { mutableStateOf<File?>(null) }
+    var generatingCharacter by remember { mutableStateOf(false) }
 
     LaunchedEffect(visible) {
         if (!visible) return@LaunchedEffect
@@ -545,7 +572,36 @@ private fun StoryGeneratePhotoDialog(
         characters = runCatching { StoryApi.fetchCharacters() }.getOrDefault(emptyList())
     }
 
-    BottomDialog(visible = visible, closeLabel = strings.close, onDismiss = onDismiss) {
+    BottomDialog(
+        visible = visible,
+        closeLabel = strings.close,
+        onDismiss = onDismiss,
+        footer = {
+            Div(attrs = { classes(Styles.dialogActions) }) {
+                Button(attrs = {
+                    classes(Styles.btnText)
+                    attr("type", "button")
+                    onClick { onDismiss() }
+                }) { Text(strings.close) }
+                PrimaryButton(
+                    label = strings.adminGenerate,
+                    icon = "auto_awesome",
+                    enabled = prompt.isNotBlank(),
+                ) {
+                    onStart(
+                        GenerateStoryImageRequest(
+                            prompt = prompt.trim(),
+                            scenePhotoIds = selectedScenes.toList(),
+                            characterIds = selectedCharacters.toList(),
+                            storyId = storyId,
+                            pageId = pageId,
+                            asCover = asCover,
+                        ),
+                    )
+                }
+            }
+        },
+    ) {
         Div(attrs = { classes(Styles.dialogHeader) }) {
             P(attrs = { classes(Styles.dialogTitle) }) { Text(strings.adminGeneratePhoto) }
         }
@@ -614,6 +670,13 @@ private fun StoryGeneratePhotoDialog(
                 },
             )
             AdminStoryField(strings.adminCharacterName, characterName) { characterName = it }
+            Div(attrs = { classes(Styles.textField) }) {
+                Label(attrs = { classes(Styles.textLabel) }) { Text(strings.adminCharacterPrompt) }
+                TextArea(characterPrompt) {
+                    classes(Styles.textArea)
+                    onInput { characterPrompt = it.value }
+                }
+            }
             Input(type = InputType.File) {
                 classes(Styles.textInput)
                 attr("accept", "image/*")
@@ -621,47 +684,51 @@ private fun StoryGeneratePhotoDialog(
                     characterFile = (it.nativeEvent.target as? HTMLInputElement)?.firstFileOrNull()
                 }
             }
+            if (generatingCharacter) {
+                P(attrs = { classes(Styles.homePrompt) }) { Text(strings.adminGenerating) }
+            }
             Spacer()
-            PrimaryButton(
-                label = strings.adminUploadCharacter,
-                icon = "upload",
-                enabled = characterName.isNotBlank() && characterFile != null,
-            ) {
-                val file = characterFile ?: return@PrimaryButton
-                scope.launch {
-                    try {
-                        StoryApi.uploadCharacter(characterName.trim(), file)
-                        characterName = ""
-                        characterFile = null
-                        characters = StoryApi.fetchCharacters()
-                        Toaster.show(strings.adminSaved)
-                    } catch (e: Throwable) {
-                        Toaster.show(e.message ?: strings.adminError)
+            Div(attrs = { classes(Styles.adminRowActions) }) {
+                PrimaryButton(
+                    label = strings.adminUploadCharacter,
+                    icon = "upload",
+                    enabled = !generatingCharacter && characterName.isNotBlank() && characterFile != null,
+                ) {
+                    val file = characterFile ?: return@PrimaryButton
+                    scope.launch {
+                        try {
+                            StoryApi.uploadCharacter(characterName.trim(), file)
+                            characterName = ""
+                            characterPrompt = ""
+                            characterFile = null
+                            characters = StoryApi.fetchCharacters()
+                            Toaster.show(strings.adminSaved)
+                        } catch (e: Throwable) {
+                            Toaster.show(e.message ?: strings.adminError)
+                        }
                     }
                 }
-            }
-        }
-        Div(attrs = { classes(Styles.dialogActions) }) {
-            Button(attrs = {
-                classes(Styles.btnText)
-                attr("type", "button")
-                onClick { onDismiss() }
-            }) { Text(strings.close) }
-            PrimaryButton(
-                label = strings.adminGenerate,
-                icon = "auto_awesome",
-                enabled = prompt.isNotBlank(),
-            ) {
-                onStart(
-                    GenerateStoryImageRequest(
-                        prompt = prompt.trim(),
-                        scenePhotoIds = selectedScenes.toList(),
-                        characterIds = selectedCharacters.toList(),
-                        storyId = storyId,
-                        pageId = pageId,
-                        asCover = asCover,
-                    ),
-                )
+                PrimaryButton(
+                    label = if (generatingCharacter) strings.adminGenerating else strings.adminGenerateCharacter,
+                    icon = "auto_awesome",
+                    enabled = !generatingCharacter && characterName.isNotBlank() && characterPrompt.isNotBlank(),
+                ) {
+                    scope.launch {
+                        generatingCharacter = true
+                        try {
+                            StoryApi.generateCharacter(characterName.trim(), characterPrompt.trim())
+                            characterName = ""
+                            characterPrompt = ""
+                            characterFile = null
+                            characters = StoryApi.fetchCharacters()
+                            Toaster.show(strings.adminSaved)
+                        } catch (e: Throwable) {
+                            Toaster.show(e.message ?: strings.adminError)
+                        } finally {
+                            generatingCharacter = false
+                        }
+                    }
+                }
             }
         }
     }
@@ -672,6 +739,7 @@ fun AdminCharacterGrid(
     characters: List<StoryCharacter>,
     selectedIds: Set<String> = emptySet(),
     onSelect: ((StoryCharacter) -> Unit)? = null,
+    onPhotoClick: ((StoryCharacter) -> Unit)? = null,
     actions: (@Composable (StoryCharacter) -> Unit)? = null,
 ) {
     Div(attrs = { classes(Styles.adminRefGrid) }) {
@@ -691,7 +759,7 @@ fun AdminCharacterGrid(
                     classes(Styles.adminRefTile)
                     if (selected) classes(Styles.adminRefTileSelected)
                 }) {
-                    AdminCharacterTileBody(character)
+                    AdminCharacterTileBody(character, onPhotoClick)
                     actions?.invoke(character)
                 }
             }
@@ -700,8 +768,19 @@ fun AdminCharacterGrid(
 }
 
 @Composable
-private fun AdminCharacterTileBody(character: StoryCharacter) {
-    Img(src = character.imageUrl, alt = character.name, attrs = { classes(Styles.adminRefThumb) })
+private fun AdminCharacterTileBody(
+    character: StoryCharacter,
+    onPhotoClick: ((StoryCharacter) -> Unit)? = null,
+) {
+    if (onPhotoClick != null) {
+        PhotoThumbButton(
+            url = character.imageUrl,
+            alt = character.name,
+            thumbClass = Styles.adminRefThumb,
+        ) { onPhotoClick(character) }
+    } else {
+        Img(src = character.imageUrl, alt = character.name, attrs = { classes(Styles.adminRefThumb) })
+    }
     Span { Text(character.name) }
 }
 
