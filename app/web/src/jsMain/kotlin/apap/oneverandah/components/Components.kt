@@ -162,47 +162,48 @@ private fun NavMenuItems(
 ) {
     val strings = Localization.strings
     val router = Router.current
+    val currentPath = router.currentPath.path
     val preferDesktop = LayoutModeStore.preference == LayoutModeStore.Preference.DESKTOP
     // Only offer the layout switcher when the viewport is wide enough for desktop.
     val showLayoutToggle = LayoutModeStore.viewportWide
 
-    DrawerItem("home", strings.menuHome) {
+    DrawerItem("home", strings.menuHome, active = currentPath.isSelectedRoute("/")) {
         onNavigate()
         if (onHome != null) onHome() else router.navigate("/")
     }
-    DrawerItem("location_on", strings.locationsTitle) {
+    DrawerItem("location_on", strings.locationsTitle, active = currentPath.isSelectedRoute("/locations")) {
         onNavigate()
         router.navigate("/locations")
     }
-    DrawerItem("handshake", strings.meetsTitle) {
+    DrawerItem("handshake", strings.meetsTitle, active = currentPath.isSelectedRoute("/meets")) {
         onNavigate()
         router.navigate("/meets")
     }
-    DrawerItem("menu_book", strings.studyTitle) {
+    DrawerItem("menu_book", strings.studyTitle, active = currentPath.isSelectedRoute("/study")) {
         onNavigate()
         router.navigate("/study")
     }
-    DrawerItem("auto_stories", strings.storiesTitle) {
+    DrawerItem("auto_stories", strings.storiesTitle, active = currentPath.isSelectedRoute("/stories")) {
         onNavigate()
         router.navigate("/stories")
     }
-    DrawerItem("emoji_events", strings.challengesTitle) {
+    DrawerItem("emoji_events", strings.challengesTitle, active = currentPath.isSelectedRoute("/challenges")) {
         onNavigate()
         router.navigate("/challenges")
     }
-    DrawerItem("import_contacts", strings.phrasesTitle) {
+    DrawerItem("import_contacts", strings.phrasesTitle, active = currentPath.isSelectedRoute("/phrases")) {
         onNavigate()
         router.navigate("/phrases")
     }
-    DrawerItem("info", strings.menuAbout) {
+    DrawerItem("info", strings.menuAbout, active = currentPath.isSelectedRoute("/about")) {
         onNavigate()
         router.navigate("/about")
     }
-    DrawerItem("add_business", strings.helpListService) {
+    DrawerItem("add_business", strings.helpListService, active = currentPath.isSelectedRoute("/list")) {
         onNavigate()
         router.navigate("/list")
     }
-    DrawerItem("help_outline", strings.menuHelp) {
+    DrawerItem("help_outline", strings.menuHelp, active = currentPath.isSelectedRoute("/help")) {
         onNavigate()
         router.navigate("/help")
     }
@@ -321,15 +322,20 @@ private fun LanguageOptions(onSelected: (Language) -> Unit) {
 }
 
 @Composable
-private fun DrawerItem(icon: String, label: String, onClick: () -> Unit) {
+private fun DrawerItem(icon: String, label: String, active: Boolean = false, onClick: () -> Unit) {
     Button(attrs = {
         classes(Styles.drawerItem)
+        if (active) classes(Styles.drawerItemActive)
         onClick { onClick() }
     }) {
         MaterialSymbol(icon)
         Text(label)
     }
 }
+
+/** Home is exact-match only; other destinations stay selected on nested paths. */
+private fun String.isSelectedRoute(route: String): Boolean =
+    if (route == "/") this == "/" else this == route || startsWith("$route/")
 
 /**
  * Page scaffold: app chrome containing an app bar, an optional banner image
