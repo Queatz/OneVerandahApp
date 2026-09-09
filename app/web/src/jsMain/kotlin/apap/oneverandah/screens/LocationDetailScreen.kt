@@ -18,6 +18,7 @@ import apap.oneverandah.components.MaterialSymbol
 import apap.oneverandah.components.PrimaryButton
 import apap.oneverandah.components.Scaffold
 import apap.oneverandah.components.ShareDialog
+import apap.oneverandah.components.TextButton
 import apap.oneverandah.i18n.Localization
 import apap.oneverandah.locations.LocationContentBlock
 import apap.oneverandah.locations.LocationDetailResponse
@@ -92,22 +93,18 @@ fun LocationDetailScreen(
                         icon = "savings",
                     ) { commitOpen = true }
                     current.canContact -> {
-                        if (current.location.status == LocationLogic.STATUS_OPERATING &&
-                            current.location.mapsUrl.isNotBlank()
-                        ) {
-                            Button(attrs = {
-                                classes(Styles.btnText)
-                                attr("type", "button")
-                                onClick { window.open(current.location.mapsUrl, "_blank") }
-                            }) {
-                                MaterialSymbol("directions")
-                                Text(strings.locationsDirections)
-                            }
-                        }
-                        PrimaryButton(
+                        TextButton(
                             label = strings.locationsContact,
                             icon = "chat",
                         ) { contactOpen = true }
+                        if (current.location.status == LocationLogic.STATUS_OPERATING &&
+                            current.location.mapsUrl.isNotBlank()
+                        ) {
+                            PrimaryButton(
+                                label = strings.locationsDirections,
+                                icon = "directions",
+                            ) { window.open(current.location.mapsUrl, "_blank") }
+                        }
                     }
                 }
             }

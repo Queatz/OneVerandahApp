@@ -199,6 +199,7 @@ private fun LocationFeedCard(
                 if (card.address.isNotBlank()) {
                     P(attrs = { classes(Styles.locationCardMeta) }) { Text(card.address) }
                 }
+                LocationHighlights(card.highlights)
                 Div(attrs = {
                     classes(Styles.locationCardActions)
                     onClick { it.stopPropagation() }
@@ -226,7 +227,6 @@ private fun LocationFeedCard(
                 }
             }
         }
-        LocationHighlights(card.highlights)
     }
 }
 

@@ -1365,7 +1365,12 @@ object Styles {
             border: 1px solid #ffffff16;
             box-shadow: 0 4px 8px -8px var(--md-shadow-light) inset;
         }
-        .${drawerItem}.${drawerItemActive} { background-color: var(--md-sys-color-primary-container); color: var(--md-sys-color-on-primary-container); }
+        .${drawerItem}.${drawerItemActive} {
+            background-color: var(--md-sys-color-primary-container);
+            color: var(--md-sys-color-on-primary-container);
+            border: 1px solid #ffffff16;
+            box-shadow: 0 4px 8px -8px var(--md-shadow-light) inset;
+        }
         .${drawerItem} .${materialSymbols} { color: var(--md-sys-color-primary); font-size: 22px; }
         .${drawerSection} {
             font-size: 12px;
@@ -4063,6 +4068,7 @@ object Styles {
         }
         .${locationCardMain} {
             display: flex;
+            align-items: stretch;
             gap: 12px;
             min-width: 0;
         }
@@ -4073,9 +4079,11 @@ object Styles {
         .${locationCard}:active { transform: scale(0.99); }
         .${locationCardPhotos} {
             position: relative;
-            flex: 0 0 132px;
-            width: 132px;
-            height: 176px;
+            flex: 0 0 35%;
+            width: 35%;
+            min-width: 0;
+            min-height: 0;
+            align-self: stretch;
             display: flex;
             overflow-x: auto;
             overflow-y: hidden;
@@ -4084,18 +4092,27 @@ object Styles {
             border-radius: 20px;
             background: var(--md-sys-color-surface-container-high);
         }
+        .${appShell}.${layoutDesktop} .${locationCardPhotos} {
+            flex-basis: 50%;
+            width: 50%;
+        }
         .${locationCardPhoto} {
-            flex: 0 0 132px;
-            width: 132px;
-            height: 176px;
+            flex: 0 0 100%;
+            width: 100%;
+            height: 100%;
+            min-width: 0;
+            min-height: 0;
             object-fit: cover;
+            object-position: center;
             scroll-snap-align: start;
             display: block;
         }
         .${locationCardPhotoFallback} {
-            flex: 0 0 132px;
-            width: 132px;
-            height: 176px;
+            flex: 0 0 100%;
+            width: 100%;
+            height: 100%;
+            min-width: 0;
+            min-height: 0;
             display: flex;
             align-items: center;
             justify-content: center;
@@ -4202,7 +4219,7 @@ object Styles {
             align-items: center;
             gap: 8px;
             flex-wrap: wrap;
-            margin: 4px 0 8px;
+            margin: 8px 0;
         }
         .${locationHoursInline} .${locationCardHours} { margin: 0; }
         .${locationWeeklyHours} {

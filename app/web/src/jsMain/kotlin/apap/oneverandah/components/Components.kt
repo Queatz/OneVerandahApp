@@ -550,6 +550,27 @@ fun PrimaryButton(
     }
 }
 
+/** Text button with an optional leading material icon. */
+@Composable
+fun TextButton(
+    label: String,
+    icon: String? = null,
+    enabled: Boolean = true,
+    onClick: () -> Unit,
+) {
+    Button(attrs = {
+        classes(Styles.btnText)
+        attr("type", "button")
+        if (!enabled) attr("disabled", "")
+        onClick { if (enabled) onClick() }
+    }) {
+        if (icon != null) {
+            MaterialSymbol(icon)
+        }
+        Text(label)
+    }
+}
+
 /**
  * Full-frame success overlay with a popping checkmark and fading-in text.
  * Visibility is driven by [visible] so the CSS transition/animation plays.
