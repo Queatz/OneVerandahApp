@@ -11,6 +11,7 @@ import apap.oneverandah.api.LocationApi
 import apap.oneverandah.api.LocationApiException
 import apap.oneverandah.api.firstFileOrNull
 import apap.oneverandah.components.BottomDialog
+import apap.oneverandah.components.MaterialSymbol
 import apap.oneverandah.components.PrimaryButton
 import apap.oneverandah.components.SectionTitle
 import apap.oneverandah.i18n.Localization
@@ -23,6 +24,8 @@ import apap.oneverandah.locations.LocationUpsertRequest
 import apap.oneverandah.state.Toaster
 import kotlinx.coroutines.launch
 import org.jetbrains.compose.web.attributes.InputType
+import org.jetbrains.compose.web.attributes.disabled
+import org.jetbrains.compose.web.css.opacity
 import org.jetbrains.compose.web.dom.Button
 import org.jetbrains.compose.web.dom.Div
 import org.jetbrains.compose.web.dom.H2
@@ -256,7 +259,7 @@ private fun LocationEditorDialog(
                         onClick {
                             days = days.toMutableList().also { it[index] = day.copy(enabled = !day.enabled) }
                         }
-                    }) { Text(if (day.enabled) dayName else "${dayName} · ${strings.adminLocationClosedDay}") }
+                    }) { Text(if (day.enabled) dayName else "$dayName · ${strings.adminLocationClosedDay}") }
                     if (day.enabled) {
                         Input(type = InputType.Time) {
                             classes(Styles.textInput)
@@ -273,6 +276,19 @@ private fun LocationEditorDialog(
                             }
                         }
                     }
+                    Button(attrs = {
+                        classes(Styles.btnText)
+                        attr("type", "button")
+                        attr("aria-label", strings.adminLocationApplyBelow)
+                        attr("title", strings.adminLocationApplyBelow)
+                        if (index == days.lastIndex) {
+                            style {
+                                opacity(0)
+                            }
+                            disabled()
+                        }
+                        onClick { days = days.applyTimesBelow(index) }
+                    }) { MaterialSymbol("arrow_downward") }
                 }
             }
 
@@ -470,6 +486,14 @@ private fun ConfirmLocationDeleteDialog(
 }
 
 private data class DayEdit(val enabled: Boolean, val open: String, val close: String)
+
+private fun List<DayEdit>.applyTimesBelow(fromIndex: Int): List<DayEdit> {
+    val source = getOrNull(fromIndex) ?: return this
+    return mapIndexed { i, day ->
+        if (i > fromIndex) day.copy(enabled = source.enabled, open = source.open, close = source.close)
+        else day
+    }
+}
 
 private fun defaultDays(): List<DayEdit> = List(7) { DayEdit(enabled = false, open = "09:00", close = "18:00") }
 
