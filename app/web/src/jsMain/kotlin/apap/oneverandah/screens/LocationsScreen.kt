@@ -9,8 +9,11 @@ import androidx.compose.runtime.rememberCoroutineScope
 import androidx.compose.runtime.setValue
 import apap.oneverandah.Styles
 import apap.oneverandah.api.LocationApi
+import apap.oneverandah.api.sendContactMessage
 import apap.oneverandah.components.MaterialSymbol
+import apap.oneverandah.components.PrimaryButton
 import apap.oneverandah.components.Scaffold
+import apap.oneverandah.components.SectionTitle
 import apap.oneverandah.components.ShareDialog
 import apap.oneverandah.components.Spacer
 import apap.oneverandah.i18n.Localization
@@ -28,9 +31,11 @@ import org.jetbrains.compose.web.dom.Div
 import org.jetbrains.compose.web.dom.H2
 import org.jetbrains.compose.web.dom.Img
 import org.jetbrains.compose.web.dom.Input
+import org.jetbrains.compose.web.dom.Label
 import org.jetbrains.compose.web.dom.P
 import org.jetbrains.compose.web.dom.Span
 import org.jetbrains.compose.web.dom.Text
+import org.jetbrains.compose.web.dom.TextArea
 
 @Composable
 fun LocationsScreen(
@@ -46,6 +51,11 @@ fun LocationsScreen(
     var category by remember { mutableStateOf<String?>(null) }
     var nowMs by remember { mutableStateOf(currentTimeMs()) }
     var shareCard by remember { mutableStateOf<LocationCard?>(null) }
+    var suggestName by remember { mutableStateOf("") }
+    var suggestType by remember { mutableStateOf("") }
+    var suggestAddress by remember { mutableStateOf("") }
+    var suggestWhy by remember { mutableStateOf("") }
+    var submittingSuggest by remember { mutableStateOf(false) }
 
     suspend fun refresh() {
         feed = LocationApi.fetchFeed()
@@ -144,6 +154,69 @@ fun LocationsScreen(
                     onShare = { shareCard = card },
                 )
             }
+        }
+
+        SectionTitle(strings.locationsSuggestTitle)
+        P(attrs = { classes(Styles.homePrompt) }) { Text(strings.locationsSuggestHint) }
+        LocationField(strings.locationsSuggestName, suggestName) { suggestName = it }
+        LocationField(strings.locationsSuggestType, suggestType) { suggestType = it }
+        LocationField(strings.locationsSuggestAddress, suggestAddress) { suggestAddress = it }
+        LocationArea(strings.locationsSuggestWhy, suggestWhy) { suggestWhy = it }
+        PrimaryButton(
+            label = if (submittingSuggest) strings.helpSubmit else strings.locationsSuggestSubmit,
+            icon = "send",
+            enabled = !submittingSuggest && suggestName.isNotBlank(),
+        ) {
+            scope.launch {
+                submittingSuggest = true
+                try {
+                    sendContactMessage(
+                        name = suggestName.trim(),
+                        email = "locations@oneverandah.app",
+                        service = "Location suggestion",
+                        message = buildString {
+                            appendLine("Suggest a location")
+                            appendLine("Name: ${suggestName.trim()}")
+                            appendLine("Type: ${suggestType.trim()}")
+                            appendLine("Address: ${suggestAddress.trim()}")
+                            appendLine("Why: ${suggestWhy.trim()}")
+                        },
+                    )
+                    suggestName = ""
+                    suggestType = ""
+                    suggestAddress = ""
+                    suggestWhy = ""
+                    Toaster.show(strings.locationsSuggestSuccess)
+                } catch (t: Throwable) {
+                    Toaster.show(t.message ?: strings.locationsSuggestError)
+                } finally {
+                    submittingSuggest = false
+                }
+            }
+        }
+    }
+}
+
+@Composable
+private fun LocationField(label: String, value: String, onChange: (String) -> Unit) {
+    Div(attrs = { classes(Styles.textField) }) {
+        Label(attrs = { classes(Styles.textLabel) }) { Text(label) }
+        Input(type = InputType.Text) {
+            classes(Styles.textInput)
+            value(value)
+            onInput { onChange(it.value) }
+        }
+    }
+}
+
+@Composable
+private fun LocationArea(label: String, value: String, onChange: (String) -> Unit) {
+    Div(attrs = { classes(Styles.textField) }) {
+        Label(attrs = { classes(Styles.textLabel) }) { Text(label) }
+        TextArea(value) {
+            classes(Styles.textArea)
+            placeholder(label)
+            onInput { onChange(it.value) }
         }
     }
 }

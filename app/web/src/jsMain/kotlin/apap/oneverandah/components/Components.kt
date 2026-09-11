@@ -32,9 +32,6 @@ import org.w3c.dom.HTMLElement
 import org.w3c.dom.HTMLImageElement
 import org.w3c.dom.events.Event
 
-/** Per-screen scroll positions, keyed by [Scaffold]'s `scrollKey`. */
-private val scrollPositions = mutableMapOf<String, Double>()
-
 /** Renders a Material Symbols ligature, e.g. `MaterialSymbol("spa")`. */
 @Composable
 fun MaterialSymbol(name: String, extraClass: String? = null) {
@@ -448,6 +445,17 @@ private fun ScaffoldMainColumn(
     scrollKey: String?,
     content: ContentBuilder<HTMLDivElement>,
 ) {
+    val pageKey = scrollKey ?: Router.current.currentPath.path
+    val contentElement = remember { arrayOf<HTMLElement?>(null) }
+    val applyChrome = remember { arrayOf<(() -> Unit)?>(null) }
+    // Compose reuses the same .content node across routes, so reset whenever
+    // the destination changes rather than only when the element is attached.
+    DisposableEffect(pageKey) {
+        contentElement[0]?.scrollTop = 0.0
+        applyChrome[0]?.invoke()
+        onDispose { }
+    }
+
     if (showBanner) {
         Div(attrs = {
             classes(Styles.banner)
@@ -462,6 +470,8 @@ private fun ScaffoldMainColumn(
             classes(Styles.contentHasBanner)
         }
         ref { element ->
+            contentElement[0] = element
+            element.scrollTop = 0.0
             // Prefer the app frame for CSS custom properties so app-bar radius
             // and banner dimming stay frame-scoped in both layouts.
             val host = generateSequence(element.parentElement) { it.parentElement }
@@ -479,15 +489,14 @@ private fun ScaffoldMainColumn(
                     val fraction = (element.scrollTop / 168.0).coerceIn(0.0, 1.0)
                     host?.style?.setProperty("--banner-scroll", fraction.toString())
                 }
-                if (scrollKey != null) scrollPositions[scrollKey] = element.scrollTop
             }
-            if (scrollKey != null) {
-                element.scrollTop = scrollPositions[scrollKey] ?: 0.0
-            }
+            applyChrome[0] = apply
             apply()
             val listener: (Event) -> Unit = { apply() }
             element.addEventListener("scroll", listener)
             onDispose {
+                if (contentElement[0] === element) contentElement[0] = null
+                if (applyChrome[0] === apply) applyChrome[0] = null
                 element.removeEventListener("scroll", listener)
                 host?.style?.removeProperty("--appbar-radius")
                 if (showBanner) {
