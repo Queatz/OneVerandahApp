@@ -96,7 +96,25 @@ object Styles {
     const val photoDialogVisible = "visible"
     const val photoDialogImage = "photo-dialog-image"
     const val photoDialogClose = "photo-dialog-close"
+    const val photoDialogNav = "photo-dialog-nav"
+    const val photoDialogNavPrev = "photo-dialog-nav-prev"
+    const val photoDialogNavNext = "photo-dialog-nav-next"
     const val photoThumbButton = "photo-thumb-button"
+    const val photoScroller = "photo-scroller"
+    const val photoScrollerViewport = "photo-scroller-viewport"
+    const val photoScrollerTrack = "photo-scroller-track"
+    const val photoScrollerDragging = "dragging"
+    const val photoScrollerSlide = "photo-scroller-slide"
+    const val photoScrollerImage = "photo-scroller-image"
+    const val photoScrollerNav = "photo-scroller-nav"
+    const val photoScrollerNavPrev = "photo-scroller-nav-prev"
+    const val photoScrollerNavNext = "photo-scroller-nav-next"
+    const val photoScrollerDots = "photo-scroller-dots"
+    const val photoScrollerDot = "photo-scroller-dot"
+    const val photoScrollerDotActive = "active"
+    const val photoScrollerThumbs = "photo-scroller-thumbs"
+    const val photoScrollerThumb = "photo-scroller-thumb"
+    const val photoScrollerThumbActive = "active"
 
     // Language flag
     const val langFlag = "lang-flag"
@@ -422,6 +440,7 @@ object Styles {
     const val locationCard = "location-card"
     const val locationCardMain = "location-card-main"
     const val locationCardPhotos = "location-card-photos"
+    const val locationCardPhotosTrack = "location-card-photos-track"
     const val locationCardPhoto = "location-card-photo"
     const val locationCardPhotoFallback = "location-card-photo-fallback"
     const val locationCardCategory = "location-card-category"
@@ -2229,13 +2248,22 @@ object Styles {
         }
         .${toast}.${toastVisible} { opacity: 1; transform: translate(-50%, 0); }
 
-        /* Home chat explore shortcuts under search */
+        /* Home latest-content previews under search */
         .${homeExploreActions} {
-            display: grid;
-            grid-template-columns: 1fr 1fr;
-            gap: 8px;
+            display: flex;
+            flex-direction: column;
             width: 100%;
-            margin: -8px 0 20px 0;
+            margin: -8px 0 12px 0;
+        }
+        .${homeExploreActions} .${sectionTitle} {
+            margin-top: 8px;
+        }
+        .${homeExploreActions} .${sectionTitle}:first-child {
+            margin-top: 0;
+        }
+        .${homeExploreActions} .${storiesGrid} {
+            margin-top: 0;
+            margin-bottom: 8px;
         }
         .${homeExploreCard} {
             display: flex;
@@ -4051,6 +4079,7 @@ object Styles {
             object-fit: cover;
             border-radius: 12px;
             margin-bottom: 8px;
+            aspect-ratio: 16/9;
         }
         .${locationCard} {
             background-color: var(--md-sys-color-surface-variant);
@@ -4082,13 +4111,8 @@ object Styles {
             flex: 0 0 35%;
             width: 35%;
             min-width: 0;
-            min-height: 0;
             align-self: stretch;
-            display: flex;
-            overflow-x: auto;
-            overflow-y: hidden;
-            scroll-snap-type: x mandatory;
-            -webkit-overflow-scrolling: touch;
+            overflow: hidden;
             border-radius: 20px;
             background: var(--md-sys-color-surface-container-high);
         }
@@ -4096,23 +4120,27 @@ object Styles {
             flex-basis: 50%;
             width: 50%;
         }
+        .${locationCardPhotosTrack} {
+            position: absolute;
+            inset: 0;
+            display: flex;
+            overflow-x: auto;
+            overflow-y: hidden;
+            scroll-snap-type: x mandatory;
+            -webkit-overflow-scrolling: touch;
+        }
         .${locationCardPhoto} {
             flex: 0 0 100%;
             width: 100%;
             height: 100%;
-            min-width: 0;
-            min-height: 0;
             object-fit: cover;
             object-position: center;
             scroll-snap-align: start;
             display: block;
         }
         .${locationCardPhotoFallback} {
-            flex: 0 0 100%;
-            width: 100%;
-            height: 100%;
-            min-width: 0;
-            min-height: 0;
+            position: absolute;
+            inset: 0;
             display: flex;
             align-items: center;
             justify-content: center;
@@ -4316,6 +4344,152 @@ object Styles {
             margin-bottom: 8px;
             flex-wrap: wrap;
         }
-        .${locationScheduleRow} .${textInput} { width: 110px; flex: 0 0 auto; }
+        .${locationScheduleRow} .${textInput} { flex: 1; }
+    """.trimIndent() + photoGalleryCss()
+
+    private fun photoGalleryCss(): String = """
+        .${photoDialogNav} {
+            position: absolute;
+            top: 50%;
+            transform: translateY(-50%);
+            width: 44px;
+            height: 44px;
+            padding: 0;
+            border: none;
+            border-radius: 50%;
+            background: color-mix(in srgb, #000 45%, transparent);
+            color: #fff;
+            display: inline-flex;
+            align-items: center;
+            justify-content: center;
+            cursor: pointer;
+        }
+        .${photoDialogNav}:hover {
+            background: color-mix(in srgb, #000 65%, transparent);
+        }
+        .${photoDialogNavPrev} { left: 12px; }
+        .${photoDialogNavNext} { right: 12px; }
+        .${photoScroller} { margin-bottom: 12px; }
+        .${photoScrollerViewport} {
+            position: relative;
+            overflow: hidden;
+            border-radius: 20px;
+            aspect-ratio: 16 / 9;
+            background: var(--md-sys-color-surface-container-high);
+            touch-action: pan-y;
+            user-select: none;
+            cursor: grab;
+        }
+        .${photoScrollerTrack} {
+            display: flex;
+            height: 100%;
+            transition: transform 0.35s cubic-bezier(0.22, 1, 0.36, 1);
+            will-change: transform;
+        }
+        .${photoScrollerTrack}.${photoScrollerDragging} { transition: none; }
+        .${photoScrollerSlide} {
+            flex: 0 0 100%;
+            width: 100%;
+            height: 100%;
+        }
+        .${photoScrollerImage} {
+            width: 100%;
+            height: 100%;
+            object-fit: cover;
+            display: block;
+            pointer-events: none;
+            -webkit-user-drag: none;
+        }
+        .${photoScrollerNav} {
+            position: absolute;
+            top: 50%;
+            transform: translateY(-50%);
+            width: 36px;
+            height: 36px;
+            padding: 0;
+            border: none;
+            border-radius: 50%;
+            background: color-mix(in srgb, #000 40%, transparent);
+            color: #fff;
+            display: inline-flex;
+            align-items: center;
+            justify-content: center;
+            cursor: pointer;
+            z-index: 1;
+        }
+        .${photoScrollerNav}:hover {
+            background: color-mix(in srgb, #000 60%, transparent);
+        }
+        .${photoScrollerNavPrev} { left: 16px; }
+        .${photoScrollerNavNext} { right: 16px; }
+        .${photoScrollerDots} {
+            position: absolute;
+            left: 0;
+            right: 0;
+            bottom: 10px;
+            display: flex;
+            justify-content: center;
+            gap: 6px;
+            pointer-events: none;
+            z-index: 1;
+        }
+        .${photoScrollerDot} {
+            width: 6px;
+            height: 6px;
+            padding: 0;
+            border: none;
+            border-radius: 999px;
+            background: #fff;
+            opacity: 0.45;
+            pointer-events: auto;
+            cursor: pointer;
+            transition: width 0.2s ease, opacity 0.2s ease;
+        }
+        .${photoScrollerDot}.${photoScrollerDotActive} {
+            width: 16px;
+            opacity: 1;
+        }
+        .${photoScrollerThumbs} {
+            display: flex;
+            gap: 8px;
+            overflow-x: auto;
+            margin-top: 8px;
+            padding: 2px;
+            -webkit-overflow-scrolling: touch;
+        }
+        .${photoScrollerThumb} {
+            display: block;
+            padding: 0;
+            width: 56px;
+            height: 56px;
+            border: 2px solid transparent;
+            border-radius: 12px;
+            overflow: hidden;
+            background: var(--md-sys-color-surface-container-high);
+            cursor: pointer;
+            flex: 0 0 auto;
+            opacity: 0.62;
+            transition: opacity 0.2s, border-color 0.2s;
+        }
+        .${photoScrollerThumb}:hover { opacity: 1; }
+        .${photoScrollerThumb}.${photoScrollerThumbActive} {
+            opacity: 1;
+            border-color: var(--md-sys-color-primary);
+        }
+        .${photoScrollerThumb} img {
+            width: 100%;
+            height: 100%;
+            object-fit: cover;
+            display: block;
+            pointer-events: none;
+            -webkit-user-drag: none;
+        }
+        .${photoScrollerNav}:focus-visible,
+        .${photoScrollerDot}:focus-visible,
+        .${photoScrollerThumb}:focus-visible,
+        .${photoDialogNav}:focus-visible {
+            outline: 2px solid var(--md-sys-color-primary);
+            outline-offset: 2px;
+        }
     """.trimIndent()
 }

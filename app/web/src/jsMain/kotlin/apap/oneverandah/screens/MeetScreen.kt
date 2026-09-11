@@ -113,7 +113,7 @@ fun MeetScreen(
 }
 
 @Composable
-private fun MeetCardButton(card: MeetCard, onClick: () -> Unit) {
+internal fun MeetCardButton(card: MeetCard, onClick: () -> Unit) {
     val strings = Localization.strings
     val title = card.name.ifBlank { strings.meetsUntitled }
     Button(attrs = {

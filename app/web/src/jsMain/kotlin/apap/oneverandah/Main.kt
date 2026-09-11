@@ -254,6 +254,10 @@ fun App() {
                 onOpenChallenges = { router.navigate("/challenges") },
                 onOpenMeets = { router.navigate("/meets") },
                 onOpenLocations = { router.navigate("/locations") },
+                onOpenStory = { id -> router.navigate("/stories/$id") },
+                onOpenChallenge = { id -> router.navigate("/challenges/$id") },
+                onOpenMeet = { id -> router.navigate("/meets/$id") },
+                onOpenLocation = { id -> router.navigate("/locations/$id") },
             )
         }
 
@@ -280,6 +284,10 @@ fun App() {
                 onOpenChallenges = { router.navigate("/challenges") },
                 onOpenMeets = { router.navigate("/meets") },
                 onOpenLocations = { router.navigate("/locations") },
+                onOpenStory = { id -> router.navigate("/stories/$id") },
+                onOpenChallenge = { id -> router.navigate("/challenges/$id") },
+                onOpenMeet = { id -> router.navigate("/meets/$id") },
+                onOpenLocation = { id -> router.navigate("/locations/$id") },
             )
         }
     }

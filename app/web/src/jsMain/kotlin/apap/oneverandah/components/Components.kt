@@ -1,10 +1,12 @@
 package apap.oneverandah.components
 
 import androidx.compose.runtime.Composable
+import androidx.compose.runtime.DisposableEffect
 import androidx.compose.runtime.LaunchedEffect
 import androidx.compose.runtime.getValue
 import androidx.compose.runtime.mutableStateOf
 import androidx.compose.runtime.remember
+import androidx.compose.runtime.rememberUpdatedState
 import androidx.compose.runtime.setValue
 import apap.oneverandah.Styles
 import apap.oneverandah.state.LayoutModeStore
@@ -24,6 +26,7 @@ import org.jetbrains.compose.web.dom.P
 import org.jetbrains.compose.web.dom.Span
 import org.jetbrains.compose.web.dom.Text
 import kotlinx.browser.document
+import kotlinx.browser.window
 import org.w3c.dom.HTMLDivElement
 import org.w3c.dom.HTMLElement
 import org.w3c.dom.HTMLImageElement
@@ -630,7 +633,9 @@ fun PhotoThumbButton(
  * Fullscreen photo viewer with a close (X) button.
  *
  * Keep this composable mounted and toggle [visible] so the fade in/out plays.
- * Clicking the dimmed backdrop or the X dismisses the dialog.
+ * Clicking the dimmed backdrop, the X, or Escape dismisses the dialog.
+ * When [photos] has more than one item, left/right buttons and keyboard
+ * arrows move between them.
  */
 @Composable
 fun FullscreenPhotoDialog(
@@ -638,18 +643,35 @@ fun FullscreenPhotoDialog(
     imageUrl: String?,
     alt: String = "",
     onDismiss: () -> Unit,
+    photos: List<String> = emptyList(),
+    selectedIndex: Int = 0,
+    onSelectedIndexChange: (Int) -> Unit = {},
 ) {
     val strings = Localization.strings
     var rendered by remember { mutableStateOf(visible) }
     var open by remember { mutableStateOf(false) }
     var shownUrl by remember { mutableStateOf(imageUrl) }
     var shownAlt by remember { mutableStateOf(alt) }
+    var index by remember { mutableStateOf(0) }
 
-    LaunchedEffect(imageUrl, alt, visible) {
-        if (!imageUrl.isNullOrBlank()) {
+    val urls = remember(photos, imageUrl) {
+        photos.filter { it.isNotBlank() }.ifEmpty {
+            listOfNotNull(imageUrl?.takeIf { it.isNotBlank() })
+        }
+    }
+
+    LaunchedEffect(imageUrl, alt, photos, selectedIndex) {
+        if (urls.isNotEmpty()) {
+            index = selectedIndex.coerceIn(0, urls.lastIndex)
+            shownUrl = urls[index]
+            shownAlt = alt
+        } else if (!imageUrl.isNullOrBlank()) {
             shownUrl = imageUrl
             shownAlt = alt
         }
+    }
+
+    LaunchedEffect(visible) {
         if (visible) {
             rendered = true
             open = false
@@ -662,8 +684,48 @@ fun FullscreenPhotoDialog(
         }
     }
 
+    val currentDismiss = rememberUpdatedState(onDismiss)
+    val currentIndexChange = rememberUpdatedState(onSelectedIndexChange)
+    val currentUrls = rememberUpdatedState(urls)
+    val currentIndex = rememberUpdatedState(index)
+
+    DisposableEffect(visible) {
+        if (!visible) return@DisposableEffect onDispose {}
+        val listener: (Event) -> Unit = { event ->
+            val key = event.unsafeCast<org.w3c.dom.events.KeyboardEvent>().key
+            val list = currentUrls.value
+            when {
+                isPhotoDialogDismissKey(key) -> {
+                    event.preventDefault()
+                    currentDismiss.value()
+                }
+                list.size > 1 -> {
+                    val next = photoIndexForDialogKey(key, currentIndex.value, list.size)
+                    if (next != null && next != currentIndex.value) {
+                        event.preventDefault()
+                        index = next
+                        shownUrl = list[next]
+                        currentIndexChange.value(next)
+                    }
+                }
+            }
+        }
+        window.addEventListener("keydown", listener)
+        onDispose { window.removeEventListener("keydown", listener) }
+    }
+
     val url = shownUrl
     if (!rendered || url.isNullOrBlank()) return
+    val canNavigate = urls.size > 1
+
+    fun goTo(delta: Int) {
+        if (!canNavigate) return
+        val next = stepPhotoIndex(index, urls.size, delta, wrap = true)
+        if (next == index) return
+        index = next
+        shownUrl = urls[next]
+        onSelectedIndexChange(next)
+    }
 
     Div(attrs = {
         classes(Styles.photoDialog)
@@ -677,6 +739,26 @@ fun FullscreenPhotoDialog(
             classes(Styles.photoDialogImage)
             onClick { it.stopPropagation() }
         })
+        if (canNavigate) {
+            Button(attrs = {
+                classes(Styles.photoDialogNav, Styles.photoDialogNavPrev)
+                attr("type", "button")
+                attr("aria-label", "Previous photo")
+                onClick {
+                    it.stopPropagation()
+                    goTo(-1)
+                }
+            }) { MaterialSymbol("chevron_left") }
+            Button(attrs = {
+                classes(Styles.photoDialogNav, Styles.photoDialogNavNext)
+                attr("type", "button")
+                attr("aria-label", "Next photo")
+                onClick {
+                    it.stopPropagation()
+                    goTo(1)
+                }
+            }) { MaterialSymbol("chevron_right") }
+        }
         Button(attrs = {
             classes(Styles.photoDialogClose)
             attr("type", "button")

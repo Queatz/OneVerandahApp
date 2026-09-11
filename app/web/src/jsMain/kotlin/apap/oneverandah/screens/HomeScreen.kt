@@ -9,7 +9,12 @@ import androidx.compose.runtime.remember
 import androidx.compose.runtime.setValue
 import kotlinx.coroutines.delay
 import apap.oneverandah.Styles
+import apap.oneverandah.api.ChallengeApi
 import apap.oneverandah.api.ImageApi
+import apap.oneverandah.api.LocationApi
+import apap.oneverandah.api.MeetApi
+import apap.oneverandah.api.StoryApi
+import apap.oneverandah.challenges.ChallengeCard
 import apap.oneverandah.components.BottomDialog
 import apap.oneverandah.components.ChatInput
 import apap.oneverandah.components.CoverImage
@@ -17,16 +22,23 @@ import apap.oneverandah.components.MaterialSymbol
 import apap.oneverandah.components.ProviderDetailsDialog
 import apap.oneverandah.components.ProviderDetailsSheet
 import apap.oneverandah.components.Scaffold
+import apap.oneverandah.components.SectionTitle
 import apap.oneverandah.components.ServiceCard
 import apap.oneverandah.components.providerProfileUrl
 import apap.oneverandah.data.Catalog
 import apap.oneverandah.i18n.Localization
 import apap.oneverandah.i18n.UiStrings
+import apap.oneverandah.locations.LocationCard
+import apap.oneverandah.meets.MeetCard
 import apap.oneverandah.model.Service
 import apap.oneverandah.state.ImageStore
 import apap.oneverandah.state.PinnedStore
 import apap.oneverandah.state.Toaster
+import apap.oneverandah.stories.Story
+import apap.oneverandah.stories.StoryLogic
 import kotlinx.browser.window
+import kotlinx.coroutines.async
+import kotlinx.coroutines.coroutineScope
 import org.jetbrains.compose.web.dom.Button
 import org.jetbrains.compose.web.dom.Div
 import org.jetbrains.compose.web.dom.H2
@@ -54,6 +66,9 @@ private const val SEARCH_DEBOUNCE_MS = 500L
 /** How many services to reveal per infinite-scroll batch on the home feed. */
 internal const val HOME_FEED_PAGE_SIZE = 20
 
+/** How many latest items of each content type to preview on home. */
+internal const val HOME_LATEST_LIMIT = 2
+
 /** Brief pause so batch loads feel intentional rather than instant. */
 private const val HOME_FEED_LOAD_DELAY_MS = 280L
 
@@ -78,6 +93,13 @@ internal fun homeFeedPage(services: List<Service>, visibleCount: Int): List<Serv
     services.take(visibleCount.coerceAtLeast(0))
 
 /**
+ * Returns the first [limit] items for a home "latest" row.
+ * Extracted for unit testing.
+ */
+internal fun <T> homeLatestPreview(items: List<T>, limit: Int = HOME_LATEST_LIMIT): List<T> =
+    items.take(limit.coerceAtLeast(0))
+
+/**
  * Home screen: services feed by default, with a toggle back to the category grid.
  */
 @Composable
@@ -92,6 +114,10 @@ fun HomeScreen(
     onOpenChallenges: () -> Unit = {},
     onOpenMeets: () -> Unit = {},
     onOpenLocations: () -> Unit = {},
+    onOpenStory: (String) -> Unit = {},
+    onOpenChallenge: (String) -> Unit = {},
+    onOpenMeet: (String) -> Unit = {},
+    onOpenLocation: (String) -> Unit = {},
 ) {
     val strings = Localization.strings
     val language = Localization.language
@@ -102,6 +128,30 @@ fun HomeScreen(
     var feedVisibleCount by remember { mutableStateOf(HOME_FEED_PAGE_SIZE) }
     var feedLoadingMore by remember { mutableStateOf(false) }
     var animatedPlaceholder by remember(language) { mutableStateOf(strings.searchPlaceholder) }
+    var latestStories by remember { mutableStateOf<List<Story>>(emptyList()) }
+    var latestChallenges by remember { mutableStateOf<List<ChallengeCard>>(emptyList()) }
+    var latestLocations by remember { mutableStateOf<List<LocationCard>>(emptyList()) }
+    var latestMeets by remember { mutableStateOf<List<MeetCard>>(emptyList()) }
+    var nowMs by remember { mutableStateOf(currentTimeMs()) }
+
+    LaunchedEffect(Unit) {
+        coroutineScope {
+            val storiesDeferred = async { StoryApi.fetchStories() }
+            val challengesDeferred = async { ChallengeApi.fetchFeed() }
+            val locationsDeferred = async { LocationApi.fetchFeed() }
+            val meetsDeferred = async { MeetApi.fetchFeed() }
+            latestStories = homeLatestPreview(StoryLogic.publishedNewestFirst(storiesDeferred.await()))
+            latestChallenges = homeLatestPreview(challengesDeferred.await().challenges)
+            latestLocations = homeLatestPreview(locationsDeferred.await().locations)
+            latestMeets = homeLatestPreview(meetsDeferred.await().meets)
+        }
+    }
+    LaunchedEffect(Unit) {
+        while (true) {
+            delay(30_000)
+            nowMs = currentTimeMs()
+        }
+    }
 
     // Debounce the search query and report it to the backend. Searching itself
     // still happens on the client; this only records what people look for.
@@ -198,92 +248,18 @@ fun HomeScreen(
         }
 
         if (searchQuery.isBlank()) {
-            Div(attrs = { classes(Styles.homeExploreActions) }) {
-                Button(attrs = {
-                    classes(Styles.homeExploreCard)
-                    attr("type", "button")
-                    onClick { onOpenStudy() }
-                }) {
-                    MaterialSymbol("menu_book")
-                    Div {
-                        Span(attrs = { classes(Styles.homeExploreTitle) }) { Text(strings.chatExploreStudy) }
-                        Span(attrs = { classes(Styles.homeExploreSub) }) { Text(strings.chatExploreStudySub) }
-                    }
-                    MaterialSymbol("north_east")
-                }
-                Button(attrs = {
-                    classes(Styles.homeExploreCard)
-                    attr("type", "button")
-                    onClick { onOpenSaved() }
-                }) {
-                    MaterialSymbol("bookmarks")
-                    Div {
-                        Span(attrs = { classes(Styles.homeExploreTitle) }) { Text(strings.chatExploreSaved) }
-                        Span(attrs = { classes(Styles.homeExploreSub) }) { Text(strings.chatExploreSavedSub) }
-                    }
-                    MaterialSymbol("north_east")
-                }
-                Button(attrs = {
-                    classes(Styles.homeExploreCard)
-                    attr("type", "button")
-                    onClick { onOpenPhrases() }
-                }) {
-                    MaterialSymbol("import_contacts")
-                    Div {
-                        Span(attrs = { classes(Styles.homeExploreTitle) }) { Text(strings.chatExplorePhrases) }
-                        Span(attrs = { classes(Styles.homeExploreSub) }) { Text(strings.chatExplorePhrasesSub) }
-                    }
-                    MaterialSymbol("north_east")
-                }
-                Button(attrs = {
-                    classes(Styles.homeExploreCard)
-                    attr("type", "button")
-                    onClick { onOpenStories() }
-                }) {
-                    MaterialSymbol("auto_stories")
-                    Div {
-                        Span(attrs = { classes(Styles.homeExploreTitle) }) { Text(strings.chatExploreStories) }
-                        Span(attrs = { classes(Styles.homeExploreSub) }) { Text(strings.chatExploreStoriesSub) }
-                    }
-                    MaterialSymbol("north_east")
-                }
-                Button(attrs = {
-                    classes(Styles.homeExploreCard)
-                    attr("type", "button")
-                    onClick { onOpenChallenges() }
-                }) {
-                    MaterialSymbol("emoji_events")
-                    Div {
-                        Span(attrs = { classes(Styles.homeExploreTitle) }) { Text(strings.chatExploreChallenges) }
-                        Span(attrs = { classes(Styles.homeExploreSub) }) { Text(strings.chatExploreChallengesSub) }
-                    }
-                    MaterialSymbol("north_east")
-                }
-                Button(attrs = {
-                    classes(Styles.homeExploreCard)
-                    attr("type", "button")
-                    onClick { onOpenLocations() }
-                }) {
-                    MaterialSymbol("location_on")
-                    Div {
-                        Span(attrs = { classes(Styles.homeExploreTitle) }) { Text(strings.chatExploreLocations) }
-                        Span(attrs = { classes(Styles.homeExploreSub) }) { Text(strings.chatExploreLocationsSub) }
-                    }
-                    MaterialSymbol("north_east")
-                }
-                Button(attrs = {
-                    classes(Styles.homeExploreCard)
-                    attr("type", "button")
-                    onClick { onOpenMeets() }
-                }) {
-                    MaterialSymbol("handshake")
-                    Div {
-                        Span(attrs = { classes(Styles.homeExploreTitle) }) { Text(strings.chatExploreMeets) }
-                        Span(attrs = { classes(Styles.homeExploreSub) }) { Text(strings.chatExploreMeetsSub) }
-                    }
-                    MaterialSymbol("north_east")
-                }
-            }
+            HomeLatestExplore(
+                stories = latestStories,
+                challenges = latestChallenges,
+                locations = latestLocations,
+                meets = latestMeets,
+                nowMs = nowMs,
+                strings = strings,
+                onOpenStory = onOpenStory,
+                onOpenChallenge = onOpenChallenge,
+                onOpenLocation = onOpenLocation,
+                onOpenMeet = onOpenMeet,
+            )
         }
 
         if (searchQuery.isBlank()) {
@@ -459,6 +435,59 @@ fun HomeScreen(
                             Span { Text(service.basePrice.format(language)) }
                         }
                     }
+                }
+            }
+        }
+    }
+}
+
+@Composable
+private fun HomeLatestExplore(
+    stories: List<Story>,
+    challenges: List<ChallengeCard>,
+    locations: List<LocationCard>,
+    meets: List<MeetCard>,
+    nowMs: Long,
+    strings: UiStrings,
+    onOpenStory: (String) -> Unit,
+    onOpenChallenge: (String) -> Unit,
+    onOpenLocation: (String) -> Unit,
+    onOpenMeet: (String) -> Unit,
+) {
+    if (stories.isEmpty() && challenges.isEmpty() && locations.isEmpty() && meets.isEmpty()) return
+
+    Div(attrs = { classes(Styles.homeExploreActions) }) {
+        if (stories.isNotEmpty()) {
+            SectionTitle(strings.homeLatestStories)
+            Div(attrs = { classes(Styles.storiesGrid) }) {
+                stories.forEach { story ->
+                    StoryCoverCard(story) { onOpenStory(story.id) }
+                }
+            }
+        }
+        if (challenges.isNotEmpty()) {
+            SectionTitle(strings.homeLatestChallenges)
+            Div(attrs = { classes(Styles.storiesGrid) }) {
+                challenges.forEach { card ->
+                    ChallengeCardButton(card) { onOpenChallenge(card.id) }
+                }
+            }
+        }
+        if (locations.isNotEmpty()) {
+            SectionTitle(strings.homeLatestLocations)
+            locations.forEach { card ->
+                LocationFeedCard(
+                    card = card,
+                    nowMs = nowMs,
+                    onOpen = { onOpenLocation(card.id) },
+                )
+            }
+        }
+        if (meets.isNotEmpty()) {
+            SectionTitle(strings.homeLatestMeets)
+            Div(attrs = { classes(Styles.storiesGrid) }) {
+                meets.forEach { card ->
+                    MeetCardButton(card) { onOpenMeet(card.id) }
                 }
             }
         }

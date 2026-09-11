@@ -47,4 +47,16 @@ class HomeFeedPagingTest {
         assertTrue(homeFeedPage(Catalog.services, 0).isEmpty())
         assertTrue(homeFeedPage(Catalog.services, -5).isEmpty())
     }
+
+    @Test
+    fun `latest preview keeps at most two items`() {
+        assertEquals(listOf("a", "b"), homeLatestPreview(listOf("a", "b", "c", "d")))
+        assertEquals(HOME_LATEST_LIMIT, homeLatestPreview((1..10).toList()).size)
+    }
+
+    @Test
+    fun `latest preview omits nothing when a type has one or zero items`() {
+        assertEquals(listOf("only"), homeLatestPreview(listOf("only")))
+        assertTrue(homeLatestPreview(emptyList<String>()).isEmpty())
+    }
 }

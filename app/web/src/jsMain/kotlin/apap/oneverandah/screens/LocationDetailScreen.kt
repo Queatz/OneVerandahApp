@@ -15,6 +15,7 @@ import apap.oneverandah.components.BottomDialog
 import apap.oneverandah.components.FullscreenPhotoDialog
 import apap.oneverandah.components.MarkdownView
 import apap.oneverandah.components.MaterialSymbol
+import apap.oneverandah.components.PhotoScroller
 import apap.oneverandah.components.PrimaryButton
 import apap.oneverandah.components.Scaffold
 import apap.oneverandah.components.ShareDialog
@@ -57,7 +58,8 @@ fun LocationDetailScreen(
     var commitOpen by remember { mutableStateOf(false) }
     var contactOpen by remember { mutableStateOf(false) }
     var shareOpen by remember { mutableStateOf(false) }
-    var previewUrl by remember { mutableStateOf<String?>(null) }
+    var previewPhotos by remember { mutableStateOf<List<String>>(emptyList()) }
+    var previewIndex by remember { mutableStateOf(0) }
 
     suspend fun refresh() {
         detail = LocationApi.fetchLocation(locationId)
@@ -75,7 +77,7 @@ fun LocationDetailScreen(
     val card = detail?.location
     val snapshot = card?.let { LocationLogic.hoursSnapshot(it.status, it.schedule, nowMs) }
     val title = card?.name?.ifBlank { strings.locationsUntitled } ?: strings.locationsTitle
-    val dialogOpen = commitOpen || contactOpen || shareOpen || previewUrl != null
+    val dialogOpen = commitOpen || contactOpen || shareOpen || previewPhotos.isNotEmpty()
 
     Scaffold(
         title = title,
@@ -178,10 +180,13 @@ fun LocationDetailScreen(
                 )
             }
             FullscreenPhotoDialog(
-                visible = previewUrl != null,
-                imageUrl = previewUrl,
+                visible = previewPhotos.isNotEmpty(),
+                imageUrl = previewPhotos.getOrNull(previewIndex),
                 alt = title,
-                onDismiss = { previewUrl = null },
+                photos = previewPhotos,
+                selectedIndex = previewIndex,
+                onSelectedIndexChange = { previewIndex = it },
+                onDismiss = { previewPhotos = emptyList() },
             )
         },
     ) {
@@ -190,14 +195,14 @@ fun LocationDetailScreen(
             card == null -> P(attrs = { classes(Styles.pinnedEmpty) }) { Text(strings.locationsEmpty) }
             else -> {
                 if (card.photoUrls.isNotEmpty()) {
-                    Div(attrs = { classes(Styles.locationDetailPhotos) }) {
-                        card.photoUrls.forEach { url ->
-                            Img(src = url, alt = title, attrs = {
-                                classes(Styles.locationDetailPhoto)
-                                onClick { previewUrl = url }
-                            })
-                        }
-                    }
+                    PhotoScroller(
+                        photos = card.photoUrls,
+                        alt = title,
+                        onPhotoClick = { i ->
+                            previewPhotos = card.photoUrls
+                            previewIndex = i
+                        },
+                    )
                 }
                 H2({
                     style {
@@ -248,7 +253,10 @@ fun LocationDetailScreen(
                     }
                 }
                 detail?.content.orEmpty().forEach { block ->
-                    LocationContentBlockView(block) { previewUrl = it }
+                    LocationContentBlockView(block) { url ->
+                        previewPhotos = listOf(url)
+                        previewIndex = 0
+                    }
                 }
             }
         }

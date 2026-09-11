@@ -76,33 +76,7 @@ fun StoriesScreen(
             else -> {
                 Div(attrs = { classes(Styles.storiesGrid) }) {
                     stories.forEach { story ->
-                        Button(attrs = {
-                            classes(Styles.storyCoverCard)
-                            attr("type", "button")
-                            onClick { onOpenStory(story.id) }
-                        }) {
-                            if (!story.coverImageUrl.isNullOrBlank()) {
-                                Img(src = story.coverImageUrl!!, alt = story.name, attrs = {
-                                    classes(Styles.storyCoverThumb)
-                                })
-                            } else {
-                                Div(attrs = { classes(Styles.storyCoverPlaceholder) }) {
-                                    MaterialSymbol("auto_stories")
-                                }
-                            }
-                            Span(attrs = { classes(Styles.storyCoverTitle) }) { Text(story.name) }
-                            if (story.category.isNotBlank()) {
-                                Span(attrs = { classes(Styles.storyCoverCategory) }) { Text(story.category) }
-                            }
-                            Span(attrs = { classes(Styles.storyCoverMeta) }) {
-                                Text(
-                                    listOf(
-                                        strings.storiesPages(StoryLogic.pageCount(story)),
-                                        Language.fromTag(story.languageTag).displayName,
-                                    ).joinToString(" · "),
-                                )
-                            }
-                        }
+                        StoryCoverCard(story) { onOpenStory(story.id) }
                     }
                 }
             }
@@ -196,6 +170,38 @@ fun StoriesScreen(
                     submittingIdea = false
                 }
             }
+        }
+    }
+}
+
+@Composable
+internal fun StoryCoverCard(story: Story, onClick: () -> Unit) {
+    val strings = Localization.strings
+    Button(attrs = {
+        classes(Styles.storyCoverCard)
+        attr("type", "button")
+        onClick { onClick() }
+    }) {
+        if (!story.coverImageUrl.isNullOrBlank()) {
+            Img(src = story.coverImageUrl!!, alt = story.name, attrs = {
+                classes(Styles.storyCoverThumb)
+            })
+        } else {
+            Div(attrs = { classes(Styles.storyCoverPlaceholder) }) {
+                MaterialSymbol("auto_stories")
+            }
+        }
+        Span(attrs = { classes(Styles.storyCoverTitle) }) { Text(story.name) }
+        if (story.category.isNotBlank()) {
+            Span(attrs = { classes(Styles.storyCoverCategory) }) { Text(story.category) }
+        }
+        Span(attrs = { classes(Styles.storyCoverMeta) }) {
+            Text(
+                listOf(
+                    strings.storiesPages(StoryLogic.pageCount(story)),
+                    Language.fromTag(story.languageTag).displayName,
+                ).joinToString(" · "),
+            )
         }
     }
 }

@@ -149,12 +149,12 @@ fun LocationsScreen(
 }
 
 @Composable
-private fun LocationFeedCard(
+internal fun LocationFeedCard(
     card: LocationCard,
     nowMs: Long,
     onOpen: () -> Unit,
-    onLike: () -> Unit,
-    onShare: () -> Unit,
+    onLike: (() -> Unit)? = null,
+    onShare: (() -> Unit)? = null,
 ) {
     val strings = Localization.strings
     val snapshot = LocationLogic.hoursSnapshot(card.status, card.schedule, nowMs)
@@ -173,8 +173,10 @@ private fun LocationFeedCard(
                         MaterialSymbol("location_on")
                     }
                 } else {
-                    photos.forEach { url ->
-                        Img(src = url, alt = card.name, attrs = { classes(Styles.locationCardPhoto) })
+                    Div(attrs = { classes(Styles.locationCardPhotosTrack) }) {
+                        photos.forEach { url ->
+                            Img(src = url, alt = card.name, attrs = { classes(Styles.locationCardPhoto) })
+                        }
                     }
                 }
                 if (card.category.isNotBlank()) {
@@ -200,29 +202,35 @@ private fun LocationFeedCard(
                     P(attrs = { classes(Styles.locationCardMeta) }) { Text(card.address) }
                 }
                 LocationHighlights(card.highlights)
-                Div(attrs = {
-                    classes(Styles.locationCardActions)
-                    onClick { it.stopPropagation() }
-                }) {
-                    Button(attrs = {
-                        classes(Styles.toolbarBtn)
-                        if (card.liked) classes(Styles.toolbarBtnActive)
-                        attr("type", "button")
-                        onClick { onLike() }
+                if (onLike != null || onShare != null) {
+                    Div(attrs = {
+                        classes(Styles.locationCardActions)
+                        onClick { it.stopPropagation() }
                     }) {
-                        Span(attrs = {
-                            classes(Styles.materialSymbols)
-                            if (card.liked) style { property("font-variation-settings", "'FILL' 1") }
-                        }) { Text("favorite") }
-                        Text("${card.likeCount}")
-                    }
-                    Button(attrs = {
-                        classes(Styles.toolbarBtn)
-                        attr("type", "button")
-                        onClick { onShare() }
-                    }) {
-                        MaterialSymbol("ios_share")
-                        Text(strings.share)
+                        if (onLike != null) {
+                            Button(attrs = {
+                                classes(Styles.toolbarBtn)
+                                if (card.liked) classes(Styles.toolbarBtnActive)
+                                attr("type", "button")
+                                onClick { onLike() }
+                            }) {
+                                Span(attrs = {
+                                    classes(Styles.materialSymbols)
+                                    if (card.liked) style { property("font-variation-settings", "'FILL' 1") }
+                                }) { Text("favorite") }
+                                Text("${card.likeCount}")
+                            }
+                        }
+                        if (onShare != null) {
+                            Button(attrs = {
+                                classes(Styles.toolbarBtn)
+                                attr("type", "button")
+                                onClick { onShare() }
+                            }) {
+                                MaterialSymbol("ios_share")
+                                Text(strings.share)
+                            }
+                        }
                     }
                 }
             }

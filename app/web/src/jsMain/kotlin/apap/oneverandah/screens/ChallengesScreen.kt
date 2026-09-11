@@ -123,7 +123,7 @@ fun ChallengesScreen(
 }
 
 @Composable
-private fun ChallengeCardButton(card: ChallengeCard, onClick: () -> Unit) {
+internal fun ChallengeCardButton(card: ChallengeCard, onClick: () -> Unit) {
     val strings = Localization.strings
     val title = card.name.ifBlank { strings.challengesUntitled }
     Button(attrs = {
