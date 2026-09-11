@@ -128,7 +128,9 @@ fun MeetDetailScreen(
                 P(attrs = { classes(Styles.homePrompt) }) {
                     Text(strings.meetsRemaining(meet.remainingPitches))
                 }
-                P { Text(meet.pitch) }
+                P(
+                    attrs = { classes(Styles.meetDetailPitch) }
+                ) { Text(meet.pitch) }
             }
         }
     }

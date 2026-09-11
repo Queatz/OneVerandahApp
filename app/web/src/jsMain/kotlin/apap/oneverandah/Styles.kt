@@ -435,6 +435,7 @@ object Styles {
     const val meetPitchClamp = "meet-pitch-clamp"
     const val meetCardBody = "meet-card-body"
     const val meetDetailPhoto = "meet-detail-photo"
+    const val meetDetailPitch = "meet-detail-pitch"
     const val meetPickPhoto = "meet-pick-photo"
     const val meetAdminPhoto = "meet-admin-photo"
     const val locationCard = "location-card"
@@ -4065,6 +4066,9 @@ object Styles {
             border-radius: 16px;
             margin-bottom: 12px;
             background: var(--md-sys-color-surface-container-high);
+        }
+        .${meetDetailPitch} {
+            font-size: 24px;
         }
         .${meetPickPhoto} {
             display: block;

@@ -457,6 +457,16 @@ private fun HomeLatestExplore(
     if (stories.isEmpty() && challenges.isEmpty() && locations.isEmpty() && meets.isEmpty()) return
 
     Div(attrs = { classes(Styles.homeExploreActions) }) {
+        if (locations.isNotEmpty()) {
+            SectionTitle(strings.homeLatestLocations)
+            locations.forEach { card ->
+                LocationFeedCard(
+                    card = card,
+                    nowMs = nowMs,
+                    onOpen = { onOpenLocation(card.id) },
+                )
+            }
+        }
         if (stories.isNotEmpty()) {
             SectionTitle(strings.homeLatestStories)
             Div(attrs = { classes(Styles.storiesGrid) }) {
@@ -471,16 +481,6 @@ private fun HomeLatestExplore(
                 challenges.forEach { card ->
                     ChallengeCardButton(card) { onOpenChallenge(card.id) }
                 }
-            }
-        }
-        if (locations.isNotEmpty()) {
-            SectionTitle(strings.homeLatestLocations)
-            locations.forEach { card ->
-                LocationFeedCard(
-                    card = card,
-                    nowMs = nowMs,
-                    onOpen = { onOpenLocation(card.id) },
-                )
             }
         }
         if (meets.isNotEmpty()) {
