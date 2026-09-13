@@ -24,6 +24,8 @@ import apap.oneverandah.screens.StudyScreen
 import apap.oneverandah.screens.PhrasesScreen
 import apap.oneverandah.screens.ChallengePlayerScreen
 import apap.oneverandah.screens.ChallengesScreen
+import apap.oneverandah.screens.ClubDetailScreen
+import apap.oneverandah.screens.ClubsScreen
 import apap.oneverandah.screens.LocationDetailScreen
 import apap.oneverandah.screens.LocationsScreen
 import apap.oneverandah.screens.MeetDetailScreen
@@ -191,6 +193,23 @@ fun App() {
             }
         }
 
+        route("clubs") {
+            string { clubId ->
+                ClubDetailScreen(
+                    clubId = clubId,
+                    onBack = { router.navigate("/clubs") },
+                    onHome = { router.navigate("/") },
+                )
+            }
+            noMatch {
+                ClubsScreen(
+                    onBack = { router.navigate("/") },
+                    onHome = { router.navigate("/") },
+                    onOpenClub = { id -> router.navigate("/clubs/$id") },
+                )
+            }
+        }
+
         route("meets") {
             string { meetId ->
                 MeetDetailScreen(
@@ -254,10 +273,12 @@ fun App() {
                 onOpenChallenges = { router.navigate("/challenges") },
                 onOpenMeets = { router.navigate("/meets") },
                 onOpenLocations = { router.navigate("/locations") },
+                onOpenClubs = { router.navigate("/clubs") },
                 onOpenStory = { id -> router.navigate("/stories/$id") },
                 onOpenChallenge = { id -> router.navigate("/challenges/$id") },
                 onOpenMeet = { id -> router.navigate("/meets/$id") },
                 onOpenLocation = { id -> router.navigate("/locations/$id") },
+                onOpenClub = { id -> router.navigate("/clubs/$id") },
             )
         }
 
@@ -284,10 +305,12 @@ fun App() {
                 onOpenChallenges = { router.navigate("/challenges") },
                 onOpenMeets = { router.navigate("/meets") },
                 onOpenLocations = { router.navigate("/locations") },
+                onOpenClubs = { router.navigate("/clubs") },
                 onOpenStory = { id -> router.navigate("/stories/$id") },
                 onOpenChallenge = { id -> router.navigate("/challenges/$id") },
                 onOpenMeet = { id -> router.navigate("/meets/$id") },
                 onOpenLocation = { id -> router.navigate("/locations/$id") },
+                onOpenClub = { id -> router.navigate("/clubs/$id") },
             )
         }
     }

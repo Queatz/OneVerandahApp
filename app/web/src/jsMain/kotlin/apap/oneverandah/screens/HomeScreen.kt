@@ -11,6 +11,7 @@ import kotlinx.coroutines.delay
 import apap.oneverandah.Styles
 import apap.oneverandah.api.ChallengeApi
 import apap.oneverandah.api.ImageApi
+import apap.oneverandah.api.ClubApi
 import apap.oneverandah.api.LocationApi
 import apap.oneverandah.api.MeetApi
 import apap.oneverandah.api.StoryApi
@@ -28,6 +29,7 @@ import apap.oneverandah.components.providerProfileUrl
 import apap.oneverandah.data.Catalog
 import apap.oneverandah.i18n.Localization
 import apap.oneverandah.i18n.UiStrings
+import apap.oneverandah.clubs.ClubCard
 import apap.oneverandah.locations.LocationCard
 import apap.oneverandah.meets.MeetCard
 import apap.oneverandah.model.Service
@@ -114,10 +116,12 @@ fun HomeScreen(
     onOpenChallenges: () -> Unit = {},
     onOpenMeets: () -> Unit = {},
     onOpenLocations: () -> Unit = {},
+    onOpenClubs: () -> Unit = {},
     onOpenStory: (String) -> Unit = {},
     onOpenChallenge: (String) -> Unit = {},
     onOpenMeet: (String) -> Unit = {},
     onOpenLocation: (String) -> Unit = {},
+    onOpenClub: (String) -> Unit = {},
 ) {
     val strings = Localization.strings
     val language = Localization.language
@@ -131,6 +135,7 @@ fun HomeScreen(
     var latestStories by remember { mutableStateOf<List<Story>>(emptyList()) }
     var latestChallenges by remember { mutableStateOf<List<ChallengeCard>>(emptyList()) }
     var latestLocations by remember { mutableStateOf<List<LocationCard>>(emptyList()) }
+    var latestClubs by remember { mutableStateOf<List<ClubCard>>(emptyList()) }
     var latestMeets by remember { mutableStateOf<List<MeetCard>>(emptyList()) }
     var nowMs by remember { mutableStateOf(currentTimeMs()) }
 
@@ -139,10 +144,12 @@ fun HomeScreen(
             val storiesDeferred = async { StoryApi.fetchStories() }
             val challengesDeferred = async { ChallengeApi.fetchFeed() }
             val locationsDeferred = async { LocationApi.fetchFeed() }
+            val clubsDeferred = async { ClubApi.fetchFeed() }
             val meetsDeferred = async { MeetApi.fetchFeed() }
             latestStories = homeLatestPreview(StoryLogic.publishedNewestFirst(storiesDeferred.await()))
             latestChallenges = homeLatestPreview(challengesDeferred.await().challenges)
             latestLocations = homeLatestPreview(locationsDeferred.await().locations)
+            latestClubs = homeLatestPreview(clubsDeferred.await().clubs)
             latestMeets = homeLatestPreview(meetsDeferred.await().meets)
         }
     }
@@ -252,12 +259,14 @@ fun HomeScreen(
                 stories = latestStories,
                 challenges = latestChallenges,
                 locations = latestLocations,
+                clubs = latestClubs,
                 meets = latestMeets,
                 nowMs = nowMs,
                 strings = strings,
                 onOpenStory = onOpenStory,
                 onOpenChallenge = onOpenChallenge,
                 onOpenLocation = onOpenLocation,
+                onOpenClub = onOpenClub,
                 onOpenMeet = onOpenMeet,
             )
         }
@@ -446,15 +455,17 @@ private fun HomeLatestExplore(
     stories: List<Story>,
     challenges: List<ChallengeCard>,
     locations: List<LocationCard>,
+    clubs: List<ClubCard>,
     meets: List<MeetCard>,
     nowMs: Long,
     strings: UiStrings,
     onOpenStory: (String) -> Unit,
     onOpenChallenge: (String) -> Unit,
     onOpenLocation: (String) -> Unit,
+    onOpenClub: (String) -> Unit,
     onOpenMeet: (String) -> Unit,
 ) {
-    if (stories.isEmpty() && challenges.isEmpty() && locations.isEmpty() && meets.isEmpty()) return
+    if (stories.isEmpty() && challenges.isEmpty() && locations.isEmpty() && clubs.isEmpty() && meets.isEmpty()) return
 
     Div(attrs = { classes(Styles.homeExploreActions) }) {
         if (locations.isNotEmpty()) {
@@ -464,6 +475,15 @@ private fun HomeLatestExplore(
                     card = card,
                     nowMs = nowMs,
                     onOpen = { onOpenLocation(card.id) },
+                )
+            }
+        }
+        if (clubs.isNotEmpty()) {
+            SectionTitle(strings.homeLatestClubs)
+            clubs.forEach { card ->
+                ClubFeedCard(
+                    card = card,
+                    onOpen = { onOpenClub(card.id) },
                 )
             }
         }

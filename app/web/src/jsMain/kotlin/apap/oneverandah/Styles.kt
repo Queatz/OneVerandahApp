@@ -829,7 +829,7 @@ object Styles {
             background-color: var(--md-sys-color-primary-container);
             background-image: url(/banner.jpg);
             background-size: cover;
-            background-position: 50% 100%;
+            background-position: 50% 75%;
         }
         .${banner}::after {
             content: "";

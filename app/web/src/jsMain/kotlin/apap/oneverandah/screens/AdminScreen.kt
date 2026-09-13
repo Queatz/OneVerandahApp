@@ -29,9 +29,11 @@ import apap.oneverandah.phrases.Phrase
 import apap.oneverandah.phrases.PhraseDefaults
 import apap.oneverandah.api.StoryApi
 import apap.oneverandah.api.ChallengeApi
+import apap.oneverandah.api.ClubApi
 import apap.oneverandah.api.LocationApi
 import apap.oneverandah.api.MeetApi
 import apap.oneverandah.challenges.AdminChallengesResponse
+import apap.oneverandah.clubs.AdminClubsResponse
 import apap.oneverandah.locations.AdminLocationsResponse
 import apap.oneverandah.meets.AdminMeetsResponse
 import apap.oneverandah.stories.Story
@@ -79,6 +81,7 @@ fun AdminScreen(onBack: () -> Unit) {
     var challengeAdmin by remember { mutableStateOf(AdminChallengesResponse()) }
     var meetAdmin by remember { mutableStateOf(AdminMeetsResponse()) }
     var locationAdmin by remember { mutableStateOf(AdminLocationsResponse()) }
+    var clubAdmin by remember { mutableStateOf(AdminClubsResponse()) }
     var coverImageUrl by remember { mutableStateOf<String?>(null) }
     var loading by remember { mutableStateOf(false) }
     var editing by remember { mutableStateOf<Phrase?>(null) }
@@ -109,6 +112,7 @@ fun AdminScreen(onBack: () -> Unit) {
                 challengeAdmin = runCatching { ChallengeApi.fetchAdmin() }.getOrDefault(AdminChallengesResponse())
                 meetAdmin = runCatching { MeetApi.fetchAdmin() }.getOrDefault(AdminMeetsResponse())
                 locationAdmin = runCatching { LocationApi.fetchAdmin() }.getOrDefault(AdminLocationsResponse())
+                clubAdmin = runCatching { ClubApi.fetchAdmin() }.getOrDefault(AdminClubsResponse())
             } catch (e: PhraseApiException) {
                 if (e.message?.contains("authentication", ignoreCase = true) == true) {
                     AdminAuth.clear()
@@ -464,6 +468,12 @@ fun AdminScreen(onBack: () -> Unit) {
                     attr("type", "button")
                     onClick { tab = AdminTab.LOCATIONS }
                 }) { Text(strings.adminLocationsTab) }
+                Button(attrs = {
+                    classes(Styles.chip)
+                    if (tab == AdminTab.CLUBS) classes(Styles.chipActive)
+                    attr("type", "button")
+                    onClick { tab = AdminTab.CLUBS }
+                }) { Text(strings.adminClubsTab) }
             }
             Button(attrs = {
                 classes(Styles.btnText)
@@ -479,6 +489,7 @@ fun AdminScreen(onBack: () -> Unit) {
                     challengeAdmin = AdminChallengesResponse()
                     meetAdmin = AdminMeetsResponse()
                     locationAdmin = AdminLocationsResponse()
+                    clubAdmin = AdminClubsResponse()
                     coverImageUrl = null
                 }
             }) { Text(strings.adminLogout) }
@@ -605,6 +616,13 @@ fun AdminScreen(onBack: () -> Unit) {
             AdminTab.LOCATIONS -> {
                 AdminLocationsPanel(
                     data = locationAdmin,
+                    loading = loading,
+                    onRefresh = { refresh() },
+                )
+            }
+            AdminTab.CLUBS -> {
+                AdminClubsPanel(
+                    data = clubAdmin,
                     loading = loading,
                     onRefresh = { refresh() },
                 )
@@ -1462,4 +1480,4 @@ private fun AdminArea(label: String, value: String, onChange: (String) -> Unit) 
     }
 }
 
-private enum class AdminTab { PHRASES, PHOTOS, CHARACTERS, VOICES, STORIES, CHALLENGES, MEETS, LOCATIONS }
+private enum class AdminTab { PHRASES, PHOTOS, CHARACTERS, VOICES, STORIES, CHALLENGES, MEETS, LOCATIONS, CLUBS }

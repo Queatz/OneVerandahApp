@@ -12,10 +12,12 @@ import apap.oneverandah.routes.deviceRoutes
 import apap.oneverandah.routes.phraseRoutes
 import apap.oneverandah.routes.searchRoutes
 import apap.oneverandah.routes.challengeRoutes
+import apap.oneverandah.routes.clubRoutes
 import apap.oneverandah.routes.locationRoutes
 import apap.oneverandah.routes.meetRoutes
 import apap.oneverandah.routes.storyRoutes
 import apap.oneverandah.challenges.ChallengeSystem
+import apap.oneverandah.clubs.ClubSystem
 import apap.oneverandah.locations.LocationSystem
 import apap.oneverandah.meets.MeetSystem
 import apap.oneverandah.stories.StorySystem
@@ -236,6 +238,14 @@ fun Application.module(
             )
         }
         locationRoutes(locationSystem, config)
+        val clubSystem = runBlocking {
+            ClubSystem.create(
+                config = config,
+                storage = imageSystem.storage,
+                httpClient = imageSystem.httpClient,
+            )
+        }
+        clubRoutes(clubSystem, config)
     }
 }
 

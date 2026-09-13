@@ -175,6 +175,10 @@ private fun NavMenuItems(
         onNavigate()
         router.navigate("/locations")
     }
+    DrawerItem("groups", strings.clubsTitle, active = currentPath.isSelectedRoute("/clubs")) {
+        onNavigate()
+        router.navigate("/clubs")
+    }
     DrawerItem("handshake", strings.meetsTitle, active = currentPath.isSelectedRoute("/meets")) {
         onNavigate()
         router.navigate("/meets")
