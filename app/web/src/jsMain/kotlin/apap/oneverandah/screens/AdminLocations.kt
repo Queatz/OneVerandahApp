@@ -9,6 +9,7 @@ import androidx.compose.runtime.setValue
 import apap.oneverandah.Styles
 import apap.oneverandah.api.LocationApi
 import apap.oneverandah.api.LocationApiException
+import apap.oneverandah.api.StoryApi
 import apap.oneverandah.api.firstFileOrNull
 import apap.oneverandah.components.BottomDialog
 import apap.oneverandah.components.MaterialSymbol
@@ -22,6 +23,7 @@ import apap.oneverandah.locations.LocationHours
 import apap.oneverandah.locations.LocationLogic
 import apap.oneverandah.locations.LocationUpsertRequest
 import apap.oneverandah.state.Toaster
+import apap.oneverandah.stories.GenerateStoryImageRequest
 import kotlinx.coroutines.launch
 import org.jetbrains.compose.web.attributes.InputType
 import org.jetbrains.compose.web.attributes.disabled
@@ -164,6 +166,38 @@ private fun LocationEditorDialog(
     var content by remember { mutableStateOf(listOf<LocationContentBlock>()) }
     var days by remember { mutableStateOf(defaultDays()) }
     var busy by remember { mutableStateOf(false) }
+    var generateFor by remember { mutableStateOf<GenerateLocationPhotoTarget?>(null) }
+    var generatingGallery by remember { mutableStateOf(false) }
+    var generatingContent by remember { mutableStateOf(false) }
+
+    fun startGeneration(target: GenerateLocationPhotoTarget, request: GenerateStoryImageRequest) {
+        generateFor = null
+        when (target) {
+            GenerateLocationPhotoTarget.Gallery -> generatingGallery = true
+            GenerateLocationPhotoTarget.Content -> generatingContent = true
+        }
+        scope.launch {
+            try {
+                val url = StoryApi.generateImage(request).imageUrl.trim()
+                if (url.isEmpty()) throw LocationApiException(strings.adminError)
+                when (target) {
+                    GenerateLocationPhotoTarget.Gallery -> photos = photos + url
+                    GenerateLocationPhotoTarget.Content -> content = content + LocationContentBlock(
+                        type = LocationLogic.BLOCK_IMAGE,
+                        imageUrl = url,
+                    )
+                }
+                Toaster.show(strings.adminSaved)
+            } catch (e: Throwable) {
+                Toaster.show(e.message ?: strings.adminError)
+            } finally {
+                when (target) {
+                    GenerateLocationPhotoTarget.Gallery -> generatingGallery = false
+                    GenerateLocationPhotoTarget.Content -> generatingContent = false
+                }
+            }
+        }
+    }
 
     androidx.compose.runtime.LaunchedEffect(visible, initial?.id) {
         if (!visible) return@LaunchedEffect
@@ -181,6 +215,9 @@ private fun LocationEditorDialog(
         content = initial?.content.orEmpty()
         days = daysFromSchedule(initial?.schedule.orEmpty())
         busy = false
+        generateFor = null
+        generatingGallery = false
+        generatingContent = false
     }
 
     BottomDialog(
@@ -226,22 +263,34 @@ private fun LocationEditorDialog(
                     }
                 }
             }
-            Label(attrs = { classes(Styles.btnText) }) {
-                Text(strings.adminLocationAddPhoto)
-                Input(type = InputType.File) {
-                    attr("accept", "image/*")
-                    attr("multiple", "")
-                    style { property("display", "none") }
-                    onChange {
-                        val input = it.nativeEvent.target as? HTMLInputElement ?: return@onChange
-                        val files = filesOf(input)
-                        input.value = ""
-                        if (files.isEmpty()) return@onChange
-                        scope.launch {
-                            files.forEach { file ->
-                                runCatching { LocationApi.uploadPhoto(file) }
-                                    .onSuccess { url -> photos = photos + url }
-                                    .onFailure { err -> Toaster.show(err.message ?: strings.adminError) }
+            if (generatingGallery) {
+                P(attrs = { classes(Styles.homePrompt) }) { Text(strings.adminGenerating) }
+            }
+            Div(attrs = { classes(Styles.adminRowActions) }) {
+                PrimaryButton(
+                    label = strings.adminGeneratePhoto,
+                    icon = "auto_awesome",
+                    enabled = !generatingGallery,
+                ) {
+                    generateFor = GenerateLocationPhotoTarget.Gallery
+                }
+                Label(attrs = { classes(Styles.btnText) }) {
+                    Text(strings.adminLocationAddPhoto)
+                    Input(type = InputType.File) {
+                        attr("accept", "image/*")
+                        attr("multiple", "")
+                        style { property("display", "none") }
+                        onChange {
+                            val input = it.nativeEvent.target as? HTMLInputElement ?: return@onChange
+                            val files = filesOf(input)
+                            input.value = ""
+                            if (files.isEmpty()) return@onChange
+                            scope.launch {
+                                files.forEach { file ->
+                                    runCatching { LocationApi.uploadPhoto(file) }
+                                        .onSuccess { url -> photos = photos + url }
+                                        .onFailure { err -> Toaster.show(err.message ?: strings.adminError) }
+                                }
                             }
                         }
                     }
@@ -340,6 +389,9 @@ private fun LocationEditorDialog(
                     }
                 }
             }
+            if (generatingContent) {
+                P(attrs = { classes(Styles.homePrompt) }) { Text(strings.adminGenerating) }
+            }
             Div(attrs = { classes(Styles.adminRowActions) }) {
                 Button(attrs = {
                     classes(Styles.btnText)
@@ -368,6 +420,12 @@ private fun LocationEditorDialog(
                         }
                     }
                 }
+                Button(attrs = {
+                    classes(Styles.btnText)
+                    attr("type", "button")
+                    if (generatingContent) attr("disabled", "")
+                    onClick { if (!generatingContent) generateFor = GenerateLocationPhotoTarget.Content }
+                }) { Text(strings.adminGeneratePhoto) }
             }
 
             initial?.commitments?.takeIf { it.isNotEmpty() }?.let { commitments ->
@@ -430,6 +488,23 @@ private fun LocationEditorDialog(
             }
         }
     }
+
+    StoryGeneratePhotoDialog(
+        visible = generateFor != null,
+        storyId = null,
+        pageId = null,
+        asCover = false,
+        onDismiss = { generateFor = null },
+        onStart = { request ->
+            val target = generateFor ?: return@StoryGeneratePhotoDialog
+            startGeneration(target, request)
+        },
+    )
+}
+
+private sealed class GenerateLocationPhotoTarget {
+    data object Gallery : GenerateLocationPhotoTarget()
+    data object Content : GenerateLocationPhotoTarget()
 }
 
 @Composable

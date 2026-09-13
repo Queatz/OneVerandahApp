@@ -9,6 +9,7 @@ import androidx.compose.runtime.setValue
 import apap.oneverandah.Styles
 import apap.oneverandah.api.ClubApi
 import apap.oneverandah.api.ClubApiException
+import apap.oneverandah.api.StoryApi
 import apap.oneverandah.api.firstFileOrNull
 import apap.oneverandah.clubs.AdminClubView
 import apap.oneverandah.clubs.AdminClubsResponse
@@ -24,6 +25,7 @@ import apap.oneverandah.components.PrimaryButton
 import apap.oneverandah.components.SectionTitle
 import apap.oneverandah.i18n.Localization
 import apap.oneverandah.state.Toaster
+import apap.oneverandah.stories.GenerateStoryImageRequest
 import kotlinx.coroutines.launch
 import org.jetbrains.compose.web.attributes.InputType
 import org.jetbrains.compose.web.dom.Button
@@ -272,6 +274,38 @@ private fun ClubEditorDialog(
     var photos by remember { mutableStateOf(listOf<String>()) }
     var content by remember { mutableStateOf(listOf<ClubContentBlock>()) }
     var busy by remember { mutableStateOf(false) }
+    var generateFor by remember { mutableStateOf<GenerateClubPhotoTarget?>(null) }
+    var generatingGallery by remember { mutableStateOf(false) }
+    var generatingContent by remember { mutableStateOf(false) }
+
+    fun startGeneration(target: GenerateClubPhotoTarget, request: GenerateStoryImageRequest) {
+        generateFor = null
+        when (target) {
+            GenerateClubPhotoTarget.Gallery -> generatingGallery = true
+            GenerateClubPhotoTarget.Content -> generatingContent = true
+        }
+        scope.launch {
+            try {
+                val url = StoryApi.generateImage(request).imageUrl.trim()
+                if (url.isEmpty()) throw ClubApiException(strings.adminError)
+                when (target) {
+                    GenerateClubPhotoTarget.Gallery -> photos = photos + url
+                    GenerateClubPhotoTarget.Content -> content = content + ClubContentBlock(
+                        type = ClubLogic.BLOCK_IMAGE,
+                        imageUrl = url,
+                    )
+                }
+                Toaster.show(strings.adminSaved)
+            } catch (e: Throwable) {
+                Toaster.show(e.message ?: strings.adminError)
+            } finally {
+                when (target) {
+                    GenerateClubPhotoTarget.Gallery -> generatingGallery = false
+                    GenerateClubPhotoTarget.Content -> generatingContent = false
+                }
+            }
+        }
+    }
 
     androidx.compose.runtime.LaunchedEffect(visible, initial?.id, seed?.id) {
         if (!visible) return@LaunchedEffect
@@ -290,6 +324,9 @@ private fun ClubEditorDialog(
         photos = initial?.photoUrls.orEmpty()
         content = initial?.content.orEmpty()
         busy = false
+        generateFor = null
+        generatingGallery = false
+        generatingContent = false
     }
 
     BottomDialog(
@@ -336,22 +373,34 @@ private fun ClubEditorDialog(
                     }
                 }
             }
-            Label(attrs = { classes(Styles.btnText) }) {
-                Text(strings.adminClubAddPhoto)
-                Input(type = InputType.File) {
-                    attr("accept", "image/*")
-                    attr("multiple", "")
-                    style { property("display", "none") }
-                    onChange {
-                        val input = it.nativeEvent.target as? HTMLInputElement ?: return@onChange
-                        val files = filesOf(input)
-                        input.value = ""
-                        if (files.isEmpty()) return@onChange
-                        scope.launch {
-                            files.forEach { file ->
-                                runCatching { ClubApi.uploadPhoto(file) }
-                                    .onSuccess { url -> photos = photos + url }
-                                    .onFailure { err -> Toaster.show(err.message ?: strings.adminError) }
+            if (generatingGallery) {
+                P(attrs = { classes(Styles.homePrompt) }) { Text(strings.adminGenerating) }
+            }
+            Div(attrs = { classes(Styles.adminRowActions) }) {
+                PrimaryButton(
+                    label = strings.adminGeneratePhoto,
+                    icon = "auto_awesome",
+                    enabled = !generatingGallery,
+                ) {
+                    generateFor = GenerateClubPhotoTarget.Gallery
+                }
+                Label(attrs = { classes(Styles.btnText) }) {
+                    Text(strings.adminClubAddPhoto)
+                    Input(type = InputType.File) {
+                        attr("accept", "image/*")
+                        attr("multiple", "")
+                        style { property("display", "none") }
+                        onChange {
+                            val input = it.nativeEvent.target as? HTMLInputElement ?: return@onChange
+                            val files = filesOf(input)
+                            input.value = ""
+                            if (files.isEmpty()) return@onChange
+                            scope.launch {
+                                files.forEach { file ->
+                                    runCatching { ClubApi.uploadPhoto(file) }
+                                        .onSuccess { url -> photos = photos + url }
+                                        .onFailure { err -> Toaster.show(err.message ?: strings.adminError) }
+                                }
                             }
                         }
                     }
@@ -410,6 +459,9 @@ private fun ClubEditorDialog(
                     }
                 }
             }
+            if (generatingContent) {
+                P(attrs = { classes(Styles.homePrompt) }) { Text(strings.adminGenerating) }
+            }
             Div(attrs = { classes(Styles.adminRowActions) }) {
                 Button(attrs = {
                     classes(Styles.btnText)
@@ -438,6 +490,12 @@ private fun ClubEditorDialog(
                         }
                     }
                 }
+                Button(attrs = {
+                    classes(Styles.btnText)
+                    attr("type", "button")
+                    if (generatingContent) attr("disabled", "")
+                    onClick { if (!generatingContent) generateFor = GenerateClubPhotoTarget.Content }
+                }) { Text(strings.adminGeneratePhoto) }
             }
 
             initial?.joins?.takeIf { it.isNotEmpty() }?.let { joins ->
@@ -496,6 +554,23 @@ private fun ClubEditorDialog(
             }
         }
     }
+
+    StoryGeneratePhotoDialog(
+        visible = generateFor != null,
+        storyId = null,
+        pageId = null,
+        asCover = false,
+        onDismiss = { generateFor = null },
+        onStart = { request ->
+            val target = generateFor ?: return@StoryGeneratePhotoDialog
+            startGeneration(target, request)
+        },
+    )
+}
+
+private sealed class GenerateClubPhotoTarget {
+    data object Gallery : GenerateClubPhotoTarget()
+    data object Content : GenerateClubPhotoTarget()
 }
 
 @Composable

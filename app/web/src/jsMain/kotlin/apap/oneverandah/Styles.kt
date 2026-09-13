@@ -79,6 +79,7 @@ object Styles {
     // Footer / primary button
     const val footer = "footer"
     const val btnPrimary = "btn-primary"
+    const val btnSecondary = "btn-secondary"
 
     // Material icon helper
     const val materialSymbols = "material-symbols-outlined"
@@ -1199,6 +1200,26 @@ object Styles {
         .${btnPrimary}:hover { filter: brightness(1.07); }
         .${btnPrimary}:active { transform: scale(0.98); }
         .${btnPrimary}:disabled { filter: grayscale(0.3) brightness(0.7); cursor: default; pointer-events: none; }
+        .${btnSecondary} {
+            display: flex;
+            align-items: center;
+            justify-content: center;
+            gap: 8px;
+            width: 100%;
+            background: transparent;
+            color: var(--md-sys-color-primary);
+            border: 1px solid var(--md-sys-color-primary);
+            border-radius: 100px;
+            padding: 12px 20px;
+            font-size: 15px;
+            font-weight: 700;
+            font-family: inherit;
+            cursor: pointer;
+            transition: background-color 0.2s, filter 0.2s, transform 0.1s;
+        }
+        .${btnSecondary}:hover { background-color: var(--md-sys-color-surface-variant); }
+        .${btnSecondary}:active { transform: scale(0.98); }
+        .${btnSecondary}:disabled { filter: grayscale(0.3) brightness(0.7); cursor: default; pointer-events: none; }
 
         /* Success animation overlay */
         .${successOverlay} {
@@ -2265,6 +2286,9 @@ object Styles {
         .${homeExploreActions} .${storiesGrid} {
             margin-top: 0;
             margin-bottom: 8px;
+        }
+        .${homeExploreActions} .${btnSecondary} {
+            margin: 4px 0 12px 0;
         }
         .${homeExploreCard} {
             display: flex;

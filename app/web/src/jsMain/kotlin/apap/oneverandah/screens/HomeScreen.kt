@@ -268,6 +268,11 @@ fun HomeScreen(
                 onOpenLocation = onOpenLocation,
                 onOpenClub = onOpenClub,
                 onOpenMeet = onOpenMeet,
+                onOpenStories = onOpenStories,
+                onOpenChallenges = onOpenChallenges,
+                onOpenLocations = onOpenLocations,
+                onOpenClubs = onOpenClubs,
+                onOpenMeets = onOpenMeets,
             )
         }
 
@@ -464,6 +469,11 @@ private fun HomeLatestExplore(
     onOpenLocation: (String) -> Unit,
     onOpenClub: (String) -> Unit,
     onOpenMeet: (String) -> Unit,
+    onOpenStories: () -> Unit,
+    onOpenChallenges: () -> Unit,
+    onOpenLocations: () -> Unit,
+    onOpenClubs: () -> Unit,
+    onOpenMeets: () -> Unit,
 ) {
     if (stories.isEmpty() && challenges.isEmpty() && locations.isEmpty() && clubs.isEmpty() && meets.isEmpty()) return
 
@@ -477,6 +487,7 @@ private fun HomeLatestExplore(
                     onOpen = { onOpenLocation(card.id) },
                 )
             }
+            HomeLatestViewAll(strings.viewAll, onOpenLocations)
         }
         if (clubs.isNotEmpty()) {
             SectionTitle(strings.homeLatestClubs)
@@ -486,6 +497,7 @@ private fun HomeLatestExplore(
                     onOpen = { onOpenClub(card.id) },
                 )
             }
+            HomeLatestViewAll(strings.viewAll, onOpenClubs)
         }
         if (stories.isNotEmpty()) {
             SectionTitle(strings.homeLatestStories)
@@ -494,6 +506,7 @@ private fun HomeLatestExplore(
                     StoryCoverCard(story) { onOpenStory(story.id) }
                 }
             }
+            HomeLatestViewAll(strings.viewAll, onOpenStories)
         }
         if (challenges.isNotEmpty()) {
             SectionTitle(strings.homeLatestChallenges)
@@ -502,6 +515,7 @@ private fun HomeLatestExplore(
                     ChallengeCardButton(card) { onOpenChallenge(card.id) }
                 }
             }
+            HomeLatestViewAll(strings.viewAll, onOpenChallenges)
         }
         if (meets.isNotEmpty()) {
             SectionTitle(strings.homeLatestMeets)
@@ -510,8 +524,18 @@ private fun HomeLatestExplore(
                     MeetCardButton(card) { onOpenMeet(card.id) }
                 }
             }
+            HomeLatestViewAll(strings.viewAll, onOpenMeets)
         }
     }
+}
+
+@Composable
+private fun HomeLatestViewAll(label: String, onClick: () -> Unit) {
+    Button(attrs = {
+        classes(Styles.btnSecondary)
+        attr("type", "button")
+        onClick { onClick() }
+    }) { Text(label) }
 }
 
 /**

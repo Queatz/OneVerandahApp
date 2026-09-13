@@ -544,7 +544,7 @@ private sealed class GenerateStoryTarget {
 }
 
 @Composable
-private fun StoryGeneratePhotoDialog(
+internal fun StoryGeneratePhotoDialog(
     visible: Boolean,
     storyId: String?,
     pageId: String?,

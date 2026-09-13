@@ -84,6 +84,18 @@ fun HelpScreen(onBack: () -> Unit) {
         Div(attrs = {
             classes(Styles.listCard)
             attr("role", "button")
+            onClick { activeDialogTitle = strings.helpSuggestFeature }
+        }) {
+            MaterialSymbol("lightbulb", extraClass = Styles.listIcon)
+            Div(attrs = { classes(Styles.listDetails) }) {
+                H2 { Text(strings.helpSuggestFeature) }
+                P { Text(strings.helpSuggestFeatureSubtitle) }
+            }
+        }
+
+        Div(attrs = {
+            classes(Styles.listCard)
+            attr("role", "button")
             onClick { activeDialogTitle = strings.helpFeedback }
         }) {
             MaterialSymbol("feedback", extraClass = Styles.listIcon)
