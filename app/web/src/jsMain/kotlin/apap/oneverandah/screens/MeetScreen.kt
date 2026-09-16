@@ -194,7 +194,6 @@ private fun CreateMeetDialog(
         visible = visible,
         closeLabel = strings.close,
         onDismiss = { if (!busy) onDismiss() },
-        expanded = true,
     ) {
         Div(attrs = { classes(Styles.dialogHeader) }) {
             P(attrs = { classes(Styles.dialogTitle) }) { Text(strings.meetsStartNew) }
@@ -239,8 +238,8 @@ private fun CreateMeetDialog(
                     placeholder(strings.zaloPlaceholder)
                     onInput { zalo = it.value }
                 }
+                Span(attrs = { classes(Styles.textHint) }) { Text(strings.meetsZaloHint) }
             }
-            P(attrs = { classes(Styles.homePrompt) }) { Text(strings.meetsZaloHint) }
             Div(attrs = { classes(Styles.textField) }) {
                 Label(attrs = { classes(Styles.textLabel) }) { Text(strings.meetsPitchLimit) }
                 Input(type = InputType.Text) {
@@ -249,8 +248,8 @@ private fun CreateMeetDialog(
                     attr("inputmode", "numeric")
                     onInput { pitchLimit = it.value }
                 }
+                Span(attrs = { classes(Styles.textHint) }) { Text(strings.meetsPitchLimitHint) }
             }
-            P(attrs = { classes(Styles.homePrompt) }) { Text(strings.meetsPitchLimitHint) }
             Div(attrs = { classes(Styles.textField) }) {
                 Label(attrs = { classes(Styles.textLabel) }) { Text(strings.meetsPitchLabel) }
                 TextArea(pitch) {

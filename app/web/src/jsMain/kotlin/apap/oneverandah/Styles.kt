@@ -75,6 +75,7 @@ object Styles {
     const val textField = "text-field"
     const val textArea = "text-area"
     const val textLabel = "text-label"
+    const val textHint = "text-hint"
 
     // Footer / primary button
     const val footer = "footer"
@@ -1166,6 +1167,12 @@ object Styles {
         }
         .${textError} {
             color: var(--md-sys-color-error);
+            font-size: 12px;
+            margin-top: 4px;
+            display: block;
+        }
+        .${textHint} {
+            color: var(--md-sys-color-on-surface-variant);
             font-size: 12px;
             margin-top: 4px;
             display: block;
