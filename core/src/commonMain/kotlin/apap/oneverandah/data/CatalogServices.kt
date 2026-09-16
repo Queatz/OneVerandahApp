@@ -50,6 +50,7 @@ internal object CatalogServices {
         blockAddress = "Block B - B07.01",
         phone = "+84 708 739 214",
         photo = "face_6",
+        status = ServiceStatus.TEMPORARILY_UNAVAILABLE,
         intro = lt(
             "Builder, coach and resident who loves turning ideas into realities.",
             "Lập trình viên, người khai vấn và cư dân, yêu thích biến ý tưởng thành hiện thực."

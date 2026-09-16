@@ -89,7 +89,8 @@ fun OfferScreen(
     val scope = rememberCoroutineScope()
 
     val breakdown = PricingCalculator.breakdown(service, selection)
-    val temporarilyUnavailable = service.status == ServiceStatus.TEMPORARILY_UNAVAILABLE
+    val effectiveStatus = service.effectiveStatus
+    val temporarilyUnavailable = effectiveStatus == ServiceStatus.TEMPORARILY_UNAVAILABLE
     val saved = PinnedStore.isSaved(serviceId)
     val deepLink = "${window.location.origin}/service/${service.id}"
 

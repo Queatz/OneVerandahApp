@@ -151,6 +151,8 @@ data class ServiceProvider(
      * 1–5 level. Treated as a primary piece of profile information.
      */
     val skills: List<ProviderSkill> = emptyList(),
+    /** Manually adjustable operational status controlling visibility/bookability. */
+    val status: ServiceStatus = ServiceStatus.AVAILABLE,
     /**
      * Optional explicit override for [id]. Used to disambiguate providers who
      * share the same [name] (and would otherwise produce the same slug).
@@ -214,6 +216,17 @@ data class Service(
     /** Optional label/placeholder for the free-form comment field. */
     val commentPrompt: CommentPrompt? = null,
 ) {
+    /**
+     * The effective operational status considering both the service's own [status]
+     * and its [provider]'s status. The provider's status overrides when lower.
+     */
+    val effectiveStatus: ServiceStatus
+        get() = when (provider.status) {
+            ServiceStatus.AVAILABLE -> status
+            ServiceStatus.TEMPORARILY_UNAVAILABLE -> if (status == ServiceStatus.UNAVAILABLE) ServiceStatus.UNAVAILABLE else ServiceStatus.TEMPORARILY_UNAVAILABLE
+            ServiceStatus.UNAVAILABLE -> ServiceStatus.UNAVAILABLE
+        }
+
     /** A reasonable initial [BookingSelection] using each option's defaults. */
     fun defaultSelection(): BookingSelection = BookingSelection(
         bookingTypeId = bookingTypes.first().id,
