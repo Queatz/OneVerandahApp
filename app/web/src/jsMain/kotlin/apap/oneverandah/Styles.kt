@@ -4156,7 +4156,9 @@ object Styles {
             overflow-y: hidden;
             scroll-snap-type: x mandatory;
             -webkit-overflow-scrolling: touch;
+            scrollbar-width: none;
         }
+        .${locationCardPhotosTrack}::-webkit-scrollbar { display: none; }
         .${locationCardPhoto} {
             flex: 0 0 100%;
             width: 100%;

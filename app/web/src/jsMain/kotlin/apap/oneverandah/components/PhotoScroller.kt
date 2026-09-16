@@ -14,6 +14,7 @@ import org.jetbrains.compose.web.dom.Div
 import org.jetbrains.compose.web.dom.Img
 import org.w3c.dom.HTMLElement
 import org.w3c.dom.events.Event
+import org.w3c.dom.events.WheelEvent
 import kotlin.math.abs
 
 internal enum class PhotoSwipeAxis { Horizontal, Vertical }
@@ -121,6 +122,43 @@ internal fun resistedSwipeOffset(
     }
 }
 
+internal fun horizontalWheelDelta(deltaX: Double, deltaY: Double, shiftKey: Boolean): Double {
+    if (shiftKey && abs(deltaY) >= abs(deltaX)) return deltaY
+    if (abs(deltaX) > abs(deltaY)) return deltaX
+    return 0.0
+}
+
+internal fun photoIndexAfterWheel(
+    index: Int,
+    count: Int,
+    accumulatedPx: Double,
+    deltaPx: Double,
+    thresholdPx: Double = 48.0,
+): Pair<Int, Double> {
+    if (count <= 1 || thresholdPx <= 0.0) return index.coerceAtLeast(0) to 0.0
+    var acc = accumulatedPx + deltaPx
+    var next = index.coerceIn(0, (count - 1).coerceAtLeast(0))
+    while (acc >= thresholdPx) {
+        val stepped = stepPhotoIndex(next, count, 1, wrap = false)
+        if (stepped == next) {
+            acc = thresholdPx
+            break
+        }
+        next = stepped
+        acc -= thresholdPx
+    }
+    while (acc <= -thresholdPx) {
+        val stepped = stepPhotoIndex(next, count, -1, wrap = false)
+        if (stepped == next) {
+            acc = -thresholdPx
+            break
+        }
+        next = stepped
+        acc += thresholdPx
+    }
+    return next to acc
+}
+
 internal fun photoIndexForDialogKey(key: String, index: Int, count: Int): Int? {
     if (count <= 1) return null
     return when (key) {
@@ -143,7 +181,8 @@ internal fun eventClientPoint(event: Event): Pair<Double, Double>? {
 
 /**
  * Horizontal photo gallery: one large photo, optional arrows and dots, and a
- * thumbnail strip. Mouse and touch dragging swipe between photos.
+ * thumbnail strip. Mouse and touch dragging, plus trackpad/shift-wheel
+ * horizontal scrolling, swipe between photos.
  */
 @Composable
 fun PhotoScroller(
@@ -160,6 +199,7 @@ fun PhotoScroller(
     var offsetX by remember { mutableStateOf(0.0) }
     var dragging by remember { mutableStateOf(false) }
     var pointerActive by remember { mutableStateOf(false) }
+    var wheelAccum by remember { mutableStateOf(0.0) }
     var viewportEl by remember { mutableStateOf<HTMLElement?>(null) }
     val swipe = remember { PhotoSwipeState() }
     val canNavigate = urls.size > 1
@@ -170,7 +210,10 @@ fun PhotoScroller(
         offsetX = 0.0
         dragging = false
         pointerActive = false
+        wheelAccum = 0.0
     }
+
+    LaunchedEffect(index) { wheelAccum = 0.0 }
 
     fun finishSwipe() {
         if (!swipe.active && !pointerActive) return
@@ -234,6 +277,22 @@ fun PhotoScroller(
                 }
             }
             onTouchEnd { finishSwipe() }
+            onWheel { event ->
+                if (!canNavigate || pointerActive) return@onWheel
+                val wheel = event.nativeEvent as WheelEvent
+                val delta = horizontalWheelDelta(wheel.deltaX, wheel.deltaY, wheel.shiftKey)
+                if (delta == 0.0) return@onWheel
+                event.preventDefault()
+                event.stopPropagation()
+                val (next, acc) = photoIndexAfterWheel(index, urls.size, wheelAccum, delta)
+                wheelAccum = acc
+                if (next != index) {
+                    swipe.cancel()
+                    offsetX = 0.0
+                    dragging = false
+                    index = next
+                }
+            }
             onClick {
                 if (!swipe.suppressClick) onPhotoClick?.invoke(index)
             }

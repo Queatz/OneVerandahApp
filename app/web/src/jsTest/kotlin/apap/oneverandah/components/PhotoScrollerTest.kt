@@ -47,6 +47,31 @@ class PhotoScrollerTest {
     }
 
     @Test
+    fun wheelIgnoresMostlyVerticalDeltas() {
+        assertEquals(0.0, horizontalWheelDelta(3.0, 40.0, shiftKey = false))
+        assertEquals(40.0, horizontalWheelDelta(40.0, 3.0, shiftKey = false))
+    }
+
+    @Test
+    fun shiftWheelMapsVerticalToHorizontal() {
+        assertEquals(40.0, horizontalWheelDelta(0.0, 40.0, shiftKey = true))
+        assertEquals(-12.0, horizontalWheelDelta(-12.0, 10.0, shiftKey = true))
+    }
+
+    @Test
+    fun wheelAdvancesAfterThresholdAndAccumulatesBelow() {
+        assertEquals(0 to 40.0, photoIndexAfterWheel(0, 3, 20.0, 20.0, 48.0))
+        assertEquals(1 to 0.0, photoIndexAfterWheel(0, 3, 0.0, 48.0, 48.0))
+        assertEquals(0 to 0.0, photoIndexAfterWheel(1, 3, 0.0, -48.0, 48.0))
+    }
+
+    @Test
+    fun wheelDoesNotWrapAtEnds() {
+        assertEquals(2 to 48.0, photoIndexAfterWheel(2, 3, 0.0, 80.0, 48.0))
+        assertEquals(0 to -48.0, photoIndexAfterWheel(0, 3, 0.0, -80.0, 48.0))
+    }
+
+    @Test
     fun dialogKeysWrapAndEscapeDismisses() {
         assertEquals(0, photoIndexForDialogKey("ArrowRight", 2, 3))
         assertEquals(2, photoIndexForDialogKey("ArrowLeft", 0, 3))

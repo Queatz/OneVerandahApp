@@ -1,6 +1,7 @@
 package apap.oneverandah.screens
 
 import androidx.compose.runtime.Composable
+import androidx.compose.runtime.DisposableEffect
 import androidx.compose.runtime.LaunchedEffect
 import androidx.compose.runtime.getValue
 import androidx.compose.runtime.mutableStateOf
@@ -36,6 +37,9 @@ import org.jetbrains.compose.web.dom.P
 import org.jetbrains.compose.web.dom.Span
 import org.jetbrains.compose.web.dom.Text
 import org.jetbrains.compose.web.dom.TextArea
+import org.w3c.dom.HTMLElement
+import org.w3c.dom.events.Event
+import kotlin.math.round
 
 @Composable
 fun LocationsScreen(
@@ -233,6 +237,25 @@ internal fun LocationFeedCard(
     val snapshot = LocationLogic.hoursSnapshot(card.status, card.schedule, nowMs)
     val hours = locationHoursLabel(snapshot, strings)
     val photos = card.photoUrls.ifEmpty { emptyList() }
+    var photoIndex by remember(card.id) { mutableStateOf(0) }
+    var photosTrackEl by remember(card.id) { mutableStateOf<HTMLElement?>(null) }
+
+    LaunchedEffect(photos.size) {
+        photoIndex = photoIndex.coerceIn(0, (photos.size - 1).coerceAtLeast(0))
+    }
+
+    DisposableEffect(photosTrackEl, photos.size) {
+        val el = photosTrackEl ?: return@DisposableEffect onDispose {}
+        val listener: (Event) -> Unit = {
+            photoIndex = locationCardPhotoIndex(
+                el.scrollLeft,
+                el.clientWidth.toDouble(),
+                photos.size,
+            )
+        }
+        el.addEventListener("scroll", listener)
+        onDispose { el.removeEventListener("scroll", listener) }
+    }
 
     Div(attrs = {
         classes(Styles.locationCard)
@@ -246,9 +269,37 @@ internal fun LocationFeedCard(
                         MaterialSymbol("location_on")
                     }
                 } else {
-                    Div(attrs = { classes(Styles.locationCardPhotosTrack) }) {
+                    Div(attrs = {
+                        classes(Styles.locationCardPhotosTrack)
+                        ref { element ->
+                            photosTrackEl = element
+                            onDispose { if (photosTrackEl === element) photosTrackEl = null }
+                        }
+                    }) {
                         photos.forEach { url ->
                             Img(src = url, alt = card.name, attrs = { classes(Styles.locationCardPhoto) })
+                        }
+                    }
+                    if (photos.size > 1) {
+                        Div(attrs = { classes(Styles.photoScrollerDots) }) {
+                            photos.forEachIndexed { i, _ ->
+                                Button(attrs = {
+                                    classes(Styles.photoScrollerDot)
+                                    if (i == photoIndex) classes(Styles.photoScrollerDotActive)
+                                    attr("type", "button")
+                                    attr("aria-label", "Photo ${i + 1}")
+                                    attr("aria-current", (i == photoIndex).toString())
+                                    onMouseDown { it.stopPropagation() }
+                                    onTouchStart { it.stopPropagation() }
+                                    onClick {
+                                        it.stopPropagation()
+                                        photoIndex = i
+                                        val el = photosTrackEl ?: return@onClick
+                                        val width = el.clientWidth.toDouble()
+                                        if (width > 0.0) el.asDynamic().scrollLeft = i * width
+                                    }
+                                })
+                            }
                         }
                     }
                 }
@@ -309,6 +360,11 @@ internal fun LocationFeedCard(
             }
         }
     }
+}
+
+internal fun locationCardPhotoIndex(scrollLeft: Double, viewportWidthPx: Double, count: Int): Int {
+    if (count <= 1 || viewportWidthPx <= 0.0) return 0
+    return round(scrollLeft / viewportWidthPx).toInt().coerceIn(0, count - 1)
 }
 
 internal fun locationStatusClass(displayStatus: String): String = when (displayStatus) {

@@ -195,14 +195,14 @@ private fun NavMenuItems(
         onNavigate()
         router.navigate("/challenges")
     }
-    DrawerItem("import_contacts", strings.phrasesTitle, active = currentPath.isSelectedRoute("/phrases")) {
-        onNavigate()
-        router.navigate("/phrases")
-    }
-    DrawerItem("info", strings.menuAbout, active = currentPath.isSelectedRoute("/about")) {
-        onNavigate()
-        router.navigate("/about")
-    }
+//    DrawerItem("import_contacts", strings.phrasesTitle, active = currentPath.isSelectedRoute("/phrases")) {
+//        onNavigate()
+//        router.navigate("/phrases")
+//    }
+//    DrawerItem("info", strings.menuAbout, active = currentPath.isSelectedRoute("/about")) {
+//        onNavigate()
+//        router.navigate("/about")
+//    }
     DrawerItem("add_business", strings.helpListService, active = currentPath.isSelectedRoute("/list")) {
         onNavigate()
         router.navigate("/list")
@@ -390,7 +390,7 @@ fun Scaffold(
                 // Hamburger only in mobile layout; desktop keeps the rail open.
                 onMenu = if (isDesktop) null else ({ drawerOpen = true }),
                 onLanguageClick = { languageDialogOpen = true },
-                showPhrasesAction = showPhrasesAction,
+                showPhrasesAction = false, // disabled for now
                 appBarAction = appBarAction,
             )
 
