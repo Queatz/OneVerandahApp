@@ -15,7 +15,6 @@ import apap.oneverandah.screens.HomeScreen
 import apap.oneverandah.screens.OfferScreen
 import apap.oneverandah.screens.ProviderScreen
 import apap.oneverandah.screens.ServicesScreen
-import apap.oneverandah.screens.AboutScreen
 import apap.oneverandah.screens.AdminScreen
 import apap.oneverandah.screens.HelpScreen
 import apap.oneverandah.screens.ListServiceScreen
@@ -99,12 +98,6 @@ fun App() {
                     onHome = { router.navigate("/") },
                     onServiceSelected = { id -> router.navigate("/service/$id") },
                 )
-            }
-        }
-
-        route("about") {
-            noMatch {
-                AboutScreen(onBack = { router.navigate("/") })
             }
         }
 

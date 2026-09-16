@@ -15,7 +15,10 @@ import apap.oneverandah.components.PrimaryButton
 import apap.oneverandah.components.Scaffold
 import apap.oneverandah.components.SuccessOverlay
 import apap.oneverandah.components.BottomDialog
+import apap.oneverandah.components.InfoList
+import apap.oneverandah.components.Spacer
 import apap.oneverandah.i18n.Localization
+import app.softwork.routingcompose.Router
 import org.jetbrains.compose.web.attributes.InputType
 import org.jetbrains.compose.web.attributes.placeholder
 import org.jetbrains.compose.web.attributes.value
@@ -35,6 +38,7 @@ fun HelpScreen(onBack: () -> Unit) {
     var messageText by remember { mutableStateOf("") }
     var phase by remember { mutableStateOf(HelpPhase.IDLE) }
     val scope = rememberCoroutineScope()
+    val router = Router.current
 
     Scaffold(
         title = strings.menuHelp,
@@ -114,6 +118,30 @@ fun HelpScreen(onBack: () -> Unit) {
             Div(attrs = { classes(Styles.listDetails) }) {
                 H2 { Text(strings.helpReportProblem) }
                 P { Text(strings.helpReportProblemSubtitle) }
+            }
+        }
+
+        Spacer()
+
+        P(attrs = { classes(Styles.homePrompt) }) {
+            Text(strings.aboutText)
+        }
+        InfoList(
+            items = listOf(
+                "workspace_premium" to strings.aboutExclusive,
+                "verified" to strings.aboutTrusted,
+                "redeem" to strings.aboutFree,
+            )
+        )
+        // Hidden admin entry: a tiny, low-contrast control at the bottom of About.
+        Div(attrs = { classes(Styles.hiddenAdminWrap) }) {
+            Button(attrs = {
+                classes(Styles.hiddenAdminButton)
+                attr("type", "button")
+                attr("aria-label", strings.adminTitle)
+                onClick { router.navigate("/admin") }
+            }) {
+                Text("·")
             }
         }
     }
