@@ -2770,7 +2770,7 @@ object Styles {
             padding: 16px;
             border-radius: 20px;
             background: color-mix(in srgb, var(--md-sys-color-primary) 6%, var(--md-sys-color-surface));
-            border: 1px solid var(--md-sys-color-outline-variant, var(--md-sys-color-outline));
+            border: 1px solid var(--md-sys-color-outline, var(--md-sys-color-outline));
             margin-bottom: 16px;
         }
         .${adminCoverPreview} {
@@ -3742,7 +3742,7 @@ object Styles {
         .${storyStudyBlock} {
             margin-top: 20px;
             padding-top: 12px;
-            border-top: 1px solid var(--md-sys-color-outline-variant);
+            border-top: 1px solid var(--md-sys-color-outline);
         }
         .${storiesSoon} h2 {
             margin: 0;
@@ -3774,8 +3774,8 @@ object Styles {
             justify-content: center;
             gap: 10px;
             min-height: 180px;
-            border: 2px dashed var(--md-sys-color-outline-variant);
-            background: var(--md-sys-color-surface-container);
+            border: 2px solid var(--md-sys-color-primary-dark);
+            background: linear-gradient(to bottom right, var(--md-sys-color-surface-container), var(--md-sys-color-primary-container));
             border-radius: 16px;
             cursor: pointer;
             color: inherit;
