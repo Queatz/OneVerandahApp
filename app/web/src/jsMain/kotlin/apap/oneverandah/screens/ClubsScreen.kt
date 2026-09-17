@@ -236,7 +236,9 @@ internal fun ClubFeedCard(
                     P(attrs = { classes(Styles.locationCardType) }) { Text(card.tagline) }
                 }
                 if (card.hostName.isNotBlank()) {
-                    P(attrs = { classes(Styles.locationCardMeta) }) { Text(card.hostName) }
+                    P(attrs = { classes(Styles.locationCardMeta) }) {
+                        Text("${strings.clubsHostedBy} ${card.hostName}")
+                    }
                 }
                 LocationHighlights(card.activities)
             }

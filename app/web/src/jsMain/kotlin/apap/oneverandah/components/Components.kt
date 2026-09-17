@@ -171,6 +171,7 @@ private fun NavMenuItems(
         onNavigate()
         if (onHome != null) onHome() else router.navigate("/")
     }
+    Div(attrs = { classes(Styles.drawerSection) }) { Text(strings.menuForAdults) }
     DrawerItem("location_on", strings.locationsTitle, active = currentPath.isSelectedRoute("/locations")) {
         onNavigate()
         router.navigate("/locations")
@@ -183,6 +184,7 @@ private fun NavMenuItems(
         onNavigate()
         router.navigate("/meets")
     }
+    Div(attrs = { classes(Styles.drawerSection) }) { Text(strings.menuForKids) }
     DrawerItem("menu_book", strings.studyTitle, active = currentPath.isSelectedRoute("/study")) {
         onNavigate()
         router.navigate("/study")
@@ -199,10 +201,7 @@ private fun NavMenuItems(
 //        onNavigate()
 //        router.navigate("/phrases")
 //    }
-//    DrawerItem("info", strings.menuAbout, active = currentPath.isSelectedRoute("/about")) {
-//        onNavigate()
-//        router.navigate("/about")
-//    }
+    Div(attrs = { classes(Styles.drawerDivider) })
     DrawerItem("add_business", strings.helpListService, active = currentPath.isSelectedRoute("/list")) {
         onNavigate()
         router.navigate("/list")

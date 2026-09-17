@@ -131,6 +131,7 @@ object Styles {
     const val drawerItem = "drawer-item"
     const val drawerItemActive = "active"
     const val drawerSection = "drawer-section"
+    const val drawerDivider = "drawer-divider"
     const val drawerNote = "drawer-note"
     const val langOption = "lang-option"
     const val langOptionActive = "active"
@@ -1427,6 +1428,12 @@ object Styles {
             letter-spacing: 0.5px;
             color: var(--md-sys-color-on-surface-variant);
             margin: 16px 12px 4px 12px;
+        }
+        .${drawerDivider} {
+            height: 0;
+            margin: 12px;
+            border-top: 1px solid var(--md-sys-color-outline);
+            opacity: 0.45;
         }
         .${drawerNote} {
             font-size: 12px;
