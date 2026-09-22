@@ -69,6 +69,7 @@ object MeetLogic {
             name = meet.name,
             photoUrl = meet.photoUrl,
             pitch = meet.pitch,
+            zaloNumber = meet.zaloNumber,
             remainingPitches = meet.remainingPitches,
             status = meet.status,
             mine = mine,

@@ -15,6 +15,8 @@ import apap.oneverandah.components.BottomDialog
 import apap.oneverandah.components.MaterialSymbol
 import apap.oneverandah.components.PrimaryButton
 import apap.oneverandah.components.Scaffold
+import apap.oneverandah.components.ZaloContactButton
+import apap.oneverandah.components.ZaloQrDialog
 import apap.oneverandah.i18n.Localization
 import apap.oneverandah.meets.MeetDetailResponse
 import apap.oneverandah.meets.MeetLogic
@@ -44,6 +46,7 @@ fun MeetDetailScreen(
     var detail by remember { mutableStateOf<MeetDetailResponse?>(null) }
     var loading by remember { mutableStateOf(true) }
     var pitchOpen by remember { mutableStateOf(false) }
+    var zaloOpen by remember { mutableStateOf(false) }
 
     suspend fun refresh() {
         detail = MeetApi.fetchMeet(meetId)
@@ -61,7 +64,7 @@ fun MeetDetailScreen(
         onHome = onHome,
         showPhrasesAction = false,
         scrollKey = "meet-$meetId",
-        lockScroll = pitchOpen,
+        lockScroll = pitchOpen || zaloOpen,
         footer = {
             val current = detail
             when {
@@ -85,6 +88,11 @@ fun MeetDetailScreen(
         overlay = {
             val current = detail
             if (current != null) {
+                ZaloQrDialog(
+                    visible = zaloOpen,
+                    phone = current.meet.zaloNumber,
+                    onDismiss = { zaloOpen = false },
+                )
                 SendPitchDialog(
                     visible = pitchOpen,
                     personName = current.meet.name.ifBlank { strings.meetsUntitled },
@@ -131,6 +139,7 @@ fun MeetDetailScreen(
                 P(
                     attrs = { classes(Styles.meetDetailPitch) }
                 ) { Text(meet.pitch) }
+                ZaloContactButton(meet.zaloNumber) { zaloOpen = true }
             }
         }
     }

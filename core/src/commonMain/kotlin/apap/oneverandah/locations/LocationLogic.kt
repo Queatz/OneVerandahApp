@@ -236,6 +236,7 @@ object LocationLogic {
             likeCount = location.likeCount.coerceAtLeast(0),
             liked = location.id in likedIds,
             mapsUrl = directionsUrl(location),
+            hostZalo = location.hostZalo,
             createdAt = location.createdAt,
         )
     }

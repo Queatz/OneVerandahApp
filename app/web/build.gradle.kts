@@ -26,6 +26,8 @@ kotlin {
             // copies the static index.html verbatim and new chunks (e.g. from
             // splitChunks) are never referenced -> blank page.
             implementation(devNpm("html-webpack-plugin", "5.6.3"))
+            // High-ECC QR images for the Zalo contact dialog (logo overlay in CSS).
+            implementation(npm("qrcode", "1.5.4"))
         }
         jsTest.dependencies {
             implementation(kotlin("test"))

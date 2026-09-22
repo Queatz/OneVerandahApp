@@ -20,7 +20,7 @@ class ClubLogicTest {
     }
 
     @Test
-    fun publicCardStripsHostZaloAndKeepsHostName() {
+    fun publicCardIncludesHostZaloAndKeepsHostName() {
         val card = ClubLogic.toPublicCard(
             club(
                 hostName = "Minh",
@@ -28,7 +28,7 @@ class ClubLogicTest {
             ),
         )
         assertEquals("Minh", card.hostName)
-        assertFalse(card.toString().contains("090000"))
+        assertEquals("090000", card.hostZalo)
     }
 
     @Test

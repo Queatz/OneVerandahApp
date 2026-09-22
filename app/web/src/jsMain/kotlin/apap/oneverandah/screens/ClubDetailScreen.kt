@@ -21,6 +21,8 @@ import apap.oneverandah.components.PhotoScroller
 import apap.oneverandah.components.PrimaryButton
 import apap.oneverandah.components.Scaffold
 import apap.oneverandah.components.SectionTitle
+import apap.oneverandah.components.ZaloContactButton
+import apap.oneverandah.components.ZaloQrDialog
 import apap.oneverandah.i18n.Localization
 import apap.oneverandah.state.MeetProfileStore
 import apap.oneverandah.state.Toaster
@@ -49,6 +51,7 @@ fun ClubDetailScreen(
     var detail by remember { mutableStateOf<ClubDetailResponse?>(null) }
     var loading by remember { mutableStateOf(true) }
     var joinOpen by remember { mutableStateOf(false) }
+    var zaloOpen by remember { mutableStateOf(false) }
     var previewPhotos by remember { mutableStateOf<List<String>>(emptyList()) }
     var previewIndex by remember { mutableStateOf(0) }
 
@@ -61,7 +64,7 @@ fun ClubDetailScreen(
 
     val card = detail?.club
     val title = card?.name?.ifBlank { strings.clubsUntitled } ?: strings.clubsTitle
-    val dialogOpen = joinOpen || previewPhotos.isNotEmpty()
+    val dialogOpen = joinOpen || zaloOpen || previewPhotos.isNotEmpty()
 
     Scaffold(
         title = title,
@@ -82,6 +85,11 @@ fun ClubDetailScreen(
         overlay = {
             val current = detail
             if (current != null) {
+                ZaloQrDialog(
+                    visible = zaloOpen,
+                    phone = current.club.hostZalo,
+                    onDismiss = { zaloOpen = false },
+                )
                 JoinClubDialog(
                     visible = joinOpen,
                     clubName = title,
@@ -150,6 +158,7 @@ fun ClubDetailScreen(
                     SectionTitle(strings.clubsHostedBy)
                     P(attrs = { classes(Styles.homePrompt) }) { Text(card.hostName) }
                 }
+                ZaloContactButton(card.hostZalo) { zaloOpen = true }
                 if (card.description.isNotBlank()) {
                     SectionTitle(strings.clubsDetails)
                     P(attrs = { classes(Styles.homePrompt) }) { Text(card.description) }

@@ -50,7 +50,7 @@ class ClubRoutesTest {
         )
         assertEquals(1, feed.clubs.size)
         assertEquals("Sunrise Yoga", feed.clubs.single().name)
-        assertFalse(feed.clubs.single().toString().contains("090000"))
+        assertEquals("090000", feed.clubs.single().hostZalo)
 
         val unauth = client.post("/api/v1/admin/clubs") {
             contentType(ContentType.Application.Json)

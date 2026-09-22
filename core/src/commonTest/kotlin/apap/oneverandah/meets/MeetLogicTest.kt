@@ -42,7 +42,7 @@ class MeetLogicTest {
     }
 
     @Test
-    fun publicCardNeverIncludesZaloAndMarksMine() {
+    fun publicCardIncludesZaloAndMarksMine() {
         val card = MeetLogic.toPublicCard(
             meet("m", zaloNumber = "0901234567", deviceTokenHash = "hash-lan"),
             viewerHash = "hash-lan",
@@ -50,6 +50,7 @@ class MeetLogicTest {
         assertTrue(card.mine)
         assertEquals("Coffee in the lobby", card.pitch)
         assertEquals("Lan", card.name)
+        assertEquals("0901234567", card.zaloNumber)
     }
 
     @Test

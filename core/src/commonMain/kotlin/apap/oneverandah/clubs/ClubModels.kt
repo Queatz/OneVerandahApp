@@ -5,9 +5,9 @@ import kotlinx.serialization.Serializable
 /**
  * A resident club people can discover and ask to join.
  *
- * [hostZalo] is admin-only and stripped from public views. [joinQuestions]
- * are shown in the join dialog (up to three). [content] is the same
- * markdown/photo story shape used by locations.
+ * [hostZalo] is shown on the public club so people can contact the host
+ * directly. [joinQuestions] are shown in the join dialog (up to three).
+ * [content] is the same markdown/photo story shape used by locations.
  */
 @Serializable
 data class Club(
@@ -67,7 +67,7 @@ data class ClubJoin(
     val createdAt: Long = 0,
 )
 
-/** Public list/detail card. Never includes a Zalo number. */
+/** Public list/detail card. Includes [hostZalo] so people can reach the host. */
 @Serializable
 data class ClubCard(
     val id: String,
@@ -78,6 +78,7 @@ data class ClubCard(
     val activities: List<String> = emptyList(),
     val photoUrls: List<String> = emptyList(),
     val hostName: String = "",
+    val hostZalo: String = "",
     val createdAt: Long = 0,
 )
 

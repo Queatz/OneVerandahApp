@@ -17,7 +17,7 @@ class ClubServiceTest {
         val feed = service.feed()
         assertEquals(listOf("New Club", "Old Club"), feed.clubs.map { it.name })
         assertEquals(listOf("Games", "Wellness"), feed.categories)
-        assertTrue(feed.clubs.none { it.toString().contains("090") })
+        assertEquals("090000", feed.clubs.first().hostZalo)
     }
 
     @Test
@@ -37,6 +37,7 @@ class ClubServiceTest {
 
         val detail = service.getPublic(created.id)
         assertEquals(listOf("Why join?", "When can you meet?"), detail?.joinQuestions)
+        assertEquals("090000", detail?.club?.hostZalo)
         assertFalse(detail.toString().contains("090111"))
     }
 

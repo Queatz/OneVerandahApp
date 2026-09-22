@@ -6,9 +6,10 @@ import kotlinx.serialization.Serializable
  * A neighbor's open invitation to meet — casual hangout mixed with
  * professional networking.
  *
- * [zaloNumber] is persisted for admin follow-up and is stripped from public
- * API views. [remainingPitches] counts how many completed meet-ups are still
- * available; [maxPitches] is the original cap so admin can reset it.
+ * [zaloNumber] is shown on the public meet so neighbors can contact the host
+ * directly while the meet is active. [remainingPitches] counts how many
+ * completed meet-ups are still available; [maxPitches] is the original cap
+ * so admin can reset it.
  */
 @Serializable
 data class Meet(
@@ -38,13 +39,14 @@ data class MeetPitch(
     val updatedAt: Long = 0,
 )
 
-/** Public grid / detail card. Never includes a Zalo number. */
+/** Public grid / detail card. Includes the host Zalo so people can reach out. */
 @Serializable
 data class MeetCard(
     val id: String,
     val name: String = "",
     val photoUrl: String = "",
     val pitch: String = "",
+    val zaloNumber: String = "",
     val remainingPitches: Int = 0,
     val status: String = MeetLogic.STATUS_PUBLISHED,
     val mine: Boolean = false,

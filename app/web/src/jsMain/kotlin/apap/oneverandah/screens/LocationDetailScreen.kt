@@ -18,8 +18,11 @@ import apap.oneverandah.components.MaterialSymbol
 import apap.oneverandah.components.PhotoScroller
 import apap.oneverandah.components.PrimaryButton
 import apap.oneverandah.components.Scaffold
+import apap.oneverandah.components.SectionTitle
 import apap.oneverandah.components.ShareDialog
 import apap.oneverandah.components.TextButton
+import apap.oneverandah.components.ZaloContactButton
+import apap.oneverandah.components.ZaloQrDialog
 import apap.oneverandah.i18n.Localization
 import apap.oneverandah.locations.LocationContentBlock
 import apap.oneverandah.locations.LocationDetailResponse
@@ -57,6 +60,7 @@ fun LocationDetailScreen(
     var nowMs by remember { mutableStateOf(currentTimeMs()) }
     var commitOpen by remember { mutableStateOf(false) }
     var contactOpen by remember { mutableStateOf(false) }
+    var zaloOpen by remember { mutableStateOf(false) }
     var shareOpen by remember { mutableStateOf(false) }
     var previewPhotos by remember { mutableStateOf<List<String>>(emptyList()) }
     var previewIndex by remember { mutableStateOf(0) }
@@ -77,7 +81,7 @@ fun LocationDetailScreen(
     val card = detail?.location
     val snapshot = card?.let { LocationLogic.hoursSnapshot(it.status, it.schedule, nowMs) }
     val title = card?.name?.ifBlank { strings.locationsUntitled } ?: strings.locationsTitle
-    val dialogOpen = commitOpen || contactOpen || shareOpen || previewPhotos.isNotEmpty()
+    val dialogOpen = commitOpen || contactOpen || zaloOpen || shareOpen || previewPhotos.isNotEmpty()
 
     Scaffold(
         title = title,
@@ -114,6 +118,11 @@ fun LocationDetailScreen(
         overlay = {
             val current = detail
             if (current != null) {
+                ZaloQrDialog(
+                    visible = zaloOpen,
+                    phone = current.location.hostZalo,
+                    onDismiss = { zaloOpen = false },
+                )
                 CommitFundsDialog(
                     visible = commitOpen,
                     locationName = title,
@@ -221,6 +230,8 @@ fun LocationDetailScreen(
                 if (card.address.isNotBlank()) {
                     P(attrs = { classes(Styles.homePrompt) }) { Text(card.address) }
                 }
+                ZaloContactButton(card.hostZalo) { zaloOpen = true }
+                SectionTitle(strings.adminLocationHighlights)
                 LocationHighlights(card.highlights)
                 Div(attrs = { classes(Styles.locationCardActions) }) {
                     Button(attrs = {

@@ -102,6 +102,7 @@ object ClubLogic {
         activities = club.activities,
         photoUrls = club.photoUrls,
         hostName = club.hostName,
+        hostZalo = club.hostZalo,
         createdAt = club.createdAt,
     )
 

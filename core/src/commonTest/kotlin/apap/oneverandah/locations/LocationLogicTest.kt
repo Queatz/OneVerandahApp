@@ -96,12 +96,13 @@ class LocationLogicTest {
     }
 
     @Test
-    fun publicCardNeverCopiesHostZalo() {
+    fun publicCardCopiesHostZalo() {
         val card = LocationLogic.toPublicCard(
             place(hostZalo = "0901234567", address = "1 River"),
             nowMs = mondayTenAm,
         )
         assertEquals("1 River", card.address)
+        assertEquals("0901234567", card.hostZalo)
         assertFalse(card.liked)
     }
 

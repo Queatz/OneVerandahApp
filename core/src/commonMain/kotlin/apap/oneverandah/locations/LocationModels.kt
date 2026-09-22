@@ -7,7 +7,8 @@ import kotlinx.serialization.Serializable
  *
  * [status] is the lifecycle the admin sets (`planning`, `coming_soon`, or
  * `operating`). Open vs closed for operating places is computed from
- * [schedule] in UTC+7. [hostZalo] is admin-only and stripped from public views.
+ * [schedule] in UTC+7. [hostZalo] is shown on the public location so people
+ * can contact the host directly.
  */
 @Serializable
 data class Location(
@@ -77,7 +78,7 @@ data class LocationLike(
     val createdAt: Long = 0,
 )
 
-/** Public list/detail card. Never includes a Zalo number. */
+/** Public list/detail card. Includes [hostZalo] so people can reach the host. */
 @Serializable
 data class LocationCard(
     val id: String,
@@ -96,6 +97,7 @@ data class LocationCard(
     val likeCount: Int = 0,
     val liked: Boolean = false,
     val mapsUrl: String = "",
+    val hostZalo: String = "",
     val createdAt: Long = 0,
 )
 

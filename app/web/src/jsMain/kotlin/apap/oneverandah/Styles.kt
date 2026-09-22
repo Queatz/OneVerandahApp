@@ -476,6 +476,16 @@ object Styles {
     const val locationContentPhoto = "location-content-photo"
     const val locationFooter = "location-footer"
     const val locationMarkdown = "location-markdown"
+    const val zaloContactBtn = "zalo-contact-btn"
+    const val zaloContactIcon = "zalo-contact-icon"
+    const val zaloContactCopy = "zalo-contact-copy"
+    const val zaloContactBrand = "zalo-contact-brand"
+    const val zaloContactNumber = "zalo-contact-number"
+    const val zaloQrDialog = "zalo-qr-dialog"
+    const val zaloQrFrame = "zalo-qr-frame"
+    const val zaloQrImage = "zalo-qr-image"
+    const val zaloQrLogo = "zalo-qr-logo"
+    const val zaloQrNumber = "zalo-qr-number"
     const val locationMarkdownEm = "location-markdown-em"
     const val locationAdminPhotos = "location-admin-photos"
     const val locationAdminPhotoWrap = "location-admin-photo-wrap"
@@ -4534,6 +4544,95 @@ object Styles {
         .${photoDialogNav}:focus-visible {
             outline: 2px solid var(--md-sys-color-primary);
             outline-offset: 2px;
+        }
+        .${zaloContactBtn} {
+            display: flex;
+            align-items: center;
+            gap: 12px;
+            width: 100%;
+            margin: 0 0 12px;
+            padding: 12px 14px;
+            box-sizing: border-box;
+            text-align: left;
+            border: none;
+            border-radius: 16px;
+            background: var(--md-sys-color-surface-container-high);
+            color: var(--md-sys-color-on-surface);
+            cursor: pointer;
+        }
+        .${zaloContactBtn}:hover {
+            background: var(--md-sys-color-surface-container-highest);
+        }
+        .${zaloContactBtn}:focus-visible {
+            outline: 2px solid var(--md-sys-color-primary);
+            outline-offset: 2px;
+        }
+        .${zaloContactIcon} {
+            flex: 0 0 auto;
+            font-size: 28px;
+            color: var(--md-sys-color-primary);
+        }
+        .${zaloContactCopy} {
+            display: flex;
+            flex-direction: column;
+            gap: 2px;
+            min-width: 0;
+        }
+        .${zaloContactBrand} {
+            font-size: 15px;
+            font-weight: 700;
+            line-height: 1.2;
+        }
+        .${zaloContactNumber} {
+            font-size: 13px;
+            font-weight: 500;
+            line-height: 1.3;
+            color: var(--md-sys-color-on-surface-variant);
+            font-variant-numeric: tabular-nums;
+        }
+        .${zaloQrDialog} {
+            display: flex;
+            flex-direction: column;
+            align-items: center;
+            gap: 16px;
+            padding: 8px 0 4px;
+        }
+        .${zaloQrFrame} {
+            position: relative;
+            width: min(72vw, 260px);
+            aspect-ratio: 1;
+            background: #fff;
+            border-radius: 16px;
+            overflow: hidden;
+        }
+        .${zaloQrImage} {
+            display: block;
+            width: 100%;
+            height: 100%;
+        }
+        .${zaloQrLogo} {
+            position: absolute;
+            left: 50%;
+            top: 50%;
+            width: 22%;
+            height: 22%;
+            transform: translate(-50%, -50%);
+            padding: 4px;
+            box-sizing: border-box;
+            background: #fff;
+            border-radius: 22%;
+            object-fit: contain;
+        }
+        .${zaloQrNumber} {
+            margin: 0;
+            font-size: 18px;
+            font-weight: 700;
+            font-variant-numeric: tabular-nums;
+            color: var(--md-sys-color-on-surface);
+        }
+        .${zaloQrDialog} .${dialogActions} {
+            width: 100%;
+            justify-content: center;
         }
     """.trimIndent()
 }
