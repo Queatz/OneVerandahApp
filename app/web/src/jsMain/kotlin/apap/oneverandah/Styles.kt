@@ -572,6 +572,7 @@ object Styles {
             --md-sys-color-surface-variant: #E7E0EC;
             --md-sys-color-outline: #79747E;
             --md-sys-color-error: #B3261E;
+            --md-sys-color-success: #46ba11;
             --md-app-background: #f4f4f4;
             --md-banner-fade: #FEF7FF;
             --md-shadow: rgba(0, 0, 0, 0.15);
@@ -594,6 +595,7 @@ object Styles {
                 --md-sys-color-surface-variant: #2B2930;
                 --md-sys-color-outline: #938F99;
                 --md-sys-color-error: #F2B8B5;
+                --md-sys-color-success: #46ba11;
                 --md-app-background: #000000;
                 --md-banner-fade: #141218;
                 --md-shadow: rgba(0, 0, 0, 0.6);

@@ -27,6 +27,7 @@ import org.jetbrains.compose.web.dom.Span
 import org.jetbrains.compose.web.dom.Text
 import kotlinx.browser.document
 import kotlinx.browser.window
+import org.jetbrains.compose.web.css.StyleScope
 import org.w3c.dom.HTMLDivElement
 import org.w3c.dom.HTMLElement
 import org.w3c.dom.HTMLImageElement
@@ -202,7 +203,7 @@ private fun NavMenuItems(
 //        router.navigate("/phrases")
 //    }
     Div(attrs = { classes(Styles.drawerDivider) })
-    DrawerItem("add_business", strings.helpListService, active = currentPath.isSelectedRoute("/list")) {
+    DrawerItem("add_business", strings.helpListService, active = currentPath.isSelectedRoute("/list"), styles = { property("color", "var(--md-sys-color-success)"); }) {
         onNavigate()
         router.navigate("/list")
     }
@@ -325,10 +326,17 @@ private fun LanguageOptions(onSelected: (Language) -> Unit) {
 }
 
 @Composable
-private fun DrawerItem(icon: String, label: String, active: Boolean = false, onClick: () -> Unit) {
+private fun DrawerItem(
+    icon: String,
+    label: String,
+    active: Boolean = false,
+    styles: (StyleScope.() -> Unit)? = null,
+    onClick: () -> Unit,
+) {
     Button(attrs = {
         classes(Styles.drawerItem)
         if (active) classes(Styles.drawerItemActive)
+        styles?.let { style { it() } }
         onClick { onClick() }
     }) {
         MaterialSymbol(icon)

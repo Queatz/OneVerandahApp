@@ -163,6 +163,7 @@ fun ClubDetailScreen(
                     SectionTitle(strings.clubsDetails)
                     P(attrs = { classes(Styles.homePrompt) }) { Text(card.description) }
                 }
+                SectionTitle(strings.adminLocationHighlights)
                 LocationHighlights(card.activities)
                 detail?.content.orEmpty().forEach { block ->
                     ClubContentBlockView(block) { url ->
