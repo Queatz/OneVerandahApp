@@ -825,3 +825,10 @@ data class SavedStudySession(
 
 @Serializable
 data class SavedStudySessionsResponse(val items: List<SavedStudySession>)
+
+/** Paged study sessions from other devices, newest first. */
+@Serializable
+data class CommunityStudySessionsResponse(
+    val items: List<SavedStudySession>,
+    val nextCursor: String? = null,
+)

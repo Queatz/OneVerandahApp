@@ -364,6 +364,9 @@ object Styles {
     const val savedItemActionDanger = "saved-item-action-danger"
     const val studySessionPhraseRow = "study-session-phrase-row"
     const val studySessionPhraseImage = "study-session-phrase-image"
+    const val studySessionCard = "study-session-card"
+    const val studySessionSectionTitle = "study-session-section-title"
+    const val studySessionRemoveBtn = "study-session-remove-btn"
     const val studySessionBody = "study-session-body"
     const val studySessionHint = "study-session-hint"
     const val studySessionError = "study-session-error"
@@ -3071,6 +3074,39 @@ object Styles {
             object-fit: cover;
             border: 1px solid var(--md-sys-color-outline);
             background: var(--md-sys-color-surface-variant);
+        }
+        .${studySessionSectionTitle} {
+            margin: 16px 0 0;
+            font-size: 15px;
+            font-weight: 700;
+            color: var(--md-sys-color-on-surface);
+        }
+        .${studySessionCard} {
+            position: relative;
+        }
+        .${studySessionCard} .${savedItemSender} {
+            padding-right: 40px;
+        }
+        .${studySessionRemoveBtn} {
+            position: absolute;
+            top: 8px;
+            right: 8px;
+            z-index: 1;
+            width: 36px;
+            height: 36px;
+            display: inline-flex;
+            align-items: center;
+            justify-content: center;
+            padding: 0;
+            border: none;
+            border-radius: 50%;
+            background: color-mix(in srgb, var(--md-sys-color-surface) 88%, transparent);
+            color: var(--md-sys-color-error, #b3261e);
+            box-shadow: 0 1px 6px color-mix(in srgb, var(--md-sys-color-shadow, #000) 22%, transparent);
+            cursor: pointer;
+        }
+        .${studySessionRemoveBtn} .${materialSymbols} {
+            font-size: 20px;
         }
         .${savedItem} .${btnPrimary} {
             width: 100%;

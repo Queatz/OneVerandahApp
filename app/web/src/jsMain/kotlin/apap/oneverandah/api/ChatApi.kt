@@ -6,6 +6,7 @@ import io.ktor.client.request.accept
 import io.ktor.client.request.delete
 import io.ktor.client.request.get
 import io.ktor.client.request.header
+import io.ktor.client.request.parameter
 import io.ktor.client.request.post
 import io.ktor.client.request.preparePost
 import io.ktor.client.request.setBody
@@ -282,6 +283,21 @@ object ChatApi {
         val text = response.bodyAsText()
         if (!response.status.isSuccess()) throw ChatApiException(errorMessage(text, response.status.value))
         return json.decodeFromString(SavedStudySessionsResponse.serializer(), text)
+    }
+
+    suspend fun listCommunityStudySessions(
+        cursor: String? = null,
+        limit: Int = 20,
+    ): CommunityStudySessionsResponse {
+        val token = DeviceTokenStore.ensureToken()
+        val response = client.get(chatApiUrl("/study/sessions/community")) {
+            header(DEVICE_TOKEN_HEADER, token)
+            parameter("limit", limit)
+            if (!cursor.isNullOrBlank()) parameter("cursor", cursor)
+        }
+        val text = response.bodyAsText()
+        if (!response.status.isSuccess()) throw ChatApiException(errorMessage(text, response.status.value))
+        return json.decodeFromString(CommunityStudySessionsResponse.serializer(), text)
     }
 
     suspend fun saveStudySession(request: SaveStudySessionRequest): SavedStudySession {

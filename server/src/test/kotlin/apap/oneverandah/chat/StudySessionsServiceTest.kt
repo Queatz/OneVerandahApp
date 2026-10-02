@@ -222,6 +222,50 @@ class StudySessionsServiceTest {
         Unit
     }
 
+    @Test
+    fun `community list excludes own sessions and pages by cursor`() = runBlocking {
+        val deviceService = DeviceService(
+            repository = InMemoryDeviceRepository(),
+            tokenGenerator = sequenceTokenGenerator(),
+        )
+        val service = StudySessionsService(
+            repository = InMemoryStudySessionsRepository(),
+            deviceService = deviceService,
+            clock = incrementalClock(1_000L),
+        )
+        val tokenMine = deviceService.issueToken().deviceToken
+        val tokenOther = deviceService.issueToken().deviceToken
+
+        service.save(tokenMine, request("mine"))
+        val first = service.save(tokenOther, request("community-1"))
+        val second = service.save(tokenOther, request("community-2"))
+        val third = service.save(tokenOther, request("community-3"))
+
+        val firstPage = service.listCommunity(tokenMine, limit = 2)
+        assertEquals(listOf(third.text, second.text), firstPage.items.map { it.text })
+        assertEquals(studyCommunityCursor(second.updatedAt, second.id), firstPage.nextCursor)
+        assertTrue(firstPage.items.none { it.text == "mine" })
+
+        val secondPage = service.listCommunity(tokenMine, cursor = firstPage.nextCursor, limit = 2)
+        assertEquals(listOf(first.text), secondPage.items.map { it.text })
+        assertNull(secondPage.nextCursor)
+
+        assertFailsWith<UnauthorizedDeviceException> {
+            service.listCommunity(null)
+        }
+        Unit
+    }
+
+    @Test
+    fun `community cursor parsing accepts updatedAt and id`() {
+        assertEquals(1_700L to "abc", parseStudyCommunityCursor("1700:abc"))
+        assertNull(parseStudyCommunityCursor(null))
+        assertNull(parseStudyCommunityCursor(" "))
+        assertNull(parseStudyCommunityCursor("abc"))
+        assertNull(parseStudyCommunityCursor("1700:"))
+        assertEquals("1700:abc", studyCommunityCursor(1_700L, "abc"))
+    }
+
     private fun request(text: String) = SaveStudySessionRequest(
         languageTag = "en",
         session = sampleSession(text),

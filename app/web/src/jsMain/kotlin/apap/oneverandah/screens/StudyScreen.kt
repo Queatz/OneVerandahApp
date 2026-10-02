@@ -4,6 +4,7 @@ import androidx.compose.runtime.Composable
 import androidx.compose.runtime.DisposableEffect
 import androidx.compose.runtime.LaunchedEffect
 import androidx.compose.runtime.getValue
+import androidx.compose.runtime.key
 import androidx.compose.runtime.mutableStateMapOf
 import androidx.compose.runtime.mutableStateOf
 import androidx.compose.runtime.remember
@@ -70,6 +71,7 @@ import org.jetbrains.compose.web.dom.Label
 import org.jetbrains.compose.web.dom.P
 import org.jetbrains.compose.web.dom.Span
 import org.jetbrains.compose.web.dom.Text
+import org.w3c.dom.Element
 import org.w3c.dom.HTMLAudioElement
 import org.w3c.dom.HTMLElement
 import org.w3c.dom.HTMLImageElement
@@ -112,6 +114,10 @@ fun StudyScreen(
     val studyPersistedBySourceId = remember { mutableStateMapOf<String, String>() }
     var studySessionItems by remember { mutableStateOf<List<SavedStudySession>>(emptyList()) }
     var studySessionsLoading by remember { mutableStateOf(false) }
+    var communitySessionItems by remember { mutableStateOf<List<SavedStudySession>>(emptyList()) }
+    var communitySessionsLoading by remember { mutableStateOf(false) }
+    var communitySessionsLoadingMore by remember { mutableStateOf(false) }
+    var communityNextCursor by remember { mutableStateOf<String?>(null) }
     // Exact = current behavior (study the typed text). Off (default from the list) parses first.
     var studyStartExact by remember { mutableStateOf(true) }
 
@@ -137,6 +143,41 @@ fun StudyScreen(
                     if (!silent) Toaster.show(strings.chatStudySessionsError)
                 }
             studySessionsLoading = false
+        }
+    }
+
+    fun loadCommunitySessions(reset: Boolean = false) {
+        if (!reset) {
+            if (communitySessionsLoadingMore) return
+            val cursor = communityNextCursor ?: return
+            communitySessionsLoadingMore = true
+            scope.launch {
+                runCatching {
+                    ChatApi.listCommunityStudySessions(
+                        cursor = cursor,
+                        limit = STUDY_COMMUNITY_PAGE_SIZE,
+                    )
+                }.onSuccess { page ->
+                    communitySessionItems = mergeCommunityStudySessions(communitySessionItems, page.items)
+                    communityNextCursor = page.nextCursor
+                }.onFailure {
+                    Toaster.show(strings.chatStudySessionsError)
+                }
+                communitySessionsLoadingMore = false
+            }
+            return
+        }
+        scope.launch {
+            if (communitySessionItems.isEmpty()) communitySessionsLoading = true
+            runCatching {
+                ChatApi.listCommunityStudySessions(limit = STUDY_COMMUNITY_PAGE_SIZE)
+            }.onSuccess { page ->
+                communitySessionItems = page.items
+                communityNextCursor = page.nextCursor
+            }.onFailure {
+                Toaster.show(strings.chatStudySessionsError)
+            }
+            communitySessionsLoading = false
         }
     }
 
@@ -1050,15 +1091,17 @@ fun StudyScreen(
         }
     }
 
-    fun openSavedStudySession(item: SavedStudySession) {
-        val key = item.sourceMessageId ?: item.id
+    fun openSavedStudySession(item: SavedStudySession, fromCommunity: Boolean = false) {
+        val key = if (fromCommunity) item.id else (item.sourceMessageId ?: item.id)
         // Meanings are in the learner language stored with the session; regenerate if UI language changed.
         if (item.languageTag == language.tag) {
             studyCache[key] = item.session
         } else {
             studyCache.remove(key)
         }
-        studyPersistedBySourceId[key] = item.id
+        if (!fromCommunity) {
+            studyPersistedBySourceId[key] = item.id
+        }
         openStudy(
             ChatMessage(
                 id = key,
@@ -1152,6 +1195,7 @@ fun StudyScreen(
 
     LaunchedEffect(Unit) {
         refreshStudySessions(silent = true)
+        loadCommunitySessions(reset = true)
     }
 
     LaunchedEffect(language.tag) {
@@ -1225,10 +1269,16 @@ fun StudyScreen(
             StudySessionsList(
                 items = studySessionItems,
                 loading = studySessionsLoading,
+                communityItems = communitySessionItems,
+                communityLoading = communitySessionsLoading,
+                communityLoadingMore = communitySessionsLoadingMore,
+                communityHasMore = communityNextCursor != null,
                 strings = strings,
                 onStart = ::startStudyFromText,
-                onOpen = ::openSavedStudySession,
+                onOpen = { openSavedStudySession(it) },
+                onOpenCommunity = { openSavedStudySession(it, fromCommunity = true) },
                 onRemove = ::removeStudySession,
+                onLoadMoreCommunity = { loadCommunitySessions() },
             )
         }
     }
@@ -1239,14 +1289,21 @@ fun StudyScreen(
 private fun StudySessionsList(
     items: List<SavedStudySession>,
     loading: Boolean,
+    communityItems: List<SavedStudySession>,
+    communityLoading: Boolean,
+    communityLoadingMore: Boolean,
+    communityHasMore: Boolean,
     strings: UiStrings,
     onStart: (text: String?, exact: Boolean) -> Unit,
     onOpen: (SavedStudySession) -> Unit,
+    onOpenCommunity: (SavedStudySession) -> Unit,
     onRemove: (SavedStudySession) -> Unit,
+    onLoadMoreCommunity: () -> Unit,
 ) {
     var draft by remember { mutableStateOf("") }
     var exact by remember { mutableStateOf(false) }
     var pendingRemove by remember { mutableStateOf<SavedStudySession?>(null) }
+    val loadMoreCommunity by rememberUpdatedState(onLoadMoreCommunity)
 
     Div(attrs = { classes(Styles.savedPanelBody) }) {
         P(attrs = { classes(Styles.homePrompt, Styles.homePromptLarge) }) {
@@ -1276,6 +1333,9 @@ private fun StudySessionsList(
             }
             Text(strings.chatStudyExactToggle)
         }
+        P(attrs = { classes(Styles.studySessionSectionTitle) }) {
+            Text(strings.chatStudySessionsMine)
+        }
         when {
             loading && items.isEmpty() -> {
                 Div(attrs = { classes(Styles.chatStatus) }) {
@@ -1290,42 +1350,59 @@ private fun StudySessionsList(
                 }
             }
             else -> items.forEach { item ->
-                Div(attrs = { classes(Styles.savedItem) }) {
-                    val phraseImages = studySessionPhraseImageUrls(item.session)
-                    if (phraseImages.isNotEmpty()) {
-                        Div(attrs = { classes(Styles.studySessionPhraseRow) }) {
-                            phraseImages.forEach { url ->
-                                Img(
-                                    src = url,
-                                    alt = strings.chatStudySentenceImageAlt,
-                                    attrs = { classes(Styles.studySessionPhraseImage) },
-                                )
-                            }
-                        }
-                    }
-                    Span(attrs = { classes(Styles.savedItemSender) }) {
-                        Text(strings.chatStudyTitle)
-                    }
-                    P(attrs = { classes(Styles.savedItemText) }) { Text(item.text) }
-                    Div(attrs = { classes(Styles.savedItemActions) }) {
-                        Button(attrs = {
-                            classes(Styles.btnPrimary)
-                            attr("type", "button")
-                            onClick { onOpen(item) }
-                        }) {
-                            MaterialSymbol("menu_book")
-                            Text(strings.chatStudySessionsOpen)
-                        }
-                        Button(attrs = {
-                            classes(Styles.savedItemAction, Styles.savedItemActionDanger)
-                            attr("type", "button")
-                            onClick { pendingRemove = item }
-                        }) {
-                            MaterialSymbol("delete")
-                            Text(strings.chatStudySessionsRemove)
-                        }
-                    }
+                StudySessionCard(
+                    item = item,
+                    strings = strings,
+                    removable = true,
+                    onOpen = { onOpen(item) },
+                    onRemove = { pendingRemove = item },
+                )
+            }
+        }
+        P(attrs = { classes(Styles.studySessionSectionTitle) }) {
+            Text(strings.chatStudySessionsCommunity)
+        }
+        when {
+            communityLoading && communityItems.isEmpty() -> {
+                Div(attrs = { classes(Styles.chatStatus) }) {
+                    MaterialSymbol("progress_activity")
+                    Text(strings.chatThinking)
                 }
+            }
+            communityItems.isEmpty() -> {
+                Div(attrs = { classes(Styles.savedPanelEmpty) }) {
+                    MaterialSymbol("groups")
+                    P { Text(strings.chatStudySessionsCommunityEmpty) }
+                }
+            }
+            else -> communityItems.forEach { item ->
+                StudySessionCard(
+                    item = item,
+                    strings = strings,
+                    removable = false,
+                    onOpen = { onOpenCommunity(item) },
+                    onRemove = {},
+                )
+            }
+        }
+        if (communityLoadingMore) {
+            Div(attrs = { classes(Styles.chatStatus) }) {
+                MaterialSymbol("progress_activity")
+                Text(strings.chatThinking)
+            }
+        }
+        if (communityHasMore) {
+            key(communityItems.size) {
+                Div(attrs = {
+                    classes(Styles.serviceFeedSentinel)
+                    ref { element ->
+                        val root = document.querySelector(".${Styles.content}") as? Element
+                        val observer = observeStudyListNearViewport(element, root) {
+                            loadMoreCommunity()
+                        }
+                        onDispose { observer.disconnect() }
+                    }
+                })
             }
         }
     }
@@ -1339,6 +1416,54 @@ private fun StudySessionsList(
             onRemove(item)
         },
     )
+}
+
+@Composable
+private fun StudySessionCard(
+    item: SavedStudySession,
+    strings: UiStrings,
+    removable: Boolean,
+    onOpen: () -> Unit,
+    onRemove: () -> Unit,
+) {
+    Div(attrs = { classes(Styles.savedItem, Styles.studySessionCard) }) {
+        if (removable) {
+            Button(attrs = {
+                classes(Styles.studySessionRemoveBtn)
+                attr("type", "button")
+                attr("aria-label", strings.chatStudySessionsRemove)
+                onClick { onRemove() }
+            }) {
+                MaterialSymbol("delete")
+            }
+        }
+        val phraseImages = studySessionPhraseImageUrls(item.session)
+        if (phraseImages.isNotEmpty()) {
+            Div(attrs = { classes(Styles.studySessionPhraseRow) }) {
+                phraseImages.forEach { url ->
+                    Img(
+                        src = url,
+                        alt = strings.chatStudySentenceImageAlt,
+                        attrs = { classes(Styles.studySessionPhraseImage) },
+                    )
+                }
+            }
+        }
+        Span(attrs = { classes(Styles.savedItemSender) }) {
+            Text(strings.chatStudyTitle)
+        }
+        P(attrs = { classes(Styles.savedItemText) }) { Text(item.text) }
+        Div(attrs = { classes(Styles.savedItemActions) }) {
+            Button(attrs = {
+                classes(Styles.btnPrimary)
+                attr("type", "button")
+                onClick { onOpen() }
+            }) {
+                MaterialSymbol("menu_book")
+                Text(strings.chatStudySessionsOpen)
+            }
+        }
+    }
 }
 
 @Composable
@@ -1991,6 +2116,54 @@ internal fun studySessionPhraseImageUrls(session: StudySessionResponse): List<St
     session.sentences.mapNotNull { sentence ->
         sentence.imageUrl?.trim()?.takeIf { it.isNotEmpty() }
     }
+
+internal const val STUDY_COMMUNITY_PAGE_SIZE = 20
+
+/** Appends newly fetched community sessions, skipping ids already on screen. */
+internal fun mergeCommunityStudySessions(
+    existing: List<SavedStudySession>,
+    incoming: List<SavedStudySession>,
+): List<SavedStudySession> {
+    if (incoming.isEmpty()) return existing
+    val seen = existing.map { it.id }.toHashSet()
+    return existing + incoming.filter { seen.add(it.id) }
+}
+
+private fun observeStudyListNearViewport(
+    element: Element,
+    root: Element?,
+    onIntersect: () -> Unit,
+): StudyListIntersectionObserverHandle {
+    val options = js("({ rootMargin: '200px 0px', threshold: 0 })")
+    options.root = root
+    val callback: (Array<dynamic>) -> Unit = { entries ->
+        if (entries.any { it.isIntersecting == true }) {
+            onIntersect()
+        }
+    }
+    val observer = StudyListJsIntersectionObserver(callback, options)
+    observer.observe(element)
+    return StudyListIntersectionObserverHandle(observer)
+}
+
+private class StudyListIntersectionObserverHandle(private val observer: StudyListJsIntersectionObserver) {
+    fun disconnect() {
+        try {
+            observer.disconnect()
+        } catch (_: Throwable) {
+            // Best-effort cleanup; ignore if the browser already tore it down.
+        }
+    }
+}
+
+@JsName("IntersectionObserver")
+private external class StudyListJsIntersectionObserver(
+    callback: (Array<dynamic>) -> Unit,
+    options: dynamic,
+) {
+    fun observe(target: Element)
+    fun disconnect()
+}
 
 /**
  * Source text for a study session opened from a chat message.

@@ -1,5 +1,6 @@
 package apap.oneverandah.chat
 
+import apap.oneverandah.api.CommunityStudySessionsResponse
 import apap.oneverandah.api.SavedStudySession
 import apap.oneverandah.api.SavedStudySessionsResponse
 import apap.oneverandah.routes.DEVICE_TOKEN_HEADER
@@ -118,6 +119,98 @@ class StudySessionsRoutesTest {
             header(DEVICE_TOKEN_HEADER, tokenA)
         }
         assertEquals(HttpStatusCode.NoContent, ownedDelete.status)
+    }
+
+    @Test
+    fun `community study sessions exclude the caller and page`() = testApplication {
+        val deviceService = DeviceService(InMemoryDeviceRepository())
+        val studySessionsService = StudySessionsService(
+            repository = InMemoryStudySessionsRepository(),
+            deviceService = deviceService,
+            clock = incrementalClock(5_000L),
+        )
+        val chatService = ChatService(
+            repository = InMemoryChatRepository(),
+            aiClient = object : ChatAiClient {
+                override suspend fun generate(
+                    request: ChatGenerationRequest,
+                    onPartial: suspend (GeneratedChatReply) -> Unit,
+                ) = GeneratedChatReply("unused")
+            },
+            residentDirectory = ResidentDirectory(emptyList()),
+        )
+        application {
+            install(ContentNegotiation) {
+                json(json)
+            }
+            routing {
+                chatRoutes(
+                    chatService,
+                    SpeechService(RouteSpeechClient()),
+                    studySessionsService = studySessionsService,
+                )
+            }
+        }
+
+        val unauthorized = client.get("/api/chat/study/sessions/community")
+        assertEquals(HttpStatusCode.Unauthorized, unauthorized.status)
+
+        val tokenA = deviceService.issueToken().deviceToken
+        val tokenB = deviceService.issueToken().deviceToken
+
+        client.post("/api/chat/study/sessions") {
+            header(DEVICE_TOKEN_HEADER, tokenA)
+            contentType(ContentType.Application.Json)
+            setBody(sessionBody("mine-only"))
+        }
+        client.post("/api/chat/study/sessions") {
+            header(DEVICE_TOKEN_HEADER, tokenB)
+            contentType(ContentType.Application.Json)
+            setBody(sessionBody("community-one"))
+        }
+        client.post("/api/chat/study/sessions") {
+            header(DEVICE_TOKEN_HEADER, tokenB)
+            contentType(ContentType.Application.Json)
+            setBody(sessionBody("community-two"))
+        }
+
+        val firstPage = client.get("/api/chat/study/sessions/community?limit=1") {
+            header(DEVICE_TOKEN_HEADER, tokenA)
+        }
+        assertEquals(HttpStatusCode.OK, firstPage.status)
+        val page = json.decodeFromString(CommunityStudySessionsResponse.serializer(), firstPage.bodyAsText())
+        assertEquals(1, page.items.size)
+        assertEquals("community-two", page.items.single().text)
+        assertTrue(!page.nextCursor.isNullOrBlank())
+
+        val secondPage = client.get("/api/chat/study/sessions/community?limit=1&cursor=${page.nextCursor}") {
+            header(DEVICE_TOKEN_HEADER, tokenA)
+        }
+        assertEquals(HttpStatusCode.OK, secondPage.status)
+        val next = json.decodeFromString(CommunityStudySessionsResponse.serializer(), secondPage.bodyAsText())
+        assertEquals(listOf("community-one"), next.items.map { it.text })
+        assertTrue(next.items.none { it.text == "mine-only" })
+    }
+
+    private fun sessionBody(text: String) = """
+        {
+          "languageTag":"en",
+          "session":{
+            "text":"$text",
+            "textLanguageTag":"en",
+            "sentences":[
+              {
+                "text":"$text",
+                "tokens":[{"text":"${text.split(" ").first()}","status":"PENDING"}]
+              }
+            ]
+          }
+        }
+    """.trimIndent()
+
+    private fun incrementalClock(start: Long): () -> Long {
+        var value = start
+        return { value++ }
     }
 
     @Test

@@ -154,6 +154,41 @@ class ArangoStudySessionsRepository private constructor(
         return queryDocuments(body, "list recent study sessions")
     }
 
+    override suspend fun listExceptDevice(
+        excludeDeviceTokenHash: String,
+        limit: Int,
+        afterUpdatedAt: Long?,
+        afterId: String?,
+    ): List<SavedStudySessionRecord> {
+        val hasCursor = afterUpdatedAt != null && !afterId.isNullOrBlank()
+        val body = buildJsonObject {
+            put(
+                "query",
+                """
+                FOR doc IN $collection
+                  FILTER doc.deviceTokenHash != @excludeDeviceTokenHash
+                  FILTER @hasCursor == false
+                    OR doc.updatedAt < @afterUpdatedAt
+                    OR (doc.updatedAt == @afterUpdatedAt AND doc._key < @afterId)
+                  SORT doc.updatedAt DESC, doc._key DESC
+                  LIMIT @limit
+                  RETURN doc
+                """.trimIndent(),
+            )
+            put(
+                "bindVars",
+                buildJsonObject {
+                    put("excludeDeviceTokenHash", excludeDeviceTokenHash)
+                    put("hasCursor", hasCursor)
+                    put("afterUpdatedAt", afterUpdatedAt ?: 0L)
+                    put("afterId", afterId?.let { sanitizeKey(it) }.orEmpty())
+                    put("limit", limit.coerceAtLeast(0))
+                },
+            )
+        }
+        return queryDocuments(body, "list community study sessions")
+    }
+
     private suspend fun queryDocuments(body: JsonObject, action: String): List<SavedStudySessionRecord> {
         val response = client.post("$dbUrl/_api/cursor") {
             authed()
@@ -226,6 +261,19 @@ class ArangoStudySessionsRepository private constructor(
                     buildJsonArray {
                         add(kotlinx.serialization.json.JsonPrimitive("deviceTokenHash"))
                         add(kotlinx.serialization.json.JsonPrimitive("sourceMessageId"))
+                    },
+                )
+            }.let { json.encodeToString(JsonObject.serializer(), it) },
+        )
+        postJson(
+            "$dbUrl/_api/index?collection=$collection",
+            buildJsonObject {
+                put("type", "persistent")
+                put("unique", false)
+                put(
+                    "fields",
+                    buildJsonArray {
+                        add(kotlinx.serialization.json.JsonPrimitive("updatedAt"))
                     },
                 )
             }.let { json.encodeToString(JsonObject.serializer(), it) },

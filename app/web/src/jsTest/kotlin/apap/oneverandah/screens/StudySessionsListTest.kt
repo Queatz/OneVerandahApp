@@ -1,5 +1,6 @@
 package apap.oneverandah.screens
 
+import apap.oneverandah.api.SavedStudySession
 import apap.oneverandah.api.StudySentence
 import apap.oneverandah.api.StudySessionResponse
 import kotlin.test.Test
@@ -29,4 +30,23 @@ class StudySessionsListTest {
             ),
         )
     }
+
+    @Test
+    fun `community pages append unique sessions`() {
+        val first = sampleSaved("a", "One")
+        val second = sampleSaved("b", "Two")
+        val merged = mergeCommunityStudySessions(listOf(first), listOf(first, second))
+        assertEquals(listOf("a", "b"), merged.map { it.id })
+        assertEquals(20, STUDY_COMMUNITY_PAGE_SIZE)
+    }
+
+    private fun sampleSaved(id: String, text: String) = SavedStudySession(
+        id = id,
+        languageTag = "en",
+        text = text,
+        textLanguageTag = "en",
+        session = StudySessionResponse(text = text, textLanguageTag = "en", sentences = emptyList()),
+        createdAt = 1L,
+        updatedAt = 1L,
+    )
 }

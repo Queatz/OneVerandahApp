@@ -256,6 +256,18 @@ fun Route.chatRoutes(
 
     // Static study-session paths before /{conversationId}.
     if (studySessionsService != null) {
+        get("/api/chat/study/sessions/community") {
+            val token = call.request.header(DEVICE_TOKEN_HEADER)
+            val cursor = call.request.queryParameters["cursor"]
+            val limit = call.request.queryParameters["limit"]?.toIntOrNull()
+                ?: StudySessionsService.DEFAULT_COMMUNITY_PAGE_SIZE
+            try {
+                call.respond(studySessionsService.listCommunity(token, cursor, limit))
+            } catch (_: UnauthorizedDeviceException) {
+                call.respond(HttpStatusCode.Unauthorized, ChatErrorResponse("Valid device token required"))
+            }
+        }
+
         get("/api/chat/study/sessions") {
             val token = call.request.header(DEVICE_TOKEN_HEADER)
             try {

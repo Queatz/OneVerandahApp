@@ -1,5 +1,6 @@
 package apap.oneverandah.chat
 
+import apap.oneverandah.api.CommunityStudySessionsResponse
 import apap.oneverandah.api.SaveStudySessionRequest
 import apap.oneverandah.api.SavedStudySession
 import apap.oneverandah.api.SavedStudySessionsResponse
@@ -39,6 +40,12 @@ interface StudySessionsRepository {
     suspend fun delete(id: String): Boolean
     suspend fun deleteOldestBeyond(deviceTokenHash: String, keepNewest: Int)
     suspend fun listRecent(limit: Int = 40): List<SavedStudySessionRecord>
+    suspend fun listExceptDevice(
+        excludeDeviceTokenHash: String,
+        limit: Int,
+        afterUpdatedAt: Long? = null,
+        afterId: String? = null,
+    ): List<SavedStudySessionRecord>
 }
 
 class InMemoryStudySessionsRepository : StudySessionsRepository {
@@ -87,6 +94,27 @@ class InMemoryStudySessionsRepository : StudySessionsRepository {
         mutex.withLock {
             items.values.sortedByDescending { it.updatedAt }.take(limit.coerceAtLeast(0))
         }
+
+    override suspend fun listExceptDevice(
+        excludeDeviceTokenHash: String,
+        limit: Int,
+        afterUpdatedAt: Long?,
+        afterId: String?,
+    ): List<SavedStudySessionRecord> =
+        mutex.withLock {
+            items.values
+                .filter { it.deviceTokenHash != excludeDeviceTokenHash }
+                .filter { record ->
+                    afterUpdatedAt == null ||
+                        record.updatedAt < afterUpdatedAt ||
+                        (record.updatedAt == afterUpdatedAt && afterId != null && record.id < afterId)
+                }
+                .sortedWith(
+                    compareByDescending<SavedStudySessionRecord> { it.updatedAt }
+                        .thenByDescending { it.id },
+                )
+                .take(limit.coerceAtLeast(0))
+        }
 }
 
 class StudySessionsService(
@@ -100,6 +128,32 @@ class StudySessionsService(
         val device = requireDevice(rawDeviceToken)
         val items = repository.listByDevice(device.tokenHash).map { it.toApi() }
         return SavedStudySessionsResponse(items)
+    }
+
+    suspend fun listCommunity(
+        rawDeviceToken: String?,
+        cursor: String? = null,
+        limit: Int = DEFAULT_COMMUNITY_PAGE_SIZE,
+    ): CommunityStudySessionsResponse {
+        val device = requireDevice(rawDeviceToken)
+        val pageSize = limit.coerceIn(1, MAX_COMMUNITY_PAGE_SIZE)
+        val parsed = parseStudyCommunityCursor(cursor)
+        val records = repository.listExceptDevice(
+            excludeDeviceTokenHash = device.tokenHash,
+            limit = pageSize + 1,
+            afterUpdatedAt = parsed?.first,
+            afterId = parsed?.second,
+        )
+        val page = records.take(pageSize)
+        val nextCursor = if (records.size > pageSize) {
+            page.lastOrNull()?.let { studyCommunityCursor(it.updatedAt, it.id) }
+        } else {
+            null
+        }
+        return CommunityStudySessionsResponse(
+            items = page.map { it.toApi() },
+            nextCursor = nextCursor,
+        )
     }
 
     suspend fun save(rawDeviceToken: String?, rawRequest: SaveStudySessionRequest): SavedStudySession {
@@ -151,5 +205,20 @@ class StudySessionsService(
 
     companion object {
         const val DEFAULT_MAX_PER_DEVICE = 50
+        const val DEFAULT_COMMUNITY_PAGE_SIZE = 20
+        const val MAX_COMMUNITY_PAGE_SIZE = 50
     }
+}
+
+internal fun studyCommunityCursor(updatedAt: Long, id: String): String = "$updatedAt:$id"
+
+internal fun parseStudyCommunityCursor(raw: String?): Pair<Long, String>? {
+    val value = raw?.trim().orEmpty()
+    if (value.isEmpty()) return null
+    val sep = value.indexOf(':')
+    if (sep <= 0 || sep == value.lastIndex) return null
+    val updatedAt = value.substring(0, sep).toLongOrNull() ?: return null
+    val id = value.substring(sep + 1)
+    if (id.isEmpty()) return null
+    return updatedAt to id
 }

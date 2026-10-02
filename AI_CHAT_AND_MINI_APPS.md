@@ -437,6 +437,7 @@ Speech implementation rules:
 | `POST` | `/api/chat/study` | Build a fast study skeleton (language + sentences + tokens) for arbitrary chat text |
 | `POST` | `/api/chat/study/dissect` | Fill full token dissections for one skeleton sentence |
 | `GET` | `/api/chat/study/sessions` | List progressive study sessions for the device token |
+| `GET` | `/api/chat/study/sessions/community` | List other devices' study sessions, newest first, with `limit` and `cursor` paging |
 | `POST` | `/api/chat/study/sessions` | Upsert a progressive study session snapshot for the device |
 | `DELETE` | `/api/chat/study/sessions/{id}` | Delete one study session owned by the device |
 | `GET` | `/api/v1/admin/voices` | List cloned TTS voices (admin JWT) |
