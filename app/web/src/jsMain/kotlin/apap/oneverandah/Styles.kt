@@ -362,6 +362,8 @@ object Styles {
     const val savedItemActions = "saved-item-actions"
     const val savedItemAction = "saved-item-action"
     const val savedItemActionDanger = "saved-item-action-danger"
+    const val studySessionPhraseRow = "study-session-phrase-row"
+    const val studySessionPhraseImage = "study-session-phrase-image"
     const val studySessionBody = "study-session-body"
     const val studySessionHint = "study-session-hint"
     const val studySessionError = "study-session-error"
@@ -484,7 +486,6 @@ object Styles {
     const val zaloQrDialog = "zalo-qr-dialog"
     const val zaloQrFrame = "zalo-qr-frame"
     const val zaloQrImage = "zalo-qr-image"
-    const val zaloQrLogo = "zalo-qr-logo"
     const val zaloQrNumber = "zalo-qr-number"
     const val locationMarkdownEm = "location-markdown-em"
     const val locationAdminPhotos = "location-admin-photos"
@@ -3054,6 +3055,26 @@ object Styles {
             color: var(--md-sys-color-error, #b3261e);
             border-color: color-mix(in srgb, var(--md-sys-color-error, #b3261e) 35%, var(--md-sys-color-outline));
         }
+        .${studySessionPhraseRow} {
+            display: flex;
+            flex-direction: row;
+            gap: 8px;
+            overflow-x: auto;
+            margin: -2px -2px 2px;
+            padding: 2px;
+        }
+        .${studySessionPhraseImage} {
+            flex: 0 0 auto;
+            width: 72px;
+            height: 72px;
+            border-radius: 12px;
+            object-fit: cover;
+            border: 1px solid var(--md-sys-color-outline);
+            background: var(--md-sys-color-surface-variant);
+        }
+        .${savedItem} .${btnPrimary} {
+            width: 100%;
+        }
         /* Study session content scrolls with the scaffold pane. */
         .${studySessionBody} {
             display: flex;
@@ -4611,19 +4632,6 @@ object Styles {
             display: block;
             width: 100%;
             height: 100%;
-        }
-        .${zaloQrLogo} {
-            position: absolute;
-            left: 50%;
-            top: 50%;
-            width: 22%;
-            height: 22%;
-            transform: translate(-50%, -50%);
-            padding: 4px;
-            box-sizing: border-box;
-            background: #fff;
-            border-radius: 22%;
-            object-fit: contain;
         }
         .${zaloQrNumber} {
             margin: 0;

@@ -76,7 +76,6 @@ fun ZaloQrDialog(
                 if (dataUrl.isNotBlank()) {
                     Img(src = dataUrl, alt = ZALO_BRAND, attrs = { classes(Styles.zaloQrImage) })
                 }
-                Img(src = APP_ICON_SRC, alt = "", attrs = { classes(Styles.zaloQrLogo) })
             }
             P(attrs = { classes(Styles.zaloQrNumber) }) { Text(phone) }
             Div(attrs = { classes(Styles.dialogActions) }) {

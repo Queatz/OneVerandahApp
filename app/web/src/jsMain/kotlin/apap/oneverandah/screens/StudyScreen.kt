@@ -44,6 +44,7 @@ import apap.oneverandah.api.StudyWordImageRequest
 import apap.oneverandah.api.StudyWordPlaygroundRequest
 import apap.oneverandah.api.StudyWriteCheckRequest
 import apap.oneverandah.api.StudyWordPlaygroundResponse
+import apap.oneverandah.components.BottomDialog
 import apap.oneverandah.components.ChatInput
 import apap.oneverandah.components.MaterialSymbol
 import apap.oneverandah.components.Scaffold
@@ -1245,6 +1246,7 @@ private fun StudySessionsList(
 ) {
     var draft by remember { mutableStateOf("") }
     var exact by remember { mutableStateOf(false) }
+    var pendingRemove by remember { mutableStateOf<SavedStudySession?>(null) }
 
     Div(attrs = { classes(Styles.savedPanelBody) }) {
         P(attrs = { classes(Styles.homePrompt, Styles.homePromptLarge) }) {
@@ -1289,13 +1291,25 @@ private fun StudySessionsList(
             }
             else -> items.forEach { item ->
                 Div(attrs = { classes(Styles.savedItem) }) {
+                    val phraseImages = studySessionPhraseImageUrls(item.session)
+                    if (phraseImages.isNotEmpty()) {
+                        Div(attrs = { classes(Styles.studySessionPhraseRow) }) {
+                            phraseImages.forEach { url ->
+                                Img(
+                                    src = url,
+                                    alt = strings.chatStudySentenceImageAlt,
+                                    attrs = { classes(Styles.studySessionPhraseImage) },
+                                )
+                            }
+                        }
+                    }
                     Span(attrs = { classes(Styles.savedItemSender) }) {
                         Text(strings.chatStudyTitle)
                     }
                     P(attrs = { classes(Styles.savedItemText) }) { Text(item.text) }
                     Div(attrs = { classes(Styles.savedItemActions) }) {
                         Button(attrs = {
-                            classes(Styles.savedItemAction)
+                            classes(Styles.btnPrimary)
                             attr("type", "button")
                             onClick { onOpen(item) }
                         }) {
@@ -1305,7 +1319,7 @@ private fun StudySessionsList(
                         Button(attrs = {
                             classes(Styles.savedItemAction, Styles.savedItemActionDanger)
                             attr("type", "button")
-                            onClick { onRemove(item) }
+                            onClick { pendingRemove = item }
                         }) {
                             MaterialSymbol("delete")
                             Text(strings.chatStudySessionsRemove)
@@ -1313,6 +1327,46 @@ private fun StudySessionsList(
                     }
                 }
             }
+        }
+    }
+
+    StudySessionRemoveConfirmDialog(
+        item = pendingRemove,
+        strings = strings,
+        onDismiss = { pendingRemove = null },
+        onConfirm = { item ->
+            pendingRemove = null
+            onRemove(item)
+        },
+    )
+}
+
+@Composable
+private fun StudySessionRemoveConfirmDialog(
+    item: SavedStudySession?,
+    strings: UiStrings,
+    onDismiss: () -> Unit,
+    onConfirm: (SavedStudySession) -> Unit,
+) {
+    BottomDialog(
+        visible = item != null,
+        closeLabel = strings.close,
+        onDismiss = onDismiss,
+    ) {
+        Div(attrs = { classes(Styles.dialogHeader) }) {
+            P(attrs = { classes(Styles.dialogTitle) }) { Text(strings.chatStudySessionsRemove) }
+        }
+        Div(attrs = { classes(Styles.dialogActions) }) {
+            Button(attrs = {
+                classes(Styles.btnText)
+                attr("type", "button")
+                onClick { onDismiss() }
+            }) { Text(strings.close) }
+            Button(attrs = {
+                classes(Styles.btnPrimary)
+                attr("type", "button")
+                onClick { item?.let(onConfirm) }
+            }) { Text(strings.confirm) }
         }
     }
 }
@@ -1931,6 +1985,12 @@ internal fun collectStoryMeaningNarrationTexts(
     }
     return lines
 }
+
+/** Completed sentence visuals for a saved study card, in reading order. */
+internal fun studySessionPhraseImageUrls(session: StudySessionResponse): List<String> =
+    session.sentences.mapNotNull { sentence ->
+        sentence.imageUrl?.trim()?.takeIf { it.isNotEmpty() }
+    }
 
 /**
  * Source text for a study session opened from a chat message.
