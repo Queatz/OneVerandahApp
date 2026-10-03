@@ -44,7 +44,7 @@ fun AdminStatsPanel(
     }
 
     if (loading && data.daily.isEmpty()) {
-        P { Text(strings.phrasesLoading) }
+        P { Text(strings.adminStatsLoading) }
         return
     }
 
@@ -166,7 +166,7 @@ private fun VisitorChart(
             if (lineD.isNotBlank()) {
                 Path(d = lineD, attrs = {
                     attr("fill", "none")
-                    attr("stroke", "var(--md-sys-color-tertiary)")
+                    attr("stroke", "var(--md-sys-color-success)")
                     attr("stroke-width", "2.5")
                     attr("stroke-linejoin", "round")
                     attr("stroke-linecap", "round")

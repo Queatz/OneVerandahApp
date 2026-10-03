@@ -2862,7 +2862,7 @@ object Styles {
             background: var(--md-sys-color-primary);
         }
         .${adminStatsLegendVisits}::before {
-            background: var(--md-sys-color-tertiary);
+            background: var(--md-sys-color-success);
             border-radius: 99px;
             height: 3px;
             vertical-align: 2px;
