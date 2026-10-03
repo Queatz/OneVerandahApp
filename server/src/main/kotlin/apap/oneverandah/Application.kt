@@ -15,11 +15,13 @@ import apap.oneverandah.routes.challengeRoutes
 import apap.oneverandah.routes.clubRoutes
 import apap.oneverandah.routes.locationRoutes
 import apap.oneverandah.routes.meetRoutes
+import apap.oneverandah.routes.statsRoutes
 import apap.oneverandah.routes.storyRoutes
 import apap.oneverandah.challenges.ChallengeSystem
 import apap.oneverandah.clubs.ClubSystem
 import apap.oneverandah.locations.LocationSystem
 import apap.oneverandah.meets.MeetSystem
+import apap.oneverandah.stats.StatsSystem
 import apap.oneverandah.stories.StorySystem
 import io.ktor.http.HttpHeaders
 import io.ktor.http.HttpMethod
@@ -246,6 +248,10 @@ fun Application.module(
             )
         }
         clubRoutes(clubSystem, config)
+        val statsSystem = runBlocking {
+            StatsSystem.create(config, imageSystem.httpClient)
+        }
+        statsRoutes(statsSystem, config)
     }
 }
 

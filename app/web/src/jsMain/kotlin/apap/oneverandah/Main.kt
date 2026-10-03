@@ -8,8 +8,11 @@ import androidx.compose.runtime.remember
 import androidx.compose.runtime.setValue
 import app.softwork.routingcompose.BrowserRouter
 import app.softwork.routingcompose.Router
+import apap.oneverandah.api.StatsApi
 import apap.oneverandah.data.Catalog
+import apap.oneverandah.i18n.Localization
 import apap.oneverandah.state.ImageStore
+import kotlinx.browser.window
 import kotlinx.coroutines.delay
 import apap.oneverandah.screens.HomeScreen
 import apap.oneverandah.screens.OfferScreen
@@ -58,6 +61,11 @@ fun App() {
         while (true) {
             ImageStore.refresh()
             delay(60_000)
+        }
+    }
+    LaunchedEffect(Unit) {
+        runCatching {
+            StatsApi.recordVisit(window.location.pathname, Localization.language.tag)
         }
     }
 

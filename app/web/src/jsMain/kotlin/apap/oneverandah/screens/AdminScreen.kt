@@ -32,10 +32,12 @@ import apap.oneverandah.api.ChallengeApi
 import apap.oneverandah.api.ClubApi
 import apap.oneverandah.api.LocationApi
 import apap.oneverandah.api.MeetApi
+import apap.oneverandah.api.StatsApi
 import apap.oneverandah.challenges.AdminChallengesResponse
 import apap.oneverandah.clubs.AdminClubsResponse
 import apap.oneverandah.locations.AdminLocationsResponse
 import apap.oneverandah.meets.AdminMeetsResponse
+import apap.oneverandah.stats.AdminStatsResponse
 import apap.oneverandah.stories.Story
 import apap.oneverandah.stories.StoryCharacter
 import apap.oneverandah.phrases.PhraseLocations
@@ -72,7 +74,7 @@ fun AdminScreen(onBack: () -> Unit) {
     var password by remember { mutableStateOf("") }
     var passwordError by remember { mutableStateOf<String?>(null) }
     var signingIn by remember { mutableStateOf(false) }
-    var tab by remember { mutableStateOf(AdminTab.PHRASES) }
+    var tab by remember { mutableStateOf(AdminTab.STATS) }
     var phrases by remember { mutableStateOf<List<Phrase>>(emptyList()) }
     var photos by remember { mutableStateOf<List<ReferencePhoto>>(emptyList()) }
     var characters by remember { mutableStateOf<List<StoryCharacter>>(emptyList()) }
@@ -82,6 +84,7 @@ fun AdminScreen(onBack: () -> Unit) {
     var meetAdmin by remember { mutableStateOf(AdminMeetsResponse()) }
     var locationAdmin by remember { mutableStateOf(AdminLocationsResponse()) }
     var clubAdmin by remember { mutableStateOf(AdminClubsResponse()) }
+    var stats by remember { mutableStateOf(AdminStatsResponse()) }
     var coverImageUrl by remember { mutableStateOf<String?>(null) }
     var loading by remember { mutableStateOf(false) }
     var editing by remember { mutableStateOf<Phrase?>(null) }
@@ -113,6 +116,7 @@ fun AdminScreen(onBack: () -> Unit) {
                 meetAdmin = runCatching { MeetApi.fetchAdmin() }.getOrDefault(AdminMeetsResponse())
                 locationAdmin = runCatching { LocationApi.fetchAdmin() }.getOrDefault(AdminLocationsResponse())
                 clubAdmin = runCatching { ClubApi.fetchAdmin() }.getOrDefault(AdminClubsResponse())
+                stats = runCatching { StatsApi.fetchAdmin() }.getOrDefault(AdminStatsResponse())
             } catch (e: PhraseApiException) {
                 if (e.message?.contains("authentication", ignoreCase = true) == true) {
                     AdminAuth.clear()
@@ -422,6 +426,12 @@ fun AdminScreen(onBack: () -> Unit) {
             Div(attrs = { classes(Styles.chipGroup) }) {
                 Button(attrs = {
                     classes(Styles.chip)
+                    if (tab == AdminTab.STATS) classes(Styles.chipActive)
+                    attr("type", "button")
+                    onClick { tab = AdminTab.STATS }
+                }) { Text(strings.adminStatsTab) }
+                Button(attrs = {
+                    classes(Styles.chip)
                     if (tab == AdminTab.PHRASES) classes(Styles.chipActive)
                     attr("type", "button")
                     onClick { tab = AdminTab.PHRASES }
@@ -490,12 +500,17 @@ fun AdminScreen(onBack: () -> Unit) {
                     meetAdmin = AdminMeetsResponse()
                     locationAdmin = AdminLocationsResponse()
                     clubAdmin = AdminClubsResponse()
+                    stats = AdminStatsResponse()
                     coverImageUrl = null
                 }
             }) { Text(strings.adminLogout) }
         }
 
         when (tab) {
+            AdminTab.STATS -> {
+                AdminStatsPanel(data = stats, loading = loading)
+            }
+
             AdminTab.PHRASES -> {
                 Div(attrs = { classes(Styles.adminCoverCard) }) {
                     SectionTitle(strings.adminCoverTitle)
@@ -1480,4 +1495,4 @@ private fun AdminArea(label: String, value: String, onChange: (String) -> Unit) 
     }
 }
 
-private enum class AdminTab { PHRASES, PHOTOS, CHARACTERS, VOICES, STORIES, CHALLENGES, MEETS, LOCATIONS, CLUBS }
+private enum class AdminTab { STATS, PHRASES, PHOTOS, CHARACTERS, VOICES, STORIES, CHALLENGES, MEETS, LOCATIONS, CLUBS }

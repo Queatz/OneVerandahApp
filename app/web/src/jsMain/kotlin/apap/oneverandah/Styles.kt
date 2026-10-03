@@ -342,6 +342,24 @@ object Styles {
     const val adminRefTile = "admin-ref-tile"
     const val adminRefTileSelected = "selected"
     const val adminRefThumb = "admin-ref-thumb"
+    const val adminStatsCards = "admin-stats-cards"
+    const val adminStatsCard = "admin-stats-card"
+    const val adminStatsCardLabel = "admin-stats-card-label"
+    const val adminStatsCardValue = "admin-stats-card-value"
+    const val adminStatsCardHint = "admin-stats-card-hint"
+    const val adminStatsTimezone = "admin-stats-timezone"
+    const val adminStatsChart = "admin-stats-chart"
+    const val adminStatsSvg = "admin-stats-svg"
+    const val adminStatsBar = "admin-stats-bar"
+    const val adminStatsBarActive = "admin-stats-bar-active"
+    const val adminStatsAxis = "admin-stats-axis"
+    const val adminStatsAxisLabel = "admin-stats-axis-label"
+    const val adminStatsAxisLabelActive = "admin-stats-axis-label-active"
+    const val adminStatsAxisLabelHidden = "admin-stats-axis-label-hidden"
+    const val adminStatsLegend = "admin-stats-legend"
+    const val adminStatsLegendVisitors = "admin-stats-legend-visitors"
+    const val adminStatsLegendVisits = "admin-stats-legend-visits"
+    const val adminStatsSelected = "admin-stats-selected"
     const val phraseSpokenLabel = "phrase-spoken-label"
     const val phrasesOriginStory = "phrases-origin-story"
     const val phraseInstructions = "phrase-instructions"
@@ -2743,6 +2761,126 @@ object Styles {
             gap: 8px;
             margin-bottom: 12px;
             flex-wrap: wrap;
+        }
+        .${adminStatsCards} {
+            display: grid;
+            grid-template-columns: repeat(2, minmax(0, 1fr));
+            gap: 10px;
+            margin: 4px 0 16px;
+        }
+        .${adminStatsCard} {
+            display: flex;
+            flex-direction: column;
+            gap: 2px;
+            padding: 14px 16px;
+            border-radius: 16px;
+            background: var(--md-sys-color-surface);
+            border: 1px solid #ffffff16;
+        }
+        .${adminStatsCardLabel} {
+            font-size: 12px;
+            font-weight: 600;
+            color: var(--md-sys-color-on-surface-variant);
+        }
+        .${adminStatsCardValue} {
+            font-size: 28px;
+            font-weight: 750;
+            line-height: 1.15;
+            font-variant-numeric: tabular-nums;
+            color: var(--md-sys-color-on-surface);
+        }
+        .${adminStatsCardHint} {
+            font-size: 12px;
+            color: var(--md-sys-color-on-surface-variant);
+        }
+        .${adminStatsTimezone} {
+            font-size: 12px;
+            color: var(--md-sys-color-on-surface-variant);
+        }
+        .${adminStatsChart} {
+            margin: 4px 0 16px;
+            padding: 12px 10px 8px;
+            border-radius: 16px;
+            background: var(--md-sys-color-surface);
+            border: 1px solid #ffffff16;
+        }
+        .${adminStatsSvg} {
+            display: block;
+            width: 100%;
+            height: 180px;
+        }
+        .${adminStatsBar} {
+            fill: color-mix(in srgb, var(--md-sys-color-primary) 55%, transparent);
+            cursor: pointer;
+        }
+        .${adminStatsBar}:hover,
+        .${adminStatsBarActive} {
+            fill: var(--md-sys-color-primary);
+        }
+        .${adminStatsAxis} {
+            display: flex;
+            justify-content: space-between;
+            gap: 2px;
+            margin-top: 6px;
+        }
+        .${adminStatsAxisLabel} {
+            flex: 1;
+            min-width: 0;
+            text-align: center;
+            font-size: 10px;
+            font-variant-numeric: tabular-nums;
+            color: var(--md-sys-color-on-surface-variant);
+            overflow: hidden;
+            text-overflow: clip;
+            white-space: nowrap;
+        }
+        .${adminStatsAxisLabelActive} {
+            color: var(--md-sys-color-primary);
+            font-weight: 700;
+        }
+        .${adminStatsAxisLabelHidden} {
+            color: transparent;
+        }
+        .${adminStatsLegend} {
+            display: flex;
+            gap: 14px;
+            margin-top: 8px;
+            font-size: 12px;
+            color: var(--md-sys-color-on-surface-variant);
+        }
+        .${adminStatsLegendVisitors}::before,
+        .${adminStatsLegendVisits}::before {
+            content: "";
+            display: inline-block;
+            width: 10px;
+            height: 10px;
+            margin-right: 6px;
+            border-radius: 3px;
+            vertical-align: -1px;
+        }
+        .${adminStatsLegendVisitors}::before {
+            background: var(--md-sys-color-primary);
+        }
+        .${adminStatsLegendVisits}::before {
+            background: var(--md-sys-color-tertiary);
+            border-radius: 99px;
+            height: 3px;
+            vertical-align: 2px;
+        }
+        .${adminStatsSelected} {
+            margin: 0 0 16px;
+            padding: 12px 14px;
+            border-radius: 16px;
+            background: var(--md-sys-color-primary-container);
+            color: var(--md-sys-color-on-primary-container);
+        }
+        .${adminStatsSelected} h2 {
+            margin: 0 0 4px;
+            font-size: 15px;
+        }
+        .${adminStatsSelected} p {
+            margin: 0;
+            font-size: 13px;
         }
         .${adminActions} {
             margin-bottom: 12px;
