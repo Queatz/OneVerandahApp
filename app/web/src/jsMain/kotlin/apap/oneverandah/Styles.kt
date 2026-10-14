@@ -3435,6 +3435,7 @@ object Styles {
         }
         .${studySentenceImageStatus} {
             display: inline-flex;
+            flex-wrap: wrap;
             align-items: center;
             gap: 8px;
             font-size: 13px;
@@ -3517,6 +3518,7 @@ object Styles {
         }
         .${studyStoryImagePlaceholder} {
             display: flex;
+            flex-wrap: wrap;
             align-items: center;
             justify-content: center;
             gap: 10px;
@@ -3611,6 +3613,7 @@ object Styles {
             position: absolute;
             inset: 0;
             display: flex;
+            flex-wrap: wrap;
             align-items: center;
             justify-content: center;
             gap: 10px;

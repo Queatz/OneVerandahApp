@@ -854,8 +854,8 @@ fun StudyScreen(
                         return
                     }
                     existing.status == StudyPlaygroundImageStatus.FAILED -> {
-                        studyImageFailed[key] = true
-                        return
+                        // Previous job failed — drop it so retry can enqueue a new one.
+                        imageId = ""
                     }
                     else -> Unit // PENDING / GENERATING — fall through to poll
                 }
@@ -1187,6 +1187,17 @@ fun StudyScreen(
         }
     }
 
+    fun retryStudySentenceImage(sentenceIndex: Int) {
+        val messageId = studyTarget?.id ?: return
+        val key = studyImageKey(messageId, sentenceIndex)
+        if (studyImageInFlight[key] == true) return
+        studyImageFailed.remove(key)
+        scope.launch {
+            ensureStudyCharacters(messageId)
+            ensureStudySentenceImage(messageId, sentenceIndex)
+        }
+    }
+
     fun closeStudy() {
         studySessionVisible = false
         stopActiveStudyAudio()
@@ -1250,6 +1261,7 @@ fun StudyScreen(
                     }
                 },
                 onRetrySentence = ::retryStudySentence,
+                onRetryImage = ::retryStudySentenceImage,
                 onRetryPlay = {
                     val target = studyTarget ?: return@StudySessionPane
                     val session = studyCache[target.id] ?: studySession ?: return@StudySessionPane
@@ -1510,6 +1522,7 @@ private fun StudySessionPane(
     strings: UiStrings,
     onRetry: () -> Unit,
     onRetrySentence: (Int) -> Unit,
+    onRetryImage: (Int) -> Unit,
     onRetryPlay: () -> Unit,
     onPlayScenarioUpdate: (String, (StudyPlayScenario) -> StudyPlayScenario) -> Unit,
     onPlayMessageImage: (scenarioId: String, imageId: String, imageUrl: String?) -> Unit,
@@ -1546,6 +1559,7 @@ private fun StudySessionPane(
                     playFailed = playFailed,
                     strings = strings,
                     onRetrySentence = onRetrySentence,
+                    onRetryImage = onRetryImage,
                     onRetryPlay = onRetryPlay,
                     onPlayScenarioUpdate = onPlayScenarioUpdate,
                     onPlayMessageImage = onPlayMessageImage,
@@ -1571,6 +1585,7 @@ private fun StudySessionContent(
     playFailed: Boolean,
     strings: UiStrings,
     onRetrySentence: (Int) -> Unit,
+    onRetryImage: (Int) -> Unit,
     onRetryPlay: () -> Unit,
     onPlayScenarioUpdate: (String, (StudyPlayScenario) -> StudyPlayScenario) -> Unit,
     onPlayMessageImage: (scenarioId: String, imageId: String, imageUrl: String?) -> Unit,
@@ -1719,6 +1734,7 @@ private fun StudySessionContent(
                 imageFailed = imageFailed,
                 sentenceAudio = sentenceAudio,
                 strings = strings,
+                onRetryImage = onRetryImage,
             )
         }
         StudySessionMode.STORY -> {
@@ -1729,6 +1745,7 @@ private fun StudySessionContent(
                 wordImageFailed = wordImageFailed,
                 sentenceAudio = sentenceAudio,
                 strings = strings,
+                onRetryImage = onRetryImage,
                 playStudyToken = { sentenceIndex, tokenIndex, tokenText ->
                     // Keep selection aligned so async token-TTS fallback still plays.
                     selectedRef = StudyTokenRef(sentenceIndex, tokenIndex)
@@ -1761,6 +1778,7 @@ private fun StudySessionContent(
                         imageUrl = sentence.imageUrl,
                         failed = visualFailed,
                         strings = strings,
+                        onRetry = { onRetryImage(sentenceIndex) },
                     )
                     Div(attrs = { classes(Styles.languageSentence) }) {
                         sentence.tokens.forEachIndexed { tokenIndex, token ->
@@ -1936,10 +1954,26 @@ private fun StudySessionContent(
 }
 
 @Composable
+private fun StudyImageRetryButton(
+    label: String,
+    onRetry: () -> Unit,
+) {
+    Button(attrs = {
+        classes(Styles.savedItemAction)
+        attr("type", "button")
+        onClick { onRetry() }
+    }) {
+        MaterialSymbol("refresh")
+        Text(label)
+    }
+}
+
+@Composable
 private fun StudySentenceVisual(
     imageUrl: String?,
     failed: Boolean,
     strings: UiStrings,
+    onRetry: (() -> Unit)? = null,
 ) {
     val url = imageUrl?.trim()?.takeIf { it.isNotEmpty() }
     when {
@@ -1952,6 +1986,12 @@ private fun StudySentenceVisual(
             Div(attrs = { classes(Styles.studySentenceImageStatus) }) {
                 MaterialSymbol("image_not_supported")
                 Span { Text(strings.chatStudySentenceImageError) }
+                if (onRetry != null) {
+                    StudyImageRetryButton(
+                        label = strings.chatStudyRetrySentence,
+                        onRetry = onRetry,
+                    )
+                }
             }
         }
         else -> {
@@ -2191,6 +2231,7 @@ private fun StudyWatchTab(
     imageFailed: Map<String, Boolean>,
     sentenceAudio: Map<String, StudySentenceAudio>,
     strings: UiStrings,
+    onRetryImage: (Int) -> Unit,
 ) {
     val measuredDurations = remember(session.text) { mutableStateMapOf<String, Int>() }
     var sceneIndex by remember(session.text) { mutableStateOf(0) }
@@ -2417,6 +2458,10 @@ private fun StudyWatchTab(
                 Div(attrs = { classes(Styles.studyWatchStageStatus) }) {
                     MaterialSymbol("image_not_supported")
                     Span { Text(strings.chatStudySentenceImageError) }
+                    StudyImageRetryButton(
+                        label = strings.chatStudyRetrySentence,
+                        onRetry = { onRetryImage(displayIndex) },
+                    )
                 }
             } else if (showWatchLoading) {
                 Div(attrs = {
@@ -2515,6 +2560,7 @@ private fun StudyStoryTab(
     wordImageFailed: Map<String, Boolean>,
     sentenceAudio: Map<String, StudySentenceAudio>,
     strings: UiStrings,
+    onRetryImage: (Int) -> Unit,
     playStudyToken: (sentenceIndex: Int, tokenIndex: Int, tokenText: String) -> Unit,
     onFinished: () -> Unit,
 ) {
@@ -2755,6 +2801,8 @@ private fun StudyStoryTab(
                     loadingLabel = strings.chatStudySentenceImageLoading,
                     errorLabel = strings.chatStudySentenceImageError,
                     alt = strings.chatStudySentenceImageAlt,
+                    retryLabel = strings.chatStudyRetrySentence,
+                    onRetry = { onRetryImage(safeSentenceIndex) },
                 )
                 P(attrs = { classes(Styles.studyStorySentence) }) { Text(sentence.text) }
                 Button(attrs = {
@@ -2776,6 +2824,8 @@ private fun StudyStoryVisual(
     loadingLabel: String,
     errorLabel: String,
     alt: String,
+    retryLabel: String? = null,
+    onRetry: (() -> Unit)? = null,
 ) {
     val url = imageUrl?.trim()?.takeIf { it.isNotEmpty() }
     when {
@@ -2788,6 +2838,9 @@ private fun StudyStoryVisual(
             Div(attrs = { classes(Styles.studyStoryImagePlaceholder) }) {
                 MaterialSymbol("image_not_supported")
                 Span { Text(errorLabel) }
+                if (onRetry != null && retryLabel != null) {
+                    StudyImageRetryButton(label = retryLabel, onRetry = onRetry)
+                }
             }
         }
         else -> {
