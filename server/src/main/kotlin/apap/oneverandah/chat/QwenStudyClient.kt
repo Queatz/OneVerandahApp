@@ -7,6 +7,7 @@ import apap.oneverandah.api.StudyToken
 import apap.oneverandah.api.StudyTokenStatus
 import apap.oneverandah.config.QwenChatConfig
 import io.ktor.client.HttpClient
+import io.ktor.client.plugins.HttpRequestTimeoutException
 import io.ktor.client.request.header
 import io.ktor.client.request.post
 import io.ktor.client.request.setBody
@@ -15,7 +16,13 @@ import io.ktor.http.ContentType
 import io.ktor.http.HttpHeaders
 import io.ktor.http.contentType
 import io.ktor.http.isSuccess
+import kotlinx.coroutines.delay
 import kotlinx.serialization.json.Json
+import org.slf4j.LoggerFactory
+import java.io.EOFException
+import java.net.SocketException
+import java.net.SocketTimeoutException
+import java.nio.channels.ClosedChannelException
 import kotlinx.serialization.json.JsonArray
 import kotlinx.serialization.json.JsonElement
 import kotlinx.serialization.json.JsonObject
@@ -261,6 +268,7 @@ class DashScopeStudyAiClient(
     private val config: QwenChatConfig,
     private val client: HttpClient,
 ) : StudyAiClient {
+    private val log = LoggerFactory.getLogger(DashScopeStudyAiClient::class.java)
     private val json = Json { ignoreUnknownKeys = true; explicitNulls = false }
 
     override suspend fun extractStudyText(request: StudyGenerationRequest): String {
@@ -566,14 +574,17 @@ class DashScopeStudyAiClient(
             put("response_format", buildJsonObject { put("type", "json_object") })
             put("temperature", temperature)
         }
-        val response = client.post(config.chatEndpoint) {
-            header(HttpHeaders.Authorization, "Bearer ${config.apiKey}")
-            contentType(ContentType.Application.Json)
-            setBody(json.encodeToString(JsonObject.serializer(), body))
-        }
-        val responseText = response.bodyAsText()
-        if (!response.status.isSuccess()) {
-            throw QwenChatException("Qwen $label failed (${response.status}): $responseText")
+        val responseText = withTransientHttpRetry(label) {
+            val response = client.post(config.chatEndpoint) {
+                header(HttpHeaders.Authorization, "Bearer ${config.apiKey}")
+                contentType(ContentType.Application.Json)
+                setBody(json.encodeToString(JsonObject.serializer(), body))
+            }
+            val text = response.bodyAsText()
+            if (!response.status.isSuccess()) {
+                throw QwenChatException("Qwen $label failed (${response.status}): $text")
+            }
+            text
         }
         val root = json.parseToJsonElement(responseText).jsonObject
         return root["choices"]?.jsonArray
@@ -582,6 +593,58 @@ class DashScopeStudyAiClient(
             ?.get("content")?.jsonPrimitive?.content
             ?: throw QwenChatException("Qwen $label returned no structured content: $responseText")
     }
+
+    /**
+     * DashScope keep-alives are often closed before any response bytes.
+     * CIO then fails in readByte with "Not enough data available".
+     * Retry the whole call; a fresh connection usually succeeds.
+     */
+    private suspend fun <T> withTransientHttpRetry(
+        label: String,
+        attempts: Int = 3,
+        block: suspend () -> T,
+    ): T {
+        var last: Throwable? = null
+        repeat(attempts) { attempt ->
+            try {
+                return block()
+            } catch (e: Throwable) {
+                last = e
+                if (!isTransientHttpClose(e) || attempt == attempts - 1) throw e
+                log.warn(
+                    "Retrying Qwen {} after transient close (attempt {}/{}): {}",
+                    label,
+                    attempt + 1,
+                    attempts,
+                    e.message,
+                )
+                delay(400L * (attempt + 1))
+            }
+        }
+        throw last ?: error("Qwen $label retry exhausted")
+    }
+
+    /** CIO reports dropped keep-alives / idle cuts as a parse EOF. */
+    private fun isTransientHttpClose(error: Throwable): Boolean =
+        generateSequence(error) { it.cause }.any { cause ->
+            when (cause) {
+                is EOFException,
+                is SocketTimeoutException,
+                is SocketException,
+                is ClosedChannelException,
+                is HttpRequestTimeoutException,
+                -> true
+                else -> {
+                    val message = cause.message.orEmpty()
+                    message.contains("Not enough data available", ignoreCase = true) ||
+                        message.contains("prematurely closed", ignoreCase = true) ||
+                        message.contains("connection reset", ignoreCase = true) ||
+                        message.contains("broken pipe", ignoreCase = true) ||
+                        message.contains("connection abort", ignoreCase = true) ||
+                        message.contains("Request timeout has expired", ignoreCase = true)
+                }
+            }
+        }
 
     private fun extractStudyTextSystemPrompt(learnerLanguageTag: String): String = """
         You extract the text a language learner should study from a chat message.

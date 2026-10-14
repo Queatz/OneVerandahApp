@@ -8,8 +8,10 @@ import io.ktor.http.HttpHeaders
 import io.ktor.http.HttpStatusCode
 import io.ktor.http.content.OutgoingContent
 import io.ktor.http.headersOf
+import java.io.EOFException
 import kotlin.test.Test
 import kotlin.test.assertEquals
+import kotlin.test.assertFailsWith
 import kotlinx.coroutines.runBlocking
 import kotlinx.serialization.json.Json
 import kotlinx.serialization.json.jsonObject
@@ -74,6 +76,58 @@ class QwenStudyClientTest {
 
         assertEquals("Anh thích em.", composed)
         assertEquals(listOf("qwen3.8-flash"), models)
+        client.close()
+    }
+
+    @Test
+    fun `study intent retries when the model connection closes before any data`() = runBlocking {
+        var calls = 0
+        val engine = MockEngine {
+            calls += 1
+            if (calls == 1) {
+                throw EOFException("Not enough data available")
+            }
+            respond(
+                content = qwenChatResponse("""{"text":"Anh thích em."}"""),
+                status = HttpStatusCode.OK,
+                headers = headersOf(HttpHeaders.ContentType, "application/json"),
+            )
+        }
+        val client = HttpClient(engine)
+        val ai = DashScopeStudyAiClient(qwenConfig(), client)
+
+        val composed = ai.generateStudyIntent(
+            StudyGenerationRequest(
+                text = "sentences about talking about relationships in Vietnamese",
+                languageTag = "en",
+            ),
+        )
+
+        assertEquals("Anh thích em.", composed)
+        assertEquals(2, calls)
+        client.close()
+    }
+
+    @Test
+    fun `study intent does not retry a model error response`() = runBlocking {
+        var calls = 0
+        val engine = MockEngine {
+            calls += 1
+            respond(
+                content = """{"error":"bad request"}""",
+                status = HttpStatusCode.BadRequest,
+                headers = headersOf(HttpHeaders.ContentType, "application/json"),
+            )
+        }
+        val client = HttpClient(engine)
+        val ai = DashScopeStudyAiClient(qwenConfig(), client)
+
+        assertFailsWith<QwenChatException> {
+            ai.generateStudyIntent(
+                StudyGenerationRequest(text = "Xin chào.", languageTag = "en"),
+            )
+        }
+        assertEquals(1, calls)
         client.close()
     }
 
