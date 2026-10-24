@@ -139,6 +139,40 @@ data class QwenImageConfig(
     val enabled: Boolean get() = apiKey.isNotBlank()
 }
 
+/** Speechgen.io settings used for content languages not supported by Qwen TTS. */
+data class SpeechgenConfig(
+    val apiKey: String,
+    val email: String,
+    val voice: String = "Xiaoxiao MM",
+    val endpoint: String = DEFAULT_ENDPOINT,
+    val resultEndpoint: String = DEFAULT_RESULT_ENDPOINT,
+    val textEndpoint: String = DEFAULT_TEXT_ENDPOINT,
+) {
+    val enabled: Boolean get() = apiKey.isNotBlank() && email.isNotBlank()
+
+    companion object {
+        const val DEFAULT_ENDPOINT = "https://speechgen.io/index.php?r=api/subs"
+        const val DEFAULT_RESULT_ENDPOINT = "https://speechgen.io/index.php?r=api/result"
+        const val DEFAULT_TEXT_ENDPOINT = "https://speechgen.io/index.php?r=api/text"
+    }
+}
+
+internal fun speechgenResultEndpoint(endpoint: String): String {
+    val replaced = endpoint
+        .replace("r=api/text", "r=api/result")
+        .replace("r=api/subs", "r=api/result")
+        .replace("r=api/longtext", "r=api/result")
+    return replaced.takeIf { it != endpoint } ?: SpeechgenConfig.DEFAULT_RESULT_ENDPOINT
+}
+
+internal fun speechgenTextEndpoint(endpoint: String): String {
+    if (endpoint.contains("r=api/text")) return endpoint
+    val replaced = endpoint
+        .replace("r=api/subs", "r=api/text")
+        .replace("r=api/longtext", "r=api/text")
+    return replaced.takeIf { it != endpoint } ?: SpeechgenConfig.DEFAULT_TEXT_ENDPOINT
+}
+
 /** Qwen chat, speech synthesis, and speech recognition settings. */
 data class QwenChatConfig(
     val chatEndpoint: String,
@@ -201,6 +235,7 @@ data class AppConfig(
     val oss: OssConfig,
     val qwen: QwenImageConfig,
     val qwenChat: QwenChatConfig,
+    val speechgen: SpeechgenConfig,
     /** Directory that backs the local storage fallback. */
     val localStorageDir: String,
     /**
@@ -335,6 +370,18 @@ data class AppConfig(
                 apiKey = source["QWEN_API_KEY"] ?: "",
             )
 
+            val speechgenEndpoint = source["SPEECHGEN_ENDPOINT"] ?: SpeechgenConfig.DEFAULT_ENDPOINT
+            val speechgen = SpeechgenConfig(
+                apiKey = source["SPEECHGEN_API_KEY"] ?: "",
+                email = source["SPEECHGEN_EMAIL"] ?: "",
+                voice = source["SPEECHGEN_VOICE"] ?: "Xiaoxiao MM",
+                endpoint = speechgenEndpoint,
+                resultEndpoint = source["SPEECHGEN_RESULT_ENDPOINT"]
+                    ?: speechgenResultEndpoint(speechgenEndpoint),
+                textEndpoint = source["SPEECHGEN_TEXT_ENDPOINT"]
+                    ?: speechgenTextEndpoint(speechgenEndpoint),
+            )
+
             return AppConfig(
                 env = env,
                 host = host,
@@ -346,6 +393,7 @@ data class AppConfig(
                 oss = oss,
                 qwen = qwen,
                 qwenChat = qwenChat,
+                speechgen = speechgen,
                 localStorageDir = source["LOCAL_STORAGE_DIR"] ?: "data/images",
                 imageCacheDir = source["IMAGE_CACHE_DIR"] ?: "data/image-cache",
                 ttsCacheDir = source["TTS_CACHE_DIR"] ?: "data/tts-cache",

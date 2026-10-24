@@ -101,7 +101,7 @@ data class SpeechRequest(
         val normalizedText = text.trim().takeIf { it.isNotEmpty() } ?: return null
         return copy(
             text = normalizedText,
-            languageTag = Language.fromTag(languageTag).tag,
+            languageTag = Language.normalizeContentTag(languageTag),
         )
     }
 }
@@ -465,18 +465,27 @@ data class StudySentenceImageResponse(
  *
  * Returns an [imageId] immediately; poll [StudyPlaygroundImageResponse] until
  * the image is ready, then persist [StudyToken.imageUrl] on the session.
- * The generator uses [word] plus [contextualMeaning] for the scene.
+ * The generator designs a movie-like scene from the first [exampleSentences]
+ * entry (else [contextualMeaning]) and never paints [word] itself.
  */
 @Serializable
 data class StudyWordImageRequest(
     val word: String,
     val contextualMeaning: String = "",
+    val exampleSentences: List<StudyExampleSentence> = emptyList(),
 ) {
     fun normalizedOrNull(): StudyWordImageRequest? {
         val normalizedWord = word.trim().takeIf { it.isNotEmpty() } ?: return null
         return copy(
             word = normalizedWord,
             contextualMeaning = contextualMeaning.trim(),
+            exampleSentences = exampleSentences.mapNotNull { example ->
+                val text = example.text.trim().takeIf { it.isNotEmpty() } ?: return@mapNotNull null
+                StudyExampleSentence(
+                    text = text,
+                    translation = example.translation.trim(),
+                )
+            },
         )
     }
 }
@@ -804,7 +813,7 @@ data class SaveStudySessionRequest(
             languageTag = Language.fromTag(languageTag).tag,
             session = session.copy(
                 text = normalizedText,
-                textLanguageTag = Language.fromTag(session.textLanguageTag).tag,
+                textLanguageTag = Language.normalizeContentTag(session.textLanguageTag),
             ),
         )
     }

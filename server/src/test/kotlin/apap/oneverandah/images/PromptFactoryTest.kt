@@ -15,20 +15,47 @@ class PromptFactoryTest {
     }
 
     @Test
-    fun forWord_leadsWithMeaningAndForbidsRenderingTheWord() {
-        val prompt = PromptFactory.forWord("chào", "a friendly greeting")
-        assertContains(prompt, "a friendly greeting")
-        assertContains(prompt, "Do not render these characters")
-        assertContains(prompt, "chào")
-        assertTrue(!prompt.contains("**chào**"))
+    fun forWord_leadsWithIntendedSceneAndOmitsSourceWord() {
+        val prompt = PromptFactory.forWord(
+            "A neighbor waves from a sunlit apartment doorway, warm cinematic medium shot",
+        )
+        assertContains(prompt, "A neighbor waves from a sunlit apartment doorway")
+        assertContains(prompt, "movie-like")
+        assertTrue(!prompt.contains("chào"))
+        assertContains(prompt, PromptFactory.ENGLISH_ONLY)
         assertContains(prompt, "not cartoon")
         assertContains(prompt, "zero written language")
     }
 
     @Test
+    fun forPlayground_usesAnEnglishIntendedSceneWithoutSourceWording() {
+        val prompt = PromptFactory.forPlayground(
+            intendedScene = "A neighbor waves from a sunlit apartment doorway",
+            natural = true,
+        )
+
+        assertContains(prompt, "A neighbor waves from a sunlit apartment doorway")
+        assertContains(prompt, PromptFactory.ENGLISH_ONLY)
+        assertTrue(!prompt.contains("chào", ignoreCase = true))
+        assertTrue(!prompt.contains("Xin chào bạn!"))
+    }
+
+    @Test
+    fun forPlayScenario_usesAnEnglishIntendedSceneWithoutSourceWording() {
+        val prompt = PromptFactory.forPlayScenario(
+            intendedScene = "A neighbor waves from a sunlit apartment doorway",
+            characters = emptyList(),
+        )
+
+        assertContains(prompt, "A neighbor waves from a sunlit apartment doorway")
+        assertContains(prompt, PromptFactory.ENGLISH_ONLY)
+        assertTrue(!prompt.contains("chào", ignoreCase = true))
+    }
+
+    @Test
     fun forSentence_usesScenesNotComicPanels() {
         val prompt = PromptFactory.forSentence(
-            sentence = "Lan mỉm cười.",
+            intendedScene = "Lan smiles from a sunlit doorway, cinematic medium shot",
             sentenceIndex = 0,
             sentenceCount = 2,
             characters = listOf(
@@ -47,27 +74,25 @@ class PromptFactoryTest {
         assertContains(prompt, "NEW story beat")
         assertContains(prompt, PromptFactory.STORY_SHOTS[0])
         assertContains(prompt, "Story position: opening")
+        assertContains(prompt, PromptFactory.ENGLISH_ONLY)
+        assertTrue(!prompt.contains("mỉm cười"))
     }
 
     @Test
     fun forSentence_variesCameraAcrossStoryBeats() {
-        val story = "Lan mỉm cười. Minh vẫy tay. Họ đi vào quán."
         val prompts = listOf(
             PromptFactory.forSentence(
-                sentence = "Lan mỉm cười.",
-                fullText = story,
+                intendedScene = "Lan smiles in a sunlit doorway",
                 sentenceIndex = 0,
                 sentenceCount = 3,
             ),
             PromptFactory.forSentence(
-                sentence = "Minh vẫy tay.",
-                fullText = story,
+                intendedScene = "Minh waves from across a courtyard",
                 sentenceIndex = 1,
                 sentenceCount = 3,
             ),
             PromptFactory.forSentence(
-                sentence = "Họ đi vào quán.",
-                fullText = story,
+                intendedScene = "They step into a warm neighborhood cafe",
                 sentenceIndex = 2,
                 sentenceCount = 3,
             ),
@@ -80,9 +105,11 @@ class PromptFactoryTest {
         assertContains(prompts[2], "Story position: ending")
         assertTrue(prompts.distinct().size == prompts.size)
         prompts.forEach { prompt ->
-            assertContains(prompt, "do not illustrate the whole story")
+            assertContains(prompt, "Do not illustrate the whole story")
             assertContains(prompt, "Never generate the same medium shot")
+            assertContains(prompt, PromptFactory.ENGLISH_ONLY)
         }
+        assertTrue(prompts.none { it.contains("mỉm cười") || it.contains("vẫy tay") || it.contains("Họ đi") })
     }
 
     @Test

@@ -3702,6 +3702,7 @@ object Styles {
             aspect-ratio: 1 / 1;
             object-fit: cover;
             margin-bottom: 8px;
+            max-width: 16rem;
         }
         .${studyWordImagePlaceholder} {
             display: flex;

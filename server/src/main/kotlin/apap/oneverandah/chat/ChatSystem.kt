@@ -121,7 +121,12 @@ class ChatSystem(
                     residentDirectory = ResidentDirectory(residents),
                 ),
                 speechService = SpeechService(
-                    client = DashScopeSpeechClient(config.qwenChat, client),
+                    client = RoutingSpeechClient(
+                        qwenClient = DashScopeSpeechClient(config.qwenChat, client),
+                        speechgenClient = SpeechgenSpeechClient(config.speechgen, client),
+                        qwenEnabled = config.qwenChat.enabled,
+                        speechgenEnabled = config.speechgen.enabled,
+                    ),
                     voiceResolver = clonedVoicesService,
                     cache = createTtsCache(File(config.ttsCacheDir)).also {
                         log.info("TTS speech cache enabled at {}", File(config.ttsCacheDir).absolutePath)
@@ -144,7 +149,7 @@ class ChatSystem(
                 ),
                 clonedVoicesService = clonedVoicesService,
                 httpClient = client,
-                voiceDesignEnabled = config.qwenChat.enabled,
+                voiceDesignEnabled = config.qwenChat.enabled || config.speechgen.enabled,
                 scope = scope,
             )
         }

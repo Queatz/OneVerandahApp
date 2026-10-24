@@ -10,6 +10,7 @@ import io.ktor.http.content.OutgoingContent
 import io.ktor.http.headersOf
 import java.io.EOFException
 import kotlin.test.Test
+import kotlin.test.assertContains
 import kotlin.test.assertEquals
 import kotlin.test.assertFailsWith
 import kotlinx.coroutines.runBlocking
@@ -251,6 +252,58 @@ class QwenStudyClientTest {
             models,
         )
         client.close()
+    }
+
+    @Test
+    fun `intended scene design uses the flash chat model`() = runBlocking {
+        val models = mutableListOf<String>()
+        val bodies = mutableListOf<String>()
+        val engine = MockEngine { request ->
+            val body = (request.body as OutgoingContent.ByteArrayContent).bytes().decodeToString()
+            bodies += body
+            models += Json.parseToJsonElement(body).jsonObject["model"]?.jsonPrimitive?.content.orEmpty()
+            respond(
+                content = qwenChatResponse(
+                    """{"scene":"A young woman smiles from a sunlit doorway, cinematic medium shot."}""",
+                ),
+                status = HttpStatusCode.OK,
+                headers = headersOf(HttpHeaders.ContentType, "application/json"),
+            )
+        }
+        val client = HttpClient(engine)
+        val ai = DashScopeStudyAiClient(qwenConfig(), client)
+
+        val scene = ai.designIntendedScene(
+            StudySceneGenerationRequest(
+                sentence = "Lan mỉm cười.",
+                fullText = "Lan mỉm cười. Minh vẫy tay.",
+                sentenceIndex = 0,
+                sentenceCount = 2,
+                scenarioDescription = "A neighbor greets you.",
+                spokenLine = "Xin chào!",
+                natural = false,
+            ),
+        )
+
+        assertEquals("A young woman smiles from a sunlit doorway, cinematic medium shot.", scene)
+        assertEquals(listOf("qwen3.8-flash"), models)
+        assertContains(bodies.single(), "Play scenario setup to interpret visually")
+        assertContains(bodies.single(), "A neighbor greets you.")
+        assertContains(bodies.single(), "Spoken line for emotional context only")
+        assertContains(bodies.single(), "The learner's usage was judged unnatural")
+        client.close()
+    }
+
+    @Test
+    fun `intended scene parser accepts aliases and fences`() {
+        val scene = QwenStudySceneParser.parse(
+            """
+            ```json
+            {"description":"A neighbor waves from a courtyard in warm evening light."}
+            ```
+            """.trimIndent(),
+        )
+        assertEquals("A neighbor waves from a courtyard in warm evening light.", scene)
     }
 
     private fun qwenConfig() = QwenChatConfig(

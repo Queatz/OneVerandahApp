@@ -27,6 +27,10 @@ object PromptFactory {
             "no logos, no speech bubbles, no name labels, no watermark, no border, no framing. " +
             "The picture must contain zero written language of any kind."
 
+    const val ENGLISH_ONLY =
+        "Write every part of this visual direction in English. " +
+            "Do not include any other written language in the prompt or the picture."
+
     data class CharacterRef(
         val name: String,
         val role: String,
@@ -47,43 +51,43 @@ object PromptFactory {
         )
 
     /**
-     * Word / phrase visual. Meaning drives the scene; the vocabulary string is
-     * mentioned only as something that must never appear as writing.
+     * Word / phrase visual. [intendedScene] is an English movie-still description;
+     * the vocabulary string itself must never appear in this prompt.
      */
-    fun forWord(word: String, contextualMeaning: String = ""): String {
-        val meaning = contextualMeaning.trim()
-        val concept = word.trim()
-        val subject = if (meaning.isNotEmpty()) {
-            "Meaning to depict through a clear everyday scene (show this visually, never write it): $meaning."
-        } else {
-            "Depict the real-world idea behind this language-learning concept through objects, people, and action only."
-        }
+    fun forWord(intendedScene: String): String {
+        val scene = intendedScene.trim()
         return finish(
             buildString {
-                append("Create a single beautiful, realistic, expressive image that illustrates a vocabulary idea. ")
-                append(subject)
-                append(' ')
-                if (concept.isNotEmpty()) {
-                    append("Do not render these characters anywhere in the picture: \"$concept\". ")
+                append("Create a single beautiful, realistic, expressive cinematic still that illustrates a vocabulary idea through a movie-like everyday scene. ")
+                if (scene.isNotEmpty()) {
+                    append("Intended movie-like scene to depict: $scene. ")
+                } else {
+                    append("Depict a clear everyday moment through objects, people, and action only. ")
                 }
-                append("No title card, no chalkboard, no textbook page, no subtitle.")
+                append("No title card, no chalkboard, no textbook page, no subtitle. ")
+                append(ENGLISH_ONLY)
             },
         )
     }
 
-    fun forPlayground(word: String, sentence: String, natural: Boolean): String {
+    fun forPlayground(intendedScene: String, natural: Boolean): String {
         val sceneGuidance = if (natural) {
-            "Depict the learner's sentence as a vivid, natural everyday moment."
+            "Depict a vivid, natural everyday moment."
         } else {
-            "Interpret the intended meaning of the learner's attempt and depict a corrected, natural everyday moment."
+            "Depict the intended meaning as a corrected, natural everyday moment."
         }
+        val scene = intendedScene.trim()
         return finish(
             buildString {
                 append("Beautiful realistic expressive still for language learning. ")
-                append("Show this everyday moment: \"$sentence\". ")
-                append("Let the action carry the meaning of \"$word\" without writing either phrase. ")
+                if (scene.isNotEmpty()) {
+                    append("Intended movie-like scene to depict: $scene. ")
+                } else {
+                    append("Show a clear everyday moment through people, action, and environment. ")
+                }
                 append(sceneGuidance)
-                append(" Warm natural scene, clear character emotion, cinematic composition — not a comic panel.")
+                append(" Warm natural scene, clear character emotion, cinematic composition — not a comic panel. ")
+                append(ENGLISH_ONLY)
             },
         )
     }
@@ -115,54 +119,55 @@ object PromptFactory {
             "Do not illustrate any setting or action implied by the appearance text."
 
     fun forSentence(
-        sentence: String,
-        fullText: String = "",
+        intendedScene: String,
         sentenceIndex: Int = 0,
         sentenceCount: Int = 1,
         characters: List<CharacterRef> = emptyList(),
     ): String {
         val sceneNumber = sentenceIndex.coerceAtLeast(0) + 1
         val totalScenes = sentenceCount.coerceAtLeast(1)
+        val scene = intendedScene.trim()
         return finish(
             buildString {
                 append("Beautiful realistic expressive still for language learners. ")
                 append("This is scene $sceneNumber of $totalScenes in one continuous short story. ")
                 append("Keep the same people, wardrobe, and identity — but this is a NEW story beat, not a reprint of another scene. ")
-                if (fullText.isNotBlank()) {
-                    append("Full story text for continuity only (do not render it, and do not illustrate the whole story): \"$fullText\". ")
+                append("Do not illustrate the whole story; only this beat. ")
+                if (scene.isNotEmpty()) {
+                    append("Intended movie-like scene to depict: $scene. ")
                 }
-                append("THIS scene's unique beat to depict (do not render the sentence): \"$sentence\". ")
                 append(characterGuidance(characters))
                 append(sceneVariety(sentenceIndex, sentenceCount))
-                append("Show a vivid story moment that captures THIS beat's meaning with clear emotion and natural body language. ")
-                append("Setting: warm everyday life in Vietnam or Russia, whichever fits the text best — vary the room, street, weather, and props to match this beat. ")
-                append("Not a comic panel.")
+                append("Show a vivid cinematic moment with clear emotion and natural body language. ")
+                append("Setting: warm everyday life that fits this beat — vary the room, street, weather, and props. ")
+                append(ENGLISH_ONLY)
+                append(" Not a comic panel.")
             },
         )
     }
 
     fun forPlayScenario(
-        description: String,
-        openingLine: String? = null,
-        fullText: String = "",
+        intendedScene: String,
         characters: List<CharacterRef> = emptyList(),
-    ): String = finish(
-        buildString {
-            append("Beautiful realistic expressive still for an interactive language role-play. ")
-            append("This is a continuous short story world — keep the same people, wardrobe, and look. ")
-            if (fullText.isNotBlank()) {
-                append("Source study text for continuity (do not render it): \"$fullText\". ")
+    ): String {
+        val scene = intendedScene.trim()
+        return finish(
+            buildString {
+                append("Beautiful realistic expressive still for an interactive language role-play. ")
+                append("This is a continuous short story world — keep the same people, wardrobe, and look. ")
+                if (scene.isNotEmpty()) {
+                    append("Intended movie-like scene to depict: $scene. ")
+                } else {
+                    append("Show a vivid conversational moment in a richly detailed everyday setting. ")
+                }
+                append(characterGuidance(characters))
+                append("Show clear emotion and natural body language. ")
+                append("Setting: warm everyday life in Vietnam or Russia, whichever fits the scene best. ")
+                append("Not a comic panel. ")
+                append(ENGLISH_ONLY)
             }
-            append("Scene setup to depict: \"$description\". ")
-            if (!openingLine.isNullOrBlank()) {
-                append("Spoken moment / dialogue vibe (do not render text): \"$openingLine\". ")
-            }
-            append(characterGuidance(characters))
-            append("Show a vivid conversational moment with clear emotion and natural body language. ")
-            append("Setting: warm everyday life in Vietnam or Russia, whichever fits the text best. ")
-            append("Not a comic panel.")
-        },
-    )
+        )
+    }
 
     /**
      * Appends shared style + no-text rules unless the prompt already carries them.
@@ -211,7 +216,7 @@ object PromptFactory {
             append("Cinematic variety for this still: $shot. ")
             append(placeInStory)
             append(" Change the camera (wide vs close, high vs low, front vs side), the characters' poses, and the background arrangement. ")
-            append("If the sentence implies a new action or place, show that change. ")
+            append("If this beat implies a new action or place, show that change. ")
             append("Never generate the same medium shot of the same people standing in the same spot. ")
         }
     }

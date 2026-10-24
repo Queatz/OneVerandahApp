@@ -620,6 +620,7 @@ fun StudyScreen(
                         StudyWordImageRequest(
                             word = latestToken.text,
                             contextualMeaning = latestToken.contextualMeaning,
+                            exampleSentences = latestToken.exampleSentences,
                         ),
                     )
                 }.getOrNull()
@@ -1599,7 +1600,7 @@ private fun StudySessionContent(
         mutableStateMapOf<String, String>()
     }
     var selectedRef by remember(session.text) { mutableStateOf<StudyTokenRef?>(null) }
-    var mode by remember(session.text) { mutableStateOf(StudySessionMode.WATCH) }
+    var mode by remember(session.text) { mutableStateOf(StudySessionMode.ALL) }
     var highlightedWord by remember(session.text) { mutableStateOf<String?>(null) }
     val speechItems = remember(session.text, session.textLanguageTag, session.sentences.map { it.text }) {
         session.sentences.mapIndexed { index, sentence -> "sentence-$index" to sentence.text }
@@ -1666,6 +1667,12 @@ private fun StudySessionContent(
     Div(attrs = { classes(Styles.studyModeTabs) }) {
         Button(attrs = {
             classes(Styles.chip)
+            if (mode == StudySessionMode.ALL) classes(Styles.chipActive)
+            attr("type", "button")
+            onClick { mode = StudySessionMode.ALL }
+        }) { Text(strings.chatAllTab) }
+        Button(attrs = {
+            classes(Styles.chip)
             if (mode == StudySessionMode.WATCH) classes(Styles.chipActive)
             attr("type", "button")
             onClick {
@@ -1726,230 +1733,249 @@ private fun StudySessionContent(
         }) { Text(strings.chatPlayTab) }
     }
 
-    when (mode) {
-        StudySessionMode.WATCH -> {
-            StudyWatchTab(
-                session = session,
-                messageId = messageId,
-                imageFailed = imageFailed,
-                sentenceAudio = sentenceAudio,
-                strings = strings,
-                onRetryImage = onRetryImage,
-            )
+    val modesToRender = if (mode == StudySessionMode.ALL) {
+        StudySessionMode.values().filter { it != StudySessionMode.ALL }
+    } else {
+        listOf(mode)
+    }
+    modesToRender.forEach { contentMode ->
+        if (mode == StudySessionMode.ALL) {
+            P(attrs = { classes(Styles.studySessionSectionTitle) }) {
+                Text(contentMode.tabLabel(strings))
+            }
         }
-        StudySessionMode.STORY -> {
-            StudyStoryTab(
-                session = session,
-                messageId = messageId,
-                imageFailed = imageFailed,
-                wordImageFailed = wordImageFailed,
-                sentenceAudio = sentenceAudio,
-                strings = strings,
-                onRetryImage = onRetryImage,
-                playStudyToken = { sentenceIndex, tokenIndex, tokenText ->
-                    // Keep selection aligned so async token-TTS fallback still plays.
-                    selectedRef = StudyTokenRef(sentenceIndex, tokenIndex)
-                    playStudyToken(sentenceIndex, tokenIndex, tokenText)
-                },
-                onFinished = {
-                    selectedRef = null
-                    mode = StudySessionMode.STUDY
-                },
-            )
-        }
-        StudySessionMode.STUDY -> {
-            Span(attrs = { classes(Styles.studySessionHint) }) { Text(strings.chatStudyTapHint) }
-            if (anyLoading) {
-                Div(attrs = { classes(Styles.studyPreparingMeanings) }) {
-                    MaterialSymbol("progress_activity")
-                    Text(strings.chatStudyPreparingMeanings)
+        when (contentMode) {
+            StudySessionMode.WATCH -> {
+                StudyWatchTab(
+                    session = session,
+                    messageId = messageId,
+                    imageFailed = imageFailed,
+                    sentenceAudio = sentenceAudio,
+                    strings = strings,
+                    onRetryImage = onRetryImage,
+                    autoStart = mode != StudySessionMode.ALL,
+                )
+            }
+            StudySessionMode.STORY -> {
+                StudyStoryTab(
+                    session = session,
+                    messageId = messageId,
+                    imageFailed = imageFailed,
+                    wordImageFailed = wordImageFailed,
+                    sentenceAudio = sentenceAudio,
+                    strings = strings,
+                    onRetryImage = onRetryImage,
+                    scrollOnContinue = mode != StudySessionMode.ALL,
+                    playStudyToken = { sentenceIndex, tokenIndex, tokenText ->
+                        // Keep selection aligned so async token-TTS fallback still plays.
+                        selectedRef = StudyTokenRef(sentenceIndex, tokenIndex)
+                        playStudyToken(sentenceIndex, tokenIndex, tokenText)
+                    },
+                    onFinished = {
+                        if (mode != StudySessionMode.ALL) {
+                            selectedRef = null
+                            mode = StudySessionMode.STUDY
+                        }
+                    },
+                )
+            }
+            StudySessionMode.STUDY -> {
+                Span(attrs = { classes(Styles.studySessionHint) }) { Text(strings.chatStudyTapHint) }
+                if (anyLoading) {
+                    Div(attrs = { classes(Styles.studyPreparingMeanings) }) {
+                        MaterialSymbol("progress_activity")
+                        Text(strings.chatStudyPreparingMeanings)
+                    }
+                }
+
+                session.sentences.forEachIndexed { sentenceIndex, sentence ->
+                    val loadState = sentenceStatus[sentenceIndex] ?: StudySentenceLoadState.LOADING
+                    val selectedToken = selectedRef
+                        ?.takeIf { it.sentenceIndex == sentenceIndex }
+                        ?.let { ref -> sentence.tokens.getOrNull(ref.tokenIndex) }
+                    val imageFailKey = messageId?.let { "$it#$sentenceIndex" }
+                    val visualFailed = imageFailKey != null && imageFailed[imageFailKey] == true
+                    Div(attrs = { classes(Styles.studySentenceBlock) }) {
+                        StudySentenceVisual(
+                            imageUrl = sentence.imageUrl,
+                            failed = visualFailed,
+                            strings = strings,
+                            onRetry = { onRetryImage(sentenceIndex) },
+                        )
+                        Div(attrs = { classes(Styles.languageSentence) }) {
+                            sentence.tokens.forEachIndexed { tokenIndex, token ->
+                                when {
+                                    token.isDissectable -> {
+                                        val selected = selectedRef?.sentenceIndex == sentenceIndex &&
+                                            selectedRef?.tokenIndex == tokenIndex
+                                        Button(attrs = {
+                                            classes(Styles.languageToken)
+                                            if (selected) classes(Styles.languageTokenSelected)
+                                            attr("type", "button")
+                                            onClick {
+                                                selectedRef = StudyTokenRef(sentenceIndex, tokenIndex)
+                                                playStudyToken(sentenceIndex, tokenIndex, token.text)
+                                            }
+                                        }) { Text(token.text) }
+                                    }
+                                    token.status == StudyTokenStatus.PENDING -> {
+                                        val selected = selectedRef?.sentenceIndex == sentenceIndex &&
+                                            selectedRef?.tokenIndex == tokenIndex
+                                        Button(attrs = {
+                                            classes(Styles.studyTokenPending)
+                                            if (selected) classes(Styles.languageTokenSelected)
+                                            attr("type", "button")
+                                            onClick {
+                                                selectedRef = StudyTokenRef(sentenceIndex, tokenIndex)
+                                                playStudyToken(sentenceIndex, tokenIndex, token.text)
+                                            }
+                                        }) { Text(token.text) }
+                                    }
+                                    else -> {
+                                        Span(attrs = { classes(Styles.studyTokenPlain) }) { Text(token.text) }
+                                    }
+                                }
+                            }
+                        }
+                        val sentenceClipUrl = sentenceAudio["sentence-$sentenceIndex"]?.url
+                        val sentencePlaying = isStudyAudioPlaying(sentenceClipUrl)
+                        Button(attrs = {
+                            classes(Styles.sentencePlay)
+                            attr("type", "button")
+                            if (sentenceClipUrl == null) attr("disabled", "")
+                            attr(
+                                "aria-label",
+                                if (sentencePlaying) strings.chatStudyPauseSentence else strings.chatStudyPlaySentence,
+                            )
+                            onClick { sentenceClipUrl?.let(::playAudio) }
+                        }) {
+                            MaterialSymbol(if (sentencePlaying) "pause_circle" else "play_circle")
+                            Text(
+                                if (sentencePlaying) strings.chatStudyPauseSentence else strings.chatStudyPlaySentence,
+                            )
+                        }
+                        if (loadState == StudySentenceLoadState.ERROR) {
+                            Div(attrs = { classes(Styles.studySentenceError) }) {
+                                MaterialSymbol("error")
+                                Span { Text(strings.chatStudySentenceError) }
+                                Button(attrs = {
+                                    classes(Styles.savedItemAction)
+                                    attr("type", "button")
+                                    onClick { onRetrySentence(sentenceIndex) }
+                                }) {
+                                    MaterialSymbol("refresh")
+                                    Text(strings.chatStudyRetrySentence)
+                                }
+                            }
+                        }
+                        // Keep the dissection panel under this sentence so learners don't scroll
+                        // past later sentences to read meanings for a word above.
+                        selectedToken?.let { token ->
+                            val wordFailKey = messageId?.let { mid ->
+                                selectedRef?.let { ref ->
+                                    "$mid#${ref.sentenceIndex}#${ref.tokenIndex}"
+                                }
+                            }
+                            val wordFailed = wordFailKey != null && wordImageFailed[wordFailKey] == true
+                            StudyTokenDetail(
+                                token = token,
+                                textLanguageTag = session.textLanguageTag,
+                                strings = strings,
+                                imageFailed = wordFailed,
+                            )
+                        }
+                    }
                 }
             }
-
-            session.sentences.forEachIndexed { sentenceIndex, sentence ->
-                val loadState = sentenceStatus[sentenceIndex] ?: StudySentenceLoadState.LOADING
-                val selectedToken = selectedRef
-                    ?.takeIf { it.sentenceIndex == sentenceIndex }
-                    ?.let { ref -> sentence.tokens.getOrNull(ref.tokenIndex) }
-                val imageFailKey = messageId?.let { "$it#$sentenceIndex" }
-                val visualFailed = imageFailKey != null && imageFailed[imageFailKey] == true
-                Div(attrs = { classes(Styles.studySentenceBlock) }) {
-                    StudySentenceVisual(
-                        imageUrl = sentence.imageUrl,
-                        failed = visualFailed,
-                        strings = strings,
-                        onRetry = { onRetryImage(sentenceIndex) },
+            StudySessionMode.READ -> {
+                val readClipUrls = speechItems.mapNotNull { (key, _) -> sentenceAudio[key]?.url }
+                val readAudioReady = speechItems.isNotEmpty() && readClipUrls.size == speechItems.size
+                val readPlaying = isStudyAudioPlaylistPlaying()
+                Button(attrs = {
+                    classes(Styles.sentencePlay, Styles.studyReadPlay)
+                    attr("type", "button")
+                    if (!readAudioReady) attr("disabled", "")
+                    attr(
+                        "aria-label",
+                        if (readPlaying) strings.chatReadPauseText else strings.chatReadPlayText,
                     )
-                    Div(attrs = { classes(Styles.languageSentence) }) {
-                        sentence.tokens.forEachIndexed { tokenIndex, token ->
-                            when {
-                                token.isDissectable -> {
-                                    val selected = selectedRef?.sentenceIndex == sentenceIndex &&
-                                        selectedRef?.tokenIndex == tokenIndex
+                    onClick {
+                        if (readAudioReady) {
+                            playAudioSequence(readClipUrls)
+                        }
+                    }
+                }) {
+                    MaterialSymbol(if (readPlaying) "pause_circle" else "play_circle")
+                    Text(if (readPlaying) strings.chatReadPauseText else strings.chatReadPlayText)
+                }
+                Span(attrs = { classes(Styles.studySessionHint) }) { Text(strings.chatReadTapHint) }
+                Div(attrs = { classes(Styles.studyReadBlock) }) {
+                    // One flex row per sentence so passages keep a light gap between sentences.
+                    session.sentences.forEachIndexed { sentenceIndex, sentence ->
+                        Div(attrs = { classes(Styles.languageSentence, Styles.studyReadSentence) }) {
+                            sentence.tokens.forEachIndexed { tokenIndex, token ->
+                                val clickable = token.status != StudyTokenStatus.PLAIN && token.text.isNotBlank()
+                                if (clickable) {
+                                    val selected = highlightedWord != null &&
+                                        token.text.equals(highlightedWord, ignoreCase = true)
                                     Button(attrs = {
                                         classes(Styles.languageToken)
                                         if (selected) classes(Styles.languageTokenSelected)
                                         attr("type", "button")
                                         onClick {
-                                            selectedRef = StudyTokenRef(sentenceIndex, tokenIndex)
+                                            highlightedWord =
+                                                if (
+                                                    highlightedWord != null &&
+                                                    token.text.equals(highlightedWord, ignoreCase = true)
+                                                ) {
+                                                    null
+                                                } else {
+                                                    token.text
+                                                }
                                             playStudyToken(sentenceIndex, tokenIndex, token.text)
                                         }
                                     }) { Text(token.text) }
-                                }
-                                token.status == StudyTokenStatus.PENDING -> {
-                                    val selected = selectedRef?.sentenceIndex == sentenceIndex &&
-                                        selectedRef?.tokenIndex == tokenIndex
-                                    Button(attrs = {
-                                        classes(Styles.studyTokenPending)
-                                        if (selected) classes(Styles.languageTokenSelected)
-                                        attr("type", "button")
-                                        onClick {
-                                            selectedRef = StudyTokenRef(sentenceIndex, tokenIndex)
-                                            playStudyToken(sentenceIndex, tokenIndex, token.text)
-                                        }
-                                    }) { Text(token.text) }
-                                }
-                                else -> {
+                                } else {
                                     Span(attrs = { classes(Styles.studyTokenPlain) }) { Text(token.text) }
                                 }
                             }
                         }
                     }
-                    val sentenceClipUrl = sentenceAudio["sentence-$sentenceIndex"]?.url
-                    val sentencePlaying = isStudyAudioPlaying(sentenceClipUrl)
-                    Button(attrs = {
-                        classes(Styles.sentencePlay)
-                        attr("type", "button")
-                        if (sentenceClipUrl == null) attr("disabled", "")
-                        attr(
-                            "aria-label",
-                            if (sentencePlaying) strings.chatStudyPauseSentence else strings.chatStudyPlaySentence,
-                        )
-                        onClick { sentenceClipUrl?.let(::playAudio) }
-                    }) {
-                        MaterialSymbol(if (sentencePlaying) "pause_circle" else "play_circle")
-                        Text(
-                            if (sentencePlaying) strings.chatStudyPauseSentence else strings.chatStudyPlaySentence,
-                        )
-                    }
-                    if (loadState == StudySentenceLoadState.ERROR) {
-                        Div(attrs = { classes(Styles.studySentenceError) }) {
-                            MaterialSymbol("error")
-                            Span { Text(strings.chatStudySentenceError) }
-                            Button(attrs = {
-                                classes(Styles.savedItemAction)
-                                attr("type", "button")
-                                onClick { onRetrySentence(sentenceIndex) }
-                            }) {
-                                MaterialSymbol("refresh")
-                                Text(strings.chatStudyRetrySentence)
-                            }
-                        }
-                    }
-                    // Keep the dissection panel under this sentence so learners don't scroll
-                    // past later sentences to read meanings for a word above.
-                    selectedToken?.let { token ->
-                        val wordFailKey = messageId?.let { mid ->
-                            selectedRef?.let { ref ->
-                                "$mid#${ref.sentenceIndex}#${ref.tokenIndex}"
-                            }
-                        }
-                        val wordFailed = wordFailKey != null && wordImageFailed[wordFailKey] == true
-                        StudyTokenDetail(
-                            token = token,
-                            textLanguageTag = session.textLanguageTag,
-                            strings = strings,
-                            imageFailed = wordFailed,
-                        )
-                    }
                 }
             }
-        }
-        StudySessionMode.READ -> {
-            val readClipUrls = speechItems.mapNotNull { (key, _) -> sentenceAudio[key]?.url }
-            val readAudioReady = speechItems.isNotEmpty() && readClipUrls.size == speechItems.size
-            val readPlaying = isStudyAudioPlaylistPlaying()
-            Button(attrs = {
-                classes(Styles.sentencePlay, Styles.studyReadPlay)
-                attr("type", "button")
-                if (!readAudioReady) attr("disabled", "")
-                attr(
-                    "aria-label",
-                    if (readPlaying) strings.chatReadPauseText else strings.chatReadPlayText,
-                )
-                onClick {
-                    if (readAudioReady) {
-                        playAudioSequence(readClipUrls)
-                    }
-                }
-            }) {
-                MaterialSymbol(if (readPlaying) "pause_circle" else "play_circle")
-                Text(if (readPlaying) strings.chatReadPauseText else strings.chatReadPlayText)
-            }
-            Span(attrs = { classes(Styles.studySessionHint) }) { Text(strings.chatReadTapHint) }
-            Div(attrs = { classes(Styles.studyReadBlock) }) {
-                // One flex row per sentence so passages keep a light gap between sentences.
+            StudySessionMode.WRITE -> {
+                Span(attrs = { classes(Styles.studySessionHint) }) { Text(strings.chatWriteHint) }
                 session.sentences.forEachIndexed { sentenceIndex, sentence ->
-                    Div(attrs = { classes(Styles.languageSentence, Styles.studyReadSentence) }) {
-                        sentence.tokens.forEachIndexed { tokenIndex, token ->
-                            val clickable = token.status != StudyTokenStatus.PLAIN && token.text.isNotBlank()
-                            if (clickable) {
-                                val selected = highlightedWord != null &&
-                                    token.text.equals(highlightedWord, ignoreCase = true)
-                                Button(attrs = {
-                                    classes(Styles.languageToken)
-                                    if (selected) classes(Styles.languageTokenSelected)
-                                    attr("type", "button")
-                                    onClick {
-                                        highlightedWord =
-                                            if (
-                                                highlightedWord != null &&
-                                                token.text.equals(highlightedWord, ignoreCase = true)
-                                            ) {
-                                                null
-                                            } else {
-                                                token.text
-                                            }
-                                        playStudyToken(sentenceIndex, tokenIndex, token.text)
-                                    }
-                                }) { Text(token.text) }
-                            } else {
-                                Span(attrs = { classes(Styles.studyTokenPlain) }) { Text(token.text) }
-                            }
-                        }
-                    }
+                    StudyWriteSentenceCard(
+                        sentenceIndex = sentenceIndex,
+                        sentenceText = sentence.text,
+                        textLanguageTag = session.textLanguageTag,
+                        strings = strings,
+                        autoFocus = mode != StudySessionMode.ALL,
+                    )
                 }
             }
-        }
-        StudySessionMode.WRITE -> {
-            Span(attrs = { classes(Styles.studySessionHint) }) { Text(strings.chatWriteHint) }
-            session.sentences.forEachIndexed { sentenceIndex, sentence ->
-                StudyWriteSentenceCard(
-                    sentenceIndex = sentenceIndex,
-                    sentenceText = sentence.text,
-                    textLanguageTag = session.textLanguageTag,
+            StudySessionMode.EXPRESS -> {
+                StudyExpressTab(
+                    session = session,
+                    anyLoading = anyLoading,
                     strings = strings,
+                    autoFocus = mode != StudySessionMode.ALL,
                 )
             }
-        }
-        StudySessionMode.EXPRESS -> {
-            StudyExpressTab(
-                session = session,
-                anyLoading = anyLoading,
-                strings = strings,
-            )
-        }
-        StudySessionMode.PLAY -> {
-            StudyPlayTab(
-                session = session,
-                playLoading = playLoading,
-                playFailed = playFailed,
-                strings = strings,
-                onRetryLoad = onRetryPlay,
-                onScenarioUpdate = onPlayScenarioUpdate,
-                onMessageImage = onPlayMessageImage,
-            )
-        }
+            StudySessionMode.PLAY -> {
+                StudyPlayTab(
+                    session = session,
+                    playLoading = playLoading,
+                    playFailed = playFailed,
+                    strings = strings,
+                    onRetryLoad = onRetryPlay,
+                    onScenarioUpdate = onPlayScenarioUpdate,
+                    onMessageImage = onPlayMessageImage,
+                )
+            }
+            StudySessionMode.ALL -> Unit
+            }
     }
 }
 
@@ -2005,7 +2031,18 @@ private fun StudySentenceVisual(
     }
 }
 
-private enum class StudySessionMode { WATCH, STORY, STUDY, READ, WRITE, EXPRESS, PLAY }
+private enum class StudySessionMode { ALL, WATCH, STORY, STUDY, READ, WRITE, EXPRESS, PLAY }
+
+private fun StudySessionMode.tabLabel(strings: UiStrings): String = when (this) {
+    StudySessionMode.ALL -> strings.chatAllTab
+    StudySessionMode.WATCH -> strings.chatWatchTab
+    StudySessionMode.STORY -> strings.chatStoryTab
+    StudySessionMode.STUDY -> strings.chatStudyTab
+    StudySessionMode.READ -> strings.chatReadTab
+    StudySessionMode.WRITE -> strings.chatWriteTab
+    StudySessionMode.EXPRESS -> strings.chatExpressTab
+    StudySessionMode.PLAY -> strings.chatPlayTab
+}
 
 internal data class WatchSceneClip(
     val sentenceIndex: Int,
@@ -2232,6 +2269,7 @@ private fun StudyWatchTab(
     sentenceAudio: Map<String, StudySentenceAudio>,
     strings: UiStrings,
     onRetryImage: (Int) -> Unit,
+    autoStart: Boolean = true,
 ) {
     val measuredDurations = remember(session.text) { mutableStateMapOf<String, Int>() }
     var sceneIndex by remember(session.text) { mutableStateOf(0) }
@@ -2323,8 +2361,10 @@ private fun StudyWatchTab(
         onDispose { stopActiveStudyAudio() }
     }
 
-    LaunchedEffect(audioReady) {
-        if (audioReady && !didAutostart && timeline.clips.isNotEmpty()) {
+    LaunchedEffect(audioReady, autoStart) {
+        if (!autoStart) {
+            wantPlaying = false
+        } else if (audioReady && !didAutostart && timeline.clips.isNotEmpty()) {
             didAutostart = true
             wantPlaying = true
         }
@@ -2561,6 +2601,7 @@ private fun StudyStoryTab(
     sentenceAudio: Map<String, StudySentenceAudio>,
     strings: UiStrings,
     onRetryImage: (Int) -> Unit,
+    scrollOnContinue: Boolean,
     playStudyToken: (sentenceIndex: Int, tokenIndex: Int, tokenText: String) -> Unit,
     onFinished: () -> Unit,
 ) {
@@ -2579,7 +2620,7 @@ private fun StudyStoryTab(
 
     fun advanceStory() {
         // Start each next story step (or the Study tab handoff) from the top.
-        scrollStudyContentToTop()
+        if (scrollOnContinue) scrollStudyContentToTop()
         when (phase) {
             StudyStoryPhase.WORDS -> {
                 if (stepIndex < wordSteps.lastIndex) {
@@ -2942,6 +2983,7 @@ private fun StudyExpressTab(
     session: StudySessionResponse,
     anyLoading: Boolean,
     strings: UiStrings,
+    autoFocus: Boolean,
 ) {
     val scope = rememberCoroutineScope()
     val languageTag = Localization.language.tag
@@ -3114,7 +3156,7 @@ private fun StudyExpressTab(
                         placeholder = strings.chatExpressPlaceholder,
                         languageTag = session.textLanguageTag,
                         multiline = (current.translation.ifBlank { current.text }).length > 48,
-                        autoFocus = true,
+                        autoFocus = autoFocus,
                     )
                     when {
                         checking -> {
@@ -3178,6 +3220,7 @@ private fun StudyWriteSentenceCard(
     sentenceText: String,
     textLanguageTag: String,
     strings: UiStrings,
+    autoFocus: Boolean,
 ) {
     val scope = rememberCoroutineScope()
     val languageTag = Localization.language.tag
@@ -3247,7 +3290,7 @@ private fun StudyWriteSentenceCard(
                 placeholder = strings.chatWritePlaceholder,
                 languageTag = textLanguageTag,
                 multiline = sentenceText.length > 48,
-                autoFocus = sentenceIndex == 0,
+                autoFocus = sentenceIndex == 0 && autoFocus,
             )
             if (checking) {
                 Div(attrs = {

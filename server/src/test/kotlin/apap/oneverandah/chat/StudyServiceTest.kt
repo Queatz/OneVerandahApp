@@ -18,6 +18,7 @@ import apap.oneverandah.api.StudyTokenStatus
 import apap.oneverandah.api.StudyWriteCheckRequest
 import apap.oneverandah.api.StudyWordImageRequest
 import apap.oneverandah.api.StudyWordPlaygroundRequest
+import apap.oneverandah.images.PromptFactory
 import apap.oneverandah.api.StudyExpressCheckRequest
 import apap.oneverandah.api.StudyExpressGenerateRequest
 import kotlin.test.Test
@@ -64,6 +65,26 @@ class StudyServiceTest {
         assertEquals("", word.literalMeaning)
         assertFalse(word.isDissectable)
         assertEquals(StudyTokenStatus.PLAIN, response.sentences.single().tokens.last().status)
+    }
+
+    @Test
+    fun `skeleton preserves unsupported content language tags`() = runBlocking {
+        val ai = FakeStudyAiClient(
+            skeleton = StudySessionResponse(
+                text = "ignored",
+                textLanguageTag = "my-MM",
+                sentences = listOf(
+                    StudySentence(
+                        text = "မင်္ဂလာပါ",
+                        tokens = listOf(StudyToken(text = "မင်္ဂလာပါ", status = StudyTokenStatus.PENDING)),
+                    ),
+                ),
+            ),
+        )
+
+        val response = StudyService(ai).skeleton(StudySessionRequest(text = "မင်္ဂလာပါ", languageTag = "en"))
+
+        assertEquals("my", response.textLanguageTag)
     }
 
     @Test
@@ -485,6 +506,7 @@ class StudyServiceTest {
 
     @Test
     fun `playground judges usage and starts async comic image`() = runBlocking {
+        val prompts = java.util.concurrent.CopyOnWriteArrayList<String>()
         val ai = FakeStudyAiClient(
             playground = StudyWordPlaygroundJudgment(
                 natural = true,
@@ -493,7 +515,10 @@ class StudyServiceTest {
         )
         val service = StudyService(
             aiClient = ai,
-            imageGenerator = StudyPlaygroundImageGenerator { _, _ -> "https://cdn.example/comic.png" },
+            imageGenerator = StudyPlaygroundImageGenerator { prompt, _ ->
+                prompts += prompt
+                "https://cdn.example/comic.png"
+            },
             idGenerator = { "image-1" },
         )
 
@@ -532,6 +557,55 @@ class StudyServiceTest {
         }
         assertEquals(StudyPlaygroundImageStatus.COMPLETED, image.status)
         assertEquals("https://cdn.example/comic.png", image.imageUrl)
+        assertEquals("Xin chào bạn.", ai.lastSceneRequest?.sentence)
+        assertEquals("chào", ai.lastSceneRequest?.word)
+        assertEquals("greeting", ai.lastSceneRequest?.contextualMeaning)
+        assertEquals(true, ai.lastSceneRequest?.natural)
+        assertContains(prompts.single(), FakeStudyAiClient.INTENDED_SCENE)
+        assertContains(prompts.single(), PromptFactory.ENGLISH_ONLY)
+        assertTrue(!prompts.single().contains("Xin chào bạn."))
+        assertTrue(!prompts.single().contains("chào", ignoreCase = true))
+    }
+
+    @Test
+    fun `playground falls back to an English scene without source wording`() = runBlocking {
+        val prompts = java.util.concurrent.CopyOnWriteArrayList<String>()
+        val ai = FakeStudyAiClient(intendedScene = "")
+        val service = StudyService(
+            aiClient = ai,
+            imageGenerator = StudyPlaygroundImageGenerator { prompt, _ ->
+                prompts += prompt
+                "https://cdn.example/fallback.png"
+            },
+            idGenerator = { "fallback-image" },
+        )
+
+        val response = service.playground(
+            StudyWordPlaygroundRequest(
+                word = "chào",
+                sentence = "Xin chào bạn.",
+                textLanguageTag = "vi",
+                languageTag = "en",
+                contextualMeaning = "greeting",
+            ),
+        )
+        var image = service.playgroundImage(response.imageId)
+        var attempts = 0
+        while (
+            image?.status != StudyPlaygroundImageStatus.COMPLETED &&
+            image?.status != StudyPlaygroundImageStatus.FAILED &&
+            attempts < 40
+        ) {
+            delay(25)
+            image = service.playgroundImage(response.imageId)
+            attempts++
+        }
+
+        assertEquals(StudyPlaygroundImageStatus.COMPLETED, image?.status)
+        assertContains(prompts.single(), "A cinematic movie still of greeting")
+        assertContains(prompts.single(), PromptFactory.ENGLISH_ONLY)
+        assertTrue(!prompts.single().contains("Xin chào bạn."))
+        assertTrue(!prompts.single().contains("chào", ignoreCase = true))
     }
 
     @Test
@@ -585,32 +659,37 @@ class StudyServiceTest {
     }
 
     @Test
-    fun `playground prompt mentions word, sentence, and realistic style`() {
-        val prompt = playgroundComicPrompt(word = "chào", sentence = "Xin chào!", natural = true)
+    fun `playground prompt uses intended scene and realistic style`() {
+        val prompt = playgroundComicPrompt(
+            intendedScene = "A neighbor waves from a sunlit apartment doorway.",
+            natural = true,
+        )
         assertContains(prompt, "pretty realistic expressive art")
-        assertContains(prompt, "chào")
-        assertContains(prompt, "Xin chào!")
-        assertContains(prompt, "without writing either phrase")
+        assertContains(prompt, "A neighbor waves from a sunlit apartment doorway.")
+        assertContains(prompt, PromptFactory.ENGLISH_ONLY)
         assertContains(prompt, "zero written language")
+        assertTrue(!prompt.contains("chào", ignoreCase = true))
     }
 
     @Test
-    fun `word visual prompt uses meaning and forbids rendering the word`() {
-        val prompt = wordVisualPrompt(word = "chào", contextualMeaning = "a friendly greeting")
+    fun `word visual prompt uses intended scene and stays in English`() {
+        val prompt = wordVisualPrompt(
+            intendedScene = "A neighbor waves from a sunlit apartment doorway, warm cinematic medium shot",
+        )
         assertContains(prompt, "pretty realistic expressive art")
-        assertContains(prompt, "chào")
-        assertContains(prompt, "a friendly greeting")
-        assertContains(prompt, "Do not render these characters")
+        assertContains(prompt, "A neighbor waves from a sunlit apartment doorway")
+        assertContains(prompt, PromptFactory.ENGLISH_ONLY)
         assertContains(prompt, "Absolutely no text")
         assertContains(prompt, STUDY_STORY_ART_STYLE.take(20))
-        assertTrue(!prompt.contains("**chào**"))
+        assertTrue(!prompt.contains("chào"))
     }
 
     @Test
     fun `word image starts async expressive visual`() = runBlocking {
         val prompts = mutableListOf<String>()
+        val fake = FakeStudyAiClient()
         val service = StudyService(
-            aiClient = FakeStudyAiClient(),
+            aiClient = fake,
             imageGenerator = StudyPlaygroundImageGenerator { prompt, _ ->
                 prompts += prompt
                 "https://cdn.example/word.png"
@@ -619,7 +698,14 @@ class StudyServiceTest {
         )
 
         val response = service.wordImage(
-            StudyWordImageRequest(word = "  chào  ", contextualMeaning = "  greeting  "),
+            StudyWordImageRequest(
+                word = "  chào  ",
+                contextualMeaning = "  greeting  ",
+                exampleSentences = listOf(
+                    StudyExampleSentence(text = "Xin chào bạn.", translation = "Hello friend."),
+                    StudyExampleSentence(text = "Chào buổi sáng.", translation = "Good morning."),
+                ),
+            ),
         )
         assertEquals("word-image-1", response.imageId)
 
@@ -637,29 +723,37 @@ class StudyServiceTest {
         }
         assertEquals(StudyPlaygroundImageStatus.COMPLETED, image.status)
         assertEquals("https://cdn.example/word.png", image.imageUrl)
-        assertTrue(prompts.single().contains("chào"))
-        assertTrue(prompts.single().contains("greeting"))
+        assertEquals("Xin chào bạn.", fake.lastSceneRequest?.sentence)
+        assertEquals("chào", fake.lastSceneRequest?.word)
+        assertTrue(prompts.single().contains(FakeStudyAiClient.INTENDED_SCENE))
+        assertTrue(prompts.single().contains(PromptFactory.ENGLISH_ONLY))
+        assertTrue(!prompts.single().contains("chào"))
+        assertTrue(!prompts.single().contains("Xin chào bạn."))
     }
 
     @Test
     fun `dissect pre-generates word images for lexical tokens`() = runBlocking {
         val prompts = mutableListOf<String>()
         val ids = mutableListOf("w1", "w2")
-        val service = StudyService(
-            aiClient = FakeStudyAiClient(
-                dissect = StudySentence(
-                    text = "Xin chào.",
-                    tokens = listOf(
-                        StudyToken(
-                            text = "Xin chào",
-                            literalMeaning = "Hello",
-                            contextualMeaning = "Friendly greeting",
-                            register = "neutral",
+        val fake = FakeStudyAiClient(
+            dissect = StudySentence(
+                text = "Xin chào.",
+                tokens = listOf(
+                    StudyToken(
+                        text = "Xin chào",
+                        literalMeaning = "Hello",
+                        contextualMeaning = "Friendly greeting",
+                        register = "neutral",
+                        exampleSentences = listOf(
+                            StudyExampleSentence(text = "Xin chào bạn.", translation = "Hello friend."),
                         ),
-                        StudyToken(text = "."),
                     ),
+                    StudyToken(text = "."),
                 ),
             ),
+        )
+        val service = StudyService(
+            aiClient = fake,
             imageGenerator = StudyPlaygroundImageGenerator { prompt, _ ->
                 prompts += prompt
                 "https://cdn.example/${prompts.size}.png"
@@ -693,15 +787,24 @@ class StudyServiceTest {
         }
         assertEquals(StudyPlaygroundImageStatus.COMPLETED, image?.status)
         assertEquals("https://cdn.example/1.png", image?.imageUrl)
-        assertTrue(prompts.single().contains("Xin chào"))
-        assertTrue(prompts.single().contains("Friendly greeting"))
+        assertEquals("Xin chào bạn.", fake.lastSceneRequest?.sentence)
+        assertEquals("Xin chào", fake.lastSceneRequest?.word)
+        assertTrue(prompts.single().contains(FakeStudyAiClient.INTENDED_SCENE))
+        assertTrue(prompts.single().contains(PromptFactory.ENGLISH_ONLY))
+        assertTrue(!prompts.single().contains("Xin chào"))
+        assertTrue(!prompts.single().contains("Friendly greeting"))
     }
 
     @Test
     fun `sentence image starts async expressive visual`() = runBlocking {
+        val prompts = mutableListOf<String>()
+        val fake = FakeStudyAiClient()
         val service = StudyService(
-            aiClient = FakeStudyAiClient(),
-            imageGenerator = StudyPlaygroundImageGenerator { _, _ -> "https://cdn.example/sentence.png" },
+            aiClient = fake,
+            imageGenerator = StudyPlaygroundImageGenerator { prompt, _ ->
+                prompts += prompt
+                "https://cdn.example/sentence.png"
+            },
             idGenerator = { "sentence-image-1" },
         )
 
@@ -724,6 +827,43 @@ class StudyServiceTest {
         }
         assertEquals(StudyPlaygroundImageStatus.COMPLETED, image.status)
         assertEquals("https://cdn.example/sentence.png", image.imageUrl)
+        assertEquals("Xin chào bạn.", fake.lastSceneRequest?.sentence)
+        assertTrue(prompts.single().contains(FakeStudyAiClient.INTENDED_SCENE))
+        assertTrue(prompts.single().contains(PromptFactory.ENGLISH_ONLY))
+        assertTrue(!prompts.single().contains("Xin chào bạn."))
+    }
+
+    @Test
+    fun `word image falls back to English meaning when scene design is empty`() = runBlocking {
+        val prompts = mutableListOf<String>()
+        val service = StudyService(
+            aiClient = FakeStudyAiClient(intendedScene = ""),
+            imageGenerator = StudyPlaygroundImageGenerator { prompt, _ ->
+                prompts += prompt
+                "https://cdn.example/word-fallback.png"
+            },
+            idGenerator = { "word-fallback-1" },
+        )
+
+        service.wordImage(
+            StudyWordImageRequest(word = "chào", contextualMeaning = "a friendly greeting"),
+        )
+        var image = service.playgroundImage("word-fallback-1")
+        var attempts = 0
+        while (
+            image != null &&
+            image.status != StudyPlaygroundImageStatus.COMPLETED &&
+            image.status != StudyPlaygroundImageStatus.FAILED &&
+            attempts < 40
+        ) {
+            delay(25)
+            image = service.playgroundImage("word-fallback-1")
+            attempts++
+        }
+        assertEquals(StudyPlaygroundImageStatus.COMPLETED, image?.status)
+        assertTrue(prompts.single().contains("a friendly greeting"))
+        assertTrue(prompts.single().contains(PromptFactory.ENGLISH_ONLY))
+        assertTrue(!prompts.single().contains("chào"))
     }
 
     @Test
@@ -736,20 +876,21 @@ class StudyServiceTest {
     }
 
     @Test
-    fun `sentence visual prompt mentions sentence and no speech bubbles`() {
-        val prompt = sentenceVisualPrompt("Tôi đang học.")
-        assertContains(prompt, "Tôi đang học.")
+    fun `sentence visual prompt mentions intended scene and no speech bubbles`() {
+        val prompt = sentenceVisualPrompt("A student studies at a sunlit desk")
+        assertContains(prompt, "A student studies at a sunlit desk")
         assertContains(prompt, "no speech bubbles")
         assertContains(prompt, "language learners")
         assertContains(prompt, "Absolutely no text")
         assertContains(prompt, "pretty realistic expressive art")
+        assertContains(prompt, PromptFactory.ENGLISH_ONLY)
+        assertTrue(!prompt.contains("Tôi đang học."))
     }
 
     @Test
     fun `sentence visual prompt names characters and reference images`() {
         val prompt = sentenceVisualPrompt(
-            sentence = "Lan mỉm cười.",
-            fullText = "Lan mỉm cười. Minh vẫy tay.",
+            intendedScene = "Lan smiles from a sunlit doorway",
             sentenceIndex = 0,
             sentenceCount = 2,
             characters = listOf(
@@ -772,8 +913,10 @@ class StudyServiceTest {
         assertContains(prompt, "scene 1 of 2")
         assertContains(prompt, "Image 1 is main character \"Lan\"")
         assertContains(prompt, "Image 2 is secondary character \"Minh\"")
-        assertContains(prompt, "Lan mỉm cười.")
+        assertContains(prompt, "Lan smiles from a sunlit doorway")
         assertContains(prompt, STUDY_STORY_ART_STYLE.take(20))
+        assertContains(prompt, PromptFactory.ENGLISH_ONLY)
+        assertTrue(!prompt.contains("mỉm cười"))
     }
 
     @Test
@@ -942,9 +1085,14 @@ class StudyServiceTest {
     @Test
     fun `play scenarios returns four starters and enqueues cover images`() = runBlocking {
         var nextId = 0
+        val prompts = java.util.concurrent.CopyOnWriteArrayList<String>()
+        val ai = FakeStudyAiClient()
         val service = StudyService(
-            aiClient = FakeStudyAiClient(),
-            imageGenerator = StudyPlaygroundImageGenerator { _, _ -> "https://cdn.example/play.png" },
+            aiClient = ai,
+            imageGenerator = StudyPlaygroundImageGenerator { prompt, _ ->
+                prompts += prompt
+                "https://cdn.example/play.png"
+            },
             idGenerator = { "play-${++nextId}" },
         )
 
@@ -960,13 +1108,39 @@ class StudyServiceTest {
         assertTrue(response.scenarios.any { !it.openingLine.isNullOrBlank() })
         assertTrue(response.scenarios.any { it.openingLine == null })
         assertEquals(listOf("play-1", "play-2", "play-3", "play-4"), response.scenarios.map { it.imageId })
+
+        var attempts = 0
+        val scenarioImageIds = listOf("play-1", "play-2", "play-3", "play-4")
+        while (
+            scenarioImageIds.any { imageId ->
+                service.playgroundImage(imageId)?.status != StudyPlaygroundImageStatus.COMPLETED &&
+                    service.playgroundImage(imageId)?.status != StudyPlaygroundImageStatus.FAILED
+            } && attempts < 40
+        ) {
+            delay(25)
+            attempts++
+        }
+        assertEquals(4, prompts.size)
+        prompts.forEach { prompt ->
+            assertContains(prompt, FakeStudyAiClient.INTENDED_SCENE)
+            assertContains(prompt, PromptFactory.ENGLISH_ONLY)
+            assertTrue(!prompt.contains("Xin chào bạn."))
+            assertTrue(!prompt.contains("Xin chào!"))
+        }
+        assertEquals("Xin chào bạn.", ai.lastSceneRequest?.fullText)
+        assertTrue(response.scenarios.any { it.description == ai.lastSceneRequest?.scenarioDescription })
     }
 
     @Test
     fun `play turn returns reply and starts cover image job`() = runBlocking {
+        val prompts = java.util.concurrent.CopyOnWriteArrayList<String>()
+        val ai = FakeStudyAiClient()
         val service = StudyService(
-            aiClient = FakeStudyAiClient(),
-            imageGenerator = StudyPlaygroundImageGenerator { _, _ -> "https://cdn.example/turn.png" },
+            aiClient = ai,
+            imageGenerator = StudyPlaygroundImageGenerator { prompt, _ ->
+                prompts += prompt
+                "https://cdn.example/turn.png"
+            },
             idGenerator = { "turn-1" },
         )
 
@@ -991,6 +1165,24 @@ class StudyServiceTest {
         assertEquals("Thật sao?", response.reply)
         assertEquals("turn-1", response.imageId)
         assertNotNull(service.playgroundImage("turn-1"))
+        var image = service.playgroundImage("turn-1")
+        var attempts = 0
+        while (
+            image?.status != StudyPlaygroundImageStatus.COMPLETED &&
+            image?.status != StudyPlaygroundImageStatus.FAILED &&
+            attempts < 40
+        ) {
+            delay(25)
+            image = service.playgroundImage("turn-1")
+            attempts++
+        }
+        assertEquals(StudyPlaygroundImageStatus.COMPLETED, image?.status)
+        assertContains(prompts.single(), FakeStudyAiClient.INTENDED_SCENE)
+        assertContains(prompts.single(), PromptFactory.ENGLISH_ONLY)
+        assertTrue(!prompts.single().contains("Xin chào bạn."))
+        assertTrue(!prompts.single().contains("Thật sao?"))
+        assertEquals(response.description, ai.lastSceneRequest?.scenarioDescription)
+        assertEquals(response.reply, ai.lastSceneRequest?.spokenLine)
         Unit
     }
 
@@ -1200,6 +1392,7 @@ internal class FakeStudyAiClient(
     ),
     private val extractedText: String? = null,
     private val composedText: String? = null,
+    private val intendedScene: String = INTENDED_SCENE,
 ) : StudyAiClient {
     var lastExtractRequest: StudyGenerationRequest? = null
     var lastIntentRequest: StudyGenerationRequest? = null
@@ -1212,6 +1405,12 @@ internal class FakeStudyAiClient(
     var lastWriteCheckRequest: StudyWriteCheckGenerationRequest? = null
     var lastExpressCheckRequest: StudyExpressCheckGenerationRequest? = null
     var lastExpressGenerateRequest: StudyExpressGenerateGenerationRequest? = null
+    var lastSceneRequest: StudySceneGenerationRequest? = null
+
+    companion object {
+        const val INTENDED_SCENE =
+            "A young woman smiles from a sunlit apartment doorway, warm cinematic medium shot"
+    }
 
     override suspend fun extractStudyText(request: StudyGenerationRequest): String {
         lastExtractRequest = request
@@ -1221,6 +1420,11 @@ internal class FakeStudyAiClient(
     override suspend fun generateStudyIntent(request: StudyGenerationRequest): String {
         lastIntentRequest = request
         return composedText ?: request.text
+    }
+
+    override suspend fun designIntendedScene(request: StudySceneGenerationRequest): String {
+        lastSceneRequest = request
+        return intendedScene
     }
 
     override suspend fun generateSkeleton(request: StudyGenerationRequest): StudySessionResponse {

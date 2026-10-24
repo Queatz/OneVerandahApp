@@ -300,6 +300,73 @@ class DashScopeStudyAiClient(
         return QwenStudyExtractParser.parse(content)
     }
 
+    override suspend fun designIntendedScene(request: StudySceneGenerationRequest): String {
+        val userContent = buildString {
+            if (request.word.isNotBlank()) {
+                appendLine("Vocabulary word (never copy this wording into the scene):")
+                appendLine(request.word)
+                appendLine()
+            }
+            if (request.contextualMeaning.isNotBlank()) {
+                appendLine("Meaning / visual intent (rewrite in English; do not copy non-English wording):")
+                appendLine(request.contextualMeaning)
+                appendLine()
+            }
+            if (request.exampleTranslation.isNotBlank()) {
+                appendLine("Translation of the example (use as visual intent, rewrite in English if needed):")
+                appendLine(request.exampleTranslation)
+                appendLine()
+            }
+            if (request.sentence.isNotBlank()) {
+                appendLine("Source sentence whose intended scene you must describe (never copy this wording):")
+                appendLine(request.sentence)
+                appendLine()
+            }
+            if (request.fullText.isNotBlank()) {
+                appendLine("Full story for continuity only (do not describe the whole story):")
+                appendLine(request.fullText)
+                appendLine()
+            }
+            if (request.scenarioDescription.isNotBlank()) {
+                appendLine("Play scenario setup to interpret visually (rewrite as a scene; never copy this wording):")
+                appendLine(request.scenarioDescription)
+                appendLine()
+            }
+            if (request.spokenLine.isNotBlank()) {
+                appendLine("Spoken line for emotional context only (never quote or render it):")
+                appendLine(request.spokenLine)
+                appendLine()
+            }
+            request.natural?.let { natural ->
+                appendLine(
+                    if (natural) {
+                        "The learner's usage was judged natural; depict its intended everyday moment."
+                    } else {
+                        "The learner's usage was judged unnatural; depict the intended meaning as a corrected, natural moment."
+                    },
+                )
+                appendLine()
+            }
+            if (request.characters.isNotEmpty()) {
+                appendLine("Named cast (describe appearance in English; do not write names on anything in the scene):")
+                request.characters.forEach { character ->
+                    append("- ${character.role} ${character.name}")
+                    if (character.description.isNotBlank()) append(": ${character.description}")
+                    appendLine()
+                }
+                appendLine()
+            }
+            appendLine("This is beat ${request.sentenceIndex.coerceAtLeast(0) + 1} of ${request.sentenceCount.coerceAtLeast(1)}.")
+        }
+        val content = complete(
+            systemPrompt = intendedSceneSystemPrompt(),
+            userContent = userContent,
+            label = "study intended scene",
+            temperature = 0.6,
+        )
+        return QwenStudySceneParser.parse(content)
+    }
+
     override suspend fun generateSkeleton(request: StudyGenerationRequest): StudySessionResponse {
         val content = complete(
             systemPrompt = skeletonSystemPrompt(),
@@ -646,6 +713,20 @@ class DashScopeStudyAiClient(
             }
         }
 
+    private fun intendedSceneSystemPrompt(): String = """
+        You design a single cinematic movie-still for a language-learning image generator.
+        Always return one JSON object and no markdown. The schema is exactly:
+        {"scene":"detailed English cinematic scene description"}
+        Rules:
+        - The "scene" field MUST be written entirely in English.
+        - Describe who is present, where they are, what they are doing, their emotion, lighting, camera angle, and important props.
+        - Make it entertaining and movie-like — a vivid story beat, not a textbook illustration or title card.
+        - Never quote, transliterate, or include the source-language sentence or vocabulary word.
+        - Never mention writing, letters, signs, captions, subtitles, logos, speech bubbles, or watermarks.
+        - Do not describe the whole story; only THIS beat.
+        - Do not wrap the JSON in markdown. Do not add extra keys.
+    """.trimIndent()
+
     private fun extractStudyTextSystemPrompt(learnerLanguageTag: String): String = """
         You extract the text a language learner should study from a chat message.
         The learner's explanation / UI language tag is '$learnerLanguageTag'.
@@ -813,6 +894,28 @@ class DashScopeStudyAiClient(
         - Never leave translation blank. Do not put plain strings in the sentences array.
         - Do not wrap the JSON in markdown. Do not add extra keys.
     """.trimIndent()
+}
+
+/**
+ * Lenient parser for intended-scene JSON used by study image prompts.
+ */
+object QwenStudySceneParser {
+    private val json = Json { ignoreUnknownKeys = true; explicitNulls = false; isLenient = true }
+
+    fun parse(content: String): String {
+        val root = parseRootObject(content)
+        return root.string("scene")?.trim()?.takeIf { it.isNotEmpty() }
+            ?: root.string("description")?.trim()?.takeIf { it.isNotEmpty() }
+            ?: throw IllegalArgumentException("Qwen study scene missing scene")
+    }
+
+    private fun parseRootObject(content: String): JsonObject {
+        val normalized = stripJsonFences(content)
+        val element = runCatching { json.parseToJsonElement(normalized) }
+            .getOrElse { throw IllegalArgumentException("Qwen study scene is not valid JSON", it) }
+        return element as? JsonObject
+            ?: throw IllegalArgumentException("Qwen study scene root must be a JSON object")
+    }
 }
 
 /**

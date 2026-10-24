@@ -33,6 +33,17 @@ enum class Language(val tag: String) {
             val normalized = tag?.trim()?.lowercase()?.substringBefore('-') ?: return DEFAULT
             return entries.firstOrNull { it.tag == normalized } ?: DEFAULT
         }
+
+        /**
+         * Normalizes a content language tag without restricting it to the UI languages.
+         * Unknown ISO 639-1/2/3 tags are retained so speech providers can route them.
+         */
+        fun normalizeContentTag(tag: String?): String {
+            val normalized = tag?.trim()?.lowercase()?.replace('_', '-')?.substringBefore('-')
+                ?: return DEFAULT.tag
+            return normalized.takeIf { it.length in 2..3 && it.all { character -> character in 'a'..'z' } }
+                ?: DEFAULT.tag
+        }
     }
 }
 

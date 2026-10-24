@@ -48,6 +48,21 @@ data class StudyGenerationRequest(
     val languageTag: String,
 )
 
+/** Source material for an English movie-still description used by image prompts. */
+data class StudySceneGenerationRequest(
+    val sentence: String,
+    val fullText: String = "",
+    val sentenceIndex: Int = 0,
+    val sentenceCount: Int = 1,
+    val characters: List<StudyStoryCharacter> = emptyList(),
+    val word: String = "",
+    val contextualMeaning: String = "",
+    val exampleTranslation: String = "",
+    val scenarioDescription: String = "",
+    val spokenLine: String = "",
+    val natural: Boolean? = null,
+)
+
 data class StudyDissectGenerationRequest(
     val text: String,
     val sentenceText: String,
@@ -165,6 +180,13 @@ interface StudyAiClient {
      */
     suspend fun generateStudyIntent(request: StudyGenerationRequest): String = request.text.trim()
 
+    /**
+     * Turns a study sentence (or a word's first example) into a detailed English
+     * movie-still description. Default is empty so tests and lighter fakes stay
+     * unchanged; [StudyService] then uses a source-free English fallback.
+     */
+    suspend fun designIntendedScene(request: StudySceneGenerationRequest): String = ""
+
     suspend fun generateSkeleton(request: StudyGenerationRequest): StudySessionResponse
     suspend fun dissectSentence(request: StudyDissectGenerationRequest): StudySentence
     suspend fun evaluateWordUsage(request: StudyWordPlaygroundGenerationRequest): StudyWordPlaygroundJudgment
@@ -269,6 +291,7 @@ class StudyService(
             word = request.word,
             sentence = request.sentence,
             natural = judgment.natural,
+            contextualMeaning = request.contextualMeaning.ifBlank { request.literalMeaning },
         )
         return StudyWordPlaygroundResponse(
             natural = judgment.natural,
@@ -330,13 +353,23 @@ class StudyService(
         val referenceUrls = request.characters.mapNotNull { it.imageUrl?.trim()?.takeIf(String::isNotEmpty) }
         enqueueStudyImage(
             imageId = imageId,
-            prompt = sentenceVisualPrompt(
-                sentence = request.sentenceText,
-                fullText = request.fullText,
-                sentenceIndex = request.sentenceIndex,
-                sentenceCount = request.sentenceCount,
-                characters = request.characters,
-            ),
+            prompt = {
+                val scene = resolveIntendedScene(
+                    StudySceneGenerationRequest(
+                        sentence = request.sentenceText,
+                        fullText = request.fullText,
+                        sentenceIndex = request.sentenceIndex,
+                        sentenceCount = request.sentenceCount,
+                        characters = request.characters,
+                    ),
+                )
+                sentenceVisualPrompt(
+                    intendedScene = scene,
+                    sentenceIndex = request.sentenceIndex,
+                    sentenceCount = request.sentenceCount,
+                    characters = request.characters,
+                )
+            },
             referenceImageUrls = referenceUrls,
             logLabel = "sentence visual",
         )
@@ -354,9 +387,10 @@ class StudyService(
         val imageId = idGenerator().trim().ifBlank { UUID.randomUUID().toString() }
         enqueueStudyImage(
             imageId = imageId,
-            prompt = wordVisualPrompt(
+            prompt = wordImagePrompt(
                 word = request.word,
                 contextualMeaning = request.contextualMeaning,
+                exampleSentences = request.exampleSentences,
             ),
             referenceImageUrls = emptyList(),
             logLabel = "word visual",
@@ -398,12 +432,21 @@ class StudyService(
             }
             enqueueStudyImage(
                 imageId = imageId,
-                prompt = playScenarioVisualPrompt(
-                    description = design.description,
-                    openingLine = design.openingLine,
-                    fullText = request.text,
-                    characters = request.characters,
-                ),
+                prompt = {
+                    val scene = resolveIntendedScene(
+                        StudySceneGenerationRequest(
+                            sentence = "",
+                            fullText = request.text,
+                            characters = request.characters,
+                            scenarioDescription = design.description,
+                            spokenLine = design.openingLine.orEmpty(),
+                        ),
+                    )
+                    playScenarioVisualPrompt(
+                        intendedScene = scene,
+                        characters = request.characters,
+                    )
+                },
                 referenceImageUrls = referenceUrls,
                 logLabel = "play scenario cover",
             )
@@ -447,12 +490,21 @@ class StudyService(
         }
         enqueueStudyImage(
             imageId = imageId,
-            prompt = playScenarioVisualPrompt(
-                description = description,
-                openingLine = reply,
-                fullText = request.text,
-                characters = request.characters,
-            ),
+            prompt = {
+                val scene = resolveIntendedScene(
+                    StudySceneGenerationRequest(
+                        sentence = "",
+                        fullText = request.text,
+                        characters = request.characters,
+                        scenarioDescription = description,
+                        spokenLine = reply,
+                    ),
+                )
+                playScenarioVisualPrompt(
+                    intendedScene = scene,
+                    characters = request.characters,
+                )
+            },
             referenceImageUrls = referenceUrls,
             logLabel = "play turn cover",
         )
@@ -575,10 +627,21 @@ class StudyService(
         word: String,
         sentence: String,
         natural: Boolean,
+        contextualMeaning: String,
     ) {
         enqueueStudyImage(
             imageId = imageId,
-            prompt = playgroundComicPrompt(word = word, sentence = sentence, natural = natural),
+            prompt = {
+                val scene = resolveIntendedScene(
+                    StudySceneGenerationRequest(
+                        sentence = sentence,
+                        word = word,
+                        contextualMeaning = contextualMeaning,
+                        natural = natural,
+                    ),
+                )
+                playgroundComicPrompt(intendedScene = scene, natural = natural)
+            },
             referenceImageUrls = emptyList(),
             logLabel = "playground visual",
         )
@@ -601,9 +664,10 @@ class StudyService(
         // Re-enqueue when the URL is still missing (new dissect or lost in-memory job).
         enqueueStudyImage(
             imageId = imageId,
-            prompt = wordVisualPrompt(
+            prompt = wordImagePrompt(
                 word = token.text,
                 contextualMeaning = token.contextualMeaning,
+                exampleSentences = token.exampleSentences,
             ),
             referenceImageUrls = emptyList(),
             logLabel = "word visual",
@@ -611,9 +675,64 @@ class StudyService(
         return token.copy(imageId = imageId, imageUrl = null)
     }
 
+    private fun wordImagePrompt(
+        word: String,
+        contextualMeaning: String,
+        exampleSentences: List<StudyExampleSentence>,
+    ): suspend () -> String = {
+        val example = exampleSentences.firstOrNull { it.text.trim().isNotEmpty() }
+        val scene = resolveIntendedScene(
+            StudySceneGenerationRequest(
+                sentence = example?.text.orEmpty(),
+                word = word,
+                contextualMeaning = contextualMeaning,
+                exampleTranslation = example?.translation.orEmpty(),
+            ),
+        )
+        wordVisualPrompt(intendedScene = scene)
+    }
+
+    private suspend fun resolveIntendedScene(request: StudySceneGenerationRequest): String {
+        val designed = runCatching { aiClient.designIntendedScene(request) }
+            .onFailure { error ->
+                log.warn("Study intended scene failed: {}", error.message)
+            }
+            .getOrDefault("")
+            .trim()
+        val sanitized = sanitizeIntendedScene(
+            scene = designed,
+            forbidden = listOf(
+                request.sentence,
+                request.word,
+                request.fullText,
+                request.scenarioDescription,
+                request.spokenLine,
+            ),
+        )
+        return sanitized.takeIf { it.isNotBlank() && looksPrimarilyEnglish(it) }
+            ?: fallbackIntendedScene(
+                contextualMeaning = request.contextualMeaning,
+                exampleTranslation = request.exampleTranslation,
+            )
+    }
+
     private fun enqueueStudyImage(
         imageId: String,
         prompt: String,
+        referenceImageUrls: List<String>,
+        logLabel: String,
+    ) {
+        enqueueStudyImage(
+            imageId = imageId,
+            prompt = { prompt },
+            referenceImageUrls = referenceImageUrls,
+            logLabel = logLabel,
+        )
+    }
+
+    private fun enqueueStudyImage(
+        imageId: String,
+        prompt: suspend () -> String,
         referenceImageUrls: List<String>,
         logLabel: String,
     ) {
@@ -643,7 +762,21 @@ class StudyService(
                 imageId,
                 refs.size,
             )
-            val result = runCatching { generator.generate(prompt, refs) }
+            val builtPrompt = runCatching { prompt() }.getOrElse { error ->
+                log.error(
+                    "Study {} prompt failed for {}: {}",
+                    logLabel,
+                    imageId,
+                    error.message,
+                    error,
+                )
+                studyImages[imageId] = StudyPlaygroundImageResponse(
+                    imageId = imageId,
+                    status = StudyPlaygroundImageStatus.FAILED,
+                )
+                return@launch
+            }
+            val result = runCatching { generator.generate(builtPrompt, refs) }
                 .recoverCatching { error ->
                     // Reference-to-image is slower/flakier (re-host + multimodal).
                     // Fall back to text-only so sentence panels still complete.
@@ -655,7 +788,7 @@ class StudyService(
                         imageId,
                         error.message,
                     )
-                    generator.generate(prompt, emptyList())
+                    generator.generate(builtPrompt, emptyList())
                 }
             val elapsedMs = System.currentTimeMillis() - startedAt
             result
@@ -691,15 +824,15 @@ class StudyService(
     }
 }
 
-internal fun playgroundComicPrompt(word: String, sentence: String, natural: Boolean): String =
-    PromptFactory.forPlayground(word = word, sentence = sentence, natural = natural)
+internal fun playgroundComicPrompt(intendedScene: String, natural: Boolean): String =
+    PromptFactory.forPlayground(intendedScene = intendedScene, natural = natural)
 
 /** Shared art direction so all study/catalog images stay in one realistic expressive world. */
 internal const val STUDY_STORY_ART_STYLE: String = PromptFactory.ART_STYLE
 
-/** Prompt for a single dissected word/phrase visual (meaning first; never title with the word). */
-internal fun wordVisualPrompt(word: String, contextualMeaning: String = ""): String =
-    PromptFactory.forWord(word = word, contextualMeaning = contextualMeaning)
+/** Prompt for a single dissected word/phrase visual from an English intended scene. */
+internal fun wordVisualPrompt(intendedScene: String): String =
+    PromptFactory.forWord(intendedScene = intendedScene)
 
 /** Character reference portrait used as a named identity anchor for later scenes. */
 internal fun characterPortraitPrompt(character: StudyCharacterDesign): String =
@@ -711,39 +844,23 @@ internal fun characterPortraitPrompt(character: StudyCharacterDesign): String =
 
 /** Prompt for the Study-tab expressive visual attached to each source sentence. */
 internal fun sentenceVisualPrompt(
-    sentence: String,
-    fullText: String = "",
+    intendedScene: String,
     sentenceIndex: Int = 0,
     sentenceCount: Int = 1,
     characters: List<StudyStoryCharacter> = emptyList(),
 ): String = PromptFactory.forSentence(
-    sentence = sentence,
-    fullText = fullText,
+    intendedScene = intendedScene,
     sentenceIndex = sentenceIndex,
     sentenceCount = sentenceCount,
     characters = characters.toImageCharacters(),
 )
 
-/** Backward-compatible overload used by older call sites/tests. */
-internal fun sentenceVisualPrompt(sentence: String): String =
-    sentenceVisualPrompt(
-        sentence = sentence,
-        fullText = "",
-        sentenceIndex = 0,
-        sentenceCount = 1,
-        characters = emptyList(),
-    )
-
 /** Cover image for a Play-tab scenario starter or conversation beat. */
 internal fun playScenarioVisualPrompt(
-    description: String,
-    openingLine: String? = null,
-    fullText: String = "",
+    intendedScene: String,
     characters: List<StudyStoryCharacter> = emptyList(),
 ): String = PromptFactory.forPlayScenario(
-    description = description,
-    openingLine = openingLine,
-    fullText = fullText,
+    intendedScene = intendedScene,
     characters = characters.toImageCharacters(),
 )
 
@@ -1016,7 +1133,6 @@ internal fun defaultStoryCharacters(sourceText: String): List<StudyCharacterDesi
 }
 
 internal fun StudySessionResponse.normalizedSkeleton(sourceText: String): StudySessionResponse {
-    val languageTag = Language.fromTag(textLanguageTag).tag
     val sentences = sentences.mapNotNull { sentence ->
         val sentenceText = sentence.text.trim().takeIf { it.isNotEmpty() } ?: return@mapNotNull null
         val tokens = sentence.tokens.mapNotNull { token ->
@@ -1082,7 +1198,7 @@ internal fun StudySessionResponse.normalizedSkeleton(sourceText: String): StudyS
     }
     return StudySessionResponse(
         text = sourceText,
-        textLanguageTag = languageTag,
+        textLanguageTag = Language.normalizeContentTag(textLanguageTag),
         sentences = sentences,
         characters = cast,
         playScenarios = play,
@@ -1160,5 +1276,39 @@ internal fun looksLikePunctuationOnly(text: String): Boolean {
     if (text.isEmpty()) return false
     return text.all { ch ->
         ch.isWhitespace() || (!ch.isLetterOrDigit() && ch.category != CharCategory.OTHER_LETTER)
+    }
+}
+
+/** Drops source-language sentence/word copies so they cannot leak into the image prompt. */
+internal fun sanitizeIntendedScene(scene: String, forbidden: List<String>): String {
+    var cleaned = scene.trim()
+    forbidden
+        .map { it.trim() }
+        .filter { it.length >= 2 }
+        .sortedByDescending { it.length }
+        .forEach { needle ->
+            cleaned = cleaned.replace(needle, " ", ignoreCase = true)
+        }
+    return cleaned.replace(Regex("\\s+"), " ").trim()
+}
+
+internal fun looksPrimarilyEnglish(text: String): Boolean {
+    val letters = text.filter { it.isLetter() }
+    if (letters.isEmpty()) return false
+    return letters.all { it in 'A'..'Z' || it in 'a'..'z' }
+}
+
+/** English movie-still fallback that never quotes the source sentence or word. */
+internal fun fallbackIntendedScene(
+    contextualMeaning: String = "",
+    exampleTranslation: String = "",
+): String {
+    val visualIntent = listOf(exampleTranslation, contextualMeaning)
+        .map { it.trim() }
+        .firstOrNull { it.isNotEmpty() && looksPrimarilyEnglish(it) }
+    return if (visualIntent != null) {
+        "A cinematic movie still of $visualIntent, with clear emotion, natural body language, rich everyday environment, and dramatic natural lighting."
+    } else {
+        "A vivid cinematic everyday moment with clear character emotion, natural body language, rich environmental detail, and warm movie-still lighting."
     }
 }

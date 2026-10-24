@@ -37,6 +37,14 @@ class LanguageTest {
     }
 
     @Test
+    fun contentLanguageTagsPreserveLanguagesOutsideTheUiSet() {
+        assertEquals("my", Language.normalizeContentTag("my-MM"))
+        assertEquals("bur", Language.normalizeContentTag("BUR"))
+        assertEquals("vi", Language.normalizeContentTag("vi_VN"))
+        assertEquals("en", Language.normalizeContentTag("invalid-tag"))
+    }
+
+    @Test
     fun localizedTextResolvesSpanish() {
         val textWithSpanish = LocalizedText(en = "Hello", vi = "Xin chào", es = "Hola")
         assertEquals("Hola", textWithSpanish.resolve(Language.SPANISH))

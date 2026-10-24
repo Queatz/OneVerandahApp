@@ -266,9 +266,19 @@ class ChatApiModelsTest {
         val normalized = StudyWordImageRequest(
             word = "  chào  ",
             contextualMeaning = "  greeting  ",
+            exampleSentences = listOf(
+                StudyExampleSentence(text = "  Xin chào bạn.  ", translation = "  Hello friend.  "),
+                StudyExampleSentence(text = "   ", translation = "x"),
+            ),
         ).normalizedOrNull()
         assertEquals(
-            StudyWordImageRequest(word = "chào", contextualMeaning = "greeting"),
+            StudyWordImageRequest(
+                word = "chào",
+                contextualMeaning = "greeting",
+                exampleSentences = listOf(
+                    StudyExampleSentence(text = "Xin chào bạn.", translation = "Hello friend."),
+                ),
+            ),
             normalized,
         )
         assertEquals(
@@ -495,6 +505,33 @@ class ChatApiModelsTest {
                 session = StudySessionResponse(text = "  ", textLanguageTag = "en", sentences = emptyList()),
             ).normalizedOrNull(),
         )
+    }
+
+    @Test
+    fun `speech and saved study sessions preserve unsupported content language tags`() {
+        val speech = SpeechRequest(text = " မင်္ဂလာပါ ", languageTag = "my-MM").normalizedOrNull()
+        val saved = SaveStudySessionRequest(
+            languageTag = "en-US",
+            session = StudySessionResponse(
+                text = " မင်္ဂလာပါ ",
+                textLanguageTag = "my-MM",
+                sentences = listOf(
+                    StudySentence(
+                        text = "မင်္ဂလာပါ",
+                        tokens = listOf(StudyToken(text = "မင်္ဂလာပါ", status = StudyTokenStatus.PENDING)),
+                    ),
+                ),
+            ),
+        ).normalizedOrNull()
+
+        assertEquals("my", speech?.languageTag)
+        assertEquals("en", saved?.languageTag)
+        assertEquals("my", saved?.session?.textLanguageTag)
+    }
+
+    @Test
+    fun `speech language tag accepts ISO 639 three letter codes`() {
+        assertEquals("bur", SpeechRequest(text = "မင်္ဂလာပါ", languageTag = "bur-MM").normalizedOrNull()?.languageTag)
     }
 
     @Test
