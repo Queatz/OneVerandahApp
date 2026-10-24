@@ -1845,6 +1845,23 @@ private fun StudySessionContent(
                             strings = strings,
                             onRetry = { onRetryImage(sentenceIndex) },
                         )
+                        val sentenceClipUrl = sentenceAudio["sentence-$sentenceIndex"]?.url
+                        val sentencePlaying = isStudyAudioPlaying(sentenceClipUrl)
+                        Button(attrs = {
+                            classes(Styles.sentencePlay)
+                            attr("type", "button")
+                            if (sentenceClipUrl == null) attr("disabled", "")
+                            attr(
+                                "aria-label",
+                                if (sentencePlaying) strings.chatStudyPauseSentence else strings.chatStudyPlaySentence,
+                            )
+                            onClick { sentenceClipUrl?.let(::playAudio) }
+                        }) {
+                            MaterialSymbol(if (sentencePlaying) "pause_circle" else "play_circle")
+                            Text(
+                                if (sentencePlaying) strings.chatStudyPauseSentence else strings.chatStudyPlaySentence,
+                            )
+                        }
                         Div(attrs = { classes(Styles.languageSentence) }) {
                             sentence.tokens.forEachIndexed { tokenIndex, token ->
                                 when {
@@ -1879,23 +1896,6 @@ private fun StudySessionContent(
                                     }
                                 }
                             }
-                        }
-                        val sentenceClipUrl = sentenceAudio["sentence-$sentenceIndex"]?.url
-                        val sentencePlaying = isStudyAudioPlaying(sentenceClipUrl)
-                        Button(attrs = {
-                            classes(Styles.sentencePlay)
-                            attr("type", "button")
-                            if (sentenceClipUrl == null) attr("disabled", "")
-                            attr(
-                                "aria-label",
-                                if (sentencePlaying) strings.chatStudyPauseSentence else strings.chatStudyPlaySentence,
-                            )
-                            onClick { sentenceClipUrl?.let(::playAudio) }
-                        }) {
-                            MaterialSymbol(if (sentencePlaying) "pause_circle" else "play_circle")
-                            Text(
-                                if (sentencePlaying) strings.chatStudyPauseSentence else strings.chatStudyPlaySentence,
-                            )
                         }
                         if (loadState == StudySentenceLoadState.ERROR) {
                             Div(attrs = { classes(Styles.studySentenceError) }) {
@@ -2756,6 +2756,11 @@ private fun StudyStoryTab(
     }
     var stepIndex by remember(session.text) { mutableStateOf(0) }
     var lastAutoplayKey by remember(session.text) { mutableStateOf<String?>(null) }
+    var replayNonce by remember(session.text) { mutableStateOf(0) }
+    var storyElement by remember { mutableStateOf<HTMLElement?>(null) }
+    var isFullscreen by remember { mutableStateOf(false) }
+    val latestIsFullscreen by rememberUpdatedState(isFullscreen)
+    val latestStoryElement by rememberUpdatedState(storyElement)
     // Learner-language meaning clips (literal / context) keyed by spoken text.
     val meaningAudio = remember(session.text) { mutableStateMapOf<String, String>() }
     val learnerLanguageTag = Localization.language.tag
@@ -2781,6 +2786,22 @@ private fun StudyStoryTab(
                     onFinished()
                 }
             }
+        }
+    }
+
+    fun replayStoryAudio() {
+        stopActiveStudyAudio()
+        lastAutoplayKey = null
+        replayNonce += 1
+    }
+
+    fun setStoryFullscreen(enabled: Boolean) {
+        if (enabled) {
+            isFullscreen = true
+            storyElement?.let(::requestWatchFullscreen)
+        } else {
+            isFullscreen = false
+            exitWatchFullscreen()
         }
     }
 
@@ -2812,6 +2833,27 @@ private fun StudyStoryTab(
     val safeWordIndex = if (wordSteps.isEmpty()) 0 else stepIndex.coerceIn(0, wordSteps.lastIndex)
     val safeSentenceIndex =
         if (sentenceCount <= 0) 0 else stepIndex.coerceIn(0, sentenceCount - 1)
+    val canGoBack = when (phase) {
+        StudyStoryPhase.WORDS -> safeWordIndex > 0
+        StudyStoryPhase.SENTENCES -> safeSentenceIndex > 0 || wordSteps.isNotEmpty()
+    }
+
+    fun goBackStory() {
+        if (!canGoBack) return
+        if (scrollOnContinue) scrollStudyContentToTop()
+        when (phase) {
+            StudyStoryPhase.WORDS -> stepIndex = safeWordIndex - 1
+            StudyStoryPhase.SENTENCES -> {
+                if (safeSentenceIndex > 0) {
+                    stepIndex = safeSentenceIndex - 1
+                } else {
+                    phase = StudyStoryPhase.WORDS
+                    stepIndex = wordSteps.lastIndex
+                }
+            }
+        }
+    }
+
     val totalSteps = wordSteps.size + sentenceCount
     val currentOrdinal = when (phase) {
         StudyStoryPhase.WORDS -> safeWordIndex + 1
@@ -2819,27 +2861,54 @@ private fun StudyStoryTab(
     }.coerceAtLeast(1)
     val progressLabel = if (totalSteps > 0) "$currentOrdinal / $totalSteps" else ""
 
+    DisposableEffect(Unit) {
+        val onKey: (Event) -> Unit = { event ->
+            val key = event.asDynamic().key as? String
+            if ((key == "Escape" || key == "Esc") && latestIsFullscreen) {
+                isFullscreen = false
+                exitWatchFullscreen()
+            }
+        }
+        val onFullscreen: (Event) -> Unit = {
+            val current = currentFullscreenElement()
+            val el = latestStoryElement
+            when {
+                el != null && current === el -> isFullscreen = true
+                latestIsFullscreen && current == null -> isFullscreen = false
+            }
+        }
+        window.addEventListener("keydown", onKey)
+        document.addEventListener("fullscreenchange", onFullscreen)
+        document.addEventListener("webkitfullscreenchange", onFullscreen)
+        onDispose {
+            window.removeEventListener("keydown", onKey)
+            document.removeEventListener("fullscreenchange", onFullscreen)
+            document.removeEventListener("webkitfullscreenchange", onFullscreen)
+            exitWatchFullscreen()
+        }
+    }
+
+    Div(attrs = {
+        classes(Styles.studyStoryShell)
+        if (isFullscreen) classes(Styles.studyStoryCardFullscreen)
+        ref { element ->
+            storyElement = element
+            if (latestIsFullscreen) requestWatchFullscreen(element)
+            onDispose { if (storyElement === element) storyElement = null }
+        }
+    }) {
     when (phase) {
         StudyStoryPhase.WORDS -> {
             val step = wordSteps.getOrNull(safeWordIndex)
-            if (step == null) {
+            val token = step?.let {
+                session.sentences.getOrNull(it.sentenceIndex)?.tokens?.getOrNull(it.tokenIndex)
+            }
+            if (step == null || token == null) {
                 Div(attrs = { classes(Styles.studyPreparingMeanings) }) {
                     MaterialSymbol("progress_activity")
                     Text(strings.chatStudyPreparingMeanings)
                 }
-                return
-            }
-            val token = session.sentences
-                .getOrNull(step.sentenceIndex)
-                ?.tokens
-                ?.getOrNull(step.tokenIndex)
-            if (token == null) {
-                Div(attrs = { classes(Styles.studyPreparingMeanings) }) {
-                    MaterialSymbol("progress_activity")
-                    Text(strings.chatStudyPreparingMeanings)
-                }
-                return
-            }
+            } else {
             val wordFailKey = messageId?.let { mid ->
                 "$mid#${step.sentenceIndex}#${step.tokenIndex}"
             }
@@ -2852,7 +2921,7 @@ private fun StudyStoryTab(
             // Include clip url so the first timed segment can replace a missing-timing attempt.
             // Meaning texts are part of the key so late-arriving dissections also get spoken.
             val wordAutoplayKey =
-                "word-${step.sentenceIndex}-${step.tokenIndex}-${token.text}|${sentenceClipUrl.orEmpty()}"
+                "word-${step.sentenceIndex}-${step.tokenIndex}-${token.text}|${sentenceClipUrl.orEmpty()}|$replayNonce"
             val autoplayKey = "$wordAutoplayKey#${meaningTexts.joinToString(separator = "\u0001")}"
             LaunchedEffect(autoplayKey) {
                 if (lastAutoplayKey == autoplayKey) return@LaunchedEffect
@@ -2904,17 +2973,24 @@ private fun StudyStoryTab(
             }
 
             Div(attrs = { classes(Styles.studyStoryCard) }) {
-                if (progressLabel.isNotEmpty()) {
-                    Span(attrs = { classes(Styles.studyStoryProgress) }) { Text(progressLabel) }
-                }
+                StudyStoryHeader(
+                    progressLabel = progressLabel,
+                    strings = strings,
+                    isFullscreen = isFullscreen,
+                    onToggleFullscreen = { setStoryFullscreen(!isFullscreen) },
+                )
                 StudyStoryVisual(
                     imageUrl = token.imageUrl,
                     failed = wordFailed,
                     loadingLabel = strings.chatStudyWordImageLoading,
                     errorLabel = strings.chatStudyWordImageError,
                     alt = strings.chatStudyWordImageAlt,
+                    onReplay = { replayStoryAudio() },
                 )
-                P(attrs = { classes(Styles.studyStoryWord) }) { Text(token.text) }
+                P(attrs = {
+                    classes(Styles.studyStoryWord)
+                    onClick { replayStoryAudio() }
+                }) { Text(token.text) }
                 when {
                     token.status == StudyTokenStatus.PENDING || !token.isDissectable -> {
                         P(attrs = { classes(Styles.studyStoryMeaning) }) {
@@ -2945,13 +3021,13 @@ private fun StudyStoryTab(
                         }
                     }
                 }
-                Button(attrs = {
-                    classes(Styles.btnPrimary, Styles.studyStoryContinue)
-                    attr("type", "button")
-                    onClick { advanceStory() }
-                }) {
-                    Text(strings.chatStoryContinue)
-                }
+                StudyStoryNavRow(
+                    strings = strings,
+                    canGoBack = canGoBack,
+                    onBack = { goBackStory() },
+                    onContinue = { advanceStory() },
+                )
+            }
             }
         }
         StudyStoryPhase.SENTENCES -> {
@@ -2960,13 +3036,12 @@ private fun StudyStoryTab(
                     MaterialSymbol("progress_activity")
                     Text(strings.chatStudyPreparingMeanings)
                 }
-                return
-            }
+            } else {
             val sentence = session.sentences[safeSentenceIndex]
             val imageFailKey = messageId?.let { "$it#$safeSentenceIndex" }
             val visualFailed = imageFailKey != null && imageFailed[imageFailKey] == true
             val sentenceClip = sentenceAudio["sentence-$safeSentenceIndex"]
-            val autoplayKey = "sentence-$safeSentenceIndex-${sentenceClip?.url.orEmpty()}"
+            val autoplayKey = "sentence-$safeSentenceIndex-${sentenceClip?.url.orEmpty()}|$replayNonce"
             LaunchedEffect(autoplayKey) {
                 val url = sentenceClip?.url ?: return@LaunchedEffect
                 if (lastAutoplayKey == autoplayKey) return@LaunchedEffect
@@ -2975,9 +3050,12 @@ private fun StudyStoryTab(
             }
 
             Div(attrs = { classes(Styles.studyStoryCard) }) {
-                if (progressLabel.isNotEmpty()) {
-                    Span(attrs = { classes(Styles.studyStoryProgress) }) { Text(progressLabel) }
-                }
+                StudyStoryHeader(
+                    progressLabel = progressLabel,
+                    strings = strings,
+                    isFullscreen = isFullscreen,
+                    onToggleFullscreen = { setStoryFullscreen(!isFullscreen) },
+                )
                 StudyStoryVisual(
                     imageUrl = sentence.imageUrl,
                     failed = visualFailed,
@@ -2986,16 +3064,73 @@ private fun StudyStoryTab(
                     alt = strings.chatStudySentenceImageAlt,
                     retryLabel = strings.chatStudyRetrySentence,
                     onRetry = { onRetryImage(safeSentenceIndex) },
+                    onReplay = { replayStoryAudio() },
                 )
-                P(attrs = { classes(Styles.studyStorySentence) }) { Text(sentence.text) }
-                Button(attrs = {
-                    classes(Styles.btnPrimary, Styles.studyStoryContinue)
-                    attr("type", "button")
-                    onClick { advanceStory() }
-                }) {
-                    Text(strings.chatStoryContinue)
-                }
+                P(attrs = {
+                    classes(Styles.studyStorySentence)
+                    onClick { replayStoryAudio() }
+                }) { Text(sentence.text) }
+                StudyStoryNavRow(
+                    strings = strings,
+                    canGoBack = canGoBack,
+                    onBack = { goBackStory() },
+                    onContinue = { advanceStory() },
+                )
             }
+            }
+        }
+    }
+    }
+}
+
+@Composable
+private fun StudyStoryHeader(
+    progressLabel: String,
+    strings: UiStrings,
+    isFullscreen: Boolean,
+    onToggleFullscreen: () -> Unit,
+) {
+    Div(attrs = { classes(Styles.studyStoryHeader) }) {
+        if (progressLabel.isNotEmpty()) {
+            Span(attrs = { classes(Styles.studyStoryProgress) }) { Text(progressLabel) }
+        }
+        Button(attrs = {
+            classes(Styles.sentencePlay, Styles.studyStoryFullscreen)
+            attr("type", "button")
+            attr(
+                "aria-label",
+                if (isFullscreen) strings.chatWatchExitFullscreen else strings.chatWatchFullscreen,
+            )
+            attr("aria-pressed", isFullscreen.toString())
+            onClick { onToggleFullscreen() }
+        }) {
+            MaterialSymbol(if (isFullscreen) "fullscreen_exit" else "fullscreen")
+        }
+    }
+}
+
+@Composable
+private fun StudyStoryNavRow(
+    strings: UiStrings,
+    canGoBack: Boolean,
+    onBack: () -> Unit,
+    onContinue: () -> Unit,
+) {
+    Div(attrs = { classes(Styles.studyStoryActions) }) {
+        Button(attrs = {
+            classes(Styles.btnSecondary, Styles.studyStoryBack)
+            attr("type", "button")
+            if (!canGoBack) attr("disabled", "")
+            onClick { onBack() }
+        }) {
+            Text(strings.chatStoryBack)
+        }
+        Button(attrs = {
+            classes(Styles.btnPrimary, Styles.studyStoryContinue)
+            attr("type", "button")
+            onClick { onContinue() }
+        }) {
+            Text(strings.chatStoryContinue)
         }
     }
 }
@@ -3009,12 +3144,14 @@ private fun StudyStoryVisual(
     alt: String,
     retryLabel: String? = null,
     onRetry: (() -> Unit)? = null,
+    onReplay: (() -> Unit)? = null,
 ) {
     val url = imageUrl?.trim()?.takeIf { it.isNotEmpty() }
     when {
         url != null -> {
             Img(src = url, alt = alt, attrs = {
                 classes(Styles.studyStoryImage)
+                onClick { onReplay?.invoke() }
             })
         }
         failed -> {
@@ -3815,26 +3952,6 @@ private fun StudyTokenDetail(
     imageFailed: Boolean = false,
 ) {
     Div(attrs = { classes(Styles.wordDefinition, Styles.studyTokenDetail) }) {
-        // Word visual sits at the top of the dissection panel.
-        when {
-            !token.imageUrl.isNullOrBlank() -> {
-                Img(src = token.imageUrl!!, alt = strings.chatStudyWordImageAlt, attrs = {
-                    classes(Styles.studyWordImage)
-                })
-            }
-            token.isDissectable && !imageFailed -> {
-                Div(attrs = { classes(Styles.studyWordImagePlaceholder) }) {
-                    MaterialSymbol("progress_activity")
-                    Span { Text(strings.chatStudyWordImageLoading) }
-                }
-            }
-            token.isDissectable && imageFailed -> {
-                Div(attrs = { classes(Styles.studyWordImagePlaceholder) }) {
-                    MaterialSymbol("broken_image")
-                    Span { Text(strings.chatStudyWordImageError) }
-                }
-            }
-        }
         Span(attrs = { classes(Styles.wordDefinitionTitle) }) { Text(token.text) }
         when {
             token.status == StudyTokenStatus.PENDING || !token.isDissectable -> {
@@ -3858,6 +3975,25 @@ private fun StudyTokenDetail(
                     P { Text(token.nearSynonyms.joinToString(separator = " · ")) }
                 }
                 Span(attrs = { classes(Styles.wordDefinitionLabel) }) { Text(strings.chatStudyExamples) }
+                when {
+                    !token.imageUrl.isNullOrBlank() -> {
+                        Img(src = token.imageUrl!!, alt = strings.chatStudyWordImageAlt, attrs = {
+                            classes(Styles.studyWordImage)
+                        })
+                    }
+                    token.isDissectable && !imageFailed -> {
+                        Div(attrs = { classes(Styles.studyWordImagePlaceholder) }) {
+                            MaterialSymbol("progress_activity")
+                            Span { Text(strings.chatStudyWordImageLoading) }
+                        }
+                    }
+                    token.isDissectable && imageFailed -> {
+                        Div(attrs = { classes(Styles.studyWordImagePlaceholder) }) {
+                            MaterialSymbol("broken_image")
+                            Span { Text(strings.chatStudyWordImageError) }
+                        }
+                    }
+                }
                 if (token.exampleSentences.isNotEmpty()) {
                     token.exampleSentences.forEach { example ->
                         Div(attrs = { classes(Styles.studyExampleSentence) }) {

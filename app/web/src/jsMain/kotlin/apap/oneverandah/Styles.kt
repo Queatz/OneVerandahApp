@@ -435,7 +435,10 @@ object Styles {
     const val studyPlaygroundImageStatusBusy = "study-playground-image-status-busy"
     const val studyPlaygroundSendBusy = "study-playground-send-busy"
     const val studyPreparingMeanings = "study-preparing-meanings"
+    const val studyStoryShell = "study-story-shell"
     const val studyStoryCard = "study-story-card"
+    const val studyStoryCardFullscreen = "study-story-card-fullscreen"
+    const val studyStoryHeader = "study-story-header"
     const val studyStoryProgress = "study-story-progress"
     const val studyStoryImage = "study-story-image"
     const val studyStoryImagePlaceholder = "study-story-image-placeholder"
@@ -443,7 +446,10 @@ object Styles {
     const val studyStorySentence = "study-story-sentence"
     const val studyStoryMeaningLabel = "study-story-meaning-label"
     const val studyStoryMeaning = "study-story-meaning"
+    const val studyStoryActions = "study-story-actions"
+    const val studyStoryBack = "study-story-back"
     const val studyStoryContinue = "study-story-continue"
+    const val studyStoryFullscreen = "study-story-fullscreen"
     const val studyWatchPlayer = "study-watch-player"
     const val studyWatchStage = "study-watch-stage"
     const val studyWatchImage = "study-watch-image"
@@ -3499,6 +3505,39 @@ object Styles {
                 color-mix(in srgb, var(--md-sys-color-primary) 4%, var(--md-sys-color-surface));
             box-shadow: 0 10px 28px color-mix(in srgb, var(--md-shadow) 35%, transparent);
         }
+        .${studyStoryHeader} {
+            display: flex;
+            align-items: center;
+            gap: 8px;
+            min-height: 40px;
+        }
+        .${studyStoryHeader} .${studyStoryProgress} {
+            align-self: auto;
+        }
+        .${studyStoryFullscreen} {
+            margin-left: auto;
+            padding: 9px;
+        }
+        .${studyStoryShell}.${studyStoryCardFullscreen},
+        .${studyStoryShell}:fullscreen,
+        .${studyStoryShell}:-webkit-full-screen {
+            position: fixed;
+            inset: 0;
+            z-index: 70;
+            width: 100%;
+            height: 100%;
+            box-sizing: border-box;
+            padding: 12px 12px 16px;
+            overflow: auto;
+            background: var(--md-sys-color-surface);
+        }
+        .${studyStoryShell}.${studyStoryCardFullscreen} .${studyStoryCard},
+        .${studyStoryShell}:fullscreen .${studyStoryCard},
+        .${studyStoryShell}:-webkit-full-screen .${studyStoryCard} {
+            min-height: 100%;
+            border-radius: 0;
+            box-sizing: border-box;
+        }
         .${studyStoryProgress} {
             align-self: center;
             font-size: 12px;
@@ -3518,6 +3557,7 @@ object Styles {
             aspect-ratio: 1 / 1;
             object-fit: cover;
             box-shadow: 0 12px 30px color-mix(in srgb, var(--md-shadow) 28%, transparent);
+            cursor: pointer;
         }
         .${studyStoryImagePlaceholder} {
             display: flex;
@@ -3546,6 +3586,7 @@ object Styles {
             font-weight: 750;
             letter-spacing: -0.02em;
             color: var(--md-sys-color-on-surface);
+            cursor: pointer;
         }
         .${studyStorySentence} {
             margin: 0;
@@ -3554,6 +3595,7 @@ object Styles {
             line-height: 1.45;
             font-weight: 650;
             color: var(--md-sys-color-on-surface);
+            cursor: pointer;
         }
         .${studyStoryMeaningLabel} {
             display: block;
@@ -3572,14 +3614,22 @@ object Styles {
             line-height: 1.5;
             color: var(--md-sys-color-on-surface);
         }
-        .${studyStoryContinue} {
-            width: 100%;
+        .${studyStoryActions} {
+            display: flex;
+            gap: 10px;
             margin-top: 4px;
+        }
+        .${studyStoryActions} > button {
+            flex: 1 1 0;
+            min-width: 0;
             justify-content: center;
             min-height: 48px;
             border-radius: 999px;
             font-size: 16px;
             font-weight: 700;
+        }
+        .${studyStoryContinue} {
+            width: 100%;
         }
         .${studyWatchPlayer} {
             display: flex;
@@ -3734,7 +3784,7 @@ object Styles {
             background: var(--md-sys-color-surface-variant);
             aspect-ratio: 1 / 1;
             object-fit: cover;
-            margin-bottom: 8px;
+            margin: 8px 0;
             max-width: 16rem;
         }
         .${studyWordImagePlaceholder} {
