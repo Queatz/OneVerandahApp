@@ -10,6 +10,7 @@ import apap.oneverandah.api.SpeechResponse
 import apap.oneverandah.api.StudyDissectSentenceRequest
 import apap.oneverandah.api.StudyExpressCheckRequest
 import apap.oneverandah.api.StudyExpressGenerateRequest
+import apap.oneverandah.api.StudyListenCheckRequest
 import apap.oneverandah.api.StudyPlayScenariosRequest
 import apap.oneverandah.api.StudyPlayTurnRequest
 import apap.oneverandah.api.StudyWriteCheckRequest
@@ -225,6 +226,18 @@ fun Route.chatRoutes(
                 return@post
             }
             call.respond(studyService.expressCheck(request))
+        }
+
+        post("/api/chat/study/listen/check") {
+            val request = call.receive<StudyListenCheckRequest>()
+            if (request.normalizedOrNull() == null) {
+                call.respond(
+                    HttpStatusCode.BadRequest,
+                    ChatErrorResponse("Study listen check requires non-blank source, expected meaning, and attempt text"),
+                )
+                return@post
+            }
+            call.respond(studyService.listenCheck(request))
         }
 
         post("/api/chat/study/express/generate") {

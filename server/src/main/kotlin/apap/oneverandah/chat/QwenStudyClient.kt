@@ -579,6 +579,31 @@ class DashScopeStudyAiClient(
         return QwenStudyExpressCheckParser.parse(content)
     }
 
+    override suspend fun evaluateListenAttempt(
+        request: StudyListenCheckGenerationRequest,
+    ): StudyExpressJudgment {
+        val userContent = buildString {
+            appendLine("Heard sentence (study language ${request.textLanguageTag}):")
+            appendLine(request.sourceText)
+            appendLine()
+            appendLine("Expected meaning (learner's language ${request.languageTag}):")
+            appendLine(request.expectedMeaning)
+            appendLine()
+            appendLine("Learner translation (learner's language ${request.languageTag}):")
+            appendLine(request.attempt)
+        }
+        val content = complete(
+            systemPrompt = listenCheckSystemPrompt(
+                activeLanguageTag = request.languageTag,
+                textLanguageTag = request.textLanguageTag,
+            ),
+            userContent = userContent,
+            label = "study listen check",
+            temperature = 0.2,
+        )
+        return QwenStudyExpressCheckParser.parse(content)
+    }
+
     override suspend fun generateExpressSentences(
         request: StudyExpressGenerateGenerationRequest,
     ): List<StudyExampleSentence> {
@@ -877,6 +902,22 @@ class DashScopeStudyAiClient(
         - "feedback" MUST be written in the learner's active language '$activeLanguageTag'.
         - When correct is true, feedback may be an empty string or a very short encouragement.
         - When correct is false, keep feedback to 1–2 short sentences: say what is missing or off and gently nudge toward the meaning (do not dump a full model answer unless a tiny hint needs showing).
+        - Do not wrap the JSON in markdown. Do not add extra keys.
+    """.trimIndent()
+
+    private fun listenCheckSystemPrompt(activeLanguageTag: String, textLanguageTag: String): String = """
+        You are a precise translation coach for One Verandah Listen practice.
+        The learner hears a sentence in the study language and writes its meaning in their own language.
+        Always return one JSON object and no markdown. The schema is exactly:
+        {"correct":true,"feedback":"short coaching note"}
+        Rules:
+        - The heard sentence is written in the study/source language '$textLanguageTag'.
+        - The expected meaning and learner attempt are written in the learner's active language '$activeLanguageTag'.
+        - "correct" must be a boolean. true when the attempt conveys the same core meaning as the expected meaning.
+        - Natural paraphrases and alternate wording are correct; exact wording is not required.
+        - Set "correct":false when the meaning is wrong, incomplete, contradictory, unintelligible, or in the wrong language.
+        - "feedback" MUST be written in the learner's active language '$activeLanguageTag'.
+        - When incorrect, keep feedback to 1–2 short sentences and identify the key mismatch without revealing the full answer.
         - Do not wrap the JSON in markdown. Do not add extra keys.
     """.trimIndent()
 

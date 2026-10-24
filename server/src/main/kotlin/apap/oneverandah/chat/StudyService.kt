@@ -7,6 +7,8 @@ import apap.oneverandah.api.StudyExpressCheckRequest
 import apap.oneverandah.api.StudyExpressCheckResponse
 import apap.oneverandah.api.StudyExpressGenerateRequest
 import apap.oneverandah.api.StudyExpressGenerateResponse
+import apap.oneverandah.api.StudyListenCheckRequest
+import apap.oneverandah.api.StudyListenCheckResponse
 import apap.oneverandah.api.StudyPlayChatMessage
 import apap.oneverandah.api.StudyPlayHistoryMessage
 import apap.oneverandah.api.StudyPlayScenario
@@ -142,6 +144,14 @@ data class StudyExpressJudgment(
     val feedback: String,
 )
 
+data class StudyListenCheckGenerationRequest(
+    val sourceText: String,
+    val expectedMeaning: String,
+    val attempt: String,
+    val textLanguageTag: String,
+    val languageTag: String,
+)
+
 data class StudyExpressGenerateGenerationRequest(
     val text: String,
     val textLanguageTag: String,
@@ -195,6 +205,8 @@ interface StudyAiClient {
     suspend fun generatePlayTurn(request: StudyPlayTurnGenerationRequest): StudyPlayTurnDesign
     suspend fun evaluateWriteAttempt(request: StudyWriteCheckGenerationRequest): StudyWriteFeedback
     suspend fun evaluateExpressAttempt(request: StudyExpressCheckGenerationRequest): StudyExpressJudgment
+    suspend fun evaluateListenAttempt(request: StudyListenCheckGenerationRequest): StudyExpressJudgment =
+        StudyExpressJudgment(correct = false, feedback = "")
     suspend fun generateExpressSentences(request: StudyExpressGenerateGenerationRequest): List<StudyExampleSentence>
 }
 
@@ -578,6 +590,35 @@ class StudyService(
             defaultExpressFeedback(request.languageTag)
         }
         return StudyExpressCheckResponse(correct = false, feedback = feedback)
+    }
+
+    /** Checks a Listen-tab translation; exact normalized meanings avoid an AI call. */
+    suspend fun listenCheck(rawRequest: StudyListenCheckRequest): StudyListenCheckResponse {
+        val request = requireNotNull(rawRequest.normalizedOrNull()) {
+            "Study listen check requires non-blank source, expected meaning, and attempt text"
+        }
+        if (writeAttemptMatches(request.expectedMeaning, request.attempt)) {
+            return StudyListenCheckResponse(correct = true, feedback = "")
+        }
+        val judgment = runCatching {
+            aiClient.evaluateListenAttempt(
+                StudyListenCheckGenerationRequest(
+                    sourceText = request.sourceText,
+                    expectedMeaning = request.expectedMeaning,
+                    attempt = request.attempt,
+                    textLanguageTag = request.textLanguageTag,
+                    languageTag = request.languageTag,
+                ),
+            )
+        }.getOrElse { error ->
+            log.warn("Study listen check failed: {}", error.message)
+            StudyExpressJudgment(correct = false, feedback = "")
+        }
+        if (judgment.correct) return StudyListenCheckResponse(correct = true, feedback = "")
+        val feedback = judgment.feedback.trim().ifBlank {
+            defaultExpressFeedback(request.languageTag)
+        }
+        return StudyListenCheckResponse(correct = false, feedback = feedback)
     }
 
     /**

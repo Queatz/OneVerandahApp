@@ -719,6 +719,36 @@ data class StudyExpressCheckResponse(
     val feedback: String = "",
 )
 
+/** Listen-tab check: does the learner's translation convey the heard sentence's meaning? */
+@Serializable
+data class StudyListenCheckRequest(
+    val sourceText: String,
+    val expectedMeaning: String,
+    val attempt: String,
+    val textLanguageTag: String,
+    val languageTag: String,
+) {
+    fun normalizedOrNull(): StudyListenCheckRequest? {
+        val normalizedSource = sourceText.trim().takeIf { it.isNotEmpty() } ?: return null
+        val normalizedMeaning = expectedMeaning.trim().takeIf { it.isNotEmpty() } ?: return null
+        val normalizedAttempt = attempt.trim().takeIf { it.isNotEmpty() } ?: return null
+        return copy(
+            sourceText = normalizedSource,
+            expectedMeaning = normalizedMeaning,
+            attempt = normalizedAttempt,
+            textLanguageTag = Language.fromTag(textLanguageTag).tag,
+            languageTag = Language.fromTag(languageTag).tag,
+        )
+    }
+}
+
+/** Judgment for a Listen-tab translation attempt. */
+@Serializable
+data class StudyListenCheckResponse(
+    val correct: Boolean,
+    val feedback: String = "",
+)
+
 /**
  * Ask the model for a fresh batch of Express practice sentences using related vocabulary.
  *

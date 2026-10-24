@@ -18,6 +18,8 @@ import apap.oneverandah.api.StudyStoryCharactersResponse
 import apap.oneverandah.api.StudyStoryCharactersRequest
 import apap.oneverandah.api.StudySentenceImageResponse
 import apap.oneverandah.api.StudyIntentResponse
+import apap.oneverandah.api.StudyListenCheckRequest
+import apap.oneverandah.api.StudyListenCheckResponse
 import apap.oneverandah.api.StudySessionRequest
 import apap.oneverandah.api.StudySessionResponse
 import apap.oneverandah.api.StudyToken
@@ -45,6 +47,54 @@ import kotlinx.serialization.json.Json
 
 class ChatRoutesTest {
     private val json = Json { ignoreUnknownKeys = true; encodeDefaults = true }
+
+    @Test
+    fun `study listen check validates and accepts a request`() = testApplication {
+        val chatService = ChatService(
+            repository = InMemoryChatRepository(),
+            aiClient = object : ChatAiClient {
+                override suspend fun generate(
+                    request: ChatGenerationRequest,
+                    onPartial: suspend (GeneratedChatReply) -> Unit,
+                ) = GeneratedChatReply("unused")
+            },
+            residentDirectory = ResidentDirectory(emptyList()),
+        )
+        val studyService = StudyService(FakeStudyAiClient())
+        application {
+            install(ContentNegotiation) { json() }
+            routing {
+                chatRoutes(
+                    chatService = chatService,
+                    speechService = SpeechService(RouteSpeechClient()),
+                    studyService = studyService,
+                )
+            }
+        }
+
+        val invalid = client.post("/api/chat/study/listen/check") {
+            contentType(ContentType.Application.Json)
+            setBody("""{"sourceText":"Xin chào.","expectedMeaning":" ","attempt":"Hello","textLanguageTag":"vi","languageTag":"en"}""")
+        }
+        assertEquals(HttpStatusCode.BadRequest, invalid.status)
+
+        val response = client.post("/api/chat/study/listen/check") {
+            contentType(ContentType.Application.Json)
+            setBody(
+                json.encodeToString(
+                    StudyListenCheckRequest(
+                        sourceText = "Xin chào.",
+                        expectedMeaning = "Hello.",
+                        attempt = "Hello.",
+                        textLanguageTag = "vi",
+                        languageTag = "en",
+                    ),
+                ),
+            )
+        }
+        assertEquals(HttpStatusCode.OK, response.status)
+        assertEquals(true, json.decodeFromString<StudyListenCheckResponse>(response.bodyAsText()).correct)
+    }
 
     @Test
     fun `chat endpoint validates sends and exposes history`() = testApplication {

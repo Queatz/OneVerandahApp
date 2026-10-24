@@ -21,6 +21,7 @@ import apap.oneverandah.api.StudyWordPlaygroundRequest
 import apap.oneverandah.images.PromptFactory
 import apap.oneverandah.api.StudyExpressCheckRequest
 import apap.oneverandah.api.StudyExpressGenerateRequest
+import apap.oneverandah.api.StudyListenCheckRequest
 import kotlin.test.Test
 import kotlin.test.assertContains
 import kotlin.test.assertEquals
@@ -1299,6 +1300,47 @@ class StudyServiceTest {
     }
 
     @Test
+    fun `listen check accepts exact meaning without AI`() = runBlocking {
+        val fake = FakeStudyAiClient(
+            listenJudgment = StudyExpressJudgment(correct = false, feedback = "should not be used"),
+        )
+        val response = StudyService(fake).listenCheck(
+            StudyListenCheckRequest(
+                sourceText = "Xin chào bạn.",
+                expectedMeaning = "Hello friend.",
+                attempt = "  Hello   friend. ",
+                textLanguageTag = "vi-VN",
+                languageTag = "en-US",
+            ),
+        )
+        assertTrue(response.correct)
+        assertEquals("", response.feedback)
+        assertEquals(null, fake.lastListenCheckRequest)
+    }
+
+    @Test
+    fun `listen check uses AI for alternate translations`() = runBlocking {
+        val fake = FakeStudyAiClient(
+            listenJudgment = StudyExpressJudgment(correct = true, feedback = "Great"),
+        )
+        val response = StudyService(fake).listenCheck(
+            StudyListenCheckRequest(
+                sourceText = "Xin chào bạn.",
+                expectedMeaning = "Hello friend.",
+                attempt = "Hi there!",
+                textLanguageTag = "vi-VN",
+                languageTag = "en-US",
+            ),
+        )
+        assertTrue(response.correct)
+        assertEquals("Xin chào bạn.", fake.lastListenCheckRequest?.sourceText)
+        assertEquals("Hello friend.", fake.lastListenCheckRequest?.expectedMeaning)
+        assertEquals("Hi there!", fake.lastListenCheckRequest?.attempt)
+        assertEquals("vi", fake.lastListenCheckRequest?.textLanguageTag)
+        assertEquals("en", fake.lastListenCheckRequest?.languageTag)
+    }
+
+    @Test
     fun `express generate returns cleaned AI batch`() = runBlocking {
         val fake = FakeStudyAiClient(
             expressSentences = listOf(
@@ -1386,6 +1428,10 @@ internal class FakeStudyAiClient(
         correct = true,
         feedback = "",
     ),
+    private val listenJudgment: StudyExpressJudgment = StudyExpressJudgment(
+        correct = true,
+        feedback = "",
+    ),
     private val expressSentences: List<StudyExampleSentence> = listOf(
         StudyExampleSentence(text = "Xin chào.", translation = "Hello."),
         StudyExampleSentence(text = "Tạm biệt.", translation = "Goodbye."),
@@ -1404,6 +1450,7 @@ internal class FakeStudyAiClient(
     var lastPlayTurnRequest: StudyPlayTurnGenerationRequest? = null
     var lastWriteCheckRequest: StudyWriteCheckGenerationRequest? = null
     var lastExpressCheckRequest: StudyExpressCheckGenerationRequest? = null
+    var lastListenCheckRequest: StudyListenCheckGenerationRequest? = null
     var lastExpressGenerateRequest: StudyExpressGenerateGenerationRequest? = null
     var lastSceneRequest: StudySceneGenerationRequest? = null
 
@@ -1477,6 +1524,13 @@ internal class FakeStudyAiClient(
     ): StudyExpressJudgment {
         lastExpressCheckRequest = request
         return expressJudgment
+    }
+
+    override suspend fun evaluateListenAttempt(
+        request: StudyListenCheckGenerationRequest,
+    ): StudyExpressJudgment {
+        lastListenCheckRequest = request
+        return listenJudgment
     }
 
     override suspend fun generateExpressSentences(

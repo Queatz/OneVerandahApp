@@ -261,6 +261,17 @@ object ChatApi {
         return json.decodeFromString(StudyExpressCheckResponse.serializer(), text)
     }
 
+    /** Judge a Listen-tab translation in the learner's language. */
+    suspend fun studyListenCheck(request: StudyListenCheckRequest): StudyListenCheckResponse {
+        val response = client.post(chatApiUrl("/study/listen/check")) {
+            contentType(ContentType.Application.Json)
+            setBody(json.encodeToString(StudyListenCheckRequest.serializer(), request))
+        }
+        val text = response.bodyAsText()
+        if (!response.status.isSuccess()) throw ChatApiException(errorMessage(text, response.status.value))
+        return json.decodeFromString(StudyListenCheckResponse.serializer(), text)
+    }
+
     /** Generate a fresh batch of Express practice sentences from related vocabulary. */
     suspend fun studyExpressGenerate(request: StudyExpressGenerateRequest): StudyExpressGenerateResponse {
         val response = client.post(chatApiUrl("/study/express/generate")) {
