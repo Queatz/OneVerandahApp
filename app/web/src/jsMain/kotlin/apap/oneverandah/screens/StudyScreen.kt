@@ -3268,6 +3268,9 @@ internal fun collectExpressPracticeSentences(session: StudySessionResponse): Lis
     return result
 }
 
+private fun List<StudyExampleSentence>.shuffledPracticeSentences(): List<StudyExampleSentence> =
+    if (size < 2) this else shuffled()
+
 internal fun collectExpressVocabulary(session: StudySessionResponse): List<String> =
     session.sentences
         .flatMap { it.tokens }
@@ -3288,7 +3291,7 @@ private fun StudyExpressTab(
     val sessionExamples = remember(session) { collectExpressPracticeSentences(session) }
     val vocabulary = remember(session) { collectExpressVocabulary(session) }
 
-    var queue by remember(session.text) { mutableStateOf(sessionExamples) }
+    var queue by remember(session.text) { mutableStateOf(sessionExamples.shuffledPracticeSentences()) }
     var correctItems by remember(session.text) { mutableStateOf(emptySet<Int>()) }
     var generating by remember(session.text) { mutableStateOf(false) }
     var generateError by remember(session.text) { mutableStateOf<String?>(null) }
@@ -3308,7 +3311,7 @@ private fun StudyExpressTab(
             existingKeys.add(key)
         }
         if (additions.isNotEmpty()) {
-            queue = queue + additions
+            queue = queue + additions.shuffledPracticeSentences()
         }
     }
 
@@ -3335,7 +3338,7 @@ private fun StudyExpressTab(
                     StudyExampleSentence(text = text, translation = translation)
                 }
                 if (fresh.isNotEmpty()) {
-                    queue = queue + fresh
+                    queue = queue + fresh.shuffledPracticeSentences()
                 } else {
                     generateError = strings.chatExpressFeedbackError
                 }
@@ -3521,7 +3524,7 @@ private fun StudyListenTab(
     val audioLoading = remember(session.text) { mutableStateMapOf<String, Boolean>() }
     val audioFailed = remember(session.text) { mutableStateMapOf<String, Boolean>() }
 
-    var queue by remember(session.text) { mutableStateOf(sessionExamples) }
+    var queue by remember(session.text) { mutableStateOf(sessionExamples.shuffledPracticeSentences()) }
     var correctItems by remember(session.text) { mutableStateOf(emptySet<Int>()) }
     var generating by remember(session.text) { mutableStateOf(false) }
     var generateError by remember(session.text) { mutableStateOf<String?>(null) }
@@ -3539,7 +3542,7 @@ private fun StudyListenTab(
             val key = "${example.translation.trim().lowercase()}|${example.text.trim().lowercase()}"
             existingKeys.add(key)
         }
-        if (additions.isNotEmpty()) queue = queue + additions
+        if (additions.isNotEmpty()) queue = queue + additions.shuffledPracticeSentences()
     }
 
     fun loadAudio(text: String, onReady: ((String) -> Unit)? = null) {
@@ -3597,7 +3600,7 @@ private fun StudyListenTab(
                     StudyExampleSentence(text = text, translation = translation)
                 }
                 if (fresh.isNotEmpty()) {
-                    queue = queue + fresh
+                    queue = queue + fresh.shuffledPracticeSentences()
                 } else {
                     generateError = strings.chatExpressFeedbackError
                 }
