@@ -321,6 +321,7 @@ class QwenChallengeNamer(
         return try {
             val payload = buildJsonObject {
                 put("model", config.chatModel)
+                put("enable_thinking", false)
                 put(
                     "messages",
                     buildJsonArray {

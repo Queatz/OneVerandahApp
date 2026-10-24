@@ -22,8 +22,10 @@ class QwenStudyClientTest {
     @Test
     fun `study skeleton and dissect use the heavy chat model`() = runBlocking {
         val models = mutableListOf<String>()
+        val requestBodies = mutableListOf<String>()
         val engine = MockEngine { request ->
             val body = (request.body as OutgoingContent.ByteArrayContent).bytes().decodeToString()
+            requestBodies += body
             models += Json.parseToJsonElement(body).jsonObject["model"]?.jsonPrimitive?.content.orEmpty()
             val content = when (models.size) {
                 1 -> """{"textLanguageTag":"vi","sentences":[{"text":"Xin chào.","tokens":[{"text":"Xin chào","status":"PENDING"},{"text":".","status":"PLAIN"}]}]}"""
@@ -50,6 +52,10 @@ class QwenStudyClientTest {
         )
 
         assertEquals(listOf("qwen3.8-max", "qwen3.8-max"), models)
+        assertEquals(
+            listOf(null, null),
+            requestBodies.map { Json.parseToJsonElement(it).jsonObject["enable_thinking"]?.jsonPrimitive?.content },
+        )
         client.close()
     }
 
@@ -162,8 +168,10 @@ class QwenStudyClientTest {
     @Test
     fun `lighter study tasks use the default flash chat model`() = runBlocking {
         val models = mutableListOf<String>()
+        val requestBodies = mutableListOf<String>()
         val engine = MockEngine { request ->
             val body = (request.body as OutgoingContent.ByteArrayContent).bytes().decodeToString()
+            requestBodies += body
             models += Json.parseToJsonElement(body).jsonObject["model"]?.jsonPrimitive?.content.orEmpty()
             val content = when (models.size) {
                 1 -> """{"natural":true,"summary":"Natural usage."}"""
@@ -250,6 +258,10 @@ class QwenStudyClientTest {
                 "qwen3.8-flash",
             ),
             models,
+        )
+        assertEquals(
+            List(models.size) { "false" },
+            requestBodies.map { Json.parseToJsonElement(it).jsonObject["enable_thinking"]?.jsonPrimitive?.content },
         )
         client.close()
     }

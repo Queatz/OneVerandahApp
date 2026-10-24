@@ -646,6 +646,7 @@ class DashScopeStudyAiClient(
         check(config.enabled) { "Qwen study requires QWEN_API_KEY" }
         val body = buildJsonObject {
             put("model", model)
+            if (model == config.chatModel) put("enable_thinking", false)
             put(
                 "messages",
                 buildJsonArray {
@@ -875,7 +876,7 @@ class DashScopeStudyAiClient(
     """.trimIndent()
 
     private fun writeCheckSystemPrompt(activeLanguageTag: String, textLanguageTag: String): String = """
-        You are a precise writing coach for One Verandah language study.
+        You are a precise writing coach for language study.
         The learner must type the expected sentence exactly (same words and punctuation).
         Their attempt did not match. Explain what is wrong so they can fix it.
         Always return one JSON object and no markdown. The schema is exactly:
@@ -889,7 +890,7 @@ class DashScopeStudyAiClient(
     """.trimIndent()
 
     private fun expressCheckSystemPrompt(activeLanguageTag: String, textLanguageTag: String): String = """
-        You are a precise speaking/writing coach for One Verandah Express practice.
+        You are a precise speaking/writing coach for Express practice.
         The learner sees a meaning in their language and must express that meaning in the study language.
         Always return one JSON object and no markdown. The schema is exactly:
         {"correct":true,"feedback":"short coaching note"}
@@ -906,7 +907,7 @@ class DashScopeStudyAiClient(
     """.trimIndent()
 
     private fun listenCheckSystemPrompt(activeLanguageTag: String, textLanguageTag: String): String = """
-        You are a precise translation coach for One Verandah Listen practice.
+        You are a precise translation coach for Listen practice.
         The learner hears a sentence in the study language and writes its meaning in their own language.
         Always return one JSON object and no markdown. The schema is exactly:
         {"correct":true,"feedback":"short coaching note"}

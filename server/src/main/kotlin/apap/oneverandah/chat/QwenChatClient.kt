@@ -175,6 +175,7 @@ class DashScopeChatAiClient(
         }
         val body = buildJsonObject {
             put("model", config.chatModel)
+            put("enable_thinking", false)
             put("messages", messages)
             put("response_format", buildJsonObject { put("type", "json_object") })
             put("temperature", 0.4)

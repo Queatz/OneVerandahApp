@@ -1,5 +1,15 @@
 package apap.oneverandah.challenges
 
+import apap.oneverandah.config.QwenChatConfig
+import io.ktor.client.HttpClient
+import io.ktor.client.engine.mock.MockEngine
+import io.ktor.client.engine.mock.respond
+import io.ktor.http.HttpHeaders
+import io.ktor.http.HttpStatusCode
+import io.ktor.http.content.OutgoingContent
+import io.ktor.http.headersOf
+import kotlinx.coroutines.runBlocking
+import kotlinx.serialization.json.Json
 import kotlinx.serialization.json.int
 import kotlinx.serialization.json.jsonArray
 import kotlinx.serialization.json.jsonObject
@@ -10,6 +20,39 @@ import kotlin.test.assertNull
 import kotlin.test.assertTrue
 
 class ChallengeTranscriptionTest {
+    @Test
+    fun challengeNamingDisablesThinkingForChatModel() = runBlocking {
+        var requestBody = ""
+        val client = HttpClient(MockEngine { request ->
+            requestBody = (request.body as OutgoingContent.ByteArrayContent).bytes().decodeToString()
+            respond(
+                content = """{"choices":[{"message":{"content":"Poolside Fun"}}]}""",
+                status = HttpStatusCode.OK,
+                headers = headersOf(HttpHeaders.ContentType, "application/json"),
+            )
+        })
+        val config = QwenChatConfig(
+            chatEndpoint = "https://example.test/chat",
+            chatModel = "qwen3.8-flash",
+            chatHeavyModel = "qwen3.8-max",
+            ttsEndpoint = "https://example.test/tts",
+            ttsModel = "qwen-audio-3.0-tts-flash",
+            ttsVoice = "longanhuan_v3.6",
+            voiceDesignEndpoint = "https://example.test/customization",
+            voiceDesignModel = "voice-enrollment",
+            asrEndpoint = "wss://example.test/realtime",
+            asrModel = "qwen3-asr-flash-realtime",
+            apiKey = "test-key",
+        )
+
+        QwenChallengeNamer(config, client).nameFrom("A fun afternoon by the pool")
+
+        val body = Json.parseToJsonElement(requestBody).jsonObject
+        assertEquals("qwen3.8-flash", body["model"]?.jsonPrimitive?.content)
+        assertEquals("false", body["enable_thinking"]?.jsonPrimitive?.content)
+        client.close()
+    }
+
     @Test
     fun parseFileTranscriptionWordsAndText() {
         val raw = """

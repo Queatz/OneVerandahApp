@@ -157,12 +157,13 @@ class ChatServiceTest {
         val systemPrompts = requestBodies.map { bodyText ->
             val body = Json.parseToJsonElement(bodyText).jsonObject
             assertEquals("qwen3.8-flash", body["model"]?.jsonPrimitive?.content)
+            assertEquals("false", body["enable_thinking"]?.jsonPrimitive?.content)
             body["messages"]?.jsonArray
                 ?.first()?.jsonObject
                 ?.get("content")?.jsonPrimitive?.content.orEmpty()
         }
         val shortPrompt = systemPrompts.first { it.contains("1–2 concise sentences") || it.contains("1-2 concise sentences") }
-        val systemPrompt = systemPrompts.first { it.contains("Earth-Mystical Parlance") }
+        val systemPrompt = systemPrompts.first { it.contains("Recognize language-learning intent from meaning in every language") }
         assertContains(shortPrompt, "Keep your response to 1–2 concise sentences")
         assertContains(shortPrompt, "{\"text\":\"helpful response\"}")
         assertContains(systemPrompt, "Recognize language-learning intent from meaning in every language")
@@ -176,14 +177,14 @@ class ChatServiceTest {
         assertContains(systemPrompt, "They may be questions or commands")
         assertContains(systemPrompt, "Never phrase them from the assistant's perspective")
         assertContains(systemPrompt, "Prefer short messages")
-        assertContains(systemPrompt, "Earth-Mystical Parlance")
-        assertContains(systemPrompt, "Lời Huyền Linh")
-        assertContains(systemPrompt, "You fully understand Earth-Mystical Parlance")
-        assertContains(systemPrompt, "Never claim you lack access")
-        assertContains(systemPrompt, "This child's shoulders hum for healing hands")
-        assertContains(systemPrompt, "Dạ, con mong tay lành chạm vai đang ngân")
-        assertContains(systemPrompt, "This child")
-        assertContains(systemPrompt, "Dạ, con")
+        assertContains(systemPrompt, "You are the One Verandah")
+        assertContains(systemPrompt, "Available apartment facts:")
+        assertContains(systemPrompt, "set factId to exactly one listed id")
+        assertContains(systemPrompt, "Otherwise factId must be null")
+        assertContains(systemPrompt, "Never invent a fact id or fact content")
+        assertContains(systemPrompt, "No local resident matched the request")
+        assertContains(systemPrompt, "If a resident matched, acknowledge them accurately in text")
+        assertContains(systemPrompt, "Never invent resident details")
         client.close()
     }
 
