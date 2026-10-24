@@ -3951,6 +3951,58 @@ private fun StudyTokenDetail(
     strings: UiStrings,
     imageFailed: Boolean = false,
 ) {
+    val scope = rememberCoroutineScope()
+    val exampleAudio = remember(token.text, textLanguageTag) { mutableStateMapOf<String, String>() }
+    val pendingExampleAudio = remember(token.text, textLanguageTag) { mutableStateMapOf<String, Boolean>() }
+
+    fun clearExampleLoading(sentence: String) {
+        pendingExampleAudio.remove(sentence)
+    }
+
+    fun clearExampleLoadingWhenPlaying(sentence: String) {
+        val element = activeStudyAudio
+        if (element == null || (!element.paused && !element.ended)) {
+            clearExampleLoading(sentence)
+            return
+        }
+        val finish: (Event) -> Unit = { clearExampleLoading(sentence) }
+        element.addEventListener("playing", finish)
+        element.addEventListener("error", finish)
+        element.addEventListener("abort", finish)
+    }
+
+    fun playExampleSentence(rawText: String) {
+        val sentence = rawText.trim()
+        if (sentence.isEmpty()) return
+        exampleAudio[sentence]?.let { url ->
+            val wasPlaying = isStudyAudioPlaying(url)
+            playAudio(url)
+            if (wasPlaying) {
+                clearExampleLoading(sentence)
+            } else {
+                pendingExampleAudio[sentence] = true
+                clearExampleLoadingWhenPlaying(sentence)
+            }
+            return
+        }
+        if (pendingExampleAudio[sentence] == true) return
+        pendingExampleAudio[sentence] = true
+        scope.launch {
+            val url = runCatching {
+                withSpeechRetry {
+                    ChatApi.speechDataUrl(SpeechRequest(sentence, textLanguageTag))
+                }
+            }.getOrNull()
+            if (url == null) {
+                clearExampleLoading(sentence)
+                return@launch
+            }
+            exampleAudio[sentence] = url
+            playAudio(url)
+            clearExampleLoadingWhenPlaying(sentence)
+        }
+    }
+
     Div(attrs = { classes(Styles.wordDefinition, Styles.studyTokenDetail) }) {
         Span(attrs = { classes(Styles.wordDefinitionTitle) }) { Text(token.text) }
         when {
@@ -3996,7 +4048,15 @@ private fun StudyTokenDetail(
                 }
                 if (token.exampleSentences.isNotEmpty()) {
                     token.exampleSentences.forEach { example ->
-                        Div(attrs = { classes(Styles.studyExampleSentence) }) {
+                        Div(attrs = {
+                            classes(Styles.studyExampleSentence)
+                            val sentence = example.text.trim()
+                            if (pendingExampleAudio[sentence] == true) {
+                                classes(Styles.studyExampleSentenceLoading)
+                                attr("aria-busy", "true")
+                            }
+                            onClick { playExampleSentence(example.text) }
+                        }) {
                             StudyExampleSentenceText(
                                 sentence = example.text,
                                 word = token.text,

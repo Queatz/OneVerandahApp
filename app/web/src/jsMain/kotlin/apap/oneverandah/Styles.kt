@@ -417,6 +417,7 @@ object Styles {
     const val studyWordImage = "study-word-image"
     const val studyWordImagePlaceholder = "study-word-image-placeholder"
     const val studyExampleSentence = "study-example-sentence"
+    const val studyExampleSentenceLoading = "study-example-sentence-loading"
     const val studyExampleWord = "study-example-word"
     const val studyExampleTranslation = "study-example-translation"
     const val studyPlayground = "study-playground"
@@ -3809,6 +3810,14 @@ object Styles {
             margin: 0 0 10px;
             padding-left: 10px;
             border-left: 3px solid color-mix(in srgb, var(--md-sys-color-primary) 45%, transparent);
+            cursor: pointer;
+        }
+        .${studyExampleSentenceLoading} {
+            animation: study-example-alpha-pulse 0.9s ease-in-out infinite;
+        }
+        @keyframes study-example-alpha-pulse {
+            0%, 100% { opacity: 1; }
+            50% { opacity: 0.35; }
         }
         .${studyExampleSentence} p {
             margin: 0 !important;
