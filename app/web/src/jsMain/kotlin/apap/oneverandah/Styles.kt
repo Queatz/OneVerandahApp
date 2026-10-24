@@ -447,6 +447,7 @@ object Styles {
     const val studyWatchPlayer = "study-watch-player"
     const val studyWatchStage = "study-watch-stage"
     const val studyWatchImage = "study-watch-image"
+    const val studyWatchImageBkg = "study-watch-image-bkg"
     const val studyWatchStageStatus = "study-watch-stage-status"
     const val studyWatchControls = "study-watch-controls"
     const val studyWatchSeek = "study-watch-seek"
@@ -3597,7 +3598,7 @@ object Styles {
             aspect-ratio: 16 / 9;
             overflow: hidden;
             border-radius: 21px 21px 0 0;
-            background: color-mix(in srgb, var(--md-sys-color-on-surface) 78%, var(--md-sys-color-surface));
+            background: var(--md-sys-color-surface);
         }
         .${studyWatchImage} {
             position: absolute;
@@ -3605,9 +3606,13 @@ object Styles {
             width: 100%;
             height: 100%;
             display: block;
-            object-fit: cover;
+            object-fit: contain;
             object-position: center;
             border: none;
+        }
+        .${studyWatchImage}.${studyWatchImageBkg} {
+            object-fit: cover;
+            filter: blur(8px) brightness(.5);
         }
         .${studyWatchStageStatus} {
             position: absolute;

@@ -277,6 +277,25 @@ fun Route.chatRoutes(
             }
         }
 
+        get("/api/chat/study/sessions/{id}") {
+            val token = call.request.header(DEVICE_TOKEN_HEADER)
+            val id = call.parameters["id"]?.trim().orEmpty()
+            if (id.isEmpty()) {
+                call.respond(HttpStatusCode.BadRequest, ChatErrorResponse("Study session id is required"))
+                return@get
+            }
+            try {
+                val session = studySessionsService.get(token, id)
+                if (session == null) {
+                    call.respond(HttpStatusCode.NotFound, ChatErrorResponse("Study session not found"))
+                    return@get
+                }
+                call.respond(session)
+            } catch (_: UnauthorizedDeviceException) {
+                call.respond(HttpStatusCode.Unauthorized, ChatErrorResponse("Valid device token required"))
+            }
+        }
+
         post("/api/chat/study/sessions") {
             val token = call.request.header(DEVICE_TOKEN_HEADER)
             val request = call.receive<SaveStudySessionRequest>()

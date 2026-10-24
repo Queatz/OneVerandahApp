@@ -81,10 +81,13 @@ import kotlin.js.Date
 
 @Composable
 fun StudyScreen(
+    sessionId: String? = null,
     initialText: String? = null,
     onInitialTextConsumed: () -> Unit = {},
     onBack: () -> Unit,
     onHome: () -> Unit,
+    onOpenSession: (String) -> Unit = {},
+    onCloseSession: () -> Unit = {},
 ) {
     val strings = Localization.strings
     val language = Localization.language
@@ -196,6 +199,9 @@ fun StudyScreen(
                 studySessionItems = (listOf(saved) + studySessionItems.filterNot {
                     it.id == saved.id || (saved.sourceMessageId != null && it.sourceMessageId == saved.sourceMessageId)
                 }).sortedByDescending { it.updatedAt }
+                if (studyTarget?.id == messageId && sessionId.isNullOrBlank()) {
+                    onOpenSession(saved.id)
+                }
             }
         }
     }
@@ -1165,6 +1171,14 @@ fun StudyScreen(
         }
     }
 
+    fun closeStudy() {
+        studySessionVisible = false
+        stopActiveStudyAudio()
+        if (!sessionId.isNullOrBlank()) {
+            onCloseSession()
+        }
+    }
+
     fun removeStudySession(item: SavedStudySession) {
         scope.launch {
             runCatching { ChatApi.deleteStudySession(item.id) }
@@ -1176,6 +1190,9 @@ fun StudyScreen(
                         studyCache.remove(key)
                     }
                     Toaster.show(strings.removedToast)
+                    if (sessionId == item.id) {
+                        closeStudy()
+                    }
                 }
                 .onFailure { Toaster.show(strings.chatStudySessionsError) }
         }
@@ -1197,11 +1214,6 @@ fun StudyScreen(
             ensureStudyCharacters(messageId)
             ensureStudySentenceImage(messageId, sentenceIndex)
         }
-    }
-
-    fun closeStudy() {
-        studySessionVisible = false
-        stopActiveStudyAudio()
     }
 
 
@@ -1227,7 +1239,38 @@ fun StudyScreen(
     }
 
 
-    LaunchedEffect(initialText) {
+    LaunchedEffect(sessionId) {
+        val id = sessionId?.trim()?.takeIf { it.isNotEmpty() } ?: return@LaunchedEffect
+        if (studySessionVisible && (studyPersistedBySourceId[studyTarget?.id] == id || studyTarget?.id == id)) {
+            return@LaunchedEffect
+        }
+        studySessionVisible = true
+        studyLoading = true
+        studyError = null
+        val ownItems = runCatching { ChatApi.listStudySessions() }.getOrNull()?.items
+        if (ownItems != null) applyStudySessionItems(ownItems)
+        val local = studySessionItems.find { it.id == id }
+        if (local != null) {
+            openSavedStudySession(local, fromCommunity = false)
+            return@LaunchedEffect
+        }
+        runCatching { ChatApi.getStudySession(id) }
+            .onSuccess { item ->
+                openSavedStudySession(
+                    item,
+                    fromCommunity = studySessionItems.none { owned -> owned.id == item.id },
+                )
+            }
+            .onFailure {
+                studyLoading = false
+                studySessionVisible = false
+                Toaster.show(strings.chatStudySessionsError)
+                onCloseSession()
+            }
+    }
+
+    LaunchedEffect(initialText, sessionId) {
+        if (!sessionId.isNullOrBlank()) return@LaunchedEffect
         initialText?.trim()?.takeIf { it.isNotEmpty() }?.let { text ->
             onInitialTextConsumed()
             startStudyFromText(text)
@@ -1288,8 +1331,8 @@ fun StudyScreen(
                 communityHasMore = communityNextCursor != null,
                 strings = strings,
                 onStart = ::startStudyFromText,
-                onOpen = { openSavedStudySession(it) },
-                onOpenCommunity = { openSavedStudySession(it, fromCommunity = true) },
+                onOpen = { onOpenSession(it.id) },
+                onOpenCommunity = { onOpenSession(it.id) },
                 onRemove = ::removeStudySession,
                 onLoadMoreCommunity = { loadCommunitySessions() },
             )
@@ -2196,6 +2239,9 @@ internal fun studySessionPhraseImageUrls(session: StudySessionResponse): List<St
 
 internal const val STUDY_COMMUNITY_PAGE_SIZE = 20
 
+/** Client route for a persisted study session, e.g. `/study/{id}`. */
+internal fun studySessionPath(id: String): String = "/study/${id.trim()}"
+
 /** Appends newly fetched community sessions, skipping ids already on screen. */
 internal fun mergeCommunityStudySessions(
     existing: List<SavedStudySession>,
@@ -2484,6 +2530,16 @@ private fun StudyWatchTab(
 
     Div(attrs = { classes(Styles.studyWatchPlayer) }) {
         Div(attrs = { classes(Styles.studyWatchStage) }) {
+            lastReadyImageUrl?.let { url ->
+                Img(src = url, alt = strings.chatStudySentenceImageAlt, attrs = {
+                    classes(Styles.studyWatchImage, Styles.studyWatchImageBkg)
+                })
+            }
+            overlayImageUrl?.let { url ->
+                Img(src = url, alt = strings.chatStudySentenceImageAlt, attrs = {
+                    classes(Styles.studyWatchImage, Styles.studyWatchImageBkg)
+                })
+            }
             lastReadyImageUrl?.let { url ->
                 Img(src = url, alt = strings.chatStudySentenceImageAlt, attrs = {
                     classes(Styles.studyWatchImage)

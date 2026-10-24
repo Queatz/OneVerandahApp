@@ -40,6 +40,12 @@ class StudySessionsListTest {
         assertEquals(20, STUDY_COMMUNITY_PAGE_SIZE)
     }
 
+    @Test
+    fun `study session path is shareable by id`() {
+        assertEquals("/study/abc-123", studySessionPath("abc-123"))
+        assertEquals("/study/abc-123", studySessionPath(" abc-123 "))
+    }
+
     private fun sampleSaved(id: String, text: String) = SavedStudySession(
         id = id,
         languageTag = "en",

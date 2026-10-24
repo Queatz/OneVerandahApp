@@ -110,6 +110,22 @@ class StudySessionsRoutesTest {
         assertEquals(HttpStatusCode.OK, listB.status)
         assertTrue(json.decodeFromString(SavedStudySessionsResponse.serializer(), listB.bodyAsText()).items.isEmpty())
 
+        val unauthorizedGet = client.get("/api/chat/study/sessions/${saved.id}")
+        assertEquals(HttpStatusCode.Unauthorized, unauthorizedGet.status)
+
+        val shared = client.get("/api/chat/study/sessions/${saved.id}") {
+            header(DEVICE_TOKEN_HEADER, tokenB)
+        }
+        assertEquals(HttpStatusCode.OK, shared.status)
+        val fetched = json.decodeFromString(SavedStudySession.serializer(), shared.bodyAsText())
+        assertEquals(saved.id, fetched.id)
+        assertEquals("Xin chào.", fetched.text)
+
+        val missing = client.get("/api/chat/study/sessions/missing-id") {
+            header(DEVICE_TOKEN_HEADER, tokenA)
+        }
+        assertEquals(HttpStatusCode.NotFound, missing.status)
+
         val foreignDelete = client.delete("/api/chat/study/sessions/${saved.id}") {
             header(DEVICE_TOKEN_HEADER, tokenB)
         }

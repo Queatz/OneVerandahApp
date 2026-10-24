@@ -23,6 +23,7 @@ import apap.oneverandah.screens.HelpScreen
 import apap.oneverandah.screens.ListServiceScreen
 import apap.oneverandah.screens.ChatScreen
 import apap.oneverandah.screens.StudyScreen
+import apap.oneverandah.screens.studySessionPath
 import apap.oneverandah.screens.PhrasesScreen
 import apap.oneverandah.screens.ChallengePlayerScreen
 import apap.oneverandah.screens.ChallengesScreen
@@ -49,6 +50,8 @@ fun main() {
  *  - `/`                  -> categories (home)
  *  - `/category/{id}`     -> services in a category
  *  - `/service/{id}`      -> offer / booking details
+ *  - `/study`             -> study sessions
+ *  - `/study/{id}`        -> a specific shareable study session
  */
 @Composable
 fun App() {
@@ -141,12 +144,28 @@ fun App() {
         }
 
         route("study") {
+            string { studyId ->
+                StudyScreen(
+                    sessionId = studyId,
+                    initialText = pendingStudyText,
+                    onInitialTextConsumed = { pendingStudyText = null },
+                    onBack = { router.navigate("/") },
+                    onHome = { router.navigate("/") },
+                    onOpenSession = { id ->
+                        val path = studySessionPath(id)
+                        if (router.currentPath.path != path) router.navigate(path)
+                    },
+                    onCloseSession = { router.navigate("/study") },
+                )
+            }
             noMatch {
                 StudyScreen(
                     initialText = pendingStudyText,
                     onInitialTextConsumed = { pendingStudyText = null },
                     onBack = { router.navigate("/") },
                     onHome = { router.navigate("/") },
+                    onOpenSession = { id -> router.navigate(studySessionPath(id)) },
+                    onCloseSession = { router.navigate("/study") },
                 )
             }
         }

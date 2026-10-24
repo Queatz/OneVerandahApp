@@ -130,6 +130,14 @@ class StudySessionsService(
         return SavedStudySessionsResponse(items)
     }
 
+    /** Any saved session can be opened by id so `/study/{id}` links are shareable. */
+    suspend fun get(rawDeviceToken: String?, id: String): SavedStudySession? {
+        requireDevice(rawDeviceToken)
+        val key = id.trim()
+        if (key.isEmpty()) return null
+        return repository.findById(key)?.toApi()
+    }
+
     suspend fun listCommunity(
         rawDeviceToken: String?,
         cursor: String? = null,

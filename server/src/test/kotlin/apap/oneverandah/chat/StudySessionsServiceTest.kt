@@ -53,6 +53,14 @@ class StudySessionsServiceTest {
         assertEquals("Hello from A", listA.single().text)
         assertEquals("en", listA.single().languageTag)
 
+        val fetchedByB = service.get(tokenB, savedA.id)
+        assertEquals(savedA.id, fetchedByB?.id)
+        assertEquals("Hello from A", fetchedByB?.text)
+        assertNull(service.get(tokenA, "missing-id"))
+        assertFailsWith<UnauthorizedDeviceException> {
+            service.get(null, savedA.id)
+        }
+
         assertFalse(service.delete(tokenB, savedA.id))
         assertEquals(1, service.list(tokenA).items.size)
         assertTrue(service.delete(tokenA, savedA.id))

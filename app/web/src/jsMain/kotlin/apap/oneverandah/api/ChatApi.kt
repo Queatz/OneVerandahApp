@@ -285,6 +285,18 @@ object ChatApi {
         return json.decodeFromString(SavedStudySessionsResponse.serializer(), text)
     }
 
+    suspend fun getStudySession(id: String): SavedStudySession {
+        val token = DeviceTokenStore.ensureToken()
+        val response = client.get(chatApiUrl("/study/sessions/$id")) {
+            header(DEVICE_TOKEN_HEADER, token)
+        }
+        val text = response.bodyAsText()
+        if (!response.status.isSuccess()) {
+            throw ChatApiException(errorMessage(text, response.status.value), response.status.value)
+        }
+        return json.decodeFromString(SavedStudySession.serializer(), text)
+    }
+
     suspend fun listCommunityStudySessions(
         cursor: String? = null,
         limit: Int = 20,
