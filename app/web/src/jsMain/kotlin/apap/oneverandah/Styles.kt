@@ -456,6 +456,8 @@ object Styles {
     const val studyWatchSeekMarker = "study-watch-seek-marker"
     const val studyWatchSeekThumb = "study-watch-seek-thumb"
     const val studyWatchTime = "study-watch-time"
+    const val studyWatchFullscreen = "study-watch-fullscreen"
+    const val studyWatchPlayerFullscreen = "study-watch-player-fullscreen"
     const val storiesSoon = "stories-soon"
     const val storiesGrid = "stories-grid"
     const val challengeStartCard = "challenge-start-card"
@@ -3694,6 +3696,32 @@ object Styles {
             font-variant-numeric: tabular-nums;
             color: var(--md-sys-color-on-surface-variant);
             white-space: nowrap;
+        }
+        .${studyWatchFullscreen} {
+            padding: 9px;
+        }
+        .${studyWatchPlayer}.${studyWatchPlayerFullscreen},
+        .${studyWatchPlayer}:fullscreen,
+        .${studyWatchPlayer}:-webkit-full-screen {
+            position: fixed;
+            inset: 0;
+            z-index: 70;
+            width: 100%;
+            height: 100%;
+            max-width: none;
+            box-sizing: border-box;
+            border-radius: 0;
+            border: none;
+            padding: 12px 0 16px;
+            box-shadow: none;
+        }
+        .${studyWatchPlayer}.${studyWatchPlayerFullscreen} .${studyWatchStage},
+        .${studyWatchPlayer}:fullscreen .${studyWatchStage},
+        .${studyWatchPlayer}:-webkit-full-screen .${studyWatchStage} {
+            flex: 1 1 auto;
+            aspect-ratio: auto;
+            min-height: 0;
+            border-radius: 0;
         }
         .${studyTokenDetail} {
             margin-top: 2px;

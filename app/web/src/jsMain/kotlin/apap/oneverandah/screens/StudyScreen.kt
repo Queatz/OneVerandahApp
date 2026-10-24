@@ -2186,6 +2186,39 @@ private fun preloadWatchImages(
     }
 }
 
+private fun currentFullscreenElement(): Element? {
+    val doc = document.asDynamic()
+    return (
+        doc.fullscreenElement
+            ?: doc.webkitFullscreenElement
+            ?: doc.mozFullScreenElement
+            ?: doc.msFullscreenElement
+        ) as? Element
+}
+
+private fun requestWatchFullscreen(element: Element) {
+    val el = element.asDynamic()
+    val request = el.requestFullscreen
+        ?: el.webkitRequestFullscreen
+        ?: el.webkitRequestFullScreen
+        ?: el.mozRequestFullScreen
+        ?: el.msRequestFullscreen
+    if (request == null) return
+    request.call(element)
+}
+
+private fun exitWatchFullscreen() {
+    if (currentFullscreenElement() == null) return
+    val doc = document.asDynamic()
+    val exit = doc.exitFullscreen
+        ?: doc.webkitExitFullscreen
+        ?: doc.webkitCancelFullScreen
+        ?: doc.mozCancelFullScreen
+        ?: doc.msExitFullscreen
+    if (exit == null) return
+    exit.call(document)
+}
+
 private fun watchKeyboardTargetIsEditable(target: HTMLElement?): Boolean {
     val tag = target?.tagName?.lowercase() ?: return false
     if (tag == "input" || tag == "textarea" || tag == "select" || tag == "button") return true
@@ -2326,6 +2359,10 @@ private fun StudyWatchTab(
     var seekStartMs by remember(session.text) { mutableStateOf(0) }
     var seekGeneration by remember(session.text) { mutableStateOf(0) }
     val dragMsRef = remember { mutableStateOf(0) }
+    var playerElement by remember { mutableStateOf<HTMLElement?>(null) }
+    var isFullscreen by remember { mutableStateOf(false) }
+    val latestIsFullscreen by rememberUpdatedState(isFullscreen)
+    val latestPlayerElement by rememberUpdatedState(playerElement)
 
     val clips = session.sentences.mapIndexedNotNull { index, _ ->
         val key = "sentence-$index"
@@ -2375,6 +2412,16 @@ private fun StudyWatchTab(
         seekGeneration += 1
     }
 
+    fun setWatchFullscreen(enabled: Boolean) {
+        if (enabled) {
+            isFullscreen = true
+            playerElement?.let(::requestWatchFullscreen)
+        } else {
+            isFullscreen = false
+            exitWatchFullscreen()
+        }
+    }
+
     val latestTogglePlay = rememberUpdatedState { togglePlay() }
     DisposableEffect(Unit) {
         val onKey: (Event) -> Unit = { event ->
@@ -2385,10 +2432,30 @@ private fun StudyWatchTab(
                     event.preventDefault()
                     latestTogglePlay.value()
                 }
+            } else if ((key == "Escape" || key == "Esc") && latestIsFullscreen) {
+                isFullscreen = false
+                exitWatchFullscreen()
+            }
+        }
+        val onFullscreen: (Event) -> Unit = {
+            val current = currentFullscreenElement()
+            val el = latestPlayerElement
+            when {
+                el != null && current === el -> isFullscreen = true
+                latestIsFullscreen && current == null -> {
+                    isFullscreen = false
+                }
             }
         }
         window.addEventListener("keydown", onKey)
-        onDispose { window.removeEventListener("keydown", onKey) }
+        document.addEventListener("fullscreenchange", onFullscreen)
+        document.addEventListener("webkitfullscreenchange", onFullscreen)
+        onDispose {
+            window.removeEventListener("keydown", onKey)
+            document.removeEventListener("fullscreenchange", onFullscreen)
+            document.removeEventListener("webkitfullscreenchange", onFullscreen)
+            exitWatchFullscreen()
+        }
     }
 
     LaunchedEffect(sentenceAudio.keys.joinToString()) {
@@ -2528,7 +2595,14 @@ private fun StudyWatchTab(
         previewSeek(watchSeekMsFromClientX(clientX, element, timeline.totalMs))
     }
 
-    Div(attrs = { classes(Styles.studyWatchPlayer) }) {
+    Div(attrs = {
+        classes(Styles.studyWatchPlayer)
+        if (isFullscreen) classes(Styles.studyWatchPlayerFullscreen)
+        ref { element ->
+            playerElement = element
+            onDispose { if (playerElement === element) playerElement = null }
+        }
+    }) {
         Div(attrs = { classes(Styles.studyWatchStage) }) {
             lastReadyImageUrl?.let { url ->
                 Img(src = url, alt = strings.chatStudySentenceImageAlt, attrs = {
@@ -2643,6 +2717,18 @@ private fun StudyWatchTab(
             }
             Span(attrs = { classes(Styles.studyWatchTime) }) {
                 Text("${formatWatchClock(positionMs)} / ${formatWatchClock(timeline.totalMs)}")
+            }
+            Button(attrs = {
+                classes(Styles.sentencePlay, Styles.studyWatchFullscreen)
+                attr("type", "button")
+                attr(
+                    "aria-label",
+                    if (isFullscreen) strings.chatWatchExitFullscreen else strings.chatWatchFullscreen,
+                )
+                attr("aria-pressed", isFullscreen.toString())
+                onClick { setWatchFullscreen(!isFullscreen) }
+            }) {
+                MaterialSymbol(if (isFullscreen) "fullscreen_exit" else "fullscreen")
             }
         }
     }
