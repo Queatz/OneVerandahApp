@@ -89,16 +89,35 @@ class ChatScreenStudyExampleTest {
                 StudySentence(
                     text = "Xin chào bạn.",
                     tokens = listOf(
-                        StudyToken(text = "Xin chào", status = StudyTokenStatus.READY),
+                        StudyToken(
+                            text = "Xin chào",
+                            status = StudyTokenStatus.READY,
+                            exampleSentences = listOf(
+                                StudyExampleSentence(text = "Xin chào bạn.", translation = "Hello friend."),
+                                StudyExampleSentence(text = "Xin chào.", translation = "Hello."),
+                            ),
+                        ),
                         StudyToken(text = " ", status = StudyTokenStatus.PLAIN),
-                        StudyToken(text = "bạn", status = StudyTokenStatus.PENDING),
+                        StudyToken(
+                            text = "bạn",
+                            status = StudyTokenStatus.PENDING,
+                            exampleSentences = listOf(
+                                StudyExampleSentence(text = "Bạn khỏe không?", translation = "How are you?"),
+                            ),
+                        ),
                         StudyToken(text = ".", status = StudyTokenStatus.PLAIN),
                     ),
                 ),
                 StudySentence(
                     text = "Tạm biệt.",
                     tokens = listOf(
-                        StudyToken(text = "Tạm biệt", status = StudyTokenStatus.READY),
+                        StudyToken(
+                            text = "Tạm biệt",
+                            status = StudyTokenStatus.READY,
+                            exampleSentences = listOf(
+                                StudyExampleSentence(text = "Tạm biệt nhé.", translation = "Goodbye."),
+                            ),
+                        ),
                         StudyToken(text = ".", status = StudyTokenStatus.PLAIN),
                     ),
                 ),
@@ -108,8 +127,44 @@ class ChatScreenStudyExampleTest {
         assertEquals(
             listOf(
                 StoryWordStep(sentenceIndex = 0, tokenIndex = 0),
+                StoryWordStep(sentenceIndex = 0, tokenIndex = 0, exampleIndex = 0),
+                StoryWordStep(sentenceIndex = 0, tokenIndex = 0, exampleIndex = 1),
                 StoryWordStep(sentenceIndex = 0, tokenIndex = 2),
+                StoryWordStep(sentenceIndex = 0, tokenIndex = 2, exampleIndex = 0),
                 StoryWordStep(sentenceIndex = 1, tokenIndex = 0),
+                StoryWordStep(sentenceIndex = 1, tokenIndex = 0, exampleIndex = 0),
+            ),
+            collectStoryWordSteps(session),
+        )
+    }
+
+    @Test
+    fun `story word steps omit blank examples and keep the word step index null`() {
+        val session = StudySessionResponse(
+            text = "Xin chào",
+            textLanguageTag = "vi",
+            sentences = listOf(
+                StudySentence(
+                    text = "Xin chào",
+                    tokens = listOf(
+                        StudyToken(
+                            text = "Xin chào",
+                            status = StudyTokenStatus.READY,
+                            exampleSentences = listOf(
+                                StudyExampleSentence(text = "  ", translation = "Blank source."),
+                                StudyExampleSentence(text = "Xin chào!", translation = "Hello!"),
+                                StudyExampleSentence(text = "", translation = ""),
+                            ),
+                        ),
+                    ),
+                ),
+            ),
+        )
+
+        assertEquals(
+            listOf(
+                StoryWordStep(sentenceIndex = 0, tokenIndex = 0),
+                StoryWordStep(sentenceIndex = 0, tokenIndex = 0, exampleIndex = 1),
             ),
             collectStoryWordSteps(session),
         )

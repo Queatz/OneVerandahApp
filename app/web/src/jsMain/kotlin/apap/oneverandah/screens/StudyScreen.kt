@@ -63,6 +63,12 @@ import kotlinx.coroutines.launch
 import kotlinx.coroutines.sync.Semaphore
 import kotlinx.coroutines.sync.withPermit
 import org.jetbrains.compose.web.attributes.InputType
+import org.jetbrains.compose.web.css.DisplayStyle
+import org.jetbrains.compose.web.css.FlexDirection
+import org.jetbrains.compose.web.css.cssRem
+import org.jetbrains.compose.web.css.display
+import org.jetbrains.compose.web.css.flexDirection
+import org.jetbrains.compose.web.css.gap
 import org.jetbrains.compose.web.dom.B
 import org.jetbrains.compose.web.dom.Button
 import org.jetbrains.compose.web.dom.Div
@@ -2246,19 +2252,29 @@ private fun watchKeyboardTargetIsEditable(target: HTMLElement?): Boolean {
 
 private enum class StudyStoryPhase { WORDS, SENTENCES }
 
-/** Ordered story-walkthrough steps for non-plain study tokens. */
+/** Ordered story-walkthrough steps for non-plain study tokens and their examples. */
 internal data class StoryWordStep(
     val sentenceIndex: Int,
     val tokenIndex: Int,
+    val exampleIndex: Int? = null,
 )
 
-/** Collects every non-plain token in reading order for the Story tab. */
+/** Collects every non-plain token and its examples in reading order for the Story tab. */
 internal fun collectStoryWordSteps(session: StudySessionResponse): List<StoryWordStep> {
     val steps = mutableListOf<StoryWordStep>()
     session.sentences.forEachIndexed { sentenceIndex, sentence ->
         sentence.tokens.forEachIndexed { tokenIndex, token ->
             if (token.status != StudyTokenStatus.PLAIN && token.text.isNotBlank()) {
                 steps += StoryWordStep(sentenceIndex = sentenceIndex, tokenIndex = tokenIndex)
+                token.exampleSentences.forEachIndexed { exampleIndex, example ->
+                    if (example.text.isNotBlank()) {
+                        steps += StoryWordStep(
+                            sentenceIndex = sentenceIndex,
+                            tokenIndex = tokenIndex,
+                            exampleIndex = exampleIndex,
+                        )
+                    }
+                }
             }
         }
     }
@@ -2782,6 +2798,7 @@ private fun StudyStoryTab(
     val latestStoryElement by rememberUpdatedState(storyElement)
     // Learner-language meaning clips (literal / context) keyed by spoken text.
     val meaningAudio = remember(session.text) { mutableStateMapOf<String, String>() }
+    val exampleAudio = remember(session.text) { mutableStateMapOf<String, String>() }
     val learnerLanguageTag = Localization.language.tag
 
     fun advanceStory() {
@@ -2932,6 +2949,7 @@ private fun StudyStoryTab(
                 "$mid#${step.sentenceIndex}#${step.tokenIndex}"
             }
             val wordFailed = wordFailKey != null && wordImageFailed[wordFailKey] == true
+            val example = step.exampleIndex?.let(token.exampleSentences::getOrNull)
             val sentenceClipUrl = sentenceAudio["sentence-${step.sentenceIndex}"]?.url
             val meaningTexts = collectStoryMeaningNarrationTexts(
                 literalMeaning = token.literalMeaning,
@@ -2941,9 +2959,41 @@ private fun StudyStoryTab(
             // Meaning texts are part of the key so late-arriving dissections also get spoken.
             val wordAutoplayKey =
                 "word-${step.sentenceIndex}-${step.tokenIndex}-${token.text}|${sentenceClipUrl.orEmpty()}|$replayNonce"
-            val autoplayKey = "$wordAutoplayKey#${meaningTexts.joinToString(separator = "\u0001")}"
+            val autoplayKey = if (example != null) {
+                "example-${step.sentenceIndex}-${step.tokenIndex}-${step.exampleIndex}|${example.text}|${example.translation}|$replayNonce"
+            } else {
+                "$wordAutoplayKey#${meaningTexts.joinToString(separator = "\u0001")}"
+            }
             LaunchedEffect(autoplayKey) {
                 if (lastAutoplayKey == autoplayKey) return@LaunchedEffect
+                if (example != null) {
+                    stopActiveStudyAudio()
+                    lastAutoplayKey = autoplayKey
+                    val clips = listOf(
+                        example.text.trim() to session.textLanguageTag,
+                        example.translation.trim() to learnerLanguageTag,
+                    ).filter { (text, _) -> text.isNotEmpty() }
+                    val urls = mutableListOf<String>()
+                    for ((text, languageTag) in clips) {
+                        val audioKey = "$languageTag|$text"
+                        val cached = exampleAudio[audioKey]
+                        if (cached != null) {
+                            urls += cached
+                            continue
+                        }
+                        val url = runCatching {
+                            withSpeechRetry {
+                                ChatApi.speechDataUrl(SpeechRequest(text, languageTag))
+                            }
+                        }.getOrNull()
+                        if (url != null) {
+                            exampleAudio[audioKey] = url
+                            urls += url
+                        }
+                    }
+                    if (lastAutoplayKey == autoplayKey) playAudioSequence(urls)
+                    return@LaunchedEffect
+                }
                 val previousKey = lastAutoplayKey
                 lastAutoplayKey = autoplayKey
                 val previousWordKey = previousKey?.substringBefore('#')
@@ -3006,36 +3056,59 @@ private fun StudyStoryTab(
                     alt = strings.chatStudyWordImageAlt,
                     onReplay = { replayStoryAudio() },
                 )
-                P(attrs = {
-                    classes(Styles.studyStoryWord)
-                    onClick { replayStoryAudio() }
-                }) { Text(token.text) }
-                when {
-                    token.status == StudyTokenStatus.PENDING || !token.isDissectable -> {
-                        P(attrs = { classes(Styles.studyStoryMeaning) }) {
-                            Text(strings.chatStudyMeaningLoading)
+                if (example != null) {
+                    Div(attrs = {
+                        onClick { replayStoryAudio() }
+
+                        style {
+                            display(DisplayStyle.Flex)
+                            flexDirection(FlexDirection.Column)
+                            gap(1.cssRem)
+                        }
+                    }) {
+                        StudyExampleSentenceText(
+                            sentence = example.text,
+                            word = token.text,
+                            paragraphClass = Styles.studyStoryWord,
+                        )
+                        if (example.translation.isNotBlank()) {
+                            P(attrs = { classes(Styles.studyStoryMeaning) }) {
+                                Text(example.translation)
+                            }
                         }
                     }
-                    else -> {
-                        if (token.literalMeaning.isNotBlank()) {
-                            Span(attrs = { classes(Styles.studyStoryMeaningLabel) }) {
-                                Text(strings.chatStudyLiteral)
-                            }
-                            P(attrs = { classes(Styles.studyStoryMeaning) }) {
-                                Text(token.literalMeaning)
-                            }
-                        }
-                        if (token.contextualMeaning.isNotBlank()) {
-                            Span(attrs = { classes(Styles.studyStoryMeaningLabel) }) {
-                                Text(strings.chatStudyContext)
-                            }
-                            P(attrs = { classes(Styles.studyStoryMeaning) }) {
-                                Text(token.contextualMeaning)
-                            }
-                        }
-                        if (token.literalMeaning.isBlank() && token.contextualMeaning.isBlank()) {
+                } else {
+                    P(attrs = {
+                        classes(Styles.studyStoryWord)
+                        onClick { replayStoryAudio() }
+                    }) { Text(token.text) }
+                    when {
+                        token.status == StudyTokenStatus.PENDING || !token.isDissectable -> {
                             P(attrs = { classes(Styles.studyStoryMeaning) }) {
                                 Text(strings.chatStudyMeaningLoading)
+                            }
+                        }
+                        else -> {
+                            if (token.literalMeaning.isNotBlank()) {
+                                Span(attrs = { classes(Styles.studyStoryMeaningLabel) }) {
+                                    Text(strings.chatStudyLiteral)
+                                }
+                                P(attrs = { classes(Styles.studyStoryMeaning) }) {
+                                    Text(token.literalMeaning)
+                                }
+                            }
+                            if (token.contextualMeaning.isNotBlank()) {
+                                Span(attrs = { classes(Styles.studyStoryMeaningLabel) }) {
+                                    Text(strings.chatStudyContext)
+                                }
+                                P(attrs = { classes(Styles.studyStoryMeaning) }) {
+                                    Text(token.contextualMeaning)
+                                }
+                            }
+                            if (token.literalMeaning.isBlank() && token.contextualMeaning.isBlank()) {
+                                P(attrs = { classes(Styles.studyStoryMeaning) }) {
+                                    Text(strings.chatStudyMeaningLoading)
+                                }
                             }
                         }
                     }
@@ -3220,8 +3293,11 @@ internal fun studyExampleHighlightRanges(sentence: String, word: String): List<I
 private fun StudyExampleSentenceText(
     sentence: String,
     word: String,
+    paragraphClass: String? = null,
 ) {
-    P {
+    P(attrs = {
+        paragraphClass?.let { classes(it) }
+    }) {
         val ranges = studyExampleHighlightRanges(sentence, word)
         if (ranges.isEmpty()) {
             Text(sentence)
