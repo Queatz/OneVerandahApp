@@ -310,7 +310,7 @@ data class StudyDissectSentenceRequest(
             text = normalizedText,
             sentenceText = normalizedSentence,
             tokens = normalizedTokens,
-            textLanguageTag = Language.fromTag(textLanguageTag).tag,
+            textLanguageTag = Language.normalizeContentTag(textLanguageTag),
             languageTag = Language.fromTag(languageTag).tag,
         )
     }
@@ -344,7 +344,7 @@ data class StudyWordPlaygroundRequest(
         return copy(
             word = normalizedWord,
             sentence = normalizedSentence,
-            textLanguageTag = Language.fromTag(textLanguageTag).tag,
+            textLanguageTag = Language.normalizeContentTag(textLanguageTag),
             languageTag = Language.fromTag(languageTag).tag,
             literalMeaning = literalMeaning.trim(),
             contextualMeaning = contextualMeaning.trim(),
@@ -525,7 +525,7 @@ data class StudyPlayScenariosRequest(
         }
         return copy(
             text = normalizedText,
-            textLanguageTag = Language.fromTag(textLanguageTag).tag,
+            textLanguageTag = Language.normalizeContentTag(textLanguageTag),
             languageTag = Language.fromTag(languageTag).tag,
             characters = cast,
         )
@@ -627,7 +627,7 @@ data class StudyPlayTurnRequest(
         }
         return copy(
             text = normalizedText,
-            textLanguageTag = Language.fromTag(textLanguageTag).tag,
+            textLanguageTag = Language.normalizeContentTag(textLanguageTag),
             languageTag = Language.fromTag(languageTag).tag,
             scenarioDescription = normalizedScenario,
             userMessage = normalizedUser,
@@ -666,7 +666,7 @@ data class StudyWriteCheckRequest(
         return copy(
             expected = normalizedExpected,
             attempt = normalizedAttempt,
-            textLanguageTag = Language.fromTag(textLanguageTag).tag,
+            textLanguageTag = Language.normalizeContentTag(textLanguageTag),
             languageTag = Language.fromTag(languageTag).tag,
         )
     }
@@ -703,7 +703,7 @@ data class StudyExpressCheckRequest(
         return copy(
             meaning = normalizedMeaning,
             attempt = normalizedAttempt,
-            textLanguageTag = Language.fromTag(textLanguageTag).tag,
+            textLanguageTag = Language.normalizeContentTag(textLanguageTag),
             languageTag = Language.fromTag(languageTag).tag,
             referenceText = referenceText.trim(),
         )
@@ -736,7 +736,7 @@ data class StudyListenCheckRequest(
             sourceText = normalizedSource,
             expectedMeaning = normalizedMeaning,
             attempt = normalizedAttempt,
-            textLanguageTag = Language.fromTag(textLanguageTag).tag,
+            textLanguageTag = Language.normalizeContentTag(textLanguageTag),
             languageTag = Language.fromTag(languageTag).tag,
         )
     }
@@ -769,7 +769,7 @@ data class StudyExpressGenerateRequest(
         val normalizedText = text.trim().takeIf { it.isNotEmpty() } ?: return null
         return copy(
             text = normalizedText,
-            textLanguageTag = Language.fromTag(textLanguageTag).tag,
+            textLanguageTag = Language.normalizeContentTag(textLanguageTag),
             languageTag = Language.fromTag(languageTag).tag,
             vocabulary = vocabulary.map { it.trim() }.filter { it.isNotEmpty() }.distinct(),
             previousSentences = previousSentences.map { it.trim() }.filter { it.isNotEmpty() },

@@ -49,7 +49,10 @@ internal fun stripJsonFences(content: String): String =
 private fun languageName(tag: String): String {
     val normalized = tag.trim().lowercase().substringBefore('-')
     return Language.entries.firstOrNull { it.tag == normalized }?.displayName
-        ?: normalized.ifBlank { tag }
+        ?: when (normalized) {
+            "my" -> "Burmese"
+            else -> normalized.ifBlank { tag }
+        }
 }
 
 /**

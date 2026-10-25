@@ -271,6 +271,52 @@ class QwenStudyClientTest {
     }
 
     @Test
+    fun `play prompts identify Burmese as the study language`() = runBlocking {
+        val bodies = mutableListOf<String>()
+        val engine = MockEngine { request ->
+            bodies += (request.body as OutgoingContent.ByteArrayContent).bytes().decodeToString()
+            val content = if (bodies.size == 1) {
+                """{"scenarios":[{"description":"A neighbor greets you.","openingLine":"မင်္ဂလာပါ။"},{"description":"A vendor offers fruit.","openingLine":null},{"description":"A classmate asks a question.","openingLine":"နေကောင်းလား။"},{"description":"Someone waves from across the courtyard.","openingLine":null}]}"""
+            } else {
+                """{"description":"They smile.","reply":"နေကောင်းလား။"}"""
+            }
+            respond(
+                content = qwenChatResponse(content),
+                status = HttpStatusCode.OK,
+                headers = headersOf(HttpHeaders.ContentType, "application/json"),
+            )
+        }
+        val client = HttpClient(engine)
+        val ai = DashScopeStudyAiClient(qwenConfig(), client)
+
+        ai.generatePlayScenarios(
+            StudyPlayScenariosGenerationRequest(
+                text = "မင်္ဂလာပါ။",
+                textLanguageTag = "my",
+                languageTag = "en",
+                characters = emptyList(),
+            ),
+        )
+        ai.generatePlayTurn(
+            StudyPlayTurnGenerationRequest(
+                text = "မင်္ဂလာပါ။",
+                textLanguageTag = "my",
+                languageTag = "en",
+                scenarioDescription = "A neighbor greets you.",
+                characters = emptyList(),
+                history = emptyList(),
+                userMessage = "Hello!",
+            ),
+        )
+
+        assertContains(bodies[0], "spoken text ONLY in the study/source language Burmese (my)")
+        assertContains(bodies[0], "Never write an opening line in English (en) unless English is also the study language")
+        assertContains(bodies[1], "reply MUST be written ONLY in the study/source language Burmese (my)")
+        assertContains(bodies[1], "Never write the reply in English (en) unless English is also the study language")
+        client.close()
+    }
+
+    @Test
     fun `intended scene design uses the flash chat model`() = runBlocking {
         val models = mutableListOf<String>()
         val bodies = mutableListOf<String>()

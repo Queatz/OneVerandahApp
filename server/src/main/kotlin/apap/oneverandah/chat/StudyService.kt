@@ -431,7 +431,13 @@ class StudyService(
             log.warn("Study play scenario generation failed: {}", error.message)
             emptyList()
         }
-        val cleaned = normalizePlayScenarioDesigns(designed)
+        val cleaned = normalizePlayScenarioDesigns(designed).map { design ->
+            design.copy(
+                openingLine = design.openingLine?.takeUnless {
+                    request.textLanguageTag != "en" && looksPrimarilyEnglish(it)
+                },
+            )
+        }
         val defaults = defaultPlayScenarios(request.textLanguageTag)
         val designs = (cleaned + defaults)
             .distinctBy { it.description.trim().lowercase() }
@@ -495,6 +501,9 @@ class StudyService(
         val description = designed.description.trim().ifBlank { request.scenarioDescription }
         val reply = designed.reply.trim().ifBlank {
             throw IllegalArgumentException("Play turn reply must not be blank")
+        }
+        require(request.textLanguageTag == "en" || !looksPrimarilyEnglish(reply)) {
+            "Play turn reply must use the study language"
         }
         val imageId = idGenerator().trim().ifBlank { UUID.randomUUID().toString() }
         val referenceUrls = request.characters.mapNotNull {

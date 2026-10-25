@@ -408,6 +408,27 @@ class ChatApiModelsTest {
     }
 
     @Test
+    fun `play requests preserve unsupported study language tags`() {
+        val scenarios = StudyPlayScenariosRequest(
+            text = "မင်္ဂလာပါ။",
+            textLanguageTag = "my-MM",
+            languageTag = "en-US",
+        ).normalizedOrNull()
+        val turn = StudyPlayTurnRequest(
+            text = "မင်္ဂလာပါ။",
+            textLanguageTag = "my-MM",
+            languageTag = "en-US",
+            scenarioDescription = "A neighbor greets you.",
+            userMessage = "Hello!",
+        ).normalizedOrNull()
+
+        assertEquals("my", scenarios?.textLanguageTag)
+        assertEquals("en", scenarios?.languageTag)
+        assertEquals("my", turn?.textLanguageTag)
+        assertEquals("en", turn?.languageTag)
+    }
+
+    @Test
     fun `study play turn request normalizes history and rejects blanks`() {
         val request = StudyPlayTurnRequest(
             text = "  Hello.  ",

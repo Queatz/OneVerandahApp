@@ -1206,6 +1206,51 @@ class StudyServiceTest {
     }
 
     @Test
+    fun `English play opening lines are discarded for Burmese study text`() = runBlocking {
+        val ai = FakeStudyAiClient(
+            playScenarios = listOf(
+                StudyPlayScenarioDesign("A neighbor greets you.", "Hello there!"),
+                StudyPlayScenarioDesign("A vendor offers fruit.", "မင်္ဂလာပါ။"),
+                StudyPlayScenarioDesign("A classmate asks a question.", "How are you?"),
+                StudyPlayScenarioDesign("Someone waves from a courtyard.", null),
+            ),
+        )
+        val service = StudyService(ai)
+
+        val response = service.playScenarios(
+            StudyPlayScenariosRequest(
+                text = "မင်္ဂလာပါ။",
+                textLanguageTag = "my-MM",
+                languageTag = "en",
+            ),
+        )
+
+        assertEquals("my", ai.lastPlayScenariosRequest?.textLanguageTag)
+        assertEquals(listOf(null, "မင်္ဂလာပါ။", null, null), response.scenarios.map { it.openingLine })
+    }
+
+    @Test
+    fun `English play turn replies are rejected for Burmese study text`() = runBlocking {
+        val ai = FakeStudyAiClient(
+            playTurn = StudyPlayTurnDesign(description = "They smile.", reply = "How are you?"),
+        )
+        val service = StudyService(ai)
+
+        assertFailsWith<IllegalArgumentException> {
+            service.playTurn(
+                StudyPlayTurnRequest(
+                    text = "မင်္ဂလာပါ။",
+                    textLanguageTag = "my-MM",
+                    languageTag = "en",
+                    scenarioDescription = "A neighbor greets you.",
+                    userMessage = "Hello!",
+                ),
+            )
+        }
+        assertEquals("my", ai.lastPlayTurnRequest?.textLanguageTag)
+    }
+
+    @Test
     fun `play scenario fallback uses study language instead of UI language`() = runBlocking {
         val service = StudyService(
             aiClient = FakeStudyAiClient(playScenarios = emptyList()),
