@@ -863,11 +863,22 @@ data class SavedStudySession(
 )
 
 @Serializable
-data class SavedStudySessionsResponse(val items: List<SavedStudySession>)
+data class SavedStudySessionSummary(
+    val id: String,
+    val sourceMessageId: String? = null,
+    val languageTag: String,
+    val text: String,
+    val textLanguageTag: String,
+    val createdAt: Long,
+    val updatedAt: Long,
+)
+
+@Serializable
+data class SavedStudySessionsResponse(val items: List<SavedStudySessionSummary>)
 
 /** Paged study sessions from other devices, newest first. */
 @Serializable
 data class CommunityStudySessionsResponse(
-    val items: List<SavedStudySession>,
+    val items: List<SavedStudySessionSummary>,
     val nextCursor: String? = null,
 )

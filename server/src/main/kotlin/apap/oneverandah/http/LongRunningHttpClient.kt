@@ -5,6 +5,8 @@ import io.ktor.client.HttpClientConfig
 import io.ktor.client.engine.cio.CIO
 import io.ktor.client.engine.cio.CIOEngineConfig
 import io.ktor.client.plugins.HttpTimeout
+import io.ktor.client.plugins.websocket.WebSockets
+import kotlinx.coroutines.Dispatchers
 
 /**
  * HTTP client for Qwen / DashScope calls that regularly exceed 15 seconds.
@@ -18,6 +20,9 @@ internal fun longRunningHttpClient(
     configure: HttpClientConfig<CIOEngineConfig>.() -> Unit = {},
 ): HttpClient = HttpClient(CIO) {
     engine {
+        dispatcher = Dispatchers.IO.limitedParallelism(Runtime.getRuntime().availableProcessors().coerceIn(4, 16))
+        maxConnectionsCount = 512
+        endpoint.maxConnectionsPerRoute = 32
         requestTimeout = 0
         endpoint.connectTimeout = 30_000
         endpoint.connectAttempts = 3
@@ -29,4 +34,36 @@ internal fun longRunningHttpClient(
     }
     expectSuccess = false
     configure()
+}
+
+/** HTTP client for short API and ArangoDB requests, isolated from provider calls. */
+internal fun shortHttpClient(): HttpClient = HttpClient(CIO) {
+    engine {
+        dispatcher = Dispatchers.IO.limitedParallelism(16)
+        maxConnectionsCount = 512
+        endpoint.maxConnectionsPerRoute = 32
+        requestTimeout = 30_000
+        endpoint.connectTimeout = 10_000
+        endpoint.connectAttempts = 2
+    }
+    install(HttpTimeout) {
+        requestTimeoutMillis = 30_000
+        connectTimeoutMillis = 10_000
+        socketTimeoutMillis = 30_000
+    }
+    expectSuccess = false
+}
+
+/** Dedicated CIO engine for persistent realtime ASR WebSocket connections. */
+internal fun websocketHttpClient(): HttpClient = HttpClient(CIO) {
+    engine {
+        dispatcher = Dispatchers.IO.limitedParallelism(2)
+        maxConnectionsCount = 32
+        endpoint.maxConnectionsPerRoute = 16
+        requestTimeout = 0
+        endpoint.connectTimeout = 30_000
+        endpoint.connectAttempts = 3
+    }
+    install(WebSockets)
+    expectSuccess = false
 }

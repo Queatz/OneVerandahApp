@@ -19,6 +19,7 @@ import apap.oneverandah.api.ChatSender
 import apap.oneverandah.api.LanguageStudyMiniApp
 import apap.oneverandah.api.SaveStudySessionRequest
 import apap.oneverandah.api.SavedStudySession
+import apap.oneverandah.api.SavedStudySessionSummary
 import apap.oneverandah.api.SpeechRequest
 import apap.oneverandah.api.SpeechTimingAligner
 import apap.oneverandah.api.SpeechWordTiming
@@ -122,25 +123,21 @@ fun StudyScreen(
     val studyPlayFailed = remember { mutableStateMapOf<String, Boolean>() }
     // sourceMessageId (or session id fallback) -> persisted study row id
     val studyPersistedBySourceId = remember { mutableStateMapOf<String, String>() }
-    var studySessionItems by remember { mutableStateOf<List<SavedStudySession>>(emptyList()) }
+    var studySessionItems by remember { mutableStateOf<List<SavedStudySessionSummary>>(emptyList()) }
     var studySessionsLoading by remember { mutableStateOf(false) }
-    var communitySessionItems by remember { mutableStateOf<List<SavedStudySession>>(emptyList()) }
+    var communitySessionItems by remember { mutableStateOf<List<SavedStudySessionSummary>>(emptyList()) }
     var communitySessionsLoading by remember { mutableStateOf(false) }
     var communitySessionsLoadingMore by remember { mutableStateOf(false) }
     var communityNextCursor by remember { mutableStateOf<String?>(null) }
     // Exact = current behavior (study the typed text). Off (default from the list) parses first.
     var studyStartExact by remember { mutableStateOf(true) }
 
-    fun applyStudySessionItems(items: List<SavedStudySession>) {
+    fun applyStudySessionItems(items: List<SavedStudySessionSummary>) {
         studySessionItems = items
         studyPersistedBySourceId.clear()
         items.forEach { item ->
             val key = item.sourceMessageId ?: item.id
             studyPersistedBySourceId[key] = item.id
-            // Warm in-memory cache for matching UI language so reopen is instant.
-            if (item.languageTag == language.tag) {
-                studyCache[key] = item.session
-            }
         }
     }
 
@@ -1186,7 +1183,7 @@ fun StudyScreen(
         }
     }
 
-    fun removeStudySession(item: SavedStudySession) {
+    fun removeStudySession(item: SavedStudySessionSummary) {
         scope.launch {
             runCatching { ChatApi.deleteStudySession(item.id) }
                 .onSuccess {
@@ -1233,11 +1230,6 @@ fun StudyScreen(
         // Definitions are localized to the active UI language, so drop stale sessions.
         studyCache.clear()
         studySentenceStatus.clear()
-        // Re-warm cache from server snapshots that match the new UI language.
-        studySessionItems.filter { it.languageTag == language.tag }.forEach { item ->
-            val key = item.sourceMessageId ?: item.id
-            studyCache[key] = item.session
-        }
         if (studySessionVisible) {
             studyTarget?.let(::openStudy)
         } else {
@@ -1256,11 +1248,6 @@ fun StudyScreen(
         studyError = null
         val ownItems = runCatching { ChatApi.listStudySessions() }.getOrNull()?.items
         if (ownItems != null) applyStudySessionItems(ownItems)
-        val local = studySessionItems.find { it.id == id }
-        if (local != null) {
-            openSavedStudySession(local, fromCommunity = false)
-            return@LaunchedEffect
-        }
         runCatching { ChatApi.getStudySession(id) }
             .onSuccess { item ->
                 openSavedStudySession(
@@ -1350,22 +1337,23 @@ fun StudyScreen(
 
 @Composable
 private fun StudySessionsList(
-    items: List<SavedStudySession>,
+    items: List<SavedStudySessionSummary>,
     loading: Boolean,
-    communityItems: List<SavedStudySession>,
+    communityItems: List<SavedStudySessionSummary>,
     communityLoading: Boolean,
     communityLoadingMore: Boolean,
     communityHasMore: Boolean,
     strings: UiStrings,
     onStart: (text: String?, exact: Boolean) -> Unit,
-    onOpen: (SavedStudySession) -> Unit,
-    onOpenCommunity: (SavedStudySession) -> Unit,
-    onRemove: (SavedStudySession) -> Unit,
+    onOpen: (SavedStudySessionSummary) -> Unit,
+    onOpenCommunity: (SavedStudySessionSummary) -> Unit,
+    onRemove: (SavedStudySessionSummary) -> Unit,
     onLoadMoreCommunity: () -> Unit,
 ) {
     var draft by remember { mutableStateOf("") }
     var exact by remember { mutableStateOf(false) }
-    var pendingRemove by remember { mutableStateOf<SavedStudySession?>(null) }
+    var pendingRemove by remember { mutableStateOf<SavedStudySessionSummary?>(null) }
+    var filter by remember { mutableStateOf(StudySessionsFilter.ALL) }
     val loadMoreCommunity by rememberUpdatedState(onLoadMoreCommunity)
 
     Div(attrs = { classes(Styles.savedPanelBody) }) {
@@ -1396,65 +1384,76 @@ private fun StudySessionsList(
             }
             Text(strings.chatStudyExactToggle)
         }
-        P(attrs = { classes(Styles.studySessionSectionTitle) }) {
-            Text(strings.chatStudySessionsMine)
+        Div(attrs = { classes(Styles.studyModeTabs) }) {
+            Button(attrs = {
+                classes(Styles.chip)
+                if (filter == StudySessionsFilter.ALL) classes(Styles.chipActive)
+                attr("type", "button")
+                attr("aria-pressed", (filter == StudySessionsFilter.ALL).toString())
+                onClick { filter = StudySessionsFilter.ALL }
+            }) { Text(strings.chatAllTab) }
+            Button(attrs = {
+                classes(Styles.chip)
+                if (filter == StudySessionsFilter.MINE) classes(Styles.chipActive)
+                attr("type", "button")
+                attr("aria-pressed", (filter == StudySessionsFilter.MINE).toString())
+                onClick { filter = StudySessionsFilter.MINE }
+            }) { Text(strings.chatStudySessionsMine) }
+            Button(attrs = {
+                classes(Styles.chip)
+                if (filter == StudySessionsFilter.COMMUNITY) classes(Styles.chipActive)
+                attr("type", "button")
+                attr("aria-pressed", (filter == StudySessionsFilter.COMMUNITY).toString())
+                onClick { filter = StudySessionsFilter.COMMUNITY }
+            }) { Text(strings.chatStudySessionsCommunity) }
+        }
+        val visibleItems = studySessionsForFilter(items, communityItems, filter)
+        val visibleLoading = when (filter) {
+            StudySessionsFilter.ALL -> visibleItems.isEmpty() && (loading || communityLoading)
+            StudySessionsFilter.MINE -> loading && visibleItems.isEmpty()
+            StudySessionsFilter.COMMUNITY -> communityLoading && visibleItems.isEmpty()
         }
         when {
-            loading && items.isEmpty() -> {
+            visibleLoading -> {
                 Div(attrs = { classes(Styles.chatStatus) }) {
                     MaterialSymbol("progress_activity")
                     Text(strings.chatThinking)
                 }
             }
-            items.isEmpty() -> {
+            visibleItems.isEmpty() -> {
                 Div(attrs = { classes(Styles.savedPanelEmpty) }) {
-                    MaterialSymbol("menu_book")
-                    P { Text(strings.chatStudySessionsEmpty) }
+                    MaterialSymbol(if (filter == StudySessionsFilter.COMMUNITY) "groups" else "menu_book")
+                    P {
+                        Text(
+                            if (filter == StudySessionsFilter.COMMUNITY) {
+                                strings.chatStudySessionsCommunityEmpty
+                            } else {
+                                strings.chatStudySessionsEmpty
+                            },
+                        )
+                    }
                 }
             }
-            else -> items.forEach { item ->
+            else -> visibleItems.forEach { entry ->
                 StudySessionCard(
-                    item = item,
+                    item = entry.item,
                     strings = strings,
-                    removable = true,
-                    onOpen = { onOpen(item) },
-                    onRemove = { pendingRemove = item },
+                    removable = entry.removable,
+                    onOpen = {
+                        if (entry.removable) onOpen(entry.item) else onOpenCommunity(entry.item)
+                    },
+                    onRemove = { if (entry.removable) pendingRemove = entry.item },
                 )
             }
         }
-        P(attrs = { classes(Styles.studySessionSectionTitle) }) {
-            Text(strings.chatStudySessionsCommunity)
-        }
-        when {
-            communityLoading && communityItems.isEmpty() -> {
-                Div(attrs = { classes(Styles.chatStatus) }) {
-                    MaterialSymbol("progress_activity")
-                    Text(strings.chatThinking)
-                }
-            }
-            communityItems.isEmpty() -> {
-                Div(attrs = { classes(Styles.savedPanelEmpty) }) {
-                    MaterialSymbol("groups")
-                    P { Text(strings.chatStudySessionsCommunityEmpty) }
-                }
-            }
-            else -> communityItems.forEach { item ->
-                StudySessionCard(
-                    item = item,
-                    strings = strings,
-                    removable = false,
-                    onOpen = { onOpenCommunity(item) },
-                    onRemove = {},
-                )
-            }
-        }
-        if (communityLoadingMore) {
+        val showCommunityPaging = filter != StudySessionsFilter.MINE
+        if (showCommunityPaging && communityLoadingMore) {
             Div(attrs = { classes(Styles.chatStatus) }) {
                 MaterialSymbol("progress_activity")
                 Text(strings.chatThinking)
             }
         }
-        if (communityHasMore) {
+        if (showCommunityPaging && communityHasMore) {
             key(communityItems.size) {
                 Div(attrs = {
                     classes(Styles.serviceFeedSentinel)
@@ -1483,7 +1482,7 @@ private fun StudySessionsList(
 
 @Composable
 private fun StudySessionCard(
-    item: SavedStudySession,
+    item: SavedStudySessionSummary,
     strings: UiStrings,
     removable: Boolean,
     onOpen: () -> Unit,
@@ -1498,18 +1497,6 @@ private fun StudySessionCard(
                 onClick { onRemove() }
             }) {
                 MaterialSymbol("delete")
-            }
-        }
-        val phraseImages = studySessionPhraseImageUrls(item.session)
-        if (phraseImages.isNotEmpty()) {
-            Div(attrs = { classes(Styles.studySessionPhraseRow) }) {
-                phraseImages.forEach { url ->
-                    Img(
-                        src = url,
-                        alt = strings.chatStudySentenceImageAlt,
-                        attrs = { classes(Styles.studySessionPhraseImage) },
-                    )
-                }
             }
         }
         Span(attrs = { classes(Styles.savedItemSender) }) {
@@ -1531,10 +1518,10 @@ private fun StudySessionCard(
 
 @Composable
 private fun StudySessionRemoveConfirmDialog(
-    item: SavedStudySession?,
+    item: SavedStudySessionSummary?,
     strings: UiStrings,
     onDismiss: () -> Unit,
-    onConfirm: (SavedStudySession) -> Unit,
+    onConfirm: (SavedStudySessionSummary) -> Unit,
 ) {
     BottomDialog(
         visible = item != null,
@@ -2307,14 +2294,39 @@ internal fun studySessionPhraseImageUrls(session: StudySessionResponse): List<St
 
 internal const val STUDY_COMMUNITY_PAGE_SIZE = 20
 
+internal enum class StudySessionsFilter {
+    ALL,
+    MINE,
+    COMMUNITY,
+}
+
+internal data class StudySessionListEntry(
+    val item: SavedStudySessionSummary,
+    val removable: Boolean,
+)
+
+internal fun studySessionsForFilter(
+    mine: List<SavedStudySessionSummary>,
+    community: List<SavedStudySessionSummary>,
+    filter: StudySessionsFilter,
+): List<StudySessionListEntry> = when (filter) {
+    StudySessionsFilter.MINE -> mine.map { StudySessionListEntry(it, removable = true) }
+    StudySessionsFilter.COMMUNITY -> community.map { StudySessionListEntry(it, removable = false) }
+    StudySessionsFilter.ALL -> {
+        val seen = mine.map { it.id }.toHashSet()
+        mine.map { StudySessionListEntry(it, removable = true) } +
+            community.filter { seen.add(it.id) }.map { StudySessionListEntry(it, removable = false) }
+    }
+}
+
 /** Client route for a persisted study session, e.g. `/study/{id}`. */
 internal fun studySessionPath(id: String): String = "/study/${id.trim()}"
 
 /** Appends newly fetched community sessions, skipping ids already on screen. */
 internal fun mergeCommunityStudySessions(
-    existing: List<SavedStudySession>,
-    incoming: List<SavedStudySession>,
-): List<SavedStudySession> {
+    existing: List<SavedStudySessionSummary>,
+    incoming: List<SavedStudySessionSummary>,
+): List<SavedStudySessionSummary> {
     if (incoming.isEmpty()) return existing
     val seen = existing.map { it.id }.toHashSet()
     return existing + incoming.filter { seen.add(it.id) }

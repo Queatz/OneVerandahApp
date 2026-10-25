@@ -2,6 +2,7 @@ package apap.oneverandah.chat
 
 import apap.oneverandah.api.CommunityStudySessionsResponse
 import apap.oneverandah.api.SavedStudySession
+import apap.oneverandah.api.SavedStudySessionSummary
 import apap.oneverandah.api.SavedStudySessionsResponse
 import apap.oneverandah.routes.DEVICE_TOKEN_HEADER
 import apap.oneverandah.routes.chatRoutes
@@ -91,7 +92,9 @@ class StudySessionsRoutesTest {
             )
         }
         assertEquals(HttpStatusCode.OK, created.status)
-        val saved = json.decodeFromString(SavedStudySession.serializer(), created.bodyAsText())
+        val createdBody = created.bodyAsText()
+        assertTrue("\"session\"" !in createdBody)
+        val saved = json.decodeFromString(SavedStudySessionSummary.serializer(), createdBody)
         assertEquals("Xin chào.", saved.text)
         assertEquals("m1", saved.sourceMessageId)
         assertEquals("vi", saved.textLanguageTag)
@@ -100,7 +103,9 @@ class StudySessionsRoutesTest {
             header(DEVICE_TOKEN_HEADER, tokenA)
         }
         assertEquals(HttpStatusCode.OK, listA.status)
-        val itemsA = json.decodeFromString(SavedStudySessionsResponse.serializer(), listA.bodyAsText())
+        val listBody = listA.bodyAsText()
+        assertTrue("\"session\"" !in listBody)
+        val itemsA = json.decodeFromString(SavedStudySessionsResponse.serializer(), listBody)
         assertEquals(1, itemsA.items.size)
         assertEquals(saved.id, itemsA.items.single().id)
 
@@ -120,6 +125,8 @@ class StudySessionsRoutesTest {
         val fetched = json.decodeFromString(SavedStudySession.serializer(), shared.bodyAsText())
         assertEquals(saved.id, fetched.id)
         assertEquals("Xin chào.", fetched.text)
+        assertEquals("Xin chào.", fetched.session.text)
+        assertEquals(1, fetched.session.sentences.size)
 
         val missing = client.get("/api/chat/study/sessions/missing-id") {
             header(DEVICE_TOKEN_HEADER, tokenA)
@@ -194,7 +201,9 @@ class StudySessionsRoutesTest {
             header(DEVICE_TOKEN_HEADER, tokenA)
         }
         assertEquals(HttpStatusCode.OK, firstPage.status)
-        val page = json.decodeFromString(CommunityStudySessionsResponse.serializer(), firstPage.bodyAsText())
+        val firstPageBody = firstPage.bodyAsText()
+        assertTrue("\"session\"" !in firstPageBody)
+        val page = json.decodeFromString(CommunityStudySessionsResponse.serializer(), firstPageBody)
         assertEquals(1, page.items.size)
         assertEquals("community-two", page.items.single().text)
         assertTrue(!page.nextCursor.isNullOrBlank())

@@ -2,6 +2,8 @@ package apap.oneverandah.chat
 
 import apap.oneverandah.api.StudySessionResponse
 import apap.oneverandah.config.ArangoConfig
+import kotlinx.coroutines.Dispatchers
+import kotlinx.coroutines.withContext
 import io.ktor.client.HttpClient
 import io.ktor.client.request.header
 import io.ktor.client.request.post
@@ -12,12 +14,12 @@ import io.ktor.http.ContentType
 import io.ktor.http.HttpHeaders
 import io.ktor.http.HttpStatusCode
 import io.ktor.http.contentType
+import kotlinx.serialization.SerialName
 import kotlinx.serialization.Serializable
 import kotlinx.serialization.json.Json
 import kotlinx.serialization.json.JsonObject
 import kotlinx.serialization.json.buildJsonArray
 import kotlinx.serialization.json.buildJsonObject
-import kotlinx.serialization.json.decodeFromJsonElement
 import kotlinx.serialization.json.jsonArray
 import kotlinx.serialization.json.jsonObject
 import kotlinx.serialization.json.put
@@ -38,15 +40,18 @@ class ArangoStudySessionsRepository private constructor(
     private val dbUrl = "${config.baseUrl}/_db/${config.database}"
     private val collection = "saved_study_sessions"
 
-    override suspend fun listByDevice(deviceTokenHash: String): List<SavedStudySessionRecord> {
+    override suspend fun listByDevice(deviceTokenHash: String): List<SavedStudySessionSummaryRecord> {
         val body = buildJsonObject {
             put(
                 "query",
-                "FOR doc IN $collection FILTER doc.deviceTokenHash == @deviceTokenHash SORT doc.updatedAt DESC RETURN doc",
+                "FOR doc IN $collection FILTER doc.deviceTokenHash == @deviceTokenHash SORT doc.updatedAt DESC " +
+                    "RETURN { _key: doc._key, sourceMessageId: doc.sourceMessageId, languageTag: doc.languageTag, " +
+                    "text: doc.text, textLanguageTag: doc.textLanguageTag, createdAt: doc.createdAt, " +
+                    "updatedAt: doc.updatedAt }",
             )
             put("bindVars", buildJsonObject { put("deviceTokenHash", deviceTokenHash) })
         }
-        return queryDocuments(body, "list study sessions")
+        return querySummaryDocuments(body, "list study sessions")
     }
 
     override suspend fun findByDeviceAndSource(
@@ -88,10 +93,13 @@ class ArangoStudySessionsRepository private constructor(
 
     override suspend fun upsert(record: SavedStudySessionRecord): SavedStudySessionRecord {
         val document = SavedStudySessionDocument.fromRecord(record)
+        val body = withContext(Dispatchers.Default) {
+            json.encodeToString(SavedStudySessionDocument.serializer(), document)
+        }
         val response = client.post("$dbUrl/_api/document/$collection?overwrite=true") {
             authed()
             contentType(ContentType.Application.Json)
-            setBody(json.encodeToString(SavedStudySessionDocument.serializer(), document))
+            setBody(body)
         }
         ensureSuccess(response, "upsert study session")
         return record
@@ -159,7 +167,7 @@ class ArangoStudySessionsRepository private constructor(
         limit: Int,
         afterUpdatedAt: Long?,
         afterId: String?,
-    ): List<SavedStudySessionRecord> {
+    ): List<SavedStudySessionSummaryRecord> {
         val hasCursor = afterUpdatedAt != null && !afterId.isNullOrBlank()
         val body = buildJsonObject {
             put(
@@ -172,7 +180,15 @@ class ArangoStudySessionsRepository private constructor(
                     OR (doc.updatedAt == @afterUpdatedAt AND doc._key < @afterId)
                   SORT doc.updatedAt DESC, doc._key DESC
                   LIMIT @limit
-                  RETURN doc
+                  RETURN {
+                    _key: doc._key,
+                    sourceMessageId: doc.sourceMessageId,
+                    languageTag: doc.languageTag,
+                    text: doc.text,
+                    textLanguageTag: doc.textLanguageTag,
+                    createdAt: doc.createdAt,
+                    updatedAt: doc.updatedAt
+                  }
                 """.trimIndent(),
             )
             put(
@@ -186,7 +202,7 @@ class ArangoStudySessionsRepository private constructor(
                 },
             )
         }
-        return queryDocuments(body, "list community study sessions")
+        return querySummaryDocuments(body, "list community study sessions")
     }
 
     private suspend fun queryDocuments(body: JsonObject, action: String): List<SavedStudySessionRecord> {
@@ -197,9 +213,29 @@ class ArangoStudySessionsRepository private constructor(
         }
         val text = response.bodyAsText()
         ensureSuccess(response, action)
+        return withContext(Dispatchers.Default) {
+            json.parseToJsonElement(text).jsonObject["result"]?.jsonArray.orEmpty().mapNotNull {
+                runCatching { json.decodeFromJsonElement(SavedStudySessionDocument.serializer(), it).toRecord() }
+                    .getOrNull()
+            }
+        }
+    }
+
+    private suspend fun querySummaryDocuments(
+        body: JsonObject,
+        action: String,
+    ): List<SavedStudySessionSummaryRecord> {
+        val response = client.post("$dbUrl/_api/cursor") {
+            authed()
+            contentType(ContentType.Application.Json)
+            setBody(json.encodeToString(JsonObject.serializer(), body))
+        }
+        val text = response.bodyAsText()
+        ensureSuccess(response, action)
         return json.parseToJsonElement(text).jsonObject["result"]?.jsonArray.orEmpty().mapNotNull {
-            runCatching { json.decodeFromJsonElement(SavedStudySessionDocument.serializer(), it).toRecord() }
-                .getOrNull()
+            runCatching {
+                json.decodeFromJsonElement(SavedStudySessionSummaryDocument.serializer(), it).toRecord()
+            }.getOrNull()
         }
     }
 
@@ -291,6 +327,27 @@ class ArangoStudySessionsRepository private constructor(
         internal fun sanitizeKey(id: String): String =
             id.replace(Regex("[^A-Za-z0-9_:-]"), "_")
     }
+}
+
+@Serializable
+private data class SavedStudySessionSummaryDocument(
+    @SerialName("_key") val key: String,
+    val sourceMessageId: String? = null,
+    val languageTag: String,
+    val text: String,
+    val textLanguageTag: String,
+    val createdAt: Long,
+    val updatedAt: Long,
+) {
+    fun toRecord() = SavedStudySessionSummaryRecord(
+        id = key,
+        sourceMessageId = sourceMessageId,
+        languageTag = languageTag,
+        text = text,
+        textLanguageTag = textLanguageTag,
+        createdAt = createdAt,
+        updatedAt = updatedAt,
+    )
 }
 
 @Serializable

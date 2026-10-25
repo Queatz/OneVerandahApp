@@ -32,7 +32,10 @@ import io.ktor.http.HttpHeaders
 import io.ktor.http.HttpStatusCode
 import io.ktor.server.request.header
 import io.ktor.server.request.receive
+import io.ktor.server.request.receiveText
+import io.ktor.server.application.ApplicationCall
 import io.ktor.server.response.respond
+import io.ktor.server.response.respondText
 import io.ktor.server.response.respondTextWriter
 import io.ktor.server.routing.Route
 import io.ktor.server.routing.delete
@@ -40,11 +43,20 @@ import io.ktor.server.routing.get
 import io.ktor.server.routing.post
 import io.ktor.server.websocket.webSocket
 import java.util.Base64
+import kotlinx.coroutines.Dispatchers
+import kotlinx.coroutines.withContext
 import kotlinx.serialization.json.Json
 
 const val DEVICE_TOKEN_HEADER = "X-Device-Token"
 
 private val chatStreamJson = Json {
+    encodeDefaults = true
+    explicitNulls = false
+    ignoreUnknownKeys = true
+    classDiscriminator = "type"
+}
+
+private val studyPayloadJson = Json {
     encodeDefaults = true
     explicitNulls = false
     ignoreUnknownKeys = true
@@ -108,7 +120,7 @@ fun Route.chatRoutes(
                 call.respond(HttpStatusCode.BadRequest, ChatErrorResponse("Study text must not be blank"))
                 return@post
             }
-            call.respond(studyService.skeleton(request))
+            call.respondStudyPayload(studyService.skeleton(request))
         }
 
         post("/api/chat/study/intent") {
@@ -303,7 +315,7 @@ fun Route.chatRoutes(
                     call.respond(HttpStatusCode.NotFound, ChatErrorResponse("Study session not found"))
                     return@get
                 }
-                call.respond(session)
+                call.respondStudyPayload(session)
             } catch (_: UnauthorizedDeviceException) {
                 call.respond(HttpStatusCode.Unauthorized, ChatErrorResponse("Valid device token required"))
             }
@@ -311,7 +323,7 @@ fun Route.chatRoutes(
 
         post("/api/chat/study/sessions") {
             val token = call.request.header(DEVICE_TOKEN_HEADER)
-            val request = call.receive<SaveStudySessionRequest>()
+            val request = call.receiveStudyPayload<SaveStudySessionRequest>()
             if (request.normalizedOrNull() == null) {
                 call.respond(
                     HttpStatusCode.BadRequest,
@@ -399,6 +411,16 @@ fun Route.chatRoutes(
         }
         call.respond(ChatHistoryResponse(conversationId, chatService.history(conversationId)))
     }
+}
+
+private suspend inline fun <reified T> ApplicationCall.receiveStudyPayload(): T {
+    val text = receiveText()
+    return withContext(Dispatchers.Default) { studyPayloadJson.decodeFromString(text) }
+}
+
+private suspend inline fun <reified T> ApplicationCall.respondStudyPayload(payload: T) {
+    val text = withContext(Dispatchers.Default) { studyPayloadJson.encodeToString(payload) }
+    respondText(text, ContentType.Application.Json)
 }
 
 fun Route.asrRoutes(asrRelay: QwenAsrRelay) {

@@ -70,12 +70,13 @@ fun main() {
     // Cloned-voice admin uploads need the same storage backend as images.
     val chatSystem = runBlocking { ChatSystem.create(config, imageSystem.storage) }
     val phraseSystem = runBlocking {
-        PhraseSystem.create(config, imageSystem.storage, imageSystem.httpClient)
+        PhraseSystem.create(config, imageSystem.storage, imageSystem.httpClient, imageSystem.longHttpClient)
     }
 
     val server = embeddedServer(
         Netty,
         configure = {
+            callGroupSize = maxOf(16, Runtime.getRuntime().availableProcessors() * 2)
             connector {
                 host = config.host
                 port = config.port
@@ -115,7 +116,7 @@ fun Application.module() {
     val imageSystem = runBlocking { ImageSystem.create(config) }
     val chatSystem = runBlocking { ChatSystem.create(config, imageSystem.storage) }
     val phraseSystem = runBlocking {
-        PhraseSystem.create(config, imageSystem.storage, imageSystem.httpClient)
+        PhraseSystem.create(config, imageSystem.storage, imageSystem.httpClient, imageSystem.longHttpClient)
     }
     module(config, imageSystem, chatSystem, phraseSystem)
 }
@@ -127,14 +128,14 @@ fun Application.module() {
 fun Application.module(config: AppConfig, imageSystem: ImageSystem) {
     val chatSystem = runBlocking { ChatSystem.create(config, imageSystem.storage) }
     val phraseSystem = runBlocking {
-        PhraseSystem.create(config, imageSystem.storage, imageSystem.httpClient)
+        PhraseSystem.create(config, imageSystem.storage, imageSystem.httpClient, imageSystem.longHttpClient)
     }
     module(config, imageSystem, chatSystem, phraseSystem)
 }
 
 fun Application.module(config: AppConfig, imageSystem: ImageSystem, chatSystem: ChatSystem) {
     val phraseSystem = runBlocking {
-        PhraseSystem.create(config, imageSystem.storage, imageSystem.httpClient)
+        PhraseSystem.create(config, imageSystem.storage, imageSystem.httpClient, imageSystem.longHttpClient)
     }
     module(config, imageSystem, chatSystem, phraseSystem)
 }

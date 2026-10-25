@@ -323,7 +323,7 @@ object ChatApi {
         return json.decodeFromString(CommunityStudySessionsResponse.serializer(), text)
     }
 
-    suspend fun saveStudySession(request: SaveStudySessionRequest): SavedStudySession {
+    suspend fun saveStudySession(request: SaveStudySessionRequest): SavedStudySessionSummary {
         val token = DeviceTokenStore.ensureToken()
         val response = client.post(chatApiUrl("/study/sessions")) {
             header(DEVICE_TOKEN_HEADER, token)
@@ -332,7 +332,7 @@ object ChatApi {
         }
         val text = response.bodyAsText()
         if (!response.status.isSuccess()) throw ChatApiException(errorMessage(text, response.status.value))
-        return json.decodeFromString(SavedStudySession.serializer(), text)
+        return json.decodeFromString(SavedStudySessionSummary.serializer(), text)
     }
 
     suspend fun deleteStudySession(id: String) {

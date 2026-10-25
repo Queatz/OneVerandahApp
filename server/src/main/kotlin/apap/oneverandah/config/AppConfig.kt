@@ -86,7 +86,7 @@ data class OssConfig(
  * Qwen (DashScope) image-generation settings. [enabled] requires an API key.
  *
  * [model] / [endpoint] drive text-only generation (catalog covers, study stills).
- * Multimodal still models such as `qwen-image-3.0-pro` / `wan2.x-image` must not
+ * Multimodal still models such as `qwen-image-3.0` / `wan2.x-image` must not
  * be paired with classic `text2image/image-synthesis` — DashScope rejects that with
  * `InvalidParameter: url error`. The client auto-routes those models through
  * [r2iEndpoint] (multimodal-generation) when needed.
@@ -97,7 +97,7 @@ data class OssConfig(
  * - Prefer `512*512` only for classic T2I / legacy R2I contracts when those are used.
  * - [multimodalSize] for multimodal still models accepts `1K`/`2K` or `width*height`; pixel
  *   sizes must stay in about `[768*768, 2048*2048]`, so 512 is not valid there.
- * - Default [model] and [r2iModel] both use `qwen-image-3.0-pro` (quality multimodal).
+ * - Default [model] and [r2iModel] both use `qwen-image-3.0` (quality multimodal).
  *   Text-only calls are auto-routed to the multimodal endpoint.
  */
 data class QwenImageConfig(
@@ -115,7 +115,7 @@ data class QwenImageConfig(
      * Model used when apartment reference photos are supplied.
      * Multimodal still models accept multiple reference images + a text prompt.
      */
-    val r2iModel: String = "qwen-image-3.0-pro",
+    val r2iModel: String = "qwen-image-3.0",
     /**
      * When true, DashScope rewrites the prompt with an LLM before generating.
      * Improves short prompts but adds ~3–4s latency per image.
@@ -338,11 +338,11 @@ data class AppConfig(
                 endpoint = source["QWEN_API_ENDPOINT"]
                     ?: "https://dashscope.aliyuncs.com/api/v1/services/aigc/text2image/image-synthesis",
                 apiKey = source["QWEN_API_KEY"] ?: "",
-                // Text-only + reference-grounded both default to qwen-image-3.0-pro (multimodal).
-                model = source["QWEN_MODEL"] ?: "qwen-image-3.0-pro",
+                // Text-only + reference-grounded both default to qwen-image-3.0 (multimodal).
+                model = source["QWEN_MODEL"] ?: "qwen-image-3.0",
                 r2iEndpoint = source["QWEN_R2I_ENDPOINT"]
                     ?: "https://dashscope.aliyuncs.com/api/v1/services/aigc/multimodal-generation/generation",
-                r2iModel = source["QWEN_R2I_MODEL"] ?: "qwen-image-3.0-pro",
+                r2iModel = source["QWEN_R2I_MODEL"] ?: "qwen-image-3.0",
                 promptExtend = source.bool("QWEN_PROMPT_EXTEND", false),
                 multimodalSize = source["QWEN_MULTIMODAL_SIZE"]?.takeIf { it.isNotBlank() } ?: "768*768",
                 textToImageSize = source["QWEN_T2I_SIZE"]?.takeIf { it.isNotBlank() } ?: "512*512",

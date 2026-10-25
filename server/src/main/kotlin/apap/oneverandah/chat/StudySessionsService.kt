@@ -3,6 +3,7 @@ package apap.oneverandah.chat
 import apap.oneverandah.api.CommunityStudySessionsResponse
 import apap.oneverandah.api.SaveStudySessionRequest
 import apap.oneverandah.api.SavedStudySession
+import apap.oneverandah.api.SavedStudySessionSummary
 import apap.oneverandah.api.SavedStudySessionsResponse
 import apap.oneverandah.api.StudySessionResponse
 import kotlinx.coroutines.sync.Mutex
@@ -30,10 +31,50 @@ data class SavedStudySessionRecord(
         createdAt = createdAt,
         updatedAt = updatedAt,
     )
+
+    fun toSummaryApi() = SavedStudySessionSummary(
+        id = id,
+        sourceMessageId = sourceMessageId,
+        languageTag = languageTag,
+        text = text,
+        textLanguageTag = textLanguageTag,
+        createdAt = createdAt,
+        updatedAt = updatedAt,
+    )
 }
 
+data class SavedStudySessionSummaryRecord(
+    val id: String,
+    val sourceMessageId: String? = null,
+    val languageTag: String,
+    val text: String,
+    val textLanguageTag: String,
+    val createdAt: Long,
+    val updatedAt: Long,
+) {
+    fun toApi() = SavedStudySessionSummary(
+        id = id,
+        sourceMessageId = sourceMessageId,
+        languageTag = languageTag,
+        text = text,
+        textLanguageTag = textLanguageTag,
+        createdAt = createdAt,
+        updatedAt = updatedAt,
+    )
+}
+
+private fun SavedStudySessionRecord.toSummaryRecord() = SavedStudySessionSummaryRecord(
+    id = id,
+    sourceMessageId = sourceMessageId,
+    languageTag = languageTag,
+    text = text,
+    textLanguageTag = textLanguageTag,
+    createdAt = createdAt,
+    updatedAt = updatedAt,
+)
+
 interface StudySessionsRepository {
-    suspend fun listByDevice(deviceTokenHash: String): List<SavedStudySessionRecord>
+    suspend fun listByDevice(deviceTokenHash: String): List<SavedStudySessionSummaryRecord>
     suspend fun findByDeviceAndSource(deviceTokenHash: String, sourceMessageId: String): SavedStudySessionRecord?
     suspend fun findById(id: String): SavedStudySessionRecord?
     suspend fun upsert(record: SavedStudySessionRecord): SavedStudySessionRecord
@@ -45,18 +86,19 @@ interface StudySessionsRepository {
         limit: Int,
         afterUpdatedAt: Long? = null,
         afterId: String? = null,
-    ): List<SavedStudySessionRecord>
+    ): List<SavedStudySessionSummaryRecord>
 }
 
 class InMemoryStudySessionsRepository : StudySessionsRepository {
     private val items = LinkedHashMap<String, SavedStudySessionRecord>()
     private val mutex = Mutex()
 
-    override suspend fun listByDevice(deviceTokenHash: String): List<SavedStudySessionRecord> =
+    override suspend fun listByDevice(deviceTokenHash: String): List<SavedStudySessionSummaryRecord> =
         mutex.withLock {
             items.values
                 .filter { it.deviceTokenHash == deviceTokenHash }
                 .sortedByDescending { it.updatedAt }
+                .map { it.toSummaryRecord() }
         }
 
     override suspend fun findByDeviceAndSource(
@@ -100,7 +142,7 @@ class InMemoryStudySessionsRepository : StudySessionsRepository {
         limit: Int,
         afterUpdatedAt: Long?,
         afterId: String?,
-    ): List<SavedStudySessionRecord> =
+    ): List<SavedStudySessionSummaryRecord> =
         mutex.withLock {
             items.values
                 .filter { it.deviceTokenHash != excludeDeviceTokenHash }
@@ -114,6 +156,7 @@ class InMemoryStudySessionsRepository : StudySessionsRepository {
                         .thenByDescending { it.id },
                 )
                 .take(limit.coerceAtLeast(0))
+                .map { it.toSummaryRecord() }
         }
 }
 
@@ -164,7 +207,7 @@ class StudySessionsService(
         )
     }
 
-    suspend fun save(rawDeviceToken: String?, rawRequest: SaveStudySessionRequest): SavedStudySession {
+    suspend fun save(rawDeviceToken: String?, rawRequest: SaveStudySessionRequest): SavedStudySessionSummary {
         val device = requireDevice(rawDeviceToken)
         val request = requireNotNull(rawRequest.normalizedOrNull()) {
             "Study session requires non-blank text and at least one sentence"
@@ -186,7 +229,7 @@ class StudySessionsService(
         )
         val saved = repository.upsert(record)
         repository.deleteOldestBeyond(device.tokenHash, maxPerDevice)
-        return saved.toApi()
+        return saved.toSummaryApi()
     }
 
     /** Harvest named portraits from recent study sessions for Mini Story photo generation. */

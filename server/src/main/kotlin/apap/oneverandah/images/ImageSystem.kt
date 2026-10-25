@@ -12,6 +12,7 @@ import apap.oneverandah.images.storage.LocalImageCache
 import apap.oneverandah.images.storage.LocalStorageService
 import apap.oneverandah.images.storage.StorageService
 import apap.oneverandah.http.longRunningHttpClient
+import apap.oneverandah.http.shortHttpClient
 import apap.oneverandah.search.InMemorySearchRepository
 import apap.oneverandah.search.SearchRepository
 import apap.oneverandah.search.arango.ArangoSearchRepository
@@ -44,6 +45,7 @@ class ImageSystem private constructor(
     val queue: QueueService,
     val storage: StorageService,
     val httpClient: HttpClient,
+    val longHttpClient: HttpClient,
     private val scope: CoroutineScope,
     val storageKind: String,
     val generatorKind: String,
@@ -117,6 +119,7 @@ class ImageSystem private constructor(
         log.info("Shutting down image system")
         runCatching { scope.cancel() }
         runCatching { httpClient.close() }
+        runCatching { longHttpClient.close() }
     }
 
     companion object {
@@ -127,11 +130,13 @@ class ImageSystem private constructor(
          * infrastructure; it degrades to local/in-memory backends instead.
          */
         suspend fun create(config: AppConfig): ImageSystem {
-            val httpClient = longRunningHttpClient()
+            val httpClient = shortHttpClient()
+            val longHttpClient = longRunningHttpClient()
 
             val arangoRepository = ArangoImageRepository.connect(config.arango, httpClient)
             if (arangoRepository == null && config.isProduction) {
                 httpClient.close()
+                longHttpClient.close()
                 error(
                     "Production requires ArangoDB, but it could not be initialized at ${config.arango.baseUrl}. " +
                         "Check that arangodb3 is running and ARANGO_USER/ARANGO_PASSWORD are correct " +
@@ -148,7 +153,7 @@ class ImageSystem private constructor(
                 ArangoSearchRepository.connect(config.arango, httpClient) ?: InMemorySearchRepository()
 
             val storage: StorageService = if (config.oss.enabled) {
-                AliyunOssStorageService(config.oss, httpClient)
+                AliyunOssStorageService(config.oss, longHttpClient)
             } else {
                 LocalStorageService(File(config.localStorageDir), config.publicBaseUrl)
             }
@@ -162,7 +167,7 @@ class ImageSystem private constructor(
             val qwen: QwenClient = if (config.qwen.enabled) {
                 DashScopeQwenClient(
                     config = config.qwen,
-                    client = httpClient,
+                    client = longHttpClient,
                     localImageRoot = File(config.localStorageDir),
                     publicBaseUrl = config.publicBaseUrl,
                 )
@@ -205,6 +210,7 @@ class ImageSystem private constructor(
                 queue = queue,
                 storage = storage,
                 httpClient = httpClient,
+                longHttpClient = longHttpClient,
                 scope = scope,
                 storageKind = storage.kind,
                 generatorKind = qwen.kind,

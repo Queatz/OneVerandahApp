@@ -62,7 +62,7 @@ class DashScopeQwenClientTest {
     fun requiresMultimodalTextToImage_detectsWanImageModels() {
         assertTrue(
             DashScopeQwenClient.requiresMultimodalTextToImage(
-                model = "qwen-image-3.0-pro",
+                model = "qwen-image-3.0",
                 endpoint = "https://dashscope.aliyuncs.com/api/v1/services/aigc/text2image/image-synthesis",
             ),
         )

@@ -1,6 +1,6 @@
 package apap.oneverandah.screens
 
-import apap.oneverandah.api.SavedStudySession
+import apap.oneverandah.api.SavedStudySessionSummary
 import apap.oneverandah.api.StudySentence
 import apap.oneverandah.api.StudySessionResponse
 import kotlin.test.Test
@@ -41,17 +41,48 @@ class StudySessionsListTest {
     }
 
     @Test
+    fun `all filter combines mine before community and keeps mine on duplicate ids`() {
+        val mine = sampleSaved("mine", "Mine")
+        val duplicate = sampleSaved("shared", "My copy")
+        val communityDuplicate = sampleSaved("shared", "Community copy")
+        val community = sampleSaved("community", "Community")
+
+        val result = studySessionsForFilter(
+            mine = listOf(mine, duplicate),
+            community = listOf(communityDuplicate, community),
+            filter = StudySessionsFilter.ALL,
+        )
+
+        assertEquals(listOf("mine", "shared", "community"), result.map { it.item.id })
+        assertEquals(listOf(true, true, false), result.map { it.removable })
+        assertEquals("My copy", result[1].item.text)
+    }
+
+    @Test
+    fun `mine and community filters return only their own removable entries`() {
+        val mine = sampleSaved("mine", "Mine")
+        val community = sampleSaved("community", "Community")
+
+        val mineResult = studySessionsForFilter(listOf(mine), listOf(community), StudySessionsFilter.MINE)
+        val communityResult = studySessionsForFilter(listOf(mine), listOf(community), StudySessionsFilter.COMMUNITY)
+
+        assertEquals(listOf("mine"), mineResult.map { it.item.id })
+        assertEquals(listOf(true), mineResult.map { it.removable })
+        assertEquals(listOf("community"), communityResult.map { it.item.id })
+        assertEquals(listOf(false), communityResult.map { it.removable })
+    }
+
+    @Test
     fun `study session path is shareable by id`() {
         assertEquals("/study/abc-123", studySessionPath("abc-123"))
         assertEquals("/study/abc-123", studySessionPath(" abc-123 "))
     }
 
-    private fun sampleSaved(id: String, text: String) = SavedStudySession(
+    private fun sampleSaved(id: String, text: String) = SavedStudySessionSummary(
         id = id,
         languageTag = "en",
         text = text,
         textLanguageTag = "en",
-        session = StudySessionResponse(text = text, textLanguageTag = "en", sentences = emptyList()),
         createdAt = 1L,
         updatedAt = 1L,
     )

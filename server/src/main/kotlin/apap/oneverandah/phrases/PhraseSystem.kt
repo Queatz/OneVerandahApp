@@ -8,6 +8,7 @@ import apap.oneverandah.images.qwen.QwenClient
 import apap.oneverandah.images.storage.StorageService
 import apap.oneverandah.model.LocalizedText
 import apap.oneverandah.http.longRunningHttpClient
+import apap.oneverandah.http.shortHttpClient
 import apap.oneverandah.phrases.arango.ArangoPhraseRepository
 import apap.oneverandah.phrases.arango.ArangoReferencePhotoRepository
 import io.ktor.client.HttpClient
@@ -31,6 +32,8 @@ class PhraseSystem private constructor(
     val qwen: QwenClient,
     private val ownsHttpClient: Boolean,
     private val httpClient: HttpClient?,
+    private val ownsLongHttpClient: Boolean,
+    private val longHttpClient: HttpClient?,
     private val scope: CoroutineScope,
 ) {
     private val log = LoggerFactory.getLogger(PhraseSystem::class.java)
@@ -46,6 +49,7 @@ class PhraseSystem private constructor(
     fun shutdown() {
         scope.cancel()
         if (ownsHttpClient) runCatching { httpClient?.close() }
+        if (ownsLongHttpClient) runCatching { longHttpClient?.close() }
     }
 
     /** Public phrasebook cover URL, if an admin has generated one. */
@@ -129,13 +133,17 @@ class PhraseSystem private constructor(
             config: AppConfig,
             storage: StorageService,
             sharedHttpClient: HttpClient? = null,
+            sharedLongHttpClient: HttpClient? = null,
         ): PhraseSystem {
             val ownsClient = sharedHttpClient == null
-            val client = sharedHttpClient ?: longRunningHttpClient()
+            val ownsLongClient = config.qwen.enabled && sharedLongHttpClient == null
+            val client = sharedHttpClient ?: shortHttpClient()
+            val qwenClient = sharedLongHttpClient ?: if (config.qwen.enabled) longRunningHttpClient() else null
 
             val arangoPhrases = ArangoPhraseRepository.connect(config.arango, client)
             if (arangoPhrases == null && config.isProduction) {
                 if (ownsClient) runCatching { client.close() }
+                if (ownsLongClient) runCatching { qwenClient?.close() }
                 error(
                     "Production phrases require ArangoDB at ${config.arango.baseUrl}. " +
                         "Set ARANGO_HOST (and credentials) so phrase edits/reactions persist across restarts.",
@@ -165,7 +173,7 @@ class PhraseSystem private constructor(
                 // re-hosted to DashScope temp OSS (localhost URLs are rejected).
                 DashScopeQwenClient(
                     config = config.qwen,
-                    client = client,
+                    client = requireNotNull(qwenClient),
                     localImageRoot = java.io.File(config.localStorageDir),
                     publicBaseUrl = config.publicBaseUrl,
                 )
@@ -182,6 +190,8 @@ class PhraseSystem private constructor(
                 qwen = qwen,
                 ownsHttpClient = ownsClient,
                 httpClient = if (ownsClient) client else null,
+                ownsLongHttpClient = ownsLongClient,
+                longHttpClient = if (ownsLongClient) qwenClient else null,
                 scope = scope,
             )
         }

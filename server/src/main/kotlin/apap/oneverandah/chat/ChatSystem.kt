@@ -6,9 +6,10 @@ import apap.oneverandah.images.qwen.DashScopeQwenClient
 import apap.oneverandah.images.qwen.PlaceholderQwenClient
 import apap.oneverandah.images.qwen.QwenClient
 import apap.oneverandah.http.longRunningHttpClient
+import apap.oneverandah.http.shortHttpClient
+import apap.oneverandah.http.websocketHttpClient
 import apap.oneverandah.images.storage.StorageService
 import io.ktor.client.HttpClient
-import io.ktor.client.plugins.websocket.WebSockets
 import kotlinx.coroutines.CoroutineScope
 import kotlinx.coroutines.Dispatchers
 import kotlinx.coroutines.SupervisorJob
@@ -26,7 +27,9 @@ class ChatSystem(
     val savedMessagesService: SavedMessagesService,
     val studySessionsService: StudySessionsService,
     val clonedVoicesService: ClonedVoicesService?,
-    private val httpClient: HttpClient,
+    private val arangoHttpClient: HttpClient,
+    private val longRunningHttpClient: HttpClient,
+    private val websocketHttpClient: HttpClient,
     private val voiceDesignEnabled: Boolean,
     private val scope: CoroutineScope,
 ) {
@@ -38,7 +41,9 @@ class ChatSystem(
     fun shutdown() {
         asrRelay.shutdown()
         scope.cancel()
-        httpClient.close()
+        arangoHttpClient.close()
+        longRunningHttpClient.close()
+        websocketHttpClient.close()
     }
 
     companion object {
@@ -49,16 +54,18 @@ class ChatSystem(
             storage: StorageService? = null,
         ): ChatSystem {
             val scope = CoroutineScope(SupervisorJob() + Dispatchers.IO)
-            val client = longRunningHttpClient {
-                install(WebSockets)
-            }
-            val arangoRepository = ArangoChatRepository.connect(config.arango, client)
-            val arangoDeviceRepository = ArangoDeviceRepository.connect(config.arango, client)
-            val arangoSavedRepository = ArangoSavedMessagesRepository.connect(config.arango, client)
-            val arangoStudySessionsRepository = ArangoStudySessionsRepository.connect(config.arango, client)
-            val arangoClonedVoicesRepository = ArangoClonedVoicesRepository.connect(config.arango, client)
+            val arangoClient = shortHttpClient()
+            val providerClient = longRunningHttpClient()
+            val asrClient = websocketHttpClient()
+            val arangoRepository = ArangoChatRepository.connect(config.arango, arangoClient)
+            val arangoDeviceRepository = ArangoDeviceRepository.connect(config.arango, arangoClient)
+            val arangoSavedRepository = ArangoSavedMessagesRepository.connect(config.arango, arangoClient)
+            val arangoStudySessionsRepository = ArangoStudySessionsRepository.connect(config.arango, arangoClient)
+            val arangoClonedVoicesRepository = ArangoClonedVoicesRepository.connect(config.arango, arangoClient)
             if (arangoRepository == null && config.isProduction) {
-                client.close()
+                arangoClient.close()
+                providerClient.close()
+                asrClient.close()
                 scope.cancel()
                 error("Production chat requires ArangoDB at ${config.arango.baseUrl}")
             }
@@ -75,7 +82,7 @@ class ChatSystem(
             val residents = Catalog.services.map { it.provider }.distinctBy { it.id }
             val deviceService = DeviceService(deviceRepository)
             val enrollment: VoiceEnrollmentClient = if (config.qwenChat.enabled) {
-                QwenVoiceEnrollmentClient(config.qwenChat, client)
+                QwenVoiceEnrollmentClient(config.qwenChat, providerClient)
             } else {
                 PlaceholderVoiceEnrollmentClient()
             }
@@ -95,7 +102,7 @@ class ChatSystem(
                 val qwen: QwenClient = if (config.qwen.enabled) {
                     DashScopeQwenClient(
                         config = config.qwen,
-                        client = client,
+                        client = providerClient,
                         localImageRoot = File(config.localStorageDir),
                         publicBaseUrl = config.publicBaseUrl,
                     )
@@ -117,13 +124,13 @@ class ChatSystem(
             return ChatSystem(
                 chatService = ChatService(
                     repository = repository,
-                    aiClient = DashScopeChatAiClient(config.qwenChat, client),
+                    aiClient = DashScopeChatAiClient(config.qwenChat, providerClient),
                     residentDirectory = ResidentDirectory(residents),
                 ),
                 speechService = SpeechService(
                     client = RoutingSpeechClient(
-                        qwenClient = DashScopeSpeechClient(config.qwenChat, client),
-                        speechgenClient = SpeechgenSpeechClient(config.speechgen, client),
+                        qwenClient = DashScopeSpeechClient(config.qwenChat, providerClient),
+                        speechgenClient = SpeechgenSpeechClient(config.speechgen, providerClient),
                         qwenEnabled = config.qwenChat.enabled,
                         speechgenEnabled = config.speechgen.enabled,
                     ),
@@ -133,11 +140,11 @@ class ChatSystem(
                     },
                 ),
                 studyService = StudyService(
-                    aiClient = DashScopeStudyAiClient(config.qwenChat, client),
+                    aiClient = DashScopeStudyAiClient(config.qwenChat, providerClient),
                     imageGenerator = playgroundImageGenerator,
                     scope = scope,
                 ),
-                asrRelay = QwenAsrRelay(config.qwenChat, client, scope),
+                asrRelay = QwenAsrRelay(config.qwenChat, asrClient, scope),
                 deviceService = deviceService,
                 savedMessagesService = SavedMessagesService(
                     repository = savedRepository,
@@ -148,7 +155,9 @@ class ChatSystem(
                     deviceService = deviceService,
                 ),
                 clonedVoicesService = clonedVoicesService,
-                httpClient = client,
+                arangoHttpClient = arangoClient,
+                longRunningHttpClient = providerClient,
+                websocketHttpClient = asrClient,
                 voiceDesignEnabled = config.qwenChat.enabled || config.speechgen.enabled,
                 scope = scope,
             )

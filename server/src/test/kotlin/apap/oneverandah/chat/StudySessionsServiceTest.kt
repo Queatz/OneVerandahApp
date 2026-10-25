@@ -104,7 +104,8 @@ class StudySessionsServiceTest {
         assertEquals(first.id, second.id)
         assertEquals(100L, second.createdAt)
         assertEquals(200L, second.updatedAt)
-        assertEquals(StudyTokenStatus.READY, second.session.sentences.single().tokens.single().status)
+        val fullSession = service.get(token, second.id)
+        assertEquals(StudyTokenStatus.READY, fullSession?.session?.sentences?.single()?.tokens?.single()?.status)
         assertEquals(1, service.list(token).items.size)
         Unit
     }
@@ -190,8 +191,9 @@ class StudySessionsServiceTest {
 
         val listed = service.list(token).items.single()
         assertEquals(saved.id, listed.id)
-        assertEquals(1, listed.session.playScenarios.size)
-        val scenario = listed.session.playScenarios.single()
+        val fullSession = service.get(token, saved.id)!!
+        assertEquals(1, fullSession.session.playScenarios.size)
+        val scenario = fullSession.session.playScenarios.single()
         assertEquals("scenario-1", scenario.id)
         assertEquals(3, scenario.messages.size)
         assertEquals(StudyPlaySpeaker.USER, scenario.messages[1].speaker)
