@@ -263,6 +263,10 @@ class QwenStudyClientTest {
             List(models.size) { "false" },
             requestBodies.map { Json.parseToJsonElement(it).jsonObject["enable_thinking"]?.jsonPrimitive?.content },
         )
+        assertContains(requestBodies[2], "spoken text ONLY in the study/source language Vietnamese (vi)")
+        assertContains(requestBodies[2], "Never write an opening line in English (en) unless English is also the study language")
+        assertContains(requestBodies[3], "reply MUST be written ONLY in the study/source language Vietnamese (vi)")
+        assertContains(requestBodies[3], "Never write the reply in English (en) unless English is also the study language")
         client.close()
     }
 

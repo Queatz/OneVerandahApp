@@ -1206,6 +1206,26 @@ class StudyServiceTest {
     }
 
     @Test
+    fun `play scenario fallback uses study language instead of UI language`() = runBlocking {
+        val service = StudyService(
+            aiClient = FakeStudyAiClient(playScenarios = emptyList()),
+            idGenerator = { java.util.UUID.randomUUID().toString() },
+        )
+
+        val response = service.playScenarios(
+            StudyPlayScenariosRequest(
+                text = "你好。",
+                textLanguageTag = "zh",
+                languageTag = "en",
+            ),
+        )
+
+        assertEquals("你好！你今天要去哪里？", response.scenarios.first().openingLine)
+        assertTrue(response.scenarios.filterNot { it.openingLine.isNullOrBlank() }
+            .all { line -> line.openingLine?.any { it in '\u4e00'..'\u9fff' } == true })
+    }
+
+    @Test
     fun `write check returns empty feedback when attempt matches`() = runBlocking {
         val service = StudyService(FakeStudyAiClient(), idGenerator = { "write-1" })
         val response = service.writeCheck(

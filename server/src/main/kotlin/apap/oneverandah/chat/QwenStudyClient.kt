@@ -6,6 +6,7 @@ import apap.oneverandah.api.StudySessionResponse
 import apap.oneverandah.api.StudyToken
 import apap.oneverandah.api.StudyTokenStatus
 import apap.oneverandah.config.QwenChatConfig
+import apap.oneverandah.model.Language
 import io.ktor.client.HttpClient
 import io.ktor.client.plugins.HttpRequestTimeoutException
 import io.ktor.client.request.header
@@ -44,6 +45,12 @@ internal fun stripJsonFences(content: String): String =
         .removePrefix("```")
         .removeSuffix("```")
         .trim()
+
+private fun languageName(tag: String): String {
+    val normalized = tag.trim().lowercase().substringBefore('-')
+    return Language.entries.firstOrNull { it.tag == normalized }?.displayName
+        ?: normalized.ifBlank { tag }
+}
 
 /**
  * Lenient skeleton parser: walks JsonElement so a single bad `sentences[]` entry
@@ -455,8 +462,16 @@ class DashScopeStudyAiClient(
         request: StudyPlayScenariosGenerationRequest,
     ): List<StudyPlayScenarioDesign> {
         val userContent = buildString {
-            appendLine("Source language tag: ${request.textLanguageTag}")
-            appendLine("Learner UI language tag: ${request.languageTag}")
+            appendLine("Source language tag: ${request.textLanguageTag} (${languageName(request.textLanguageTag)})")
+            appendLine("Learner UI language tag: ${request.languageTag} (${languageName(request.languageTag)})")
+            appendLine(
+                "The openingLine spoken text ONLY in the study/source language " +
+                    "${languageName(request.textLanguageTag)} (${request.textLanguageTag}).",
+            )
+            appendLine(
+                "Never write an opening line in ${languageName(request.languageTag)} (${request.languageTag}) " +
+                    "unless ${languageName(request.languageTag)} is also the study language.",
+            )
             if (request.characters.isNotEmpty()) {
                 appendLine()
                 appendLine("Known cast:")
@@ -486,8 +501,16 @@ class DashScopeStudyAiClient(
         request: StudyPlayTurnGenerationRequest,
     ): StudyPlayTurnDesign {
         val userContent = buildString {
-            appendLine("Source language tag: ${request.textLanguageTag}")
-            appendLine("Learner UI language tag: ${request.languageTag}")
+            appendLine("Source language tag: ${request.textLanguageTag} (${languageName(request.textLanguageTag)})")
+            appendLine("Learner UI language tag: ${request.languageTag} (${languageName(request.languageTag)})")
+            appendLine(
+                "The reply MUST be written ONLY in the study/source language " +
+                    "${languageName(request.textLanguageTag)} (${request.textLanguageTag}).",
+            )
+            appendLine(
+                "Never write the reply in ${languageName(request.languageTag)} (${request.languageTag}) " +
+                    "unless ${languageName(request.languageTag)} is also the study language.",
+            )
             appendLine()
             appendLine("Scenario setup:")
             appendLine(request.scenarioDescription)
@@ -854,8 +877,9 @@ class DashScopeStudyAiClient(
         {"scenarios":[{"description":"scene setup","openingLine":"optional first line from the other person or null"},{"description":"...","openingLine":null},{"description":"...","openingLine":"..."},{"description":"...","openingLine":null}]}
         Rules:
         - Return EXACTLY 4 scenarios related to the themes, setting, and vocabulary of the source text.
-        - "description" is a single short italic-ready scene setup written in the learner's UI language '$activeLanguageTag' (e.g. "A girl approaches you on the forest trail."). Second person ("you") is preferred.
-        - "openingLine" is optional spoken text from the other person in the study/source language '$textLanguageTag'. Roughly half of the scenarios should include an openingLine, and half should set openingLine to null so the learner starts.
+        - "description" is a single short italic-ready scene setup written in the learner's UI language ${languageName(activeLanguageTag)} ($activeLanguageTag) (e.g. "A girl approaches you on the forest trail."). Second person ("you") is preferred.
+        - "openingLine" spoken text ONLY in the study/source language ${languageName(textLanguageTag)} ($textLanguageTag). Never write an opening line in ${languageName(activeLanguageTag)} ($activeLanguageTag) unless ${languageName(activeLanguageTag)} is also the study language.
+        - Roughly half of the scenarios should include an openingLine, and half should set openingLine to null so the learner starts.
         - Keep opening lines short, natural, and easy to reply to. Do not include speaker labels.
         - Scenarios should feel varied (place, mood, relationship) but stay grounded in the source text world.
         - Prefer everyday warm interactions suitable for language practice.
@@ -867,8 +891,8 @@ class DashScopeStudyAiClient(
         Always return one JSON object and no markdown. The schema is exactly:
         {"description":"short scene beat","reply":"what the other person says next"}
         Rules:
-        - "description" is a brief scene update written in the learner's UI language '$activeLanguageTag' (one short sentence, second person when natural).
-        - "reply" is the other person's spoken line written in the study/source language '$textLanguageTag'. Keep it natural, concise, and easy to answer.
+        - "description" is a brief scene update written in the learner's UI language ${languageName(activeLanguageTag)} ($activeLanguageTag) (one short sentence, second person when natural).
+        - "reply" MUST be written ONLY in the study/source language ${languageName(textLanguageTag)} ($textLanguageTag). Never write the reply in ${languageName(activeLanguageTag)} ($activeLanguageTag) unless ${languageName(activeLanguageTag)} is also the study language. Keep it natural, concise, and easy to answer.
         - Stay consistent with the scenario, cast, and conversation history.
         - Gently reuse or invite vocabulary from the source study text when it fits, without forcing unnatural phrases.
         - Do not include speaker labels, stage directions inside reply, or markdown.

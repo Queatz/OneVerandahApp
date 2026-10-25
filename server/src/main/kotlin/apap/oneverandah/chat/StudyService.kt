@@ -432,7 +432,7 @@ class StudyService(
             emptyList()
         }
         val cleaned = normalizePlayScenarioDesigns(designed)
-        val defaults = defaultPlayScenarios(request.text, request.languageTag)
+        val defaults = defaultPlayScenarios(request.textLanguageTag)
         val designs = (cleaned + defaults)
             .distinctBy { it.description.trim().lowercase() }
             .take(4)
@@ -924,67 +924,27 @@ internal fun normalizePlayScenarioDesigns(designs: List<StudyPlayScenarioDesign>
     return cleaned.take(4)
 }
 
-internal fun defaultPlayScenarios(sourceText: String, languageTag: String): List<StudyPlayScenarioDesign> {
-    val looksVietnamese = sourceText.any { it in '\u00C0'..'\u1EF9' } ||
-        sourceText.contains("Tôi", ignoreCase = true) ||
-        sourceText.contains("bạn", ignoreCase = true)
-    val looksRussian = sourceText.any { it in '\u0400'..'\u04FF' }
-    val ui = Language.fromTag(languageTag).tag
-    return when {
-        looksVietnamese || ui == "vi" -> listOf(
-            StudyPlayScenarioDesign(
-                description = "A friendly neighbor greets you near the elevator.",
-                openingLine = "Chào bạn, hôm nay bạn đi đâu vậy?",
-            ),
-            StudyPlayScenarioDesign(
-                description = "A market vendor offers you something fresh.",
-                openingLine = null,
-            ),
-            StudyPlayScenarioDesign(
-                description = "A classmate sits down and starts a short chat.",
-                openingLine = "Mình hỏi chút được không?",
-            ),
-            StudyPlayScenarioDesign(
-                description = "You meet someone on a quiet evening walk.",
-                openingLine = null,
-            ),
-        )
-        looksRussian || ui == "ru" -> listOf(
-            StudyPlayScenarioDesign(
-                description = "A neighbor greets you by the building entrance.",
-                openingLine = "Здравствуйте! Как ваши дела?",
-            ),
-            StudyPlayScenarioDesign(
-                description = "A shop assistant offers quick help.",
-                openingLine = null,
-            ),
-            StudyPlayScenarioDesign(
-                description = "A classmate starts a short conversation after class.",
-                openingLine = "Можно вас спросить?",
-            ),
-            StudyPlayScenarioDesign(
-                description = "Someone approaches you on a park path.",
-                openingLine = null,
-            ),
-        )
-        else -> listOf(
-            StudyPlayScenarioDesign(
-                description = "A neighbor greets you near the lobby.",
-                openingLine = "Hi there — heading out?",
-            ),
-            StudyPlayScenarioDesign(
-                description = "A shopkeeper offers a friendly suggestion.",
-                openingLine = null,
-            ),
-            StudyPlayScenarioDesign(
-                description = "A classmate sits nearby and starts chatting.",
-                openingLine = "Mind if I ask something quick?",
-            ),
-            StudyPlayScenarioDesign(
-                description = "Someone approaches you on a quiet trail.",
-                openingLine = null,
-            ),
-        )
+internal fun defaultPlayScenarios(languageTag: String): List<StudyPlayScenarioDesign> {
+    val studyLanguageTag = languageTag.trim().lowercase().substringBefore('-')
+    val openingLines = when (studyLanguageTag) {
+        "vi" -> listOf("Chào bạn, hôm nay bạn đi đâu vậy?", null, "Mình hỏi chút được không?", null)
+        "zh" -> listOf("你好！你今天要去哪里？", null, "我可以问你一件事吗？", null)
+        "ja" -> listOf("こんにちは！今日はどこへ行くの？", null, "ちょっと聞いてもいい？", null)
+        "ko" -> listOf("안녕하세요! 오늘 어디 가세요?", null, "잠깐 여쭤봐도 될까요?", null)
+        "ru" -> listOf("Здравствуйте! Как ваши дела?", null, "Можно вас спросить?", null)
+        "es" -> listOf("¡Hola! ¿Adónde vas hoy?", null, "¿Puedo preguntarte algo?", null)
+        "de" -> listOf("Hallo! Wohin gehst du heute?", null, "Darf ich dich kurz etwas fragen?", null)
+        "en" -> listOf("Hi there — heading out?", null, "Mind if I ask something quick?", null)
+        else -> List(4) { null }
+    }
+    val descriptions = listOf(
+        "A neighbor greets you near the lobby.",
+        "A shopkeeper offers a friendly suggestion.",
+        "A classmate sits nearby and starts chatting.",
+        "Someone approaches you on a quiet trail.",
+    )
+    return descriptions.mapIndexed { index, description ->
+        StudyPlayScenarioDesign(description = description, openingLine = openingLines[index])
     }
 }
 
