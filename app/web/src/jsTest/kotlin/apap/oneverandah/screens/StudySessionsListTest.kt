@@ -3,8 +3,13 @@ package apap.oneverandah.screens
 import apap.oneverandah.api.SavedStudySessionSummary
 import apap.oneverandah.api.StudySentence
 import apap.oneverandah.api.StudySessionResponse
+import apap.oneverandah.api.StudyStoryCharacter
+import apap.oneverandah.api.StudyToken
+import apap.oneverandah.api.StudyTokenStatus
 import kotlin.test.Test
 import kotlin.test.assertEquals
+import kotlin.test.assertFalse
+import kotlin.test.assertTrue
 
 class StudySessionsListTest {
     @Test
@@ -76,6 +81,175 @@ class StudySessionsListTest {
     fun `study session path is shareable by id`() {
         assertEquals("/study/abc-123", studySessionPath("abc-123"))
         assertEquals("/study/abc-123", studySessionPath(" abc-123 "))
+    }
+
+    @Test
+    fun `parse mode shows text running before the skeleton exists`() {
+        val progress = studyCreationProgress(
+            session = null,
+            loading = true,
+            exactText = false,
+        )
+        assertEquals(StudyCreationStepStatus.RUNNING, progress.text.status)
+        assertEquals(StudyCreationStepStatus.UPCOMING, progress.structure.status)
+        assertEquals(StudyCreationStepStatus.UPCOMING, progress.dissections.status)
+        assertEquals(StudyCreationStepStatus.UPCOMING, progress.images.status)
+        assertEquals(0, progress.percent)
+        assertTrue(progress.visible)
+    }
+
+    @Test
+    fun `exact mode shows structure running before the skeleton exists`() {
+        val progress = studyCreationProgress(
+            session = null,
+            loading = true,
+            exactText = true,
+        )
+        assertEquals(StudyCreationStepStatus.COMPLETED, progress.text.status)
+        assertEquals(StudyCreationStepStatus.RUNNING, progress.structure.status)
+        assertEquals(50, progress.percent)
+        assertTrue(progress.visible)
+    }
+
+    @Test
+    fun `skeleton reports dissection and image counts while work is in flight`() {
+        val session = StudySessionResponse(
+            text = "Hello world.",
+            textLanguageTag = "en",
+            sentences = listOf(
+                StudySentence(
+                    text = "Hello world.",
+                    tokens = listOf(
+                        StudyToken(text = "Hello", status = StudyTokenStatus.PENDING),
+                        StudyToken(text = "world", status = StudyTokenStatus.PENDING),
+                        StudyToken(text = ".", status = StudyTokenStatus.PLAIN),
+                    ),
+                ),
+            ),
+        )
+        val progress = studyCreationProgress(
+            session = session,
+            loading = false,
+            exactText = true,
+            sentenceStatus = mapOf(0 to StudySentenceLoadState.LOADING),
+            messageId = "msg",
+        )
+        assertEquals(StudyCreationStepStatus.COMPLETED, progress.text.status)
+        assertEquals(StudyCreationStepStatus.COMPLETED, progress.structure.status)
+        assertEquals(StudyCreationStepStatus.RUNNING, progress.dissections.status)
+        assertEquals(0, progress.dissections.done)
+        assertEquals(1, progress.dissections.total)
+        assertEquals(StudyCreationStepStatus.RUNNING, progress.images.status)
+        assertEquals(0, progress.images.done)
+        assertEquals(3, progress.images.total)
+        assertEquals(33, progress.percent)
+        assertTrue(progress.visible)
+    }
+
+    @Test
+    fun `failed images count as settled so progress can finish`() {
+        val session = StudySessionResponse(
+            text = "Hello.",
+            textLanguageTag = "en",
+            sentences = listOf(
+                StudySentence(
+                    text = "Hello.",
+                    tokens = listOf(
+                        StudyToken(
+                            text = "Hello",
+                            status = StudyTokenStatus.READY,
+                            literalMeaning = "hello",
+                            contextualMeaning = "greeting",
+                        ),
+                        StudyToken(text = ".", status = StudyTokenStatus.PLAIN),
+                    ),
+                ),
+            ),
+        )
+        val progress = studyCreationProgress(
+            session = session,
+            loading = false,
+            exactText = true,
+            sentenceStatus = mapOf(0 to StudySentenceLoadState.READY),
+            messageId = "msg",
+            imageFailed = mapOf("msg#0" to true),
+            wordImageFailed = mapOf("msg#0#0" to true),
+        )
+        assertEquals(StudyCreationStepStatus.COMPLETED, progress.dissections.status)
+        assertEquals(StudyCreationStepStatus.COMPLETED, progress.images.status)
+        assertEquals(2, progress.images.done)
+        assertEquals(2, progress.images.total)
+        assertEquals(100, progress.percent)
+        assertFalse(progress.visible)
+    }
+
+    @Test
+    fun `dissection errors settle the sentence and skip pending word images`() {
+        val session = StudySessionResponse(
+            text = "Hello.",
+            textLanguageTag = "en",
+            sentences = listOf(
+                StudySentence(
+                    text = "Hello.",
+                    imageUrl = "https://img/s",
+                    tokens = listOf(
+                        StudyToken(text = "Hello", status = StudyTokenStatus.PENDING),
+                    ),
+                ),
+            ),
+        )
+        val progress = studyCreationProgress(
+            session = session,
+            loading = false,
+            exactText = true,
+            sentenceStatus = mapOf(0 to StudySentenceLoadState.ERROR),
+            messageId = "msg",
+        )
+        assertEquals(StudyCreationStepStatus.COMPLETED, progress.dissections.status)
+        assertEquals(1, progress.images.total)
+        assertEquals(100, progress.percent)
+        assertFalse(progress.visible)
+    }
+
+    @Test
+    fun `fully built session hides creation progress`() {
+        val session = StudySessionResponse(
+            text = "Hello.",
+            textLanguageTag = "en",
+            characters = listOf(
+                StudyStoryCharacter(
+                    id = "main",
+                    name = "Lan",
+                    role = "main",
+                    description = "A woman",
+                    imageUrl = "https://img/p",
+                ),
+            ),
+            sentences = listOf(
+                StudySentence(
+                    text = "Hello.",
+                    imageUrl = "https://img/s",
+                    tokens = listOf(
+                        StudyToken(
+                            text = "Hello",
+                            status = StudyTokenStatus.READY,
+                            literalMeaning = "hello",
+                            contextualMeaning = "greeting",
+                            imageUrl = "https://img/w",
+                        ),
+                    ),
+                ),
+            ),
+        )
+        val progress = studyCreationProgress(
+            session = session,
+            loading = false,
+            exactText = true,
+            sentenceStatus = mapOf(0 to StudySentenceLoadState.READY),
+            messageId = "msg",
+        )
+        assertEquals(100, progress.percent)
+        assertFalse(progress.visible)
     }
 
     private fun sampleSaved(id: String, text: String) = SavedStudySessionSummary(

@@ -1287,6 +1287,8 @@ fun StudyScreen(
                 messageId = studyTarget?.id,
                 imageFailed = studyImageFailed.toMap(),
                 wordImageFailed = studyWordImageFailed.toMap(),
+                charactersLoading = studyTarget?.id?.let { studyCharactersInFlight[it] == true } == true,
+                exactText = studyStartExact,
                 playLoading = studyTarget?.id?.let { studyPlayInFlight[it] == true } == true,
                 playFailed = studyTarget?.id?.let { studyPlayFailed[it] == true } == true,
                 strings = strings,
@@ -1555,6 +1557,8 @@ private fun StudySessionPane(
     messageId: String?,
     imageFailed: Map<String, Boolean>,
     wordImageFailed: Map<String, Boolean>,
+    charactersLoading: Boolean,
+    exactText: Boolean,
     playLoading: Boolean,
     playFailed: Boolean,
     strings: UiStrings,
@@ -1565,44 +1569,53 @@ private fun StudySessionPane(
     onPlayScenarioUpdate: (String, (StudyPlayScenario) -> StudyPlayScenario) -> Unit,
     onPlayMessageImage: (scenarioId: String, imageId: String, imageUrl: String?) -> Unit,
 ) {
+    val progress = studyCreationProgress(
+        session = session,
+        loading = loading,
+        exactText = exactText,
+        sentenceStatus = sentenceStatus,
+        messageId = messageId,
+        imageFailed = imageFailed,
+        wordImageFailed = wordImageFailed,
+        charactersLoading = charactersLoading,
+    )
     Div(attrs = { classes(Styles.studySessionBody) }) {
-            when {
-                loading && session == null -> {
-                    Div(attrs = { classes(Styles.chatStatus) }) {
-                        MaterialSymbol("progress_activity")
-                        Text(strings.chatStudyLoading)
+        when {
+            error != null && session == null -> {
+                Div(attrs = { classes(Styles.studySessionError) }) {
+                    MaterialSymbol("error")
+                    P { Text(error) }
+                    Button(attrs = {
+                        classes(Styles.savedItemAction)
+                        attr("type", "button")
+                        onClick { onRetry() }
+                    }) {
+                        MaterialSymbol("refresh")
+                        Text(strings.chatStudyMessage)
                     }
                 }
-                error != null && session == null -> {
-                    Div(attrs = { classes(Styles.studySessionError) }) {
-                        MaterialSymbol("error")
-                        P { Text(error) }
-                        Button(attrs = {
-                            classes(Styles.savedItemAction)
-                            attr("type", "button")
-                            onClick { onRetry() }
-                        }) {
-                            MaterialSymbol("refresh")
-                            Text(strings.chatStudyMessage)
-                        }
-                    }
+            }
+            else -> {
+                if (progress.visible) {
+                    StudySessionCreationProgress(progress = progress, strings = strings)
                 }
-                session != null -> StudySessionContent(
-                    session = session,
-                    sentenceStatus = sentenceStatus,
-                    messageId = messageId,
-                    imageFailed = imageFailed,
-                    wordImageFailed = wordImageFailed,
-                    playLoading = playLoading,
-                    playFailed = playFailed,
-                    strings = strings,
-                    onRetrySentence = onRetrySentence,
-                    onRetryImage = onRetryImage,
-                    onRetryPlay = onRetryPlay,
-                    onPlayScenarioUpdate = onPlayScenarioUpdate,
-                    onPlayMessageImage = onPlayMessageImage,
-                )
-                else -> {
+                if (session != null) {
+                    StudySessionContent(
+                        session = session,
+                        sentenceStatus = sentenceStatus,
+                        messageId = messageId,
+                        imageFailed = imageFailed,
+                        wordImageFailed = wordImageFailed,
+                        playLoading = playLoading,
+                        playFailed = playFailed,
+                        strings = strings,
+                        onRetrySentence = onRetrySentence,
+                        onRetryImage = onRetryImage,
+                        onRetryPlay = onRetryPlay,
+                        onPlayScenarioUpdate = onPlayScenarioUpdate,
+                        onPlayMessageImage = onPlayMessageImage,
+                    )
+                } else if (!progress.visible) {
                     Div(attrs = { classes(Styles.chatStatus) }) {
                         MaterialSymbol("progress_activity")
                         Text(strings.chatStudyLoading)
@@ -1610,6 +1623,84 @@ private fun StudySessionPane(
                 }
             }
         }
+    }
+}
+
+@Composable
+private fun StudySessionCreationProgress(
+    progress: StudyCreationProgress,
+    strings: UiStrings,
+) {
+    Div(attrs = {
+        classes(Styles.studyCreationProgress)
+        attr("role", "status")
+        attr("aria-live", "polite")
+        attr("aria-label", "${strings.chatStudyCreationTitle} ${progress.percent}%")
+    }) {
+        Div(attrs = { classes(Styles.studyCreationProgressHeader) }) {
+            Span(attrs = { classes(Styles.studyCreationProgressTitle) }) {
+                Text(strings.chatStudyCreationTitle)
+            }
+            Span(attrs = { classes(Styles.studyCreationProgressPercent) }) {
+                Text("${progress.percent}%")
+            }
+        }
+        Div(attrs = { classes(Styles.studyCreationProgressBar) }) {
+            Div(attrs = {
+                classes(Styles.studyCreationProgressFill)
+                style { property("width", "${progress.percent}%") }
+            })
+        }
+        Div(attrs = { classes(Styles.studyCreationProgressSteps) }) {
+            StudyCreationProgressStepRow(
+                step = progress.text,
+                label = strings.chatStudyCreationText,
+                strings = strings,
+            )
+            StudyCreationProgressStepRow(
+                step = progress.structure,
+                label = strings.chatStudyCreationStructure,
+                strings = strings,
+            )
+            StudyCreationProgressStepRow(
+                step = progress.dissections,
+                label = strings.chatStudyCreationDissections,
+                strings = strings,
+            )
+            StudyCreationProgressStepRow(
+                step = progress.images,
+                label = strings.chatStudyCreationImages,
+                strings = strings,
+            )
+        }
+    }
+}
+
+@Composable
+private fun StudyCreationProgressStepRow(
+    step: StudyCreationStepProgress,
+    label: String,
+    strings: UiStrings,
+) {
+    val statusClass = when (step.status) {
+        StudyCreationStepStatus.COMPLETED -> Styles.studyCreationProgressStepDone
+        StudyCreationStepStatus.RUNNING -> Styles.studyCreationProgressStepRunning
+        StudyCreationStepStatus.UPCOMING -> Styles.studyCreationProgressStepUpcoming
+    }
+    val icon = when (step.status) {
+        StudyCreationStepStatus.COMPLETED -> "check_circle"
+        StudyCreationStepStatus.RUNNING -> "progress_activity"
+        StudyCreationStepStatus.UPCOMING -> "radio_button_unchecked"
+    }
+    Div(attrs = { classes(Styles.studyCreationProgressStep, statusClass) }) {
+        MaterialSymbol(icon)
+        Span(attrs = { classes(Styles.studyCreationProgressStepLabel) }) { Text(label) }
+        if (step.total > 0) {
+            Span(attrs = { classes(Styles.studyCreationProgressStepCount) }) {
+                Text(strings.chatStudyCreationCount(step.done, step.total))
+            }
+        }
+    }
 }
 
 @Composable
@@ -2284,6 +2375,179 @@ internal fun collectStoryMeaningNarrationTexts(
         lines += contextual
     }
     return lines
+}
+
+internal enum class StudyCreationStepStatus {
+    UPCOMING,
+    RUNNING,
+    COMPLETED,
+}
+
+internal data class StudyCreationStepProgress(
+    val status: StudyCreationStepStatus,
+    val done: Int = 0,
+    val total: Int = 0,
+)
+
+internal data class StudyCreationProgress(
+    val percent: Int,
+    val text: StudyCreationStepProgress,
+    val structure: StudyCreationStepProgress,
+    val dissections: StudyCreationStepProgress,
+    val images: StudyCreationStepProgress,
+) {
+    val visible: Boolean get() = percent < 100
+}
+
+internal fun studyCreationProgress(
+    session: StudySessionResponse?,
+    loading: Boolean,
+    exactText: Boolean,
+    sentenceStatus: Map<Int, StudySentenceLoadState> = emptyMap(),
+    messageId: String? = null,
+    imageFailed: Map<String, Boolean> = emptyMap(),
+    wordImageFailed: Map<String, Boolean> = emptyMap(),
+    charactersLoading: Boolean = false,
+): StudyCreationProgress {
+    val textCompleted = exactText || session != null
+    val text = StudyCreationStepProgress(
+        status = when {
+            textCompleted -> StudyCreationStepStatus.COMPLETED
+            loading -> StudyCreationStepStatus.RUNNING
+            else -> StudyCreationStepStatus.UPCOMING
+        },
+    )
+
+    val structureCompleted = session != null
+    val structure = StudyCreationStepProgress(
+        status = when {
+            structureCompleted -> StudyCreationStepStatus.COMPLETED
+            loading && textCompleted -> StudyCreationStepStatus.RUNNING
+            else -> StudyCreationStepStatus.UPCOMING
+        },
+    )
+
+    val sentences = session?.sentences.orEmpty()
+    val dissectionTotal = sentences.size
+    var dissectionDone = 0
+    var dissectionRunning = false
+    sentences.forEachIndexed { index, sentence ->
+        when (studyCreationSentenceState(sentence, sentenceStatus[index])) {
+            StudySentenceLoadState.READY,
+            StudySentenceLoadState.ERROR,
+            -> dissectionDone += 1
+            StudySentenceLoadState.LOADING -> dissectionRunning = true
+        }
+    }
+    val dissectionsCompleted = session != null && dissectionDone >= dissectionTotal
+    val dissections = StudyCreationStepProgress(
+        status = when {
+            session == null -> StudyCreationStepStatus.UPCOMING
+            dissectionsCompleted -> StudyCreationStepStatus.COMPLETED
+            dissectionRunning || dissectionDone < dissectionTotal -> StudyCreationStepStatus.RUNNING
+            else -> StudyCreationStepStatus.UPCOMING
+        },
+        done = dissectionDone,
+        total = dissectionTotal,
+    )
+
+    val (imageSettled, imageExpected) = studyCreationImageCounts(
+        session = session,
+        messageId = messageId,
+        imageFailed = imageFailed,
+        wordImageFailed = wordImageFailed,
+        sentenceStatus = sentenceStatus,
+        charactersLoading = charactersLoading,
+    )
+    val imagesCompleted = session != null && imageSettled >= imageExpected
+    val images = StudyCreationStepProgress(
+        status = when {
+            session == null -> StudyCreationStepStatus.UPCOMING
+            imagesCompleted -> StudyCreationStepStatus.COMPLETED
+            else -> StudyCreationStepStatus.RUNNING
+        },
+        done = imageSettled.coerceAtMost(imageExpected),
+        total = imageExpected,
+    )
+
+    val completedUnits = (if (textCompleted) 1 else 0) +
+        (if (structureCompleted) 1 else 0) +
+        dissectionDone +
+        imageSettled.coerceAtMost(imageExpected)
+    val totalUnits = 2 + dissectionTotal + imageExpected
+    val percent = if (textCompleted && structureCompleted && dissectionsCompleted && imagesCompleted) {
+        100
+    } else if (totalUnits <= 0) {
+        100
+    } else {
+        ((completedUnits * 100) / totalUnits).coerceIn(0, 99)
+    }
+
+    return StudyCreationProgress(
+        percent = percent,
+        text = text,
+        structure = structure,
+        dissections = dissections,
+        images = images,
+    )
+}
+
+private fun studyCreationSentenceState(
+    sentence: StudySentence,
+    status: StudySentenceLoadState?,
+): StudySentenceLoadState = status ?: if (sentenceNeedsDissect(sentence)) {
+    StudySentenceLoadState.LOADING
+} else {
+    StudySentenceLoadState.READY
+}
+
+private fun studyCreationImageCounts(
+    session: StudySessionResponse?,
+    messageId: String?,
+    imageFailed: Map<String, Boolean>,
+    wordImageFailed: Map<String, Boolean>,
+    sentenceStatus: Map<Int, StudySentenceLoadState>,
+    charactersLoading: Boolean,
+): Pair<Int, Int> {
+    if (session == null) return 0 to 0
+    var expected = 0
+    var settled = 0
+    val prefix = messageId.orEmpty()
+
+    val characters = session.characters
+    if (characters.isNotEmpty()) {
+        expected += characters.size
+        val ready = characters.count { !it.imageUrl.isNullOrBlank() }
+        settled += if (charactersLoading) ready else characters.size
+    }
+
+    session.sentences.forEachIndexed { index, sentence ->
+        expected += 1
+        val sentenceKey = "$prefix#$index"
+        if (!sentence.imageUrl.isNullOrBlank() || imageFailed[sentenceKey] == true) {
+            settled += 1
+        }
+
+        val sentenceError = studyCreationSentenceState(sentence, sentenceStatus[index]) ==
+            StudySentenceLoadState.ERROR
+        sentence.tokens.forEachIndexed { tokenIndex, token ->
+            if (token.status == StudyTokenStatus.PLAIN) return@forEachIndexed
+            val wordKey = "$prefix#$index#$tokenIndex"
+            val wordFailed = wordImageFailed[wordKey] == true
+            val hasUrl = !token.imageUrl.isNullOrBlank()
+            val expects = when {
+                sentenceError -> hasUrl || !token.imageId.isNullOrBlank() || wordFailed
+                token.status == StudyTokenStatus.PENDING -> true
+                token.isDissectable -> true
+                hasUrl || !token.imageId.isNullOrBlank() -> true
+                else -> false
+            }
+            if (!expects) return@forEachIndexed
+            expected += 1
+            if (hasUrl || wordFailed || sentenceError) settled += 1
+        }
+    }
+    return settled to expected
 }
 
 /** Completed sentence visuals for a saved study card, in reading order. */
@@ -4649,7 +4913,7 @@ private fun StudyWordPlayground(
     }
 }
 
-private enum class StudySentenceLoadState {
+internal enum class StudySentenceLoadState {
     LOADING,
     READY,
     ERROR,

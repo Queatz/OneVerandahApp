@@ -388,6 +388,19 @@ object Styles {
     const val studySessionBody = "study-session-body"
     const val studySessionHint = "study-session-hint"
     const val studySessionError = "study-session-error"
+    const val studyCreationProgress = "study-creation-progress"
+    const val studyCreationProgressHeader = "study-creation-progress-header"
+    const val studyCreationProgressTitle = "study-creation-progress-title"
+    const val studyCreationProgressPercent = "study-creation-progress-percent"
+    const val studyCreationProgressBar = "study-creation-progress-bar"
+    const val studyCreationProgressFill = "study-creation-progress-fill"
+    const val studyCreationProgressSteps = "study-creation-progress-steps"
+    const val studyCreationProgressStep = "study-creation-progress-step"
+    const val studyCreationProgressStepRunning = "study-creation-progress-step-running"
+    const val studyCreationProgressStepDone = "study-creation-progress-step-done"
+    const val studyCreationProgressStepUpcoming = "study-creation-progress-step-upcoming"
+    const val studyCreationProgressStepLabel = "study-creation-progress-step-label"
+    const val studyCreationProgressStepCount = "study-creation-progress-step-count"
     const val studyModeTabs = "study-mode-tabs"
     const val studyReadBlock = "study-read-block"
     const val studyReadSentence = "study-read-sentence"
@@ -3265,6 +3278,74 @@ object Styles {
             flex-direction: column;
             gap: 14px;
             padding-bottom: 8px;
+        }
+        .${studyCreationProgress} {
+            display: flex;
+            flex-direction: column;
+            gap: 10px;
+            padding: 12px;
+            border-radius: 16px;
+            border: 1px solid var(--md-sys-color-outline);
+            background: color-mix(in srgb, var(--md-sys-color-primary) 6%, var(--md-sys-color-surface));
+        }
+        .${studyCreationProgressHeader} {
+            display: flex;
+            align-items: baseline;
+            justify-content: space-between;
+            gap: 12px;
+        }
+        .${studyCreationProgressTitle} {
+            font-size: 14px;
+            font-weight: 700;
+            color: var(--md-sys-color-on-surface);
+        }
+        .${studyCreationProgressPercent} {
+            font-size: 13px;
+            font-weight: 700;
+            color: var(--md-sys-color-primary);
+        }
+        .${studyCreationProgressBar} {
+            height: 6px;
+            border-radius: 999px;
+            background: color-mix(in srgb, var(--md-sys-color-outline) 35%, transparent);
+            overflow: hidden;
+        }
+        .${studyCreationProgressFill} {
+            height: 100%;
+            border-radius: inherit;
+            background: var(--md-sys-color-primary);
+        }
+        .${studyCreationProgressSteps} {
+            display: flex;
+            flex-direction: column;
+            gap: 6px;
+        }
+        .${studyCreationProgressStep} {
+            display: flex;
+            align-items: center;
+            gap: 8px;
+            font-size: 13px;
+            color: var(--md-sys-color-on-surface);
+        }
+        .${studyCreationProgressStep} .${materialSymbols} {
+            font-size: 18px;
+        }
+        .${studyCreationProgressStepRunning} .${materialSymbols} {
+            animation: spin 1.2s linear infinite;
+            color: var(--md-sys-color-primary);
+        }
+        .${studyCreationProgressStepDone} .${materialSymbols} {
+            color: var(--md-sys-color-primary);
+        }
+        .${studyCreationProgressStepUpcoming} {
+            color: var(--md-sys-color-on-surface-variant);
+        }
+        .${studyCreationProgressStepLabel} {
+            flex: 1 1 auto;
+        }
+        .${studyCreationProgressStepCount} {
+            font-variant-numeric: tabular-nums;
+            color: var(--md-sys-color-on-surface-variant);
         }
         .${studyModeTabs} {
             display: flex;
