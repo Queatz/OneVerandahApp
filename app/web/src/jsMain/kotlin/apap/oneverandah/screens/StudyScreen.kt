@@ -39,6 +39,7 @@ import apap.oneverandah.api.StudySentence
 import apap.oneverandah.api.StudySentenceImageRequest
 import apap.oneverandah.api.StudySessionRequest
 import apap.oneverandah.api.StudySessionResponse
+import apap.oneverandah.api.StudyTranslateRequest
 import apap.oneverandah.api.sentenceImageUrls
 import apap.oneverandah.api.StudyStoryCharacter
 import apap.oneverandah.api.StudyStoryCharactersRequest
@@ -1163,7 +1164,8 @@ fun StudyScreen(
     }
 
     fun startStudyInAnotherLanguage(rawLanguage: String) {
-        val text = studySession?.text?.trim().orEmpty().ifEmpty {
+        val session = studySession
+        val text = session?.text?.trim().orEmpty().ifEmpty {
             studyTarget?.let(::studyTextFromChatMessage).orEmpty()
         }
         if (text.isEmpty()) return
@@ -1171,15 +1173,38 @@ fun StudyScreen(
         activeStudySessionItem = null
         activeStudySessionOwned = false
         studyStartExact = true
-        openStudy(
-            ChatMessage(
-                id = "study-${Date.now().toLong()}",
-                sender = ChatSender.YOU,
-                text = text,
-                createdAt = Date.now().toLong(),
-            ),
-            learnerLanguageTag = Language.normalizeLearnerLanguageTag(rawLanguage),
+        val message = ChatMessage(
+            id = "study-${Date.now().toLong()}",
+            sender = ChatSender.YOU,
+            text = text,
+            createdAt = Date.now().toLong(),
         )
+        studyTarget = message
+        studySession = null
+        studySentenceStatus.clear()
+        studySessionVisible = true
+        studyError = null
+        studyLoading = true
+        val targetLanguageTag = Language.normalizeLearnerLanguageTag(rawLanguage)
+        scope.launch {
+            runCatching {
+                ChatApi.studyTranslate(
+                    StudyTranslateRequest(
+                        text = text,
+                        targetLanguageTag = targetLanguageTag,
+                        sourceLanguageTag = session?.textLanguageTag,
+                    ),
+                )
+            }.onSuccess { translation ->
+                val translatedText = translation.text.trim().ifEmpty { text }
+                openStudy(message.copy(text = translatedText))
+            }.onFailure {
+                if (studyTarget?.id == message.id) {
+                    studyError = strings.chatStudyError
+                    studyLoading = false
+                }
+            }
+        }
     }
 
     fun startStudyFromText(raw: String?, exact: Boolean = true) {

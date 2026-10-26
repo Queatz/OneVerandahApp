@@ -13,6 +13,7 @@ import apap.oneverandah.api.StudyStoryCharacter
 import apap.oneverandah.api.StudyStoryCharactersRequest
 import apap.oneverandah.api.StudySessionRequest
 import apap.oneverandah.api.StudySessionResponse
+import apap.oneverandah.api.StudyTranslateRequest
 import apap.oneverandah.api.StudyToken
 import apap.oneverandah.api.StudyTokenStatus
 import apap.oneverandah.api.StudyWriteCheckRequest
@@ -1447,6 +1448,32 @@ class StudyServiceTest {
         assertTrue(response.sentences.isNotEmpty())
         assertTrue(response.sentences.all { it.text.isNotBlank() && it.translation.isNotBlank() })
     }
+
+    @Test
+    fun `study translation normalizes target and source tags before calling AI`() = runBlocking {
+        val ai = FakeStudyAiClient(translatedText = "  Bonjour.  ")
+        val response = StudyService(ai).translateStudyText(
+            StudyTranslateRequest(
+                text = "  Hello.  ",
+                targetLanguageTag = "fr-FR",
+                sourceLanguageTag = " en ",
+            ),
+        )
+
+        assertEquals("Hello.", ai.lastTranslateRequest?.text)
+        assertEquals("fr", ai.lastTranslateRequest?.targetLanguageTag)
+        assertEquals("en", ai.lastTranslateRequest?.sourceLanguageTag)
+        assertEquals("Bonjour.", response.text)
+    }
+
+    @Test
+    fun `study translation falls back to original when AI returns blank`() = runBlocking {
+        val response = StudyService(FakeStudyAiClient(translatedText = "  ")).translateStudyText(
+            StudyTranslateRequest(text = "Hello there.", targetLanguageTag = "fr"),
+        )
+
+        assertEquals("Hello there.", response.text)
+    }
 }
 
 internal class FakeStudyAiClient(
@@ -1503,12 +1530,14 @@ internal class FakeStudyAiClient(
     ),
     private val extractedText: String? = null,
     private val composedText: String? = null,
+    private val translatedText: String? = null,
     private val intendedScene: String = INTENDED_SCENE,
     private val sessionName: String = "A study session",
     private val sessionNameFailure: Boolean = false,
 ) : StudyAiClient {
     var lastExtractRequest: StudyGenerationRequest? = null
     var lastIntentRequest: StudyGenerationRequest? = null
+    var lastTranslateRequest: StudyTranslateRequest? = null
     var lastSkeletonRequest: StudyGenerationRequest? = null
     var lastDissectRequest: StudyDissectGenerationRequest? = null
     var lastPlaygroundRequest: StudyWordPlaygroundGenerationRequest? = null
@@ -1535,6 +1564,11 @@ internal class FakeStudyAiClient(
     override suspend fun generateStudyIntent(request: StudyGenerationRequest): String {
         lastIntentRequest = request
         return composedText ?: request.text
+    }
+
+    override suspend fun translateStudyText(request: StudyTranslateRequest): String {
+        lastTranslateRequest = request
+        return translatedText ?: request.text
     }
 
     override suspend fun designIntendedScene(request: StudySceneGenerationRequest): String {

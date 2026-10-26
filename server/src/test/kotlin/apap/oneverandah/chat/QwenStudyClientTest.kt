@@ -1,5 +1,6 @@
 package apap.oneverandah.chat
 
+import apap.oneverandah.api.StudyTranslateRequest
 import apap.oneverandah.config.QwenChatConfig
 import io.ktor.client.HttpClient
 import io.ktor.client.engine.mock.MockEngine
@@ -19,6 +20,35 @@ import kotlinx.serialization.json.jsonObject
 import kotlinx.serialization.json.jsonPrimitive
 
 class QwenStudyClientTest {
+    @Test
+    fun `study translation parses text and includes source and target languages in the prompt`() = runBlocking {
+        val requestBodies = mutableListOf<String>()
+        val engine = MockEngine { request ->
+            requestBodies += (request.body as OutgoingContent.ByteArrayContent).bytes().decodeToString()
+            respond(
+                content = qwenChatResponse("""{"text":"Bonjour."}"""),
+                status = HttpStatusCode.OK,
+                headers = headersOf(HttpHeaders.ContentType, "application/json"),
+            )
+        }
+        val client = HttpClient(engine)
+        val ai = DashScopeStudyAiClient(qwenConfig(), client)
+
+        val translated = ai.translateStudyText(
+            StudyTranslateRequest(
+                text = "Hello.",
+                targetLanguageTag = "fr",
+                sourceLanguageTag = "en",
+            ),
+        )
+
+        assertEquals("Bonjour.", translated)
+        assertContains(requestBodies.single(), "Translate the supplied lesson passage")
+        assertContains(requestBodies.single(), "French (language tag: fr)")
+        assertContains(requestBodies.single(), "English (tag: en)")
+        client.close()
+    }
+
     @Test
     fun `study skeleton and dissect use the heavy chat model`() = runBlocking {
         val models = mutableListOf<String>()

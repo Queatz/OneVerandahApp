@@ -17,6 +17,7 @@ import apap.oneverandah.api.StudyPlayTurnRequest
 import apap.oneverandah.api.StudyWriteCheckRequest
 import apap.oneverandah.api.StudySentenceImageRequest
 import apap.oneverandah.api.StudySessionRequest
+import apap.oneverandah.api.StudyTranslateRequest
 import apap.oneverandah.api.StudyStoryCharactersRequest
 import apap.oneverandah.api.StudyWordImageRequest
 import apap.oneverandah.api.StudyWordPlaygroundRequest
@@ -132,6 +133,15 @@ fun Route.chatRoutes(
                 return@post
             }
             call.respond(studyService.intendedStudyText(request))
+        }
+
+        post("/api/chat/study/translate") {
+            val request = call.receive<StudyTranslateRequest>()
+            if (request.normalizedOrNull() == null) {
+                call.respond(HttpStatusCode.BadRequest, ChatErrorResponse("Study translation requires text and a target language"))
+                return@post
+            }
+            call.respond(studyService.translateStudyText(request))
         }
 
         post("/api/chat/study/dissect") {

@@ -35,6 +35,20 @@ class ChatApiModelsTest {
     }
 
     @Test
+    fun `study translate request trims text and preserves typed target languages`() {
+        val normalized = StudyTranslateRequest(
+            text = "  Hello there.  ",
+            targetLanguageTag = "  Klingon  ",
+            sourceLanguageTag = "  en-US  ",
+        ).normalizedOrNull()
+
+        assertEquals("Hello there.", normalized?.text)
+        assertEquals("Klingon", normalized?.targetLanguageTag)
+        assertEquals("en-US", normalized?.sourceLanguageTag)
+        assertNull(StudyTranslateRequest(text = "Hello", targetLanguageTag = "  ").normalizedOrNull())
+    }
+
+    @Test
     fun `study session practice sentences default empty and round trip`() {
         val original = StudySessionResponse(
             text = "Xin chào.",

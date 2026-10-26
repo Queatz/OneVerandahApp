@@ -26,6 +26,7 @@ import apap.oneverandah.api.StudySentenceImageResponse
 import apap.oneverandah.api.StudyIntentResponse
 import apap.oneverandah.api.StudySessionRequest
 import apap.oneverandah.api.StudySessionResponse
+import apap.oneverandah.api.StudyTranslateRequest
 import apap.oneverandah.api.StudyStoryCharacter
 import apap.oneverandah.api.StudyStoryCharactersRequest
 import apap.oneverandah.api.StudyStoryCharactersResponse
@@ -183,6 +184,9 @@ interface StudyAiClient {
      */
     suspend fun extractStudyText(request: StudyGenerationRequest): String = request.text.trim()
 
+    /** Translates lesson text into the requested study language; lightweight clients keep it unchanged. */
+    suspend fun translateStudyText(request: StudyTranslateRequest): String = request.text.trim()
+
     /**
      * Turns a learner prompt into the study text they meant (e.g. generate
      * example sentences). Default keeps the original so tests and fakes stay
@@ -235,6 +239,13 @@ class StudyService(
             ),
         ).trim().ifEmpty { request.text }
         return StudyIntentResponse(text = composed)
+    }
+
+    /** Translate existing lesson text before creating a study session for it. */
+    suspend fun translateStudyText(rawRequest: StudyTranslateRequest): StudyIntentResponse {
+        val request = requireNotNull(rawRequest.normalizedOrNull()) { "Study translation requires text and a target language" }
+        val translated = aiClient.translateStudyText(request).trim().ifEmpty { request.text }
+        return StudyIntentResponse(text = translated)
     }
 
     /** Fast skeleton: language + sentences + tokens (no full dissections). */

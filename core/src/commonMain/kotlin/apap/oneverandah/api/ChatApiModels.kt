@@ -170,6 +170,24 @@ data class StudySessionRequest(
     }
 }
 
+/** Request to translate lesson text before opening it as a study session. */
+@Serializable
+data class StudyTranslateRequest(
+    val text: String,
+    val targetLanguageTag: String,
+    val sourceLanguageTag: String? = null,
+) {
+    fun normalizedOrNull(): StudyTranslateRequest? {
+        val normalizedText = text.trim().takeIf { it.isNotEmpty() } ?: return null
+        val targetTag = targetLanguageTag.trim().takeIf { it.isNotEmpty() } ?: return null
+        return copy(
+            text = normalizedText,
+            targetLanguageTag = Language.normalizeLearnerLanguageTag(targetTag),
+            sourceLanguageTag = sourceLanguageTag?.trim()?.takeIf { it.isNotEmpty() },
+        )
+    }
+}
+
 /**
  * Study text produced from a learner prompt (parse mode).
  *

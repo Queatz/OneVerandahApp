@@ -17,6 +17,7 @@ import apap.oneverandah.chat.StudyCharacterDesign
 import apap.oneverandah.api.StudyStoryCharactersResponse
 import apap.oneverandah.api.StudyStoryCharactersRequest
 import apap.oneverandah.api.StudySentenceImageResponse
+import apap.oneverandah.api.StudyTranslateRequest
 import apap.oneverandah.api.StudyIntentResponse
 import apap.oneverandah.api.StudyListenCheckRequest
 import apap.oneverandah.api.StudyListenCheckResponse
@@ -295,7 +296,10 @@ class ChatRoutesTest {
             residentDirectory = ResidentDirectory(emptyList()),
         )
         val studyService = StudyService(
-            FakeStudyAiClient(composedText = "Anh thích em.\nChúng ta nói chuyện được không?"),
+            FakeStudyAiClient(
+                composedText = "Anh thích em.\nChúng ta nói chuyện được không?",
+                translatedText = "Bonjour.",
+            ),
         )
         application {
             install(ContentNegotiation) { json() }
@@ -328,6 +332,22 @@ class ChatRoutesTest {
         assertEquals(HttpStatusCode.OK, response.status)
         val intent = json.decodeFromString<StudyIntentResponse>(response.bodyAsText())
         assertEquals("Anh thích em.\nChúng ta nói chuyện được không?", intent.text)
+
+        val invalidTranslation = client.post("/api/chat/study/translate") {
+            contentType(ContentType.Application.Json)
+            setBody("""{"text":"Hello.","targetLanguageTag":" "}""")
+        }
+        assertEquals(HttpStatusCode.BadRequest, invalidTranslation.status)
+
+        val translationResponse = client.post("/api/chat/study/translate") {
+            contentType(ContentType.Application.Json)
+            setBody(json.encodeToString(StudyTranslateRequest("Hello.", "fr", "en")))
+        }
+        assertEquals(HttpStatusCode.OK, translationResponse.status)
+        assertEquals(
+            "Bonjour.",
+            json.decodeFromString<StudyIntentResponse>(translationResponse.bodyAsText()).text,
+        )
     }
 
     @Test

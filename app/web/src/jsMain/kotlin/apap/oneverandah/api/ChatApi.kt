@@ -153,6 +153,17 @@ object ChatApi {
         return json.decodeFromString(StudyIntentResponse.serializer(), text)
     }
 
+    /** Translate existing lesson text into the requested study language. */
+    suspend fun studyTranslate(request: StudyTranslateRequest): StudyIntentResponse {
+        val response = client.post(chatApiUrl("/study/translate")) {
+            contentType(ContentType.Application.Json)
+            setBody(json.encodeToString(StudyTranslateRequest.serializer(), request))
+        }
+        val text = response.bodyAsText()
+        if (!response.status.isSuccess()) throw ChatApiException(errorMessage(text, response.status.value))
+        return json.decodeFromString(StudyIntentResponse.serializer(), text)
+    }
+
     /** Full dissection for one skeleton sentence. */
     suspend fun studyDissect(request: StudyDissectSentenceRequest): StudyDissectSentenceResponse {
         val response = client.post(chatApiUrl("/study/dissect")) {

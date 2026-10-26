@@ -3,6 +3,7 @@ package apap.oneverandah.chat
 import apap.oneverandah.api.StudyExampleSentence
 import apap.oneverandah.api.StudySentence
 import apap.oneverandah.api.StudySessionResponse
+import apap.oneverandah.api.StudyTranslateRequest
 import apap.oneverandah.api.StudyToken
 import apap.oneverandah.api.StudyTokenStatus
 import apap.oneverandah.config.QwenChatConfig
@@ -49,9 +50,31 @@ internal fun stripJsonFences(content: String): String =
 private fun languageName(tag: String): String {
     val normalized = tag.trim().lowercase().substringBefore('-')
     return Language.entries.firstOrNull { it.tag == normalized }?.displayName
+        ?: mapOf(
+            "ar" to "Arabic",
+            "da" to "Danish",
+            "el" to "Greek",
+            "fi" to "Finnish",
+            "fr" to "French",
+            "he" to "Hebrew",
+            "hi" to "Hindi",
+            "id" to "Indonesian",
+            "it" to "Italian",
+            "km" to "Khmer",
+            "lo" to "Lao",
+            "nl" to "Dutch",
+            "no" to "Norwegian",
+            "pl" to "Polish",
+            "pt" to "Portuguese",
+            "sv" to "Swedish",
+            "th" to "Thai",
+            "tl" to "Tagalog",
+            "tr" to "Turkish",
+            "uk" to "Ukrainian",
+        )[normalized]
         ?: when (normalized) {
             "my" -> "Burmese"
-            else -> normalized.ifBlank { tag }
+            else -> tag.trim().ifBlank { normalized }
         }
 }
 
@@ -320,6 +343,23 @@ class DashScopeStudyAiClient(
             userContent = userContent,
             label = "study intent",
             temperature = 0.6,
+        )
+        return QwenStudyExtractParser.parse(content)
+    }
+
+    override suspend fun translateStudyText(request: StudyTranslateRequest): String {
+        val sourceLanguage = request.sourceLanguageTag
+            ?.let { "The source language is ${languageName(it)} (tag: $it)." }
+            ?: "Detect the source language from the passage."
+        val content = complete(
+            systemPrompt = """
+                Translate the supplied lesson passage into ${languageName(request.targetLanguageTag)} (language tag: ${request.targetLanguageTag}).
+                $sourceLanguage Preserve the complete meaning and make the result natural for a language learner.
+                Return only a JSON object with a single string field named "text" containing the translated passage.
+                Do not include explanations, glosses, labels, or any other commentary.
+            """.trimIndent(),
+            userContent = request.text,
+            label = "study translate",
         )
         return QwenStudyExtractParser.parse(content)
     }
