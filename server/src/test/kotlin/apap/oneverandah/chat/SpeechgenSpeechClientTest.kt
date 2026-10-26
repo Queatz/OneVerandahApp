@@ -26,7 +26,7 @@ import kotlinx.serialization.json.jsonObject
 
 class SpeechgenSpeechClientTest {
     @Test
-    fun `speechgen configuration uses Xiaoxiao Myanmar voice and requires credentials`() {
+    fun `speechgen configuration uses Seraphina MM voice and requires credentials`() {
         val envFile = Files.createTempFile("one-verandah", ".env").toFile().apply {
             writeText(
                 """
@@ -38,7 +38,7 @@ class SpeechgenSpeechClientTest {
 
         try {
             val config = AppConfig.load(envFile).speechgen
-            assertEquals("Xiaoxiao MM", config.voice)
+            assertEquals("Seraphina MM", config.voice)
             assertEquals("https://speechgen.io/index.php?r=api/subs", config.endpoint)
             assertEquals("https://speechgen.io/index.php?r=api/result", config.resultEndpoint)
             assertEquals("https://speechgen.io/index.php?r=api/text", config.textEndpoint)
@@ -73,10 +73,10 @@ class SpeechgenSpeechClientTest {
             voiceId = voiceId,
         )
 
-        assertEquals("Xiaoxiao MM", voiceId)
+        assertEquals("Seraphina MM", voiceId)
         assertEquals("test-token", submittedForm?.get("token"))
         assertEquals("tts@example.test", submittedForm?.get("email"))
-        assertEquals("Xiaoxiao MM", submittedForm?.get("voice"))
+        assertEquals("Seraphina MM", submittedForm?.get("voice"))
         assertEquals("မင်္ဂလာပါ", submittedForm?.get("text"))
         assertEquals("mp3", submittedForm?.get("format"))
         assertContentEquals(audio, result.bytes)
@@ -339,10 +339,10 @@ class SpeechgenSpeechClientTest {
     @Test
     fun `router uses speechgen voice at startup when Qwen is disabled`() = runBlocking {
         val qwen = RecordingSpeechClient()
-        val speechgen = RecordingSpeechClient(voice = "Xiaoxiao MM")
+        val speechgen = RecordingSpeechClient(voice = "Seraphina MM")
         val router = RoutingSpeechClient(qwen, speechgen, qwenEnabled = false, speechgenEnabled = true)
 
-        assertEquals("Xiaoxiao MM", router.designVoice())
+        assertEquals("Seraphina MM", router.designVoice())
         assertEquals(0, qwen.designCalls)
         assertEquals(1, speechgen.designCalls)
     }

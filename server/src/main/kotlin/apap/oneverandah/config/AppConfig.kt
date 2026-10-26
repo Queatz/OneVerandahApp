@@ -143,7 +143,7 @@ data class QwenImageConfig(
 data class SpeechgenConfig(
     val apiKey: String,
     val email: String,
-    val voice: String = "Xiaoxiao MM",
+    val voice: String = "Seraphina MM",
     val endpoint: String = DEFAULT_ENDPOINT,
     val resultEndpoint: String = DEFAULT_RESULT_ENDPOINT,
     val textEndpoint: String = DEFAULT_TEXT_ENDPOINT,
@@ -374,7 +374,7 @@ data class AppConfig(
             val speechgen = SpeechgenConfig(
                 apiKey = source["SPEECHGEN_API_KEY"] ?: "",
                 email = source["SPEECHGEN_EMAIL"] ?: "",
-                voice = source["SPEECHGEN_VOICE"] ?: "Xiaoxiao MM",
+                voice = source["SPEECHGEN_VOICE"] ?: "Seraphina MM",
                 endpoint = speechgenEndpoint,
                 resultEndpoint = source["SPEECHGEN_RESULT_ENDPOINT"]
                     ?: speechgenResultEndpoint(speechgenEndpoint),
