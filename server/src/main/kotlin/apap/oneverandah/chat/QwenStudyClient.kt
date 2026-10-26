@@ -720,7 +720,10 @@ class DashScopeStudyAiClient(
         require(beats.size == expectedBeats) {
             "Qwen study exam beat chunk $roundStart-$roundEnd must contain $expectedBeats beats"
         }
-        return beats
+        return beats.mapIndexed { index, beat ->
+            val round = roundStart + index / 2
+            beat.copy(id = if (index % 2 == 0) "listen-$round" else "speak-$round")
+        }
     }
 
     private fun examSceneMaterials(request: StudyExamSceneGenerationRequest): String = buildString {
@@ -1155,6 +1158,7 @@ class DashScopeStudyAiClient(
             {"beats":[{"id":"listen-$roundStart","kind":"LISTEN or SPEAK","speakerId":"main or secondary","speakerName":"known cast name","line":"new study-language line for LISTEN; omit for SPEAK","prompt":"short cue in the learner UI language","expectedMeaning":"answer intent in the learner UI language","sourceSentence":"the study sentence whose grammar or vocabulary this round tests"}]}
             Rules:
             - Write EXACTLY $rounds rounds and EXACTLY $beats beats for rounds $roundStart through $roundEnd. Each round is a LISTEN beat immediately followed by a SPEAK beat. Start with LISTEN. Never place two SPEAK beats in a row.
+            - Beat ids must be ${(roundStart..roundEnd).joinToString { "listen-$it, speak-$it" }}. Never restart at listen-1 or reuse an earlier id.
             - This is one coherent everyday situation, not a quiz. Use only the supplied cast ids and names. Never invent another person.
             - Invent NEW spoken LISTEN lines in ${languageName(textLanguageTag)} ($textLanguageTag) that reuse the session's vocabulary and grammatical structures. Never paste, quote, or lightly reframe a study sentence. Each listen line must be unique and must advance the conversation.
             - A SPEAK beat has no line field. Its prompt is that round's outline item, asking for a situated reply in the study language. expectedMeaning describes what a useful reply must communicate.

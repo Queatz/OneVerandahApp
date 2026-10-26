@@ -563,9 +563,48 @@ class QwenStudyClientTest {
         assertContains(bodies[1], "Never paste, quote, or lightly reframe a study sentence")
         assertContains(bodies[1], "EXACTLY 5 rounds")
         assertContains(bodies[1], "EXACTLY 10 beats")
+        assertContains(bodies[1], "listen-1, speak-1")
         assertContains(bodies[2], "Write rounds 6-10 only")
+        assertContains(bodies[2], "listen-6, speak-6")
+        assertContains(bodies[2], "Never restart at listen-1")
         assertContains(bodies[3], "Merely repeating the heard study-language line is not comprehension")
         assertContains(bodies[3], "without responding to the moment")
+        client.close()
+    }
+
+    @Test
+    fun `study exam generation remumbers colliding beat ids from later chunks`() = runBlocking {
+        val bodies = mutableListOf<String>()
+        val engine = MockEngine { request ->
+            bodies += (request.body as OutgoingContent.ByteArrayContent).bytes().decodeToString()
+            val content = when (bodies.size) {
+                1 -> examPlanJson()
+                2 -> examBeatChunkJson(1, 5)
+                else -> examBeatChunkJson(1, 5)
+            }
+            respond(
+                content = qwenChatResponse(content),
+                status = HttpStatusCode.OK,
+                headers = headersOf(HttpHeaders.ContentType, "application/json"),
+            )
+        }
+        val client = HttpClient(engine)
+        val ai = DashScopeStudyAiClient(qwenConfig(), client)
+
+        val scene = ai.generateExamScene(
+            StudyExamSceneGenerationRequest(
+                text = "Xin chào.",
+                textLanguageTag = "vi",
+                languageTag = "en",
+                sentences = listOf(StudySentence(text = "Xin chào.", tokens = emptyList())),
+                characters = listOf(StudyStoryCharacter("main", "Lan", "main", "A neighbor.")),
+            ),
+        )
+
+        assertEquals(20, scene.beats.size)
+        assertEquals(scene.beats.map { it.id }.distinct().size, scene.beats.size)
+        assertEquals((1..10).map { "listen-$it" }, scene.beats.filter { it.kind == StudyExamBeatKind.LISTEN }.map { it.id })
+        assertEquals((1..10).map { "speak-$it" }, scene.beats.filter { it.kind == StudyExamBeatKind.SPEAK }.map { it.id })
         client.close()
     }
 

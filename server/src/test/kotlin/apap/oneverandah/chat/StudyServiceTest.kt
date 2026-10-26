@@ -1289,6 +1289,35 @@ class StudyServiceTest {
     }
 
     @Test
+    fun `duplicate beat ids from split generation keep invented lines`() = runBlocking {
+        val colliding = fakeExamScene().copy(
+            beats = fakeExamScene().beats.mapIndexed { index, beat ->
+                val reusedRound = (index % 10) / 2 + 1
+                beat.copy(
+                    id = if (beat.kind == StudyExamBeatKind.LISTEN) "listen-$reusedRound" else "speak-$reusedRound",
+                    line = if (beat.kind == StudyExamBeatKind.LISTEN) "Câu mới số ${index / 2 + 1}." else beat.line,
+                )
+            },
+        )
+        val scene = StudyService(FakeStudyAiClient(examScene = colliding)).examScene(
+            StudyExamSceneRequest(
+                session = StudySessionResponse(
+                    text = "Xin chào.",
+                    textLanguageTag = "vi",
+                    sentences = listOf(StudySentence(text = "Xin chào.", tokens = emptyList())),
+                    characters = listOf(StudyStoryCharacter("main", "Lan", "main", "A neighbor.")),
+                ),
+                languageTag = "en",
+            ),
+        )
+
+        assertEquals(20, scene.beats.size)
+        assertEquals(scene.beats.map { it.id }.distinct().size, scene.beats.size)
+        assertEquals((1..10).map { "listen-$it" }, scene.beats.filter { it.kind == StudyExamBeatKind.LISTEN }.map { it.id })
+        assertEquals((1..10).map { "Câu mới số $it." }, scene.beats.filter { it.kind == StudyExamBeatKind.LISTEN }.map { it.line })
+    }
+
+    @Test
     fun `failed exam generation falls back to a playable scene`() = runBlocking {
         val scene = StudyService(FakeStudyAiClient(examSceneFailure = true)).examScene(
             StudyExamSceneRequest(

@@ -672,9 +672,6 @@ class StudyService(
         require(generated.beats.size == STUDY_EXAM_BEAT_COUNT) {
             "Study exam scene must contain exactly $STUDY_EXAM_BEAT_COUNT beats"
         }
-        require(generated.beats.map { it.id.trim() }.distinct().size == generated.beats.size) {
-            "Study exam beat ids must be unique"
-        }
         require(generated.beats.withIndex().all { (index, beat) ->
             val expected = if (index % 2 == 0) StudyExamBeatKind.LISTEN else StudyExamBeatKind.SPEAK
             beat.kind == expected
@@ -683,7 +680,8 @@ class StudyService(
         val fallbackSpeaker = characters.first()
         val usedSentences = mutableSetOf<Int>()
         val beats = generated.beats.mapIndexed { index, beat ->
-            val id = beat.id.trim().ifEmpty { "beat-${index + 1}" }
+            val round = index / 2 + 1
+            val id = if (beat.kind == StudyExamBeatKind.LISTEN) "listen-$round" else "speak-$round"
             val sourceSentence = resolveExamSourceSentence(
                 rawSource = beat.sourceSentence,
                 line = beat.line,
