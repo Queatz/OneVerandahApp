@@ -26,9 +26,11 @@ import apap.oneverandah.api.SpeechWordTiming
 import apap.oneverandah.api.StudyDissectSentenceRequest
 import apap.oneverandah.api.StudyExampleSentence
 import apap.oneverandah.api.StudyExamBeatKind
+import apap.oneverandah.api.StudyExamBeatScore
 import apap.oneverandah.api.StudyExamGrade
 import apap.oneverandah.api.StudyExamScene
 import apap.oneverandah.api.StudyExamSceneRequest
+import apap.oneverandah.api.isTenRoundExam
 import apap.oneverandah.api.StudyExamScoreAnswer
 import apap.oneverandah.api.StudyExamScoreRequest
 import apap.oneverandah.api.StudyExamScoreResponse
@@ -66,6 +68,7 @@ import apap.oneverandah.model.Language
 import apap.oneverandah.state.Toaster
 import kotlinx.browser.document
 import kotlinx.browser.window
+import kotlinx.coroutines.CompletableDeferred
 import kotlinx.coroutines.async
 import kotlinx.coroutines.awaitAll
 import kotlinx.coroutines.coroutineScope
@@ -87,6 +90,8 @@ import org.jetbrains.compose.web.dom.Div
 import org.jetbrains.compose.web.dom.Img
 import org.jetbrains.compose.web.dom.Input
 import org.jetbrains.compose.web.dom.Label
+import org.jetbrains.compose.web.dom.Li
+import org.jetbrains.compose.web.dom.Ol
 import org.jetbrains.compose.web.dom.P
 import org.jetbrains.compose.web.dom.Span
 import org.jetbrains.compose.web.dom.Text
@@ -97,6 +102,8 @@ import org.w3c.dom.HTMLImageElement
 import org.w3c.dom.HTMLInputElement
 import org.w3c.dom.events.Event
 import kotlin.js.Date
+
+private val studySessionImageSlots = Semaphore(permits = 2)
 
 @Composable
 fun StudyScreen(
@@ -132,6 +139,10 @@ fun StudyScreen(
     val studyPlayInFlight = remember { mutableStateMapOf<String, Boolean>() }
     // messageId -> play scenario generation failed (empty scenarios)
     val studyPlayFailed = remember { mutableStateMapOf<String, Boolean>() }
+    // messageId -> exam scene generation in flight
+    val studyExamInFlight = remember { mutableStateMapOf<String, Boolean>() }
+    // messageId -> exam scene generation failed
+    val studyExamFailed = remember { mutableStateMapOf<String, Boolean>() }
     // sourceMessageId (or session id fallback) -> persisted study row id
     val studyPersistedBySourceId = remember { mutableStateMapOf<String, String>() }
     var studySessionItems by remember { mutableStateOf<List<SavedStudySessionSummary>>(emptyList()) }
@@ -349,6 +360,8 @@ fun StudyScreen(
         studyCharactersInFlight.remove(messageId)
         studyPlayInFlight.remove(messageId)
         studyPlayFailed.remove(messageId)
+        studyExamInFlight.remove(messageId)
+        studyExamFailed.remove(messageId)
     }
 
     fun applyPlayScenarios(messageId: String, scenarios: List<StudyPlayScenario>) {
@@ -1082,6 +1095,49 @@ fun StudyScreen(
         }
     }
 
+    fun applyExamScene(messageId: String, scene: StudyExamScene) {
+        val current = studyCache[messageId]
+            ?: studySession?.takeIf { studyTarget?.id == messageId }
+            ?: return
+        if (current.examScene?.isTenRoundExam() == true) return
+        val updated = current.copy(examScene = scene)
+        studyCache[messageId] = updated
+        if (studyTarget?.id == messageId) studySession = updated
+        persistStudySession(messageId, updated)
+    }
+
+    fun loadMissingExamScene(messageId: String, session: StudySessionResponse) {
+        if (session.examScene?.isTenRoundExam() == true) {
+            studyExamFailed.remove(messageId)
+            return
+        }
+        if (studyExamInFlight[messageId] == true) return
+        studyExamInFlight[messageId] = true
+        studyExamFailed.remove(messageId)
+        scope.launch {
+            try {
+                ensureStudyCharacters(messageId)
+                val latest = studyCache[messageId] ?: session
+                if (latest.examScene?.isTenRoundExam() == true) {
+                    studyExamFailed.remove(messageId)
+                    return@launch
+                }
+                val scene = ChatApi.studyExamScene(
+                    StudyExamSceneRequest(
+                        session = latest.copy(examScene = null),
+                        languageTag = Localization.language.tag,
+                    ),
+                )
+                applyExamScene(messageId, scene)
+                studyExamFailed.remove(messageId)
+            } catch (_: Throwable) {
+                studyExamFailed[messageId] = true
+            } finally {
+                studyExamInFlight.remove(messageId)
+            }
+        }
+    }
+
     fun openStudy(message: ChatMessage, learnerLanguageTag: String = language.tag) {
         val text = studyTextFromChatMessage(message)
         if (text.isEmpty()) return
@@ -1098,6 +1154,7 @@ fun StudyScreen(
             loadMissingStudyImages(message.id, cached)
             loadMissingStudyWordImages(message.id, cached)
             loadMissingPlayScenarios(message.id, cached)
+            loadMissingExamScene(message.id, cached)
             return
         }
         studyLanguageByMessageId[message.id] = learnerLanguageTag
@@ -1119,6 +1176,7 @@ fun StudyScreen(
                     loadMissingStudyImages(message.id, session)
                     loadMissingStudyWordImages(message.id, session)
                     loadMissingPlayScenarios(message.id, session)
+                    loadMissingExamScene(message.id, session)
                 }
             }.onFailure {
                 if (studyTarget?.id == message.id) {
@@ -1402,10 +1460,14 @@ fun StudyScreen(
             {
                 if (activeStudySessionOwned) {
                     activeStudySessionItem?.examGrade?.let { grade ->
+                        val summary = studyExamGradeSummary(
+                            grade.overall,
+                            studyExamLevelLabel(grade.overall, strings),
+                        )
                         Span(attrs = {
                             classes(Styles.studySessionHeaderExamGradeBadge)
-                            attr("aria-label", "${strings.chatTestGradeLabel}: ${grade.overall}/5")
-                        }) { Text("${grade.overall}/5") }
+                            attr("aria-label", "${strings.chatTestGradeLabel}: $summary")
+                        }) { Text(summary) }
                     }
                 }
                 Span(attrs = {
@@ -1440,6 +1502,7 @@ fun StudyScreen(
                 imageFailed = studyImageFailed.toMap(),
                 wordImageFailed = studyWordImageFailed.toMap(),
                 charactersLoading = studyTarget?.id?.let { studyCharactersInFlight[it] == true } == true,
+                examFailed = studyTarget?.id?.let { studyExamFailed[it] == true } == true,
                 exactText = studyStartExact,
                 playLoading = studyTarget?.id?.let { studyPlayInFlight[it] == true } == true,
                 playFailed = studyTarget?.id?.let { studyPlayFailed[it] == true } == true,
@@ -1460,6 +1523,12 @@ fun StudyScreen(
                     studyPlayFailed.remove(target.id)
                     loadMissingPlayScenarios(target.id, session)
                 },
+                onRetryExam = {
+                    val target = studyTarget ?: return@StudySessionPane
+                    val session = studyCache[target.id] ?: studySession ?: return@StudySessionPane
+                    studyExamFailed.remove(target.id)
+                    loadMissingExamScene(target.id, session)
+                },
                 onPlayScenarioUpdate = { scenarioId, transform ->
                     val targetId = studyTarget?.id ?: return@StudySessionPane
                     updatePlayScenario(targetId, scenarioId, transform)
@@ -1477,7 +1546,7 @@ fun StudyScreen(
                     val current = studyCache[targetId]
                         ?: studySession?.takeIf { studyTarget?.id == targetId }
                         ?: return@StudySessionPane
-                    if (current.examScene != null) return@StudySessionPane
+                    if (current.examScene?.isTenRoundExam() == true) return@StudySessionPane
                     val updated = current.copy(examScene = scene)
                     studyCache[targetId] = updated
                     if (studyTarget?.id == targetId) studySession = updated
@@ -1712,23 +1781,20 @@ private fun StudySessionCard(
         val cardContent = studySessionCardContent(item, strings.chatStudyTitle)
         P(attrs = { classes(Styles.studySessionCardTitle) }) { Text(cardContent.title) }
         studySessionExamGradeBadge(item, removable)?.let { grade ->
+            val summary = studyExamGradeSummary(grade, studyExamLevelLabel(grade, strings))
             Div(attrs = {
                 classes(Styles.studySessionExamGradeBadge)
-                attr("aria-label", "${strings.chatTestGradeLabel}: $grade/5")
+                attr("aria-label", "${strings.chatTestGradeLabel}: $summary")
             }) {
                 MaterialSymbol("workspace_premium")
-                Text("$grade/5")
+                Text(summary)
             }
         }
         val phraseImages = studySessionPhraseImageUrls(item)
         if (phraseImages.isNotEmpty()) {
             Div(attrs = { classes(Styles.studySessionPhraseRow) }) {
                 phraseImages.forEach { url ->
-                    Img(
-                        src = url,
-                        alt = strings.chatStudySentenceImageAlt,
-                        attrs = { classes(Styles.studySessionPhraseImage) },
-                    )
+                    StudySessionPhraseImage(url, strings.chatStudySentenceImageAlt)
                 }
             }
         }
@@ -1743,6 +1809,37 @@ private fun StudySessionCard(
                 Text(strings.chatStudySessionsOpen)
             }
         }
+    }
+}
+
+@Composable
+private fun StudySessionPhraseImage(url: String, alt: String) {
+    var visible by remember(url) { mutableStateOf(false) }
+    val loadComplete = remember(url) { CompletableDeferred<Unit>() }
+    LaunchedEffect(url) {
+        studySessionImageSlots.withPermit {
+            visible = true
+            loadComplete.await()
+        }
+    }
+    if (visible) {
+        Img(
+            src = url,
+            alt = alt,
+            attrs = {
+                classes(Styles.studySessionPhraseImage)
+                ref { element ->
+                    val image = element
+                    image.asDynamic().onload = { loadComplete.complete(Unit) }
+                    image.asDynamic().onerror = { loadComplete.complete(Unit) }
+                    if (image.complete) loadComplete.complete(Unit)
+                    onDispose {
+                        image.asDynamic().onload = null
+                        image.asDynamic().onerror = null
+                    }
+                }
+            },
+        )
     }
 }
 
@@ -1895,6 +1992,7 @@ private fun StudySessionPane(
     imageFailed: Map<String, Boolean>,
     wordImageFailed: Map<String, Boolean>,
     charactersLoading: Boolean,
+    examFailed: Boolean,
     exactText: Boolean,
     playLoading: Boolean,
     playFailed: Boolean,
@@ -1903,6 +2001,7 @@ private fun StudySessionPane(
     onRetrySentence: (Int) -> Unit,
     onRetryImage: (Int) -> Unit,
     onRetryPlay: () -> Unit,
+    onRetryExam: () -> Unit,
     onPlayScenarioUpdate: (String, (StudyPlayScenario) -> StudyPlayScenario) -> Unit,
     onPlayMessageImage: (scenarioId: String, imageId: String, imageUrl: String?) -> Unit,
     onPracticeSentences: (List<StudyExampleSentence>) -> Unit,
@@ -1918,6 +2017,7 @@ private fun StudySessionPane(
         imageFailed = imageFailed,
         wordImageFailed = wordImageFailed,
         charactersLoading = charactersLoading,
+        examFailed = examFailed,
     )
     Div(attrs = { classes(Styles.studySessionBody) }) {
         when {
@@ -1952,6 +2052,8 @@ private fun StudySessionPane(
                         wordImageFailed = wordImageFailed,
                         playLoading = playLoading,
                         playFailed = playFailed,
+                        examFailed = examFailed,
+                        onRetryExam = onRetryExam,
                         strings = strings,
                         onRetrySentence = onRetrySentence,
                         onRetryImage = onRetryImage,
@@ -2019,6 +2121,11 @@ private fun StudySessionCreationProgress(
                 label = strings.chatStudyCreationImages,
                 strings = strings,
             )
+            StudyCreationProgressStepRow(
+                step = progress.test,
+                label = strings.chatStudyCreationTest,
+                strings = strings,
+            )
         }
     }
 }
@@ -2063,6 +2170,8 @@ private fun StudySessionContent(
     wordImageFailed: Map<String, Boolean>,
     playLoading: Boolean,
     playFailed: Boolean,
+    examFailed: Boolean,
+    onRetryExam: () -> Unit,
     strings: UiStrings,
     onRetrySentence: (Int) -> Unit,
     onRetryImage: (Int) -> Unit,
@@ -2085,43 +2194,10 @@ private fun StudySessionContent(
     var mode by remember(session.text) { mutableStateOf(StudySessionMode.ALL) }
     var highlightedWord by remember(session.text) { mutableStateOf<String?>(null) }
     var examAttempt by remember(session.text) { mutableStateOf(StudyExamAttemptState()) }
-    var examSceneLoading by remember(session.text) { mutableStateOf(false) }
-    var examSceneError by remember(session.text) { mutableStateOf(false) }
     val speechItems = remember(session.text, session.textLanguageTag, session.sentences.map { it.text }) {
         session.sentences.mapIndexed { index, sentence -> "sentence-$index" to sentence.text }
     }
     val anyLoading = sentenceStatus.values.any { it == StudySentenceLoadState.LOADING }
-
-    fun generateExamScene() {
-        if (examSceneLoading || session.examScene != null || charactersLoading) return
-        examSceneLoading = true
-        examSceneError = false
-        scope.launch {
-            runCatching {
-                ChatApi.studyExamScene(
-                    StudyExamSceneRequest(
-                        session = session.copy(examScene = null),
-                        languageTag = Localization.language.tag,
-                    ),
-                )
-            }.onSuccess { scene ->
-                messageId?.let { onExamSceneGenerated(it, scene) }
-            }
-                .onFailure { examSceneError = true }
-            examSceneLoading = false
-        }
-    }
-
-    LaunchedEffect(mode, session.examScene, charactersLoading, examSceneError) {
-        if (
-            mode == StudySessionMode.TEST &&
-            session.examScene == null &&
-            !charactersLoading &&
-            !examSceneError
-        ) {
-            generateExamScene()
-        }
-    }
 
     fun finishExam(scene: StudyExamScene, answers: Map<String, String>) {
         val sessionId = examScoreSessionId?.trim()?.takeIf { it.isNotEmpty() }
@@ -2154,7 +2230,9 @@ private fun StudySessionContent(
     fun answerExamBeat(rawTranscript: String?) {
         val scene = session.examScene ?: return
         val beat = scene.beats.getOrNull(examAttempt.beatIndex) ?: return
-        val answers = examAttempt.answers + (beat.id to rawTranscript.orEmpty().trim())
+        val transcript = rawTranscript.orEmpty().trim()
+        if (transcript.isEmpty() || examAttempt.isScoring) return
+        val answers = examAttempt.answers + (beat.id to transcript)
         if (examAttempt.beatIndex < scene.beats.lastIndex) {
             val nextIndex = examAttempt.beatIndex + 1
             val nextBeat = scene.beats[nextIndex]
@@ -2315,7 +2393,7 @@ private fun StudySessionContent(
     }
 
     val modesToRender = if (mode == StudySessionMode.ALL) {
-        StudySessionMode.entries.filter { it != StudySessionMode.ALL && it != StudySessionMode.TEST }
+        StudySessionMode.entries.filter { it != StudySessionMode.ALL }
     } else {
         listOf(mode)
     }
@@ -2570,15 +2648,17 @@ private fun StudySessionContent(
                     session = session,
                     strings = strings,
                     learnerLanguageTag = Localization.language.tag,
-                    sceneLoading = examSceneLoading || charactersLoading,
-                    sceneError = examSceneError,
+                    sceneLoading = charactersLoading && session.examScene == null,
+                    sceneError = examFailed,
                     scoreSessionId = examScoreSessionId,
                     scoreAllowed = examScoreAllowed,
                     savedGrade = savedExamGrade,
                     attempt = examAttempt,
-                    onRetryScene = { generateExamScene() },
+                    autoPlayListen = mode == StudySessionMode.TEST,
+                    onRetryScene = onRetryExam,
                     onDraftChange = { value -> examAttempt = examAttempt.copy(draft = value, error = null) },
                     onSubmitAnswer = ::answerExamBeat,
+                    onStart = { examAttempt = examAttempt.copy(started = true) },
                     onRetake = { examAttempt = StudyExamAttemptState(isRetaking = true) },
                 )
             }
@@ -2649,6 +2729,7 @@ internal data class StudyExamAttemptState(
     val isScoring: Boolean = false,
     val error: String? = null,
     val isRetaking: Boolean = false,
+    val started: Boolean = false,
 )
 
 internal fun studyExamTranscriptsForScore(
@@ -2908,6 +2989,7 @@ internal data class StudyCreationProgress(
     val structure: StudyCreationStepProgress,
     val dissections: StudyCreationStepProgress,
     val images: StudyCreationStepProgress,
+    val test: StudyCreationStepProgress,
 ) {
     val visible: Boolean get() = percent < 100
 }
@@ -2921,6 +3003,7 @@ internal fun studyCreationProgress(
     imageFailed: Map<String, Boolean> = emptyMap(),
     wordImageFailed: Map<String, Boolean> = emptyMap(),
     charactersLoading: Boolean = false,
+    examFailed: Boolean = false,
 ): StudyCreationProgress {
     val textCompleted = exactText || session != null
     val text = StudyCreationStepProgress(
@@ -2983,12 +3066,22 @@ internal fun studyCreationProgress(
         total = imageExpected,
     )
 
+    val testReady = session?.examScene != null || examFailed
+    val testStep = StudyCreationStepProgress(
+        status = when {
+            session == null -> StudyCreationStepStatus.UPCOMING
+            testReady -> StudyCreationStepStatus.COMPLETED
+            else -> StudyCreationStepStatus.RUNNING
+        },
+    )
+
     val completedUnits = (if (textCompleted) 1 else 0) +
         (if (structureCompleted) 1 else 0) +
         dissectionDone +
-        imageSettled.coerceAtMost(imageExpected)
-    val totalUnits = 2 + dissectionTotal + imageExpected
-    val percent = if (textCompleted && structureCompleted && dissectionsCompleted && imagesCompleted) {
+        imageSettled.coerceAtMost(imageExpected) +
+        (if (session != null && testReady) 1 else 0)
+    val totalUnits = 3 + dissectionTotal + imageExpected
+    val percent = if (textCompleted && structureCompleted && dissectionsCompleted && imagesCompleted && testReady) {
         100
     } else if (totalUnits <= 0) {
         100
@@ -3002,6 +3095,7 @@ internal fun studyCreationProgress(
         structure = structure,
         dissections = dissections,
         images = images,
+        test = testStep,
     )
 }
 
@@ -3083,6 +3177,9 @@ internal fun studySessionCardContent(item: SavedStudySessionSummary, fallbackTit
 
 internal fun studySessionExamGradeBadge(item: SavedStudySessionSummary, owned: Boolean): Int? =
     item.examGrade?.overall?.takeIf { owned }
+
+internal fun studyExamGradeSummary(overall: Int, levelName: String): String =
+    "$overall/5 · $levelName"
 
 internal fun mergeStudySessionSummary(
     current: SavedStudySessionSummary?,
@@ -5133,6 +5230,68 @@ private fun StudyPlayScenarioCard(
 }
 
 @Composable
+private fun StudyExamResult(
+    grade: StudyExamGrade,
+    beatNotes: List<StudyExamBeatScore>,
+    strings: UiStrings,
+    onRetake: () -> Unit,
+) {
+    val levelLabel = studyExamLevelLabel(grade.overall, strings)
+    Div(attrs = {
+        classes(Styles.studyExamResult)
+        attr("data-level", grade.overall.toString())
+    }) {
+        Div(attrs = { classes(Styles.studyExamHero) }) {
+            Div(attrs = { classes(Styles.studyExamGradeMark) }) {
+                Span(attrs = { classes(Styles.studyExamGradeNumber) }) { Text(grade.overall.toString()) }
+                Span(attrs = { classes(Styles.studyExamGradeOutOf) }) { Text("/5") }
+            }
+            Div(attrs = { classes(Styles.studyExamHeroCopy) }) {
+                P(attrs = { classes(Styles.studyExamLevel) }) { Text(levelLabel) }
+                P(attrs = { classes(Styles.studyExamCheer) }) { Text(strings.chatTestResultCheer(grade.overall)) }
+            }
+        }
+        Div(attrs = { classes(Styles.studyExamSkills) }) {
+            StudyExamSkillMeter(strings.chatTestListeningLabel, grade.listening)
+            StudyExamSkillMeter(strings.chatTestSpeakingLabel, grade.speaking)
+        }
+        val notes = beatNotes.filter { it.feedback.isNotBlank() }
+        if (notes.isNotEmpty()) {
+            Div(attrs = { classes(Styles.studyExamMoments) }) {
+                notes.forEach { row ->
+                    Div(attrs = { classes(Styles.studyExamMoment) }) {
+                        Span(attrs = { classes(Styles.studyExamMomentPoints) }) { Text("${row.points}/2") }
+                        Span { Text(row.feedback) }
+                    }
+                }
+            }
+        }
+        Button(attrs = {
+            classes(Styles.chip, Styles.studyExamStart)
+            attr("type", "button")
+            onClick { onRetake() }
+        }) { Text(strings.chatTestRetake) }
+    }
+}
+
+@Composable
+private fun StudyExamSkillMeter(label: String, level: Int) {
+    val score = level.coerceIn(0, 5)
+    Div(attrs = { classes(Styles.studyExamSkill) }) {
+        Span { Text(label) }
+        Span(attrs = { classes(Styles.studyExamSkillScore) }) { Text("$score") }
+        Div(attrs = { classes(Styles.studyExamSkillPips) }) {
+            (1..5).forEach { pip ->
+                Span(attrs = {
+                    classes(Styles.studyExamSkillPip)
+                    if (pip <= score) classes(Styles.studyExamSkillPipOn)
+                })
+            }
+        }
+    }
+}
+
+@Composable
 private fun StudyTestTab(
     session: StudySessionResponse,
     strings: UiStrings,
@@ -5143,13 +5302,14 @@ private fun StudyTestTab(
     scoreAllowed: Boolean,
     savedGrade: StudyExamGrade?,
     attempt: StudyExamAttemptState,
+    autoPlayListen: Boolean,
     onRetryScene: () -> Unit,
     onDraftChange: (String) -> Unit,
     onSubmitAnswer: (String?) -> Unit,
+    onStart: () -> Unit,
     onRetake: () -> Unit,
 ) {
-    val scene = session.examScene
-    Span(attrs = { classes(Styles.studySessionHint) }) { Text(strings.chatTestHint) }
+    val scene = session.examScene?.takeIf { it.isTenRoundExam() }
     when {
         scene == null && (sceneLoading || !sceneError) -> {
             Div(attrs = { classes(Styles.studyPlayStatus) }) {
@@ -5172,35 +5332,28 @@ private fun StudyTestTab(
             val beat = scene.beats.getOrNull(attempt.beatIndex)
             val resultGrade = attempt.result?.grade ?: savedGrade.takeUnless { attempt.isRetaking }
             if (resultGrade != null) {
-                Div(attrs = { classes(Styles.studyPlayBlock) }) {
+                StudyExamResult(
+                    grade = resultGrade,
+                    beatNotes = attempt.result?.beats.orEmpty(),
+                    strings = strings,
+                    onRetake = onRetake,
+                )
+            } else if (!attempt.started) {
+                Div(attrs = { classes(Styles.studyExamBriefing) }) {
                     P(attrs = { classes(Styles.studyPlayDescription) }) { Text(scene.setting) }
-                    P(attrs = { classes(Styles.studyPlaySpeaker) }) { Text(strings.chatTestResultTitle) }
-                    P {
-                        Text(
-                            "${strings.chatTestGradeLabel}: ${resultGrade.overall}/5 · " +
-                                studyExamLevelLabel(resultGrade.overall, strings),
-                        )
-                    }
-                    P { Text("${strings.chatTestListeningLabel}: ${resultGrade.listening}/5") }
-                    P { Text("${strings.chatTestSpeakingLabel}: ${resultGrade.speaking}/5") }
-                    if (resultGrade.feedback.isNotBlank()) {
-                        P(attrs = { classes(Styles.studySessionHint) }) {
-                            Text("${strings.chatTestFeedbackLabel}: ${resultGrade.feedback}")
-                        }
-                    }
-                    attempt.result?.beats?.forEach { row ->
-                        if (row.feedback.isNotBlank()) {
-                            Div(attrs = { classes(Styles.studyPlayLine, Styles.studyPlayLineOther) }) {
-                                Span(attrs = { classes(Styles.studyPlaySpeaker) }) { Text("${row.points}/2") }
-                                P { Text(row.feedback) }
+                    P(attrs = { classes(Styles.studyExamOutlineTitle) }) { Text(strings.chatTestOutlineTitle) }
+                    Ol(attrs = { classes(Styles.studyExamOutline) }) {
+                        scene.outline.forEach { item ->
+                            Li(attrs = { classes(Styles.studyExamOutlineItem) }) {
+                                Text(item)
                             }
                         }
                     }
                     Button(attrs = {
-                        classes(Styles.chip)
+                        classes(Styles.chip, Styles.studyExamStart)
                         attr("type", "button")
-                        onClick { onRetake() }
-                    }) { Text(strings.chatTestRetake) }
+                        onClick { onStart() }
+                    }) { Text(strings.chatTestStart) }
                 }
             } else if (beat == null) {
                 Div(attrs = { classes(Styles.studySessionError) }) {
@@ -5246,13 +5399,13 @@ private fun StudyTestTab(
                 }
 
                 LaunchedEffect(scene.id, beat.id, session.textLanguageTag, attempt.isScoring) {
-                    if (!attempt.isScoring && beat.kind == StudyExamBeatKind.LISTEN) playListenLine()
+                    if (autoPlayListen && !attempt.isScoring && beat.kind == StudyExamBeatKind.LISTEN) playListenLine()
                 }
 
                 Div(attrs = { classes(Styles.studyPlayBlock) }) {
                     P(attrs = { classes(Styles.studyPlayDescription) }) { Text(scene.setting) }
                     P(attrs = { classes(Styles.studySessionHint) }) {
-                        Text(strings.chatTestBeatProgress(attempt.beatIndex + 1, scene.beats.size))
+                        Text(strings.chatTestBeatProgress(attempt.beatIndex / 2 + 1, scene.outline.size))
                     }
                     Div(attrs = { classes(Styles.studyPlayLine, Styles.studyPlayLineOther) }) {
                         if (portraitUrl != null) {
@@ -5296,21 +5449,21 @@ private fun StudyTestTab(
                             }
                         }
                     }
-                    P(attrs = { classes(Styles.studySessionHint) }) {
-                        Text(
-                            if (beat.kind == StudyExamBeatKind.LISTEN) {
-                                strings.chatTestListenHint
-                            } else {
-                                strings.chatTestSpeakHint
-                            },
-                        )
-                    }
                     if (attempt.isScoring) {
                         Div(attrs = { classes(Styles.studyPlayStatus) }) {
                             MaterialSymbol("progress_activity")
                             Span { Text(strings.chatTestScoring) }
                         }
                     } else {
+                        P(attrs = { classes(Styles.studySessionHint) }) {
+                            Text(
+                                if (beat.kind == StudyExamBeatKind.LISTEN) {
+                                    strings.chatTestListenHint(beat.speakerName)
+                                } else {
+                                    strings.chatTestSpeakHint
+                                },
+                            )
+                        }
                         ChatInput(
                             value = attempt.draft,
                             onValueChange = onDraftChange,
@@ -5326,6 +5479,7 @@ private fun StudyTestTab(
                         Button(attrs = {
                             classes(Styles.chip)
                             attr("type", "button")
+                            if (attempt.draft.trim().isEmpty()) attr("disabled", "")
                             onClick { onSubmitAnswer(attempt.draft) }
                         }) {
                             Text(if (attempt.beatIndex == scene.beats.lastIndex) strings.chatTestFinish else strings.chatTestNext)

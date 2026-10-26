@@ -446,6 +446,26 @@ class QwenStudyClientTest {
         assertEquals(3, scene.beats.size)
         assertEquals(listOf(StudyExamBeatKind.LISTEN, StudyExamBeatKind.SPEAK, StudyExamBeatKind.SPEAK), scene.beats.map { it.kind })
         assertEquals("Xin chào.", scene.beats.first().line)
+        assertEquals(emptyList(), scene.outline)
+    }
+
+    @Test
+    fun `study exam scene parser keeps a beat when the source sentence is omitted`() {
+        val scene = QwenStudyExamSceneParser.parse(
+            """
+            {
+              "setting":"At the market.",
+              "beats":[
+                {"kind":"LISTEN","speakerName":"Lan","line":"Xin chào.","prompt":"What did Lan mean?","expectedMeaning":"A greeting."},
+                {"kind":"SPEAK","prompt":"Greet Lan.","meaning":"Return the greeting.","studySentence":"Xin chào."},
+                {"kind":"SPEAK","prompt":"Ask if Lan is well.","expectedMeaning":"Ask a follow-up."}
+              ]
+            }
+            """.trimIndent(),
+        )
+
+        assertEquals(listOf("", "Xin chào.", ""), scene.beats.map { it.sourceSentence })
+        assertEquals("Return the greeting.", scene.beats[1].expectedMeaning)
     }
 
     @Test
@@ -507,7 +527,8 @@ class QwenStudyClientTest {
 
         assertEquals(3, scene.beats.size)
         assertEquals(2, judgment.points)
-        assertContains(bodies[0], "EXACTLY 3 scored beats")
+        assertContains(bodies[0], "EXACTLY 10 rounds")
+        assertContains(bodies[0], "EXACTLY 20 beats")
         assertContains(bodies[0], "Allowed cast only")
         assertContains(bodies[0], "Lan")
         assertContains(bodies[1], "Merely repeating the heard study-language line is not comprehension")

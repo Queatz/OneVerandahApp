@@ -358,7 +358,7 @@ class StudySessionsRoutesTest {
         }
         assertEquals(HttpStatusCode.OK, sceneResponse.status)
         val scene = json.decodeFromString(StudyExamScene.serializer(), sceneResponse.bodyAsText())
-        assertEquals(3, scene.beats.size)
+        assertEquals(20, scene.beats.size)
         assertTrue(scene.beats.all { it.speakerName == "Lan" })
 
         val saved = studySessionsService.save(
@@ -385,10 +385,10 @@ class StudySessionsRoutesTest {
         }
         assertEquals(HttpStatusCode.OK, scored.status)
         val result = json.decodeFromString(StudyExamScoreResponse.serializer(), scored.bodyAsText())
-        assertEquals(3, result.beats.size)
-        assertEquals(5, result.grade.listening)
-        assertEquals(3, result.grade.speaking)
-        assertEquals(4, result.grade.overall)
+        assertEquals(20, result.beats.size)
+        assertEquals(1, result.grade.listening)
+        assertEquals(1, result.grade.speaking)
+        assertEquals(1, result.grade.overall)
         assertEquals(result.grade, studySessionsService.get(ownerToken, saved.id)?.examGrade)
 
         val foreignScore = client.post("/api/chat/study/exam/score") {

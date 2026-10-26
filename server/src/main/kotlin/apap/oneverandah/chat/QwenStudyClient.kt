@@ -554,6 +554,8 @@ class DashScopeStudyAiClient(
                 }
             }
             appendLine()
+            appendLine("Build exactly 10 rounds. Each round is LISTEN then SPEAK, 20 beats total.")
+            appendLine()
             appendLine("Full source text:")
             append(request.text)
         }
@@ -1045,18 +1047,18 @@ class DashScopeStudyAiClient(
     ): String = """
         You write one continuous real-life conversation for a language-learning final test.
         Always return one JSON object and no markdown. The schema is exactly:
-        {"id":"scene-id","setting":"short situation in the learner UI language","beats":[{"id":"beat-1","kind":"LISTEN or SPEAK","speakerId":"main or secondary","speakerName":"known cast name","line":"study-language line for LISTEN; omit for SPEAK","prompt":"short cue in the learner UI language","expectedMeaning":"answer intent in the learner UI language","sourceSentence":"exact study sentence"}]}
+        {"id":"scene-id","setting":"short situation in the learner UI language","outline":["Help Min order tea","Give Min the tea"],"beats":[{"id":"beat-1","kind":"LISTEN or SPEAK","speakerId":"main or secondary","speakerName":"known cast name","line":"study-language line for LISTEN; omit for SPEAK","prompt":"short cue in the learner UI language","expectedMeaning":"answer intent in the learner UI language","sourceSentence":"exact study sentence"}]}
         Rules:
         - This must feel like one coherent everyday situation, not a quiz list, and use only the supplied cast ids and names. Never invent another person.
-        - There are $sentenceCount supplied study sentence(s); choose the matching beat-length rule below.
+        - Return EXACTLY 10 rounds and EXACTLY 20 beats. Each round is a LISTEN beat immediately followed by a SPEAK beat. Start with LISTEN. Never place two SPEAK beats in a row, and never end on a second speaking beat.
+        - "outline" is exactly 10 short action lines in the learner UI language, one per round, describing what the learner needs to do. Style: "Help Min order tea". Do not reveal the hidden study-language line.
+        - There are $sentenceCount supplied study sentence(s). Cycle them across the 10 rounds so every sentence appears, and reuse the sentences that carry the situation when there are fewer than 10.
         - Write setting, prompts, and expectedMeaning ONLY in the learner UI language ${languageName(activeLanguageTag)} ($activeLanguageTag).
         - A LISTEN line is spoken text ONLY in the study language ${languageName(textLanguageTag)} ($textLanguageTag). Keep the exact source sentence intact inside the line; a short natural frame may surround it.
-        - A SPEAK beat has no line field. Its prompt is a short UI-language cue for a situated reply in the study language; expectedMeaning describes what a useful reply must communicate.
-        - Include both LISTEN and SPEAK beats. Each sourceSentence must exactly match one supplied study sentence.
-        - For exactly one study sentence, return EXACTLY 3 scored beats: one LISTEN beat asking what the character meant, then two distinct SPEAK beats that use the same meaning in two natural moments of this single situation. The two speaking prompts must ask different, useful things.
-        - For 2–6 study sentences, return 4–6 beats, placing each study sentence once in the conversation and including both skills.
-        - For more than 6 sentences, return EXACTLY 6 beats and select the sentences that best carry the situation.
-        - Keep each cue and answer intent short, clear, and suitable for a beginner or intermediate learner. Do not include a grade, points, transcript, or answer text.
+        - A SPEAK beat has no line field. Its prompt is the same short action as that round's outline item, asking for a situated reply in the study language. expectedMeaning describes what a useful reply must communicate.
+        - Include both LISTEN and SPEAK beats. Every beat, including SPEAK, MUST include sourceSentence copied exactly from one supplied study sentence. Never omit it, and do not paraphrase it.
+        - A round's LISTEN line and SPEAK reply use the same source sentence. The two skills stay paired: hear the line, then use that meaning in the moment.
+        - Keep each cue, outline item, and answer intent short, clear, and suitable for a beginner or intermediate learner. Do not include a grade, points, transcript, or answer text.
         - Do not wrap the JSON in markdown. Do not add extra keys.
     """.trimIndent()
 
@@ -1322,9 +1324,16 @@ object QwenStudyExamSceneParser {
             val expectedMeaning = obj.string("expectedMeaning")?.trim()?.takeIf(String::isNotEmpty)
                 ?: obj.string("meaning")?.trim()?.takeIf(String::isNotEmpty)
                 ?: throw IllegalArgumentException("Qwen study exam beat missing expected meaning")
-            val sourceSentence = obj.string("sourceSentence")?.trim()?.takeIf(String::isNotEmpty)
-                ?: obj.string("sentence")?.trim()?.takeIf(String::isNotEmpty)
-                ?: throw IllegalArgumentException("Qwen study exam beat missing source sentence")
+            val sourceSentence = listOf(
+                "sourceSentence",
+                "sentence",
+                "source",
+                "studySentence",
+                "sentenceText",
+                "originalSentence",
+            ).firstNotNullOfOrNull { key ->
+                obj.string(key)?.trim()?.takeIf(String::isNotEmpty)
+            }.orEmpty()
             StudyExamBeat(
                 id = id,
                 kind = kind,
@@ -1336,10 +1345,13 @@ object QwenStudyExamSceneParser {
                 sourceSentence = sourceSentence,
             )
         }
-        require(beats.size in 3..6) { "Qwen study exam scene must contain 3 to 6 beats" }
+        val outline = (root["outline"] as? JsonArray)?.mapNotNull { element ->
+            element.jsonPrimitive.contentOrNull?.trim()?.takeIf(String::isNotEmpty)
+        }.orEmpty()
         return StudyExamScene(
             id = root.string("id")?.trim()?.takeIf(String::isNotEmpty) ?: "exam-scene",
             setting = setting,
+            outline = outline,
             beats = beats,
         )
     }

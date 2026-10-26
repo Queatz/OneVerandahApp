@@ -1,6 +1,7 @@
 package apap.oneverandah.screens
 
 import apap.oneverandah.api.SavedStudySessionSummary
+import apap.oneverandah.api.StudyExamScene
 import apap.oneverandah.api.StudyExamGrade
 import apap.oneverandah.api.StudySentence
 import apap.oneverandah.api.StudySessionResponse
@@ -55,6 +56,8 @@ class StudySessionsListTest {
         assertEquals(4, studySessionExamGradeBadge(graded, owned = true))
         assertNull(studySessionExamGradeBadge(graded, owned = false))
         assertNull(studySessionExamGradeBadge(sampleSaved("ungraded", "Hello."), owned = true))
+        assertEquals("1/5 · Beginner", studyExamGradeSummary(1, "Beginner"))
+        assertEquals("4/5 · Advanced", studyExamGradeSummary(4, "Advanced"))
     }
 
     @Test
@@ -135,6 +138,7 @@ class StudySessionsListTest {
         assertEquals(StudyCreationStepStatus.UPCOMING, progress.structure.status)
         assertEquals(StudyCreationStepStatus.UPCOMING, progress.dissections.status)
         assertEquals(StudyCreationStepStatus.UPCOMING, progress.images.status)
+        assertEquals(StudyCreationStepStatus.UPCOMING, progress.test.status)
         assertEquals(0, progress.percent)
         assertTrue(progress.visible)
     }
@@ -148,7 +152,8 @@ class StudySessionsListTest {
         )
         assertEquals(StudyCreationStepStatus.COMPLETED, progress.text.status)
         assertEquals(StudyCreationStepStatus.RUNNING, progress.structure.status)
-        assertEquals(50, progress.percent)
+        assertEquals(StudyCreationStepStatus.UPCOMING, progress.test.status)
+        assertEquals(33, progress.percent)
         assertTrue(progress.visible)
     }
 
@@ -183,7 +188,8 @@ class StudySessionsListTest {
         assertEquals(StudyCreationStepStatus.RUNNING, progress.images.status)
         assertEquals(0, progress.images.done)
         assertEquals(3, progress.images.total)
-        assertEquals(33, progress.percent)
+        assertEquals(StudyCreationStepStatus.RUNNING, progress.test.status)
+        assertEquals(28, progress.percent)
         assertTrue(progress.visible)
     }
 
@@ -192,6 +198,7 @@ class StudySessionsListTest {
         val session = StudySessionResponse(
             text = "Hello.",
             textLanguageTag = "en",
+            examScene = StudyExamScene(id = "exam", setting = "At home."),
             sentences = listOf(
                 StudySentence(
                     text = "Hello.",
@@ -229,6 +236,7 @@ class StudySessionsListTest {
         val session = StudySessionResponse(
             text = "Hello.",
             textLanguageTag = "en",
+            examScene = StudyExamScene(id = "exam", setting = "At home."),
             sentences = listOf(
                 StudySentence(
                     text = "Hello.",
@@ -257,6 +265,7 @@ class StudySessionsListTest {
         val session = StudySessionResponse(
             text = "Hello.",
             textLanguageTag = "en",
+            examScene = StudyExamScene(id = "exam", setting = "At home."),
             characters = listOf(
                 StudyStoryCharacter(
                     id = "main",
@@ -291,6 +300,25 @@ class StudySessionsListTest {
         )
         assertEquals(100, progress.percent)
         assertFalse(progress.visible)
+    }
+
+    @Test
+    fun `missing exam scene keeps the test step running`() {
+        val session = StudySessionResponse(
+            text = "Hello.",
+            textLanguageTag = "en",
+            sentences = listOf(StudySentence(text = "Hello.", tokens = emptyList())),
+        )
+
+        val progress = studyCreationProgress(
+            session = session,
+            loading = false,
+            exactText = true,
+            sentenceStatus = mapOf(0 to StudySentenceLoadState.READY),
+        )
+
+        assertEquals(StudyCreationStepStatus.RUNNING, progress.test.status)
+        assertTrue(progress.visible)
     }
 
     private fun sampleSaved(id: String, text: String) = SavedStudySessionSummary(

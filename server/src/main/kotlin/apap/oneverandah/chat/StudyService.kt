@@ -9,6 +9,9 @@ import apap.oneverandah.api.StudyExamScene
 import apap.oneverandah.api.StudyExamSceneRequest
 import apap.oneverandah.api.StudyExamScoreRequest
 import apap.oneverandah.api.StudyExamScoreResponse
+import apap.oneverandah.api.STUDY_EXAM_BEAT_COUNT
+import apap.oneverandah.api.STUDY_EXAM_ROUND_COUNT
+import apap.oneverandah.api.isTenRoundExam
 import apap.oneverandah.api.StudyExampleSentence
 import apap.oneverandah.api.StudyExpressCheckRequest
 import apap.oneverandah.api.StudyExpressCheckResponse
@@ -588,16 +591,30 @@ class StudyService(
             "Study exam scene requires non-blank text and at least one sentence"
         }
         val characters = normalizeExamCharacters(request.session.characters)
-        val generated = aiClient.generateExamScene(
-            StudyExamSceneGenerationRequest(
-                text = request.session.text,
-                textLanguageTag = request.session.textLanguageTag,
-                languageTag = request.languageTag,
-                sentences = request.session.sentences,
-                characters = characters,
-            ),
+        val generated = runCatching {
+            aiClient.generateExamScene(
+                StudyExamSceneGenerationRequest(
+                    text = request.session.text,
+                    textLanguageTag = request.session.textLanguageTag,
+                    languageTag = request.languageTag,
+                    sentences = request.session.sentences,
+                    characters = characters,
+                ),
+            )
+        }.getOrElse { error ->
+            log.warn("Study exam scene generation failed: {}", error.message)
+            null
+        }
+        val normalized = generated?.let { scene ->
+            runCatching { normalizeExamScene(scene, request.session.sentences, characters) }
+                .onFailure { error -> log.warn("Study exam scene normalization failed: {}", error.message) }
+                .getOrNull()
+        }
+        return normalized ?: fallbackExamScene(
+            sentences = request.session.sentences,
+            characters = characters,
+            languageTag = request.languageTag,
         )
-        return normalizeExamScene(generated, request.session.sentences, characters)
     }
 
     suspend fun scoreExam(
@@ -651,55 +668,34 @@ class StudyService(
     ): StudyExamScene {
         val sourceSentences = sentences.map { it.text.trim() }.filter(String::isNotEmpty)
         require(sourceSentences.isNotEmpty()) { "Study exam requires at least one source sentence" }
-        val expectedBeatCount = when (sourceSentences.size) {
-            1 -> 3
-            in 2..6 -> null
-            else -> 6
-        }
-        require(generated.beats.size in 3..6) { "Study exam scene must contain 3 to 6 beats" }
-        if (expectedBeatCount != null) {
-            require(generated.beats.size == expectedBeatCount) {
-                "Study exam scene must contain exactly $expectedBeatCount beats"
-            }
-        } else if (sourceSentences.size in 2..6) {
-            require(generated.beats.size in 4..6) { "Study exam scene must contain 4 to 6 beats" }
-        }
         require(generated.setting.isNotBlank()) { "Study exam scene setting must not be blank" }
+        require(generated.beats.size == STUDY_EXAM_BEAT_COUNT) {
+            "Study exam scene must contain exactly $STUDY_EXAM_BEAT_COUNT beats"
+        }
         require(generated.beats.map { it.id.trim() }.distinct().size == generated.beats.size) {
             "Study exam beat ids must be unique"
         }
-        require(generated.beats.any { it.kind == StudyExamBeatKind.LISTEN }) {
-            "Study exam scene must include a listening beat"
-        }
-        require(generated.beats.any { it.kind == StudyExamBeatKind.SPEAK }) {
-            "Study exam scene must include a speaking beat"
-        }
-        if (sourceSentences.size == 1) {
-            require(generated.beats.count { it.kind == StudyExamBeatKind.LISTEN } == 1) {
-                "A one-sentence exam scene must contain one listening beat"
-            }
-            require(generated.beats.count { it.kind == StudyExamBeatKind.SPEAK } == 2) {
-                "A one-sentence exam scene must contain two speaking beats"
-            }
-        }
+        require(generated.beats.withIndex().all { (index, beat) ->
+            val expected = if (index % 2 == 0) StudyExamBeatKind.LISTEN else StudyExamBeatKind.SPEAK
+            beat.kind == expected
+        }) { "Study exam rounds must alternate listen then speak" }
         val knownCharacters = characters.associateBy { it.id }
         val fallbackSpeaker = characters.first()
+        val usedSentences = mutableSetOf<Int>()
         val beats = generated.beats.mapIndexed { index, beat ->
             val id = beat.id.trim().ifEmpty { "beat-${index + 1}" }
-            val sourceSentence = beat.sourceSentence.trim().takeIf { source ->
-                sourceSentences.any { it.equals(source, ignoreCase = true) }
-            } ?: throw IllegalArgumentException("Study exam beat must reference a source sentence")
+            val sourceSentence = resolveExamSourceSentence(
+                rawSource = beat.sourceSentence,
+                line = beat.line,
+                sourceSentences = sourceSentences,
+                used = usedSentences,
+            )
             val speaker = knownCharacters[beat.speakerId.trim()] ?: fallbackSpeaker
             val line = if (beat.kind == StudyExamBeatKind.LISTEN) {
-                beat.line?.trim()?.takeIf(String::isNotEmpty)
-                    ?: throw IllegalArgumentException("Study exam listening beat requires a spoken line")
+                val spoken = beat.line?.trim()?.takeIf(String::isNotEmpty) ?: sourceSentence
+                if (spoken.contains(sourceSentence, ignoreCase = true)) spoken else "$spoken $sourceSentence".trim()
             } else {
                 null
-            }
-            if (line != null) {
-                require(line.contains(sourceSentence, ignoreCase = true)) {
-                    "Study exam listening line must include its source sentence"
-                }
             }
             require(beat.prompt.isNotBlank()) { "Study exam beat prompt must not be blank" }
             require(beat.expectedMeaning.isNotBlank()) { "Study exam beat meaning must not be blank" }
@@ -714,11 +710,19 @@ class StudyService(
             )
         }
         require(beats.map { it.id }.distinct().size == beats.size) { "Study exam beat ids must be unique" }
-        return generated.copy(
+        val speakPrompts = beats.filter { it.kind == StudyExamBeatKind.SPEAK }.map { it.prompt }
+        val outline = generated.outline.map { it.trim() }.filter(String::isNotEmpty)
+            .takeIf { it.size == STUDY_EXAM_ROUND_COUNT }
+            ?: speakPrompts
+        require(outline.size == STUDY_EXAM_ROUND_COUNT) { "Study exam outline must contain 10 rounds" }
+        val scene = generated.copy(
             id = generated.id.trim().ifEmpty { idGenerator().trim().ifEmpty { UUID.randomUUID().toString() } },
             setting = generated.setting.trim(),
+            outline = outline,
             beats = beats,
         )
+        require(scene.isTenRoundExam()) { "Study exam scene must be 10 alternating rounds" }
+        return scene
     }
 
     private fun normalizeExamCharacters(characters: List<StudyStoryCharacter>): List<StudyStoryCharacter> {
@@ -1163,6 +1167,229 @@ internal fun defaultPlayScenarios(languageTag: String): List<StudyPlayScenarioDe
     return descriptions.mapIndexed { index, description ->
         StudyPlayScenarioDesign(description = description, openingLine = openingLines[index])
     }
+}
+
+internal fun resolveExamSourceSentence(
+    rawSource: String,
+    line: String?,
+    sourceSentences: List<String>,
+    used: MutableSet<Int>,
+): String {
+    val candidates = listOf(rawSource.trim(), line.orEmpty().trim()).filter(String::isNotEmpty)
+    val exactIndex = sourceSentences.indexOfFirst { sentence ->
+        candidates.any { it.equals(sentence, ignoreCase = true) }
+    }
+    if (exactIndex >= 0) {
+        used += exactIndex
+        return sourceSentences[exactIndex]
+    }
+    val containedIndex = sourceSentences.indices
+        .filter { index ->
+            val sentence = sourceSentences[index]
+            sentence.length >= 2 && candidates.any { it.contains(sentence, ignoreCase = true) }
+        }
+        .maxByOrNull { sourceSentences[it].length }
+    if (containedIndex != null) {
+        used += containedIndex
+        return sourceSentences[containedIndex]
+    }
+    if (sourceSentences.size == 1) return sourceSentences.first()
+    val unused = sourceSentences.indices.firstOrNull { it !in used } ?: 0
+    used += unused
+    return sourceSentences[unused]
+}
+
+internal fun fallbackExamScene(
+    sentences: List<StudySentence>,
+    characters: List<StudyStoryCharacter>,
+    languageTag: String,
+): StudyExamScene {
+    val sourceSentences = sentences.map { it.text.trim() }.filter(String::isNotEmpty)
+    require(sourceSentences.isNotEmpty()) { "Study exam fallback requires a source sentence" }
+    val speaker = characters.firstOrNull() ?: StudyStoryCharacter(
+        id = "main",
+        name = "Ari",
+        role = "main",
+        description = "A friendly local who helps the learner in the situation.",
+    )
+    val tasks = fallbackExamTasks(languageTag, speaker.name)
+    val beats = List(STUDY_EXAM_BEAT_COUNT) { index ->
+        val round = index / 2
+        val sentence = sourceSentences[round % sourceSentences.size]
+        val kind = if (index % 2 == 0) StudyExamBeatKind.LISTEN else StudyExamBeatKind.SPEAK
+        StudyExamBeat(
+            id = if (kind == StudyExamBeatKind.LISTEN) "listen-${round + 1}" else "speak-${round + 1}",
+            kind = kind,
+            speakerId = speaker.id,
+            speakerName = speaker.name,
+            line = if (kind == StudyExamBeatKind.LISTEN) sentence else null,
+            prompt = if (kind == StudyExamBeatKind.LISTEN) {
+                fallbackExamListenPrompt(languageTag, speaker.name)
+            } else {
+                tasks[round]
+            },
+            expectedMeaning = fallbackExamMeaning(languageTag, sentence),
+            sourceSentence = sentence,
+        )
+    }
+    return StudyExamScene(
+        id = "exam-fallback",
+        setting = fallbackExamSetting(languageTag),
+        outline = tasks,
+        beats = beats,
+    )
+}
+
+private fun fallbackExamSetting(languageTag: String): String = when (Language.fromTag(languageTag).tag) {
+    "vi" -> "Một cuộc trò chuyện ngắn trong đời thường."
+    "zh" -> "一段日常短对话。"
+    "ja" -> "日常の短い会話です。"
+    "ko" -> "짧은 일상 대화입니다."
+    "ru" -> "Короткий повседневный разговор."
+    "es" -> "Una conversación breve de la vida diaria."
+    "de" -> "Ein kurzes Alltagsgespräch."
+    "my" -> "နေ့စဉ်ဘဝ စကားဝိုင်းတိုတစ်ခု။"
+    else -> "A short everyday conversation."
+}
+
+private fun fallbackExamListenPrompt(languageTag: String, speakerName: String): String =
+    when (Language.fromTag(languageTag).tag) {
+        "vi" -> "$speakerName vừa nói gì?"
+        "zh" -> "$speakerName 刚才是什么意思？"
+        "ja" -> "${speakerName}は何と言いましたか？"
+        "ko" -> "${speakerName}는 무슨 뜻으로 말했나요?"
+        "ru" -> "Что имел в виду $speakerName?"
+        "es" -> "¿Qué quiso decir $speakerName?"
+        "de" -> "Was meinte $speakerName?"
+        "my" -> "$speakerName က ဘာကို ဆိုလိုတာလဲ။"
+        else -> "What did $speakerName mean?"
+    }
+
+private fun fallbackExamTasks(languageTag: String, name: String): List<String> {
+    val lines = when (Language.fromTag(languageTag).tag) {
+        "vi" -> listOf(
+            "Giúp $name gọi món",
+            "Đưa cho $name thứ vừa gọi",
+            "Hỏi $name thấy thế nào",
+            "Mời $name đi tiếp",
+            "Nhận xét khung cảnh quanh $name",
+            "Xác nhận kế hoạch với $name",
+            "Cảm ơn $name",
+            "Hỏi $name thêm một câu",
+            "Đề nghị giúp $name",
+            "Chào tạm biệt $name",
+        )
+        "zh" -> listOf(
+            "帮${name}点单",
+            "把东西递给${name}",
+            "问${name}感觉怎么样",
+            "邀请${name}继续走",
+            "评论${name}身边的情景",
+            "和${name}确认接下来的安排",
+            "谢谢${name}",
+            "再问${name}一个问题",
+            "提出帮${name}的忙",
+            "和${name}道别",
+        )
+        "ja" -> listOf(
+            "${name}の注文を手伝う",
+            "${name}に頼んだものを渡す",
+            "${name}に感想を聞く",
+            "${name}を次の場所へ誘う",
+            "${name}の周りの様子について話す",
+            "${name}と予定を確認する",
+            "${name}に礼を言う",
+            "${name}にもう一つ質問する",
+            "${name}を手伝うと申し出る",
+            "${name}に別れを告げる",
+        )
+        "ko" -> listOf(
+            "${name}의 주문을 돕기",
+            "${name}에게 주문한 것을 건네기",
+            "${name}에게 어땠는지 묻기",
+            "${name}를 계속 걷자고 초대하기",
+            "${name} 주변 상황에 대해 말하기",
+            "${name}와 계획을 확인하기",
+            "${name}에게 고마워하기",
+            "${name}에게 질문을 하나 더 하기",
+            "${name}를 돕겠다고 제안하기",
+            "${name}에게 작별 인사하기",
+        )
+        "ru" -> listOf(
+            "Помогите $name сделать заказ",
+            "Передайте $name заказанное",
+            "Спросите $name, как это было",
+            "Пригласите $name продолжить",
+            "Прокомментируйте, что происходит вокруг $name",
+            "Подтвердите план с $name",
+            "Поблагодарите $name",
+            "Задайте $name ещё один вопрос",
+            "Предложите помочь $name",
+            "Попрощайтесь с $name",
+        )
+        "es" -> listOf(
+            "Ayuda a $name a pedir",
+            "Entrégale a $name lo pedido",
+            "Pregúntale a $name qué le pareció",
+            "Invita a $name a seguir",
+            "Comenta lo que pasa alrededor de $name",
+            "Confirma el plan con $name",
+            "Agradece a $name",
+            "Hazle a $name una pregunta más",
+            "Ofrécete a ayudar a $name",
+            "Despídete de $name",
+        )
+        "de" -> listOf(
+            "Hilf $name beim Bestellen",
+            "Gib $name das Bestellte",
+            "Frag $name, wie es war",
+            "Lade $name ein weiterzugehen",
+            "Kommentiere, was um $name herum passiert",
+            "Bestätige den Plan mit $name",
+            "Bedanke dich bei $name",
+            "Stell $name noch eine Frage",
+            "Biete $name Hilfe an",
+            "Verabschiede dich von $name",
+        )
+        "my" -> listOf(
+            "$name မှာယူတာကို ကူညီပါ",
+            "$name ကို မှာထားတာ ပေးပါ",
+            "$name ကို ဘယ်လိုလဲ မေးပါ",
+            "$name ကို ဆက်သွားဖို့ ဖိတ်ပါ",
+            "$name ပတ်ဝန်းကျင်အကြောင်း ပြောပါ",
+            "$name နဲ့ အစီအစဉ်ကို အတည်ပြုပါ",
+            "$name ကို ကျေးဇူးတင်ပါ",
+            "$name ကို နောက်ထပ်တစ်ခု မေးပါ",
+            "$name ကို ကူညီမယ်လို့ ကမ်းလှမ်းပါ",
+            "$name ကို နှုတ်ဆက်ပါ",
+        )
+        else -> listOf(
+            "Help $name place an order",
+            "Give $name what was ordered",
+            "Ask $name how it was",
+            "Invite $name to keep going",
+            "Comment on what is happening around $name",
+            "Confirm the plan with $name",
+            "Thank $name",
+            "Ask $name one more question",
+            "Offer to help $name",
+            "Say goodbye to $name",
+        )
+    }
+    require(lines.size == STUDY_EXAM_ROUND_COUNT) { "Fallback exam outline must contain 10 rounds" }
+    return lines
+}
+
+private fun fallbackExamMeaning(languageTag: String, sentence: String): String = when (Language.fromTag(languageTag).tag) {
+    "vi" -> "Dùng đúng ý của câu: $sentence"
+    "zh" -> "表达这句的意思：$sentence"
+    "ja" -> "この文の意味を使う：$sentence"
+    "ko" -> "이 문장의 의미를 사용하세요: $sentence"
+    "ru" -> "Используйте смысл фразы: $sentence"
+    "es" -> "Usa el significado de esta frase: $sentence"
+    "de" -> "Verwende die Bedeutung dieses Satzes: $sentence"
+    "my" -> "ဒီဝါကျရဲ့ အဓိပ္ပာယ်ကို သုံးပါ။ $sentence"
+    else -> "Use the meaning of this study sentence: $sentence"
 }
 
 internal fun writeAttemptMatches(expected: String, actual: String): Boolean {

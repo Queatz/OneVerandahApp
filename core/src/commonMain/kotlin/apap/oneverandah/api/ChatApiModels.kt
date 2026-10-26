@@ -267,8 +267,21 @@ data class StudyExamBeat(
 data class StudyExamScene(
     val id: String,
     val setting: String,
+    val outline: List<String> = emptyList(),
     val beats: List<StudyExamBeat> = emptyList(),
 )
+
+const val STUDY_EXAM_ROUND_COUNT = 10
+const val STUDY_EXAM_BEAT_COUNT = STUDY_EXAM_ROUND_COUNT * 2
+
+fun StudyExamScene.isTenRoundExam(): Boolean {
+    if (beats.size != STUDY_EXAM_BEAT_COUNT) return false
+    if (outline.size != STUDY_EXAM_ROUND_COUNT || outline.any { it.isBlank() }) return false
+    return beats.withIndex().all { (index, beat) ->
+        val expected = if (index % 2 == 0) StudyExamBeatKind.LISTEN else StudyExamBeatKind.SPEAK
+        beat.kind == expected && beat.prompt.isNotBlank()
+    }
+}
 
 @Serializable
 data class StudyExamGrade(

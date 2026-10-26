@@ -9,6 +9,7 @@ import apap.oneverandah.images.ImageStatusResponse
 import apap.oneverandah.images.ImageSystem
 import apap.oneverandah.images.ImagesResponse
 import io.ktor.http.ContentType
+import io.ktor.http.HttpHeaders
 import io.ktor.http.HttpStatusCode
 import io.ktor.server.request.receive
 import io.ktor.server.response.respond
@@ -108,7 +109,11 @@ fun Route.imageRoutes(system: ImageSystem, config: AppConfig) {
     // Serve locally-stored images so the local storage fallback is reachable
     // by the frontend without any external CDN.
     val localDir = File(config.localStorageDir).apply { mkdirs() }
-    staticFiles("/images", localDir)
+    staticFiles("/images", localDir) {
+        modify { _, call ->
+            call.response.headers.append(HttpHeaders.CacheControl, "public, max-age=31536000, immutable")
+        }
+    }
 
     // Serve the local Qwen/DashScope error log (see QwenErrorLog) as a plain
     // text file, so failures can be inspected without shell access to the

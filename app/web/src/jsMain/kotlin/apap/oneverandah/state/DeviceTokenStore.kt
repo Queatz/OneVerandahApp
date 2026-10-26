@@ -25,12 +25,15 @@ object DeviceTokenStore {
      *
      * @throws ChatApiException when the server cannot issue a token
      */
-    suspend fun ensureToken(): String = mutex.withLock {
+    suspend fun ensureToken(): String {
         peek()?.let { return it }
         val issued = ChatApi.createDeviceToken()
-        persist(issued)
-        cached = issued
-        issued
+        return mutex.withLock {
+            peek()?.let { return@withLock it }
+            persist(issued)
+            cached = issued
+            issued
+        }
     }
 
     /** Clears the local token (e.g. after a forced reset). */

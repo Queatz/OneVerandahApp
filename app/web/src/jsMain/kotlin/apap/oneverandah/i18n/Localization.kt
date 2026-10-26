@@ -8,15 +8,16 @@ import kotlinx.browser.window
 
 class StudyTestStrings(
     val tab: String,
-    val hint: String,
     val sceneLoading: String,
     val sceneError: String,
     val audioError: String,
     val retry: String,
-    val listenHint: String,
+    val listenHint: (name: String) -> String,
     val speakHint: String,
     val playLine: String,
     val beatProgress: (current: Int, total: Int) -> String,
+    val outlineTitle: String,
+    val start: String,
     val inputPlaceholder: String,
     val next: String,
     val finish: String,
@@ -27,13 +28,13 @@ class StudyTestStrings(
     val gradeLabel: String,
     val listeningLabel: String,
     val speakingLabel: String,
-    val feedbackLabel: String,
     val retake: String,
     val levelBeginner: String,
     val levelElementary: String,
     val levelIntermediate: String,
     val levelAdvanced: String,
     val levelNative: String,
+    val resultCheer: (level: Int) -> String,
 )
 
 /**
@@ -405,6 +406,7 @@ data class UiStrings(
     val chatStudyCreationStructure: String,
     val chatStudyCreationDissections: String,
     val chatStudyCreationImages: String,
+    val chatStudyCreationTest: String,
     val chatStudyCreationCount: (done: Int, total: Int) -> String,
     val chatStudyError: String,
     val chatStudyLiteral: String,
@@ -655,15 +657,16 @@ data class UiStrings(
     val adminStatsSelected: String,
 ) {
     val chatTestTab: String get() = chatTest.tab
-    val chatTestHint: String get() = chatTest.hint
     val chatTestSceneLoading: String get() = chatTest.sceneLoading
     val chatTestSceneError: String get() = chatTest.sceneError
     val chatTestAudioError: String get() = chatTest.audioError
     val chatTestRetry: String get() = chatTest.retry
-    val chatTestListenHint: String get() = chatTest.listenHint
+    val chatTestListenHint: (String) -> String get() = chatTest.listenHint
     val chatTestSpeakHint: String get() = chatTest.speakHint
     val chatTestPlayLine: String get() = chatTest.playLine
     val chatTestBeatProgress: (Int, Int) -> String get() = chatTest.beatProgress
+    val chatTestOutlineTitle: String get() = chatTest.outlineTitle
+    val chatTestStart: String get() = chatTest.start
     val chatTestInputPlaceholder: String get() = chatTest.inputPlaceholder
     val chatTestNext: String get() = chatTest.next
     val chatTestFinish: String get() = chatTest.finish
@@ -674,8 +677,8 @@ data class UiStrings(
     val chatTestGradeLabel: String get() = chatTest.gradeLabel
     val chatTestListeningLabel: String get() = chatTest.listeningLabel
     val chatTestSpeakingLabel: String get() = chatTest.speakingLabel
-    val chatTestFeedbackLabel: String get() = chatTest.feedbackLabel
     val chatTestRetake: String get() = chatTest.retake
+    val chatTestResultCheer: (Int) -> String get() = chatTest.resultCheer
     val chatTestLevelBeginner: String get() = chatTest.levelBeginner
     val chatTestLevelElementary: String get() = chatTest.levelElementary
     val chatTestLevelIntermediate: String get() = chatTest.levelIntermediate
@@ -1007,15 +1010,16 @@ private val English = UiStrings(
     chatPlayTab = "Play",
     chatTest = StudyTestStrings(
         tab = "Test",
-        hint = "One character scene checks what you understand and how you reply.",
         sceneLoading = "Building your test scene…",
         sceneError = "Couldn't create the test scene.",
         audioError = "Couldn't play the line. Try again.",
         retry = "Retry",
-        listenHint = "Listen to the hidden line, then explain what it means in your language.",
+        listenHint = { name -> "Explain what $name said in your language." },
         speakHint = "Reply in the study language and fit the situation.",
-        playLine = "Replay line",
-        beatProgress = { current, total -> "Beat $current of $total" },
+        playLine = "Replay",
+        beatProgress = { current, total -> "Round $current of $total" },
+        outlineTitle = "What you'll do",
+        start = "Start",
         inputPlaceholder = "Type or hold to speak…",
         next = "Next",
         finish = "Finish test",
@@ -1026,13 +1030,21 @@ private val English = UiStrings(
         gradeLabel = "Overall grade",
         listeningLabel = "Listening",
         speakingLabel = "Speaking",
-        feedbackLabel = "Note",
         retake = "Retake",
         levelBeginner = "Beginner",
         levelElementary = "Elementary",
         levelIntermediate = "Intermediate",
         levelAdvanced = "Advanced",
         levelNative = "Native",
+        resultCheer = { level ->
+            when (level) {
+                5 -> "You heard it and used it. That's the real thing."
+                4 -> "Sharp listening, useful replies. You're close to the top."
+                3 -> "You held the conversation. That's a real middle."
+                2 -> "You caught pieces of the moment. A retake can lock them in."
+                else -> "You found the thread. The next round will feel clearer."
+            }
+        },
     ),
     chatAllTab = "All",
     chatReadTapHint = "Tap a word to highlight every matching word in the text",
@@ -1068,6 +1080,7 @@ private val English = UiStrings(
     chatStudyCreationStructure = "Session structure",
     chatStudyCreationDissections = "Word meanings",
     chatStudyCreationImages = "Images",
+    chatStudyCreationTest = "Test",
     chatStudyCreationCount = { done, total -> "$done / $total" },
     chatStudyError = "Couldn't start the study session. Try again.",
     chatStudyLiteral = "Literal meaning",
@@ -1642,15 +1655,16 @@ private val Vietnamese = UiStrings(
     chatPlayTab = "Chơi",
     chatTest = StudyTestStrings(
         tab = "Kiểm tra",
-        hint = "Một tình huống với nhân vật sẽ kiểm tra khả năng nghe hiểu và trả lời của bạn.",
         sceneLoading = "Đang tạo tình huống kiểm tra…",
         sceneError = "Không thể tạo tình huống kiểm tra.",
         audioError = "Không thể phát câu nói. Hãy thử lại.",
         retry = "Thử lại",
-        listenHint = "Nghe câu ẩn và giải thích ý nghĩa bằng ngôn ngữ của bạn.",
+        listenHint = { name -> "Giải thích $name vừa nói gì bằng ngôn ngữ của bạn." },
         speakHint = "Trả lời bằng ngôn ngữ đang học và phù hợp với tình huống.",
-        playLine = "Phát lại câu nói",
-        beatProgress = { current, total -> "Lượt $current / $total" },
+        playLine = "Phát lại",
+        beatProgress = { current, total -> "Vòng $current / $total" },
+        outlineTitle = "Bạn sẽ làm gì",
+        start = "Bắt đầu",
         inputPlaceholder = "Nhập hoặc nhấn giữ để nói…",
         next = "Tiếp",
         finish = "Hoàn tất bài kiểm tra",
@@ -1661,13 +1675,21 @@ private val Vietnamese = UiStrings(
         gradeLabel = "Điểm tổng",
         listeningLabel = "Nghe hiểu",
         speakingLabel = "Nói",
-        feedbackLabel = "Ghi chú",
         retake = "Làm lại",
         levelBeginner = "Mới bắt đầu",
         levelElementary = "Sơ cấp",
         levelIntermediate = "Trung cấp",
         levelAdvanced = "Nâng cao",
         levelNative = "Bản ngữ",
+        resultCheer = { level ->
+            when (level) {
+                5 -> "Bạn nghe ra và dùng được. Đúng là chuyện thật."
+                4 -> "Nghe sắc, trả lời đúng lúc. Gần đến đỉnh rồi."
+                3 -> "Bạn giữ được cuộc nói chuyện. Đó là một kết quả thật."
+                2 -> "Bạn bắt được một phần. Làm lại sẽ khóa chặt hơn."
+                else -> "Bạn đã vào cuộc. Vòng sau sẽ rõ hơn."
+            }
+        },
     ),
     chatAllTab = "Tất cả",
     chatReadTapHint = "Chạm một từ để tô sáng mọi chỗ xuất hiện giống hệt trong văn bản",
@@ -1703,6 +1725,7 @@ private val Vietnamese = UiStrings(
     chatStudyCreationStructure = "Cấu trúc phiên học",
     chatStudyCreationDissections = "Nghĩa từng từ",
     chatStudyCreationImages = "Hình ảnh",
+    chatStudyCreationTest = "Kiểm tra",
     chatStudyCreationCount = { done, total -> "$done / $total" },
     chatStudyError = "Không mở được phiên học. Thử lại.",
     chatStudyLiteral = "Nghĩa đen",
@@ -2276,15 +2299,16 @@ private val Chinese = UiStrings(
     chatPlayTab = "扮演",
     chatTest = StudyTestStrings(
         tab = "测试",
-        hint = "通过与角色对话，检查你的听力理解和情境回应能力。",
         sceneLoading = "正在生成测试场景…",
         sceneError = "无法生成测试场景。",
         audioError = "无法播放台词，请重试。",
         retry = "重试",
-        listenHint = "听隐藏的句子，并用你的语言解释它的意思。",
+        listenHint = { name -> "用你的语言说明${name}说了什么。" },
         speakHint = "用正在学习的语言回答，并符合当前情境。",
-        playLine = "重新播放台词",
-        beatProgress = { current, total -> "第 $current / $total 轮" },
+        playLine = "重播",
+        beatProgress = { current, total -> "第 $current 轮，共 $total 轮" },
+        outlineTitle = "你要做的事",
+        start = "开始",
         inputPlaceholder = "输入或按住说话…",
         next = "下一步",
         finish = "完成测试",
@@ -2295,13 +2319,21 @@ private val Chinese = UiStrings(
         gradeLabel = "总评",
         listeningLabel = "听力理解",
         speakingLabel = "口语表达",
-        feedbackLabel = "说明",
         retake = "重测",
         levelBeginner = "初学者",
         levelElementary = "初级",
         levelIntermediate = "中级",
         levelAdvanced = "高级",
         levelNative = "母语水平",
+        resultCheer = { level ->
+            when (level) {
+                5 -> "你听懂了，也用上了。这就是真正的对话。"
+                4 -> "听得准，答得有用。已经很接近顶尖。"
+                3 -> "你把对话接住了。这是实打实的中间水平。"
+                2 -> "你抓住了一部分。再来一次会更稳。"
+                else -> "你已经进入对话。下一轮会更清楚。"
+            }
+        },
     ),
     chatAllTab = "全部",
     chatReadTapHint = "点按词语以高亮全文中所有相同词语",
@@ -2337,6 +2369,7 @@ private val Chinese = UiStrings(
     chatStudyCreationStructure = "会话结构",
     chatStudyCreationDissections = "词语释义",
     chatStudyCreationImages = "图片",
+    chatStudyCreationTest = "测试",
     chatStudyCreationCount = { done, total -> "$done / $total" },
     chatStudyError = "无法开始学习会话，请重试。",
     chatStudyLiteral = "字面意思",
@@ -2910,15 +2943,16 @@ private val Japanese = UiStrings(
     chatPlayTab = "演じる",
     chatTest = StudyTestStrings(
         tab = "テスト",
-        hint = "キャラクターとの一つの場面で、聞き取りと状況に合った返答を確認します。",
         sceneLoading = "テスト場面を作成中…",
         sceneError = "テスト場面を作成できませんでした。",
         audioError = "台詞を再生できませんでした。もう一度お試しください。",
         retry = "再試行",
-        listenHint = "隠された台詞を聞き、意味を自分の言語で説明してください。",
+        listenHint = { name -> "${name}が言ったことを、あなたの言語で説明してください。" },
         speakHint = "学習中の言語で、状況に合う返答をしてください。",
-        playLine = "台詞をもう一度再生",
-        beatProgress = { current, total -> "ビート $current / $total" },
+        playLine = "もう一度",
+        beatProgress = { current, total -> "$current / $total ラウンド" },
+        outlineTitle = "この会話ですること",
+        start = "開始",
         inputPlaceholder = "入力または長押しして話す…",
         next = "次へ",
         finish = "テストを終了",
@@ -2929,13 +2963,21 @@ private val Japanese = UiStrings(
         gradeLabel = "総合評価",
         listeningLabel = "聞き取り",
         speakingLabel = "会話",
-        feedbackLabel = "メモ",
         retake = "もう一度受ける",
         levelBeginner = "初心者",
         levelElementary = "初級",
         levelIntermediate = "中級",
         levelAdvanced = "上級",
         levelNative = "ネイティブ",
+        resultCheer = { level ->
+            when (level) {
+                5 -> "聞き取り、その場で使えました。本物の会話です。"
+                4 -> "聞き取りが鋭く、返答も使えます。あと一歩です。"
+                3 -> "会話をつなげました。しっかりした中間地点です。"
+                2 -> "一部は捉えました。もう一度でしっかりします。"
+                else -> "会話に入りました。次のラウンドはもっと明確です。"
+            }
+        },
     ),
     chatAllTab = "すべて",
     chatReadTapHint = "単語をタップすると、本文中の同じ語がすべてハイライトされます",
@@ -2971,6 +3013,7 @@ private val Japanese = UiStrings(
     chatStudyCreationStructure = "セッション構成",
     chatStudyCreationDissections = "単語の意味",
     chatStudyCreationImages = "画像",
+    chatStudyCreationTest = "テスト",
     chatStudyCreationCount = { done, total -> "$done / $total" },
     chatStudyError = "学習セッションを開始できませんでした。もう一度お試しください。",
     chatStudyLiteral = "字義",
@@ -3544,15 +3587,16 @@ private val Korean = UiStrings(
     chatPlayTab = "플레이",
     chatTest = StudyTestStrings(
         tab = "테스트",
-        hint = "캐릭터와의 한 장면으로 듣기 이해와 상황에 맞는 답변을 확인합니다.",
         sceneLoading = "테스트 장면을 만드는 중…",
         sceneError = "테스트 장면을 만들 수 없습니다.",
         audioError = "대사를 재생할 수 없습니다. 다시 시도하세요.",
         retry = "다시 시도",
-        listenHint = "숨겨진 대사를 듣고 자신의 언어로 의미를 설명하세요.",
+        listenHint = { name -> "${name}가 말한 내용을 당신의 언어로 설명하세요." },
         speakHint = "배우는 언어로 상황에 맞게 답하세요.",
-        playLine = "대사 다시 듣기",
-        beatProgress = { current, total -> "$current / $total 장면" },
+        playLine = "다시 듣기",
+        beatProgress = { current, total -> "$current / $total 라운드" },
+        outlineTitle = "이번 대화에서 할 일",
+        start = "시작",
         inputPlaceholder = "입력하거나 길게 눌러 말하세요…",
         next = "다음",
         finish = "테스트 완료",
@@ -3563,13 +3607,21 @@ private val Korean = UiStrings(
         gradeLabel = "종합 점수",
         listeningLabel = "듣기",
         speakingLabel = "말하기",
-        feedbackLabel = "메모",
         retake = "다시 응시",
         levelBeginner = "초보",
         levelElementary = "초급",
         levelIntermediate = "중급",
         levelAdvanced = "고급",
         levelNative = "원어민",
+        resultCheer = { level ->
+            when (level) {
+                5 -> "듣고 그 장면에서 써습니다. 진짜 대화입니다."
+                4 -> "듣기가 예리하고 답도 유용합니다. 거의 정상입니다."
+                3 -> "대화를 이어 갔습니다. 확실한 중간 지점입니다."
+                2 -> "일부를 잡았습니다. 다시 하면 더 단단해집니다."
+                else -> "대화에 들어왔습니다. 다음 라운드는 더 분명해집니다."
+            }
+        },
     ),
     chatAllTab = "전체",
     chatReadTapHint = "단어를 탭하면 본문에서 같은 단어가 모두 강조됩니다",
@@ -3605,6 +3657,7 @@ private val Korean = UiStrings(
     chatStudyCreationStructure = "세션 구조",
     chatStudyCreationDissections = "단어 뜻",
     chatStudyCreationImages = "이미지",
+    chatStudyCreationTest = "테스트",
     chatStudyCreationCount = { done, total -> "$done / $total" },
     chatStudyError = "학습 세션을 시작할 수 없습니다. 다시 시도하세요.",
     chatStudyLiteral = "문자 그대로의 의미",
@@ -4178,15 +4231,16 @@ private val Russian = UiStrings(
     chatPlayTab = "Игра",
     chatTest = StudyTestStrings(
         tab = "Тест",
-        hint = "Одна сцена с персонажем проверит понимание на слух и ответ в ситуации.",
         sceneLoading = "Создаём сцену для теста…",
         sceneError = "Не удалось создать сцену для теста.",
         audioError = "Не удалось воспроизвести реплику. Попробуйте ещё раз.",
         retry = "Повторить",
-        listenHint = "Послушайте скрытую реплику и объясните её смысл на своём языке.",
+        listenHint = { name -> "Объясните своими словами, что сказал(а) $name." },
         speakHint = "Ответьте на языке изучения так, чтобы ответ подходил ситуации.",
-        playLine = "Повторить реплику",
-        beatProgress = { current, total -> "Эпизод $current из $total" },
+        playLine = "Ещё раз",
+        beatProgress = { current, total -> "Раунд $current из $total" },
+        outlineTitle = "Что вам предстоит сделать",
+        start = "Начать",
         inputPlaceholder = "Напишите ответ или удерживайте для речи…",
         next = "Далее",
         finish = "Завершить тест",
@@ -4197,13 +4251,21 @@ private val Russian = UiStrings(
         gradeLabel = "Общая оценка",
         listeningLabel = "Аудирование",
         speakingLabel = "Говорение",
-        feedbackLabel = "Примечание",
         retake = "Пересдать",
         levelBeginner = "Начальный",
         levelElementary = "Элементарный",
         levelIntermediate = "Средний",
         levelAdvanced = "Продвинутый",
         levelNative = "Носитель языка",
+        resultCheer = { level ->
+            when (level) {
+                5 -> "Вы услышали и использовали это. Вот это настоящий разговор."
+                4 -> "Точный слух и полезные ответы. Почти вершина."
+                3 -> "Вы удержали разговор. Это настоящая середина."
+                2 -> "Вы уловили часть момента. Повтор закрепит её."
+                else -> "Вы вошли в разговор. Следующий раунд будет яснее."
+            }
+        },
     ),
     chatAllTab = "Все",
     chatReadTapHint = "Нажмите слово, чтобы подсветить все такие же слова в тексте",
@@ -4239,6 +4301,7 @@ private val Russian = UiStrings(
     chatStudyCreationStructure = "Структура сессии",
     chatStudyCreationDissections = "Значения слов",
     chatStudyCreationImages = "Изображения",
+    chatStudyCreationTest = "Тест",
     chatStudyCreationCount = { done, total -> "$done / $total" },
     chatStudyError = "Не удалось начать учебную сессию. Попробуйте снова.",
     chatStudyLiteral = "Буквальное значение",
@@ -4813,15 +4876,16 @@ private val Spanish = UiStrings(
     chatPlayTab = "Jugar",
     chatTest = StudyTestStrings(
         tab = "Prueba",
-        hint = "Una escena con los personajes comprueba si entiendes y respondes en contexto.",
         sceneLoading = "Creando la escena de prueba…",
         sceneError = "No se pudo crear la escena de prueba.",
         audioError = "No se pudo reproducir la frase. Inténtalo de nuevo.",
         retry = "Reintentar",
-        listenHint = "Escucha la frase oculta y explica su significado en tu idioma.",
+        listenHint = { name -> "Explica en tu idioma lo que dijo $name." },
         speakHint = "Responde en el idioma de estudio de forma adecuada a la situación.",
-        playLine = "Reproducir frase",
-        beatProgress = { current, total -> "Turno $current de $total" },
+        playLine = "Repetir",
+        beatProgress = { current, total -> "Ronda $current de $total" },
+        outlineTitle = "Lo que vas a hacer",
+        start = "Empezar",
         inputPlaceholder = "Escribe o mantén pulsado para hablar…",
         next = "Siguiente",
         finish = "Terminar prueba",
@@ -4832,13 +4896,21 @@ private val Spanish = UiStrings(
         gradeLabel = "Nota general",
         listeningLabel = "Comprensión auditiva",
         speakingLabel = "Expresión oral",
-        feedbackLabel = "Nota",
         retake = "Repetir prueba",
         levelBeginner = "Principiante",
         levelElementary = "Elemental",
         levelIntermediate = "Intermedio",
         levelAdvanced = "Avanzado",
         levelNative = "Nativo",
+        resultCheer = { level ->
+            when (level) {
+                5 -> "Lo oíste y lo usaste. Eso es una conversación de verdad."
+                4 -> "Oído fino y respuestas útiles. Casi en la cima."
+                3 -> "Sostuviste la conversación. Un punto medio de verdad."
+                2 -> "Captaste una parte. Repetir la fija mejor."
+                else -> "Entraste en la conversación. La siguiente ronda será más clara."
+            }
+        },
     ),
     chatAllTab = "Todo",
     chatReadTapHint = "Toca una palabra para resaltar todas las palabras coincidentes en el texto",
@@ -4874,6 +4946,7 @@ private val Spanish = UiStrings(
     chatStudyCreationStructure = "Estructura de la sesión",
     chatStudyCreationDissections = "Significados de palabras",
     chatStudyCreationImages = "Imágenes",
+    chatStudyCreationTest = "Prueba",
     chatStudyCreationCount = { done, total -> "$done / $total" },
     chatStudyError = "No se pudo iniciar la sesión de estudio. Inténtalo de nuevo.",
     chatStudyLiteral = "Significado literal",
@@ -5448,15 +5521,16 @@ private val German = UiStrings(
     chatPlayTab = "Spielen",
     chatTest = StudyTestStrings(
         tab = "Test",
-        hint = "Eine Szene mit den Figuren prüft dein Hörverständnis und passende Antworten.",
         sceneLoading = "Testsituation wird erstellt…",
         sceneError = "Testsituation konnte nicht erstellt werden.",
         audioError = "Die Zeile konnte nicht abgespielt werden. Bitte erneut versuchen.",
         retry = "Erneut versuchen",
-        listenHint = "Hör die verborgene Zeile und erkläre ihre Bedeutung in deiner Sprache.",
+        listenHint = { name -> "Erkläre in deiner Sprache, was $name gesagt hat." },
         speakHint = "Antworte in der Lernsprache passend zur Situation.",
-        playLine = "Zeile erneut abspielen",
-        beatProgress = { current, total -> "Zug $current von $total" },
+        playLine = "Nochmal",
+        beatProgress = { current, total -> "Runde $current von $total" },
+        outlineTitle = "Das wirst du tun",
+        start = "Starten",
         inputPlaceholder = "Schreiben oder zum Sprechen gedrückt halten…",
         next = "Weiter",
         finish = "Test beenden",
@@ -5467,13 +5541,21 @@ private val German = UiStrings(
         gradeLabel = "Gesamtnote",
         listeningLabel = "Hörverständnis",
         speakingLabel = "Sprechen",
-        feedbackLabel = "Hinweis",
         retake = "Wiederholen",
         levelBeginner = "Anfänger",
         levelElementary = "Grundstufe",
         levelIntermediate = "Mittelstufe",
         levelAdvanced = "Fortgeschritten",
         levelNative = "Muttersprachlich",
+        resultCheer = { level ->
+            when (level) {
+                5 -> "Du hast es gehört und benutzt. Das ist ein echtes Gespräch."
+                4 -> "Scharfes Hören, nützliche Antworten. Fast ganz oben."
+                3 -> "Du hast das Gespräch gehalten. Eine echte Mitte."
+                2 -> "Du hast einen Teil erwischt. Nochmal macht es fester."
+                else -> "Du bist im Gespräch. Die nächste Runde wird klarer."
+            }
+        },
     ),
     chatAllTab = "Alle",
     chatReadTapHint = "Tippe auf ein Wort, um jedes passende Wort im Text hervorzuheben",
@@ -5509,6 +5591,7 @@ private val German = UiStrings(
     chatStudyCreationStructure = "Sitzungsstruktur",
     chatStudyCreationDissections = "Wortbedeutungen",
     chatStudyCreationImages = "Bilder",
+    chatStudyCreationTest = "Test",
     chatStudyCreationCount = { done, total -> "$done / $total" },
     chatStudyError = "Lerneinheit konnte nicht gestartet werden. Bitte erneut versuchen.",
     chatStudyLiteral = "Wörtliche Bedeutung",
@@ -6083,15 +6166,16 @@ private val Burmese = UiStrings(
     chatPlayTab = "သရုပ်ဆောင်ရန်",
     chatTest = StudyTestStrings(
         tab = "စမ်းသပ်မှု",
-        hint = "ဇာတ်ကောင်တစ်ဦးနှင့် အခြေအနေတစ်ခုတွင် နားထောင်နားလည်မှုနှင့် တုံ့ပြန်နိုင်မှုကို စစ်ဆေးပါ။",
         sceneLoading = "စမ်းသပ်မှုအခြေအနေကို ဖန်တီးနေသည်…",
         sceneError = "စမ်းသပ်မှုအခြေအနေကို ဖန်တီး၍မရပါ။",
         audioError = "စကားကို ဖွင့်၍မရပါ။ ပြန်စမ်းပါ။",
         retry = "ပြန်စမ်းပါ",
-        listenHint = "ဖုံးကွယ်ထားသော စကားကို နားထောင်ပြီး သင့်ဘာသာစကားဖြင့် အဓိပ္ပာယ်ကို ရှင်းပြပါ။",
+        listenHint = { name -> "$name ပြောခဲ့တာကို သင့်ဘာသာစကားဖြင့် ရှင်းပြပါ။" },
         speakHint = "လေ့လာနေသော ဘာသာစကားဖြင့် အခြေအနေနှင့်ကိုက်ညီအောင် ပြန်ဖြေပါ။",
-        playLine = "စကားကို ပြန်ဖွင့်ပါ",
-        beatProgress = { current, total -> "အလှည့် $current / $total" },
+        playLine = "ပြန်ဖွင့်",
+        beatProgress = { current, total -> "အကြိမ် $current / $total" },
+        outlineTitle = "သင်လုပ်ရမည့်အရာများ",
+        start = "စတင်ရန်",
         inputPlaceholder = "ရိုက်ထည့်ပါ သို့မဟုတ် ဖိထားပြီး ပြောပါ…",
         next = "နောက်တစ်ခု",
         finish = "စမ်းသပ်မှု ပြီးရန်",
@@ -6102,13 +6186,21 @@ private val Burmese = UiStrings(
         gradeLabel = "စုစုပေါင်းအဆင့်",
         listeningLabel = "နားထောင်နားလည်မှု",
         speakingLabel = "စကားပြော",
-        feedbackLabel = "မှတ်ချက်",
         retake = "ပြန်လည်ဖြေဆိုရန်",
         levelBeginner = "အစပြုသူ",
         levelElementary = "အခြေခံ",
         levelIntermediate = "အလယ်အလတ်",
         levelAdvanced = "အဆင့်မြင့်",
         levelNative = "မိခင်ဘာသာစကားပြောသူ",
+        resultCheer = { level ->
+            when (level) {
+                5 -> "ကြားပြီး အခြေအနေထဲမှာ သုံးနိုင်ခဲ့တယ်။ တကယ့်စကားဝိုင်းပါ။"
+                4 -> "နားထောင်မှု ထက်မြက်ပြီး အဖြေတွေ အသုံးဝင်တယ်။ ထိပ်ဆုံးနီးပါး။"
+                3 -> "စကားဝိုင်းကို ထိန်းထားနိုင်ခဲ့တယ်။ တကယ့်အလယ်အလတ်ပါ။"
+                2 -> "တစ်စိတ်တစ်ပိုင်း ဖမ်းမိခဲ့တယ်။ ပြန်ဖြေရင် ပိုခိုင်မယ်။"
+                else -> "စကားဝိုင်းထဲ ရောက်နေပြီ။ နောက်အကြိမ်မှာ ပိုရှင်းမယ်။"
+            }
+        },
     ),
     chatAllTab = "အားလုံး",
     chatReadTapHint = "စာသားထဲရှိ ကိုက်ညီသောစကားလုံးအားလုံးကို အသားပေးပြရန် စကားလုံးတစ်လုံးကို နှိပ်ပါ",
@@ -6144,6 +6236,7 @@ private val Burmese = UiStrings(
     chatStudyCreationStructure = "အပိုင်း ဖွဲ့စည်းပုံ",
     chatStudyCreationDissections = "စကားလုံး အဓိပ္ပာယ်များ",
     chatStudyCreationImages = "ရုပ်ပုံများ",
+    chatStudyCreationTest = "စမ်းသပ်မှု",
     chatStudyCreationCount = { done, total -> "$done / $total" },
     chatStudyError = "လေ့လာမှုအပိုင်းကို စတင်၍ မရပါ။ ထပ်မံကြိုးစားကြည့်ပါ။",
     chatStudyLiteral = "တိုက်ရိုက်အဓိပ္ပာယ်",

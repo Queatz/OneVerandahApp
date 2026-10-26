@@ -6,6 +6,7 @@ import apap.oneverandah.api.StudyExamBeat
 import apap.oneverandah.api.StudyExamBeatKind
 import apap.oneverandah.api.StudyExamScene
 import apap.oneverandah.api.StudyExamSceneRequest
+import apap.oneverandah.api.isTenRoundExam
 import apap.oneverandah.api.StudyExamScoreAnswer
 import apap.oneverandah.api.StudyExamScoreRequest
 import apap.oneverandah.api.StudyPlayHistoryMessage
@@ -1168,7 +1169,9 @@ class StudyServiceTest {
         assertEquals("vi", ai.lastExamSceneRequest?.textLanguageTag)
         assertEquals("en", ai.lastExamSceneRequest?.languageTag)
         assertEquals(listOf("main"), ai.lastExamSceneRequest?.characters?.map { it.id })
-        assertEquals(3, scene.beats.size)
+        assertEquals(20, scene.beats.size)
+        assertEquals(10, scene.outline.size)
+        assertTrue(scene.isTenRoundExam())
         assertTrue(scene.beats.all { it.speakerId == "main" && it.speakerName == "Lan" })
         assertTrue(scene.beats.filter { it.kind == StudyExamBeatKind.SPEAK }.all { it.line == null })
 
@@ -1188,11 +1191,11 @@ class StudyServiceTest {
         )
 
         assertEquals(2, ai.examBeatRequests.size)
-        assertEquals(listOf("listen-1", "speak-1", "speak-2"), scored.beats.map { it.beatId })
-        assertEquals(listOf(2, 2, 0), scored.beats.map { it.points })
-        assertEquals(5, scored.grade.listening)
-        assertEquals(3, scored.grade.speaking)
-        assertEquals(4, scored.grade.overall)
+        assertEquals("listen-1", scored.beats.first().beatId)
+        assertEquals(listOf(2, 2, 0), scored.beats.take(3).map { it.points })
+        assertEquals(1, scored.grade.listening)
+        assertEquals(1, scored.grade.speaking)
+        assertEquals(1, scored.grade.overall)
         assertEquals(StudyExamScoring.feedback("en"), scored.grade.feedback)
         assertEquals(40L, scored.grade.scoredAt)
 
@@ -1200,10 +1203,11 @@ class StudyServiceTest {
             StudyExamSceneRequest(session = session.copy(characters = emptyList()), languageTag = "en"),
         )
         assertTrue(fallbackScene.beats.all { it.speakerId == "main" && it.speakerName == "Ari" })
+        assertTrue(fallbackScene.isTenRoundExam())
     }
 
     @Test
-    fun `six study sentences stay in one six beat conversation`() = runBlocking {
+    fun `short generated scene becomes ten alternating rounds`() = runBlocking {
         val sentences = (1..6).map { StudySentence(text = "Sentence $it.", tokens = emptyList()) }
         val beats = sentences.mapIndexed { index, sentence ->
             val kind = if (index % 2 == 0) StudyExamBeatKind.LISTEN else StudyExamBeatKind.SPEAK
@@ -1229,8 +1233,50 @@ class StudyServiceTest {
 
         val scene = StudyService(ai).examScene(StudyExamSceneRequest(session = session, languageTag = "en"))
 
-        assertEquals(6, scene.beats.size)
-        assertEquals(sentences.map { it.text }, scene.beats.map { it.sourceSentence })
+        assertTrue(scene.isTenRoundExam())
+        assertEquals(sentences.map { it.text }.toSet(), scene.beats.map { it.sourceSentence }.toSet())
+    }
+
+    @Test
+    fun `omitted source sentence is recovered from the spoken line`() = runBlocking {
+        val broken = fakeExamScene().copy(
+            beats = fakeExamScene().beats.map { beat ->
+                beat.copy(sourceSentence = if (beat.kind == StudyExamBeatKind.SPEAK) "" else beat.sourceSentence)
+            },
+        )
+        val scene = StudyService(FakeStudyAiClient(examScene = broken)).examScene(
+            StudyExamSceneRequest(
+                session = StudySessionResponse(
+                    text = "Xin chào.",
+                    textLanguageTag = "vi",
+                    sentences = listOf(StudySentence(text = "Xin chào.", tokens = emptyList())),
+                    characters = listOf(StudyStoryCharacter("main", "Lan", "main", "A neighbor.")),
+                ),
+                languageTag = "en",
+            ),
+        )
+
+        assertEquals(List(20) { "Xin chào." }, scene.beats.map { it.sourceSentence })
+        assertTrue(scene.beats.first().line.orEmpty().contains("Xin chào."))
+    }
+
+    @Test
+    fun `failed exam generation falls back to a playable scene`() = runBlocking {
+        val scene = StudyService(FakeStudyAiClient(examSceneFailure = true)).examScene(
+            StudyExamSceneRequest(
+                session = StudySessionResponse(
+                    text = "Xin chào.",
+                    textLanguageTag = "vi",
+                    sentences = listOf(StudySentence(text = "Xin chào.", tokens = emptyList())),
+                ),
+                languageTag = "en",
+            ),
+        )
+
+        assertEquals(20, scene.beats.size)
+        assertTrue(scene.isTenRoundExam())
+        assertEquals("Ari", scene.beats.first().speakerName)
+        assertTrue(scene.beats.all { it.sourceSentence == "Xin chào." })
     }
 
     @Test
@@ -1636,6 +1682,7 @@ internal class FakeStudyAiClient(
     private val sessionNameFailure: Boolean = false,
     private val examScene: StudyExamScene = fakeExamScene(),
     private val examJudgment: StudyExamJudgment = StudyExamJudgment(points = 2, feedback = "Clear answer."),
+    private val examSceneFailure: Boolean = false,
 ) : StudyAiClient {
     var lastExtractRequest: StudyGenerationRequest? = null
     var lastIntentRequest: StudyGenerationRequest? = null
@@ -1726,6 +1773,7 @@ internal class FakeStudyAiClient(
 
     override suspend fun generateExamScene(request: StudyExamSceneGenerationRequest): StudyExamScene {
         lastExamSceneRequest = request
+        if (examSceneFailure) throw IllegalArgumentException("Qwen study exam beat missing source sentence")
         return examScene
     }
 
@@ -1766,6 +1814,7 @@ internal class FakeStudyAiClient(
 private fun fakeExamScene() = StudyExamScene(
     id = "exam-1",
     setting = "At the neighborhood market.",
+    outline = (1..10).map { "Task $it" },
     beats = listOf(
         StudyExamBeat(
             id = "listen-1",
@@ -1787,14 +1836,27 @@ private fun fakeExamScene() = StudyExamScene(
             expectedMeaning = "Return the greeting.",
             sourceSentence = "Xin chào.",
         ),
-        StudyExamBeat(
-            id = "speak-2",
-            kind = StudyExamBeatKind.SPEAK,
-            speakerId = "invented",
-            speakerName = "Someone else",
-            prompt = "Ask if the neighbor is well.",
-            expectedMeaning = "Ask a polite follow-up.",
-            sourceSentence = "Xin chào.",
-        ),
-    ),
+    ) + (2..10).flatMap { round ->
+        listOf(
+            StudyExamBeat(
+                id = "listen-$round",
+                kind = StudyExamBeatKind.LISTEN,
+                speakerId = "invented",
+                speakerName = "Someone else",
+                line = "Xin chào.",
+                prompt = "What did the neighbor mean?",
+                expectedMeaning = "A greeting.",
+                sourceSentence = "Xin chào.",
+            ),
+            StudyExamBeat(
+                id = "speak-$round",
+                kind = StudyExamBeatKind.SPEAK,
+                speakerId = "invented",
+                speakerName = "Someone else",
+                prompt = "Use the greeting in moment $round.",
+                expectedMeaning = "A situated reply.",
+                sourceSentence = "Xin chào.",
+            ),
+        )
+    },
 )

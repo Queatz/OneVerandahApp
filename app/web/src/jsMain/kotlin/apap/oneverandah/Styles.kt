@@ -389,6 +389,31 @@ object Styles {
     const val studySessionCardTitle = "study-session-card-title"
     const val studySessionExamGradeBadge = "study-session-exam-grade-badge"
     const val studySessionHeaderExamGradeBadge = "study-session-header-exam-grade-badge"
+    const val studyExamResult = "study-exam-result"
+    const val studyExamHero = "study-exam-hero"
+    const val studyExamGradeMark = "study-exam-grade-mark"
+    const val studyExamGradeNumber = "study-exam-grade-number"
+    const val studyExamGradeOutOf = "study-exam-grade-out-of"
+    const val studyExamHeroCopy = "study-exam-hero-copy"
+    const val studyExamLevel = "study-exam-level"
+    const val studyExamCheer = "study-exam-cheer"
+    const val studyExamSkills = "study-exam-skills"
+    const val studyExamSkill = "study-exam-skill"
+    const val studyExamSkillTrack = "study-exam-skill-track"
+    const val studyExamSkillFill = "study-exam-skill-fill"
+    const val studyExamSkillPips = "study-exam-skill-pips"
+    const val studyExamSkillPip = "study-exam-skill-pip"
+    const val studyExamSkillPipOn = "study-exam-skill-pip-on"
+    const val studyExamSkillScore = "study-exam-skill-score"
+    const val studyExamMoments = "study-exam-moments"
+    const val studyExamMoment = "study-exam-moment"
+    const val studyExamMomentPoints = "study-exam-moment-points"
+    const val studyExamBriefing = "study-exam-briefing"
+    const val studyExamOutlineTitle = "study-exam-outline-title"
+    const val studyExamOutline = "study-exam-outline"
+    const val studyExamOutlineItem = "study-exam-outline-item"
+    const val studyExamOutlineIndex = "study-exam-outline-index"
+    const val studyExamStart = "study-exam-start"
     const val studySessionCardActions = "study-session-card-actions"
     const val studySessionSectionTitle = "study-session-section-title"
     const val studySessionRemoveBtn = "study-session-remove-btn"
@@ -1168,6 +1193,10 @@ object Styles {
         .${chip}.${chipActive} {
             background-color: var(--md-sys-color-primary-container);
             border-color: transparent;
+        }
+        .${chip}:disabled {
+            opacity: 0.4;
+            cursor: not-allowed;
             color: var(--md-sys-color-on-primary-container);
         }
 
@@ -3771,7 +3800,6 @@ object Styles {
             gap: 10px;
             padding: 0 0 16px;
             border-radius: 22px;
-            border: 1px solid color-mix(in srgb, var(--md-sys-color-primary) 22%, var(--md-sys-color-outline));
             background:
                 radial-gradient(circle at top, color-mix(in srgb, var(--md-sys-color-primary) 14%, transparent), transparent 58%),
                 color-mix(in srgb, var(--md-sys-color-primary) 4%, var(--md-sys-color-surface));
@@ -4830,7 +4858,189 @@ object Styles {
             flex-wrap: wrap;
         }
         .${locationScheduleRow} .${textInput} { flex: 1; }
-    """.trimIndent() + photoGalleryCss()
+    """.trimIndent() + studyExamCss() + photoGalleryCss()
+
+    private fun studyExamCss(): String = """
+        .${studyExamResult},
+        .${studyExamBriefing} {
+            --exam-accent: var(--md-sys-color-primary);
+            display: flex;
+            flex-direction: column;
+            gap: 18px;
+            padding: 22px 18px 18px;
+            border-radius: 28px;
+            border: 1px solid color-mix(in srgb, var(--exam-accent) 28%, transparent);
+            background:
+                radial-gradient(90% 70% at 50% -20%, color-mix(in srgb, var(--exam-accent) 34%, transparent), transparent 62%),
+                linear-gradient(180deg, color-mix(in srgb, var(--exam-accent) 10%, var(--md-sys-color-surface)), var(--md-sys-color-surface));
+            box-shadow: 0 22px 48px -30px var(--exam-accent);
+        }
+        .${studyExamResult}[data-level="5"] { --exam-accent: #e8c35a; }
+        .${studyExamResult}[data-level="4"] { --exam-accent: var(--md-sys-color-primary); }
+        .${studyExamResult}[data-level="3"] { --exam-accent: color-mix(in srgb, var(--md-sys-color-primary) 82%, #7ad0c8); }
+        .${studyExamResult}[data-level="2"] { --exam-accent: color-mix(in srgb, var(--md-sys-color-primary) 55%, var(--md-sys-color-on-surface)); }
+        .${studyExamResult}[data-level="1"] { --exam-accent: color-mix(in srgb, var(--md-sys-color-on-surface) 62%, var(--md-sys-color-primary)); }
+        .${studyExamHero} {
+            display: flex;
+            flex-direction: column;
+            align-items: center;
+            text-align: center;
+            gap: 14px;
+        }
+        .${studyExamGradeMark} {
+            display: flex;
+            align-items: baseline;
+            justify-content: center;
+            width: 128px;
+            height: 128px;
+            flex: 0 0 auto;
+            border-radius: 50%;
+            border: 6px solid var(--exam-accent);
+            background:
+                radial-gradient(circle at 50% 38%, color-mix(in srgb, var(--exam-accent) 22%, var(--md-sys-color-surface)), var(--md-sys-color-surface) 64%);
+            color: var(--exam-accent);
+            box-shadow:
+                0 0 0 10px color-mix(in srgb, var(--exam-accent) 16%, transparent),
+                0 18px 40px -20px var(--exam-accent);
+        }
+        .${studyExamGradeNumber} {
+            font-size: 56px;
+            font-weight: 800;
+            line-height: 1;
+            letter-spacing: -0.04em;
+            font-variant-numeric: tabular-nums;
+        }
+        .${studyExamGradeOutOf} {
+            font-size: 18px;
+            font-weight: 700;
+            opacity: 0.72;
+            margin-left: 1px;
+        }
+        .${studyExamHeroCopy} {
+            display: flex;
+            flex-direction: column;
+            align-items: center;
+            gap: 6px;
+        }
+        .${studyExamLevel} {
+            margin: 0;
+            font-size: 28px;
+            font-weight: 800;
+            letter-spacing: 0.01em;
+        }
+        .${studyExamCheer} {
+            margin: 0;
+            max-width: 28rem;
+            line-height: 1.45;
+            color: color-mix(in srgb, var(--md-sys-color-on-surface) 78%, transparent);
+        }
+        .${studyExamSkills} {
+            display: grid;
+            grid-template-columns: 1fr 1fr;
+            gap: 12px;
+        }
+        .${studyExamSkill} {
+            display: grid;
+            grid-template-columns: 1fr auto;
+            grid-template-rows: auto auto;
+            align-items: center;
+            gap: 8px 10px;
+            padding: 14px;
+            border-radius: 18px;
+            background: color-mix(in srgb, var(--exam-accent) 10%, var(--md-sys-color-surface));
+            border: 1px solid color-mix(in srgb, var(--exam-accent) 18%, transparent);
+            font-size: 13px;
+            font-weight: 700;
+        }
+        .${studyExamSkillTrack} {
+            display: none;
+        }
+        .${studyExamSkillFill} {
+            display: none;
+        }
+        .${studyExamSkillPips} {
+            display: flex;
+            gap: 6px;
+            grid-column: 1;
+        }
+        .${studyExamSkillPip} {
+            width: 10px;
+            height: 10px;
+            border-radius: 50%;
+            background: color-mix(in srgb, var(--exam-accent) 18%, var(--md-sys-color-surface));
+        }
+        .${studyExamSkillPipOn} {
+            background: var(--exam-accent);
+            box-shadow: 0 0 10px color-mix(in srgb, var(--exam-accent) 55%, transparent);
+        }
+        .${studyExamSkillScore} {
+            grid-column: 2;
+            grid-row: 1 / span 2;
+            font-size: 28px;
+            font-weight: 800;
+            line-height: 1;
+            font-variant-numeric: tabular-nums;
+            color: var(--exam-accent);
+        }
+        .${studyExamMoments} {
+            display: flex;
+            flex-direction: column;
+            gap: 8px;
+        }
+        .${studyExamMoment} {
+            display: flex;
+            gap: 10px;
+            align-items: baseline;
+            padding: 10px 12px;
+            border-radius: 14px;
+            background: color-mix(in srgb, var(--exam-accent) 8%, var(--md-sys-color-surface));
+            font-size: 14px;
+        }
+        .${studyExamMomentPoints} {
+            flex: 0 0 auto;
+            font-weight: 800;
+            color: var(--exam-accent);
+        }
+        .${studyExamOutlineTitle} {
+            margin: 4px 0 0;
+            font-size: 18px;
+            font-weight: 800;
+        }
+        .${studyExamOutline} {
+            margin: 0;
+            padding: 0 0 0 1.5em;
+            list-style: decimal;
+            list-style-position: outside;
+        }
+        .${studyExamOutlineItem} {
+            display: list-item;
+            padding: 8px 0;
+            line-height: 1.45;
+        }
+        .${studyExamOutlineItem} + .${studyExamOutlineItem} {
+            border-top: 1px solid color-mix(in srgb, var(--md-sys-color-outline-variant, var(--md-sys-color-on-surface)) 16%, transparent);
+        }
+        .${studyExamOutlineItem}::marker {
+            font-weight: 800;
+            color: var(--exam-accent);
+        }
+        .${studyExamStart} {
+            align-self: center;
+            min-width: 132px;
+            background: var(--exam-accent);
+            color: var(--md-sys-color-on-primary);
+            border-color: transparent;
+            font-weight: 700;
+        }
+        .${studyExamBriefing} .${studyExamStart} {
+            align-self: flex-start;
+        }
+        @media (max-width: 520px) {
+            .${studyExamSkills} { grid-template-columns: 1fr; }
+            .${studyExamGradeMark} { width: 112px; height: 112px; }
+            .${studyExamGradeNumber} { font-size: 48px; }
+        }
+    """.trimIndent()
 
     private fun photoGalleryCss(): String = """
         .${photoDialogNav} {

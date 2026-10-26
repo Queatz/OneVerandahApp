@@ -39,12 +39,10 @@ Play is open practice. Test is a fixed check of the study sentences. They share 
 - As a learner browsing community sessions, I do not want another person's grade on their card.
 
 ### Functional Requirements
-- The Test chip is last, after Play. It is not rendered inside All.
-- Opening Test builds the scene once, using the existing cast. It is not generated on every session open.
-- The scene is one conversation, not a quiz list:
-  - One study sentence becomes a 3-beat scene: the character says it, the learner says what it meant, then the learner uses it to answer the situation.
-  - Two to six sentences become one 4–6 beat conversation that places each sentence once.
-  - Longer texts stay one 6-beat conversation. The generator picks the sentences that carry the situation.
+- The Test chip is last, after Play, and it is also rendered inside All. Opening All does not auto-play the exam audio.
+- Session creation builds the scene once, using the existing cast, and the creation progress includes that step. A retake reuses the scene.
+- The scene is one conversation of 10 rounds, not a short quiz. Each round is a listen beat followed by a speak beat, so the attempt always alternates and never ends on a second speaking beat.
+- The test opens with a numbered outline of what the learner needs to do in each round. Empty answers cannot advance, and Next stays disabled until there is text.
 - A listen beat shows the character portrait and plays the study-language line. The line stays hidden until the learner answers. The learner holds to speak, in the UI language, what the character meant. Repeating the heard line is not comprehension.
 - A speak beat shows a short UI-language cue for what the learner needs to do next. The learner holds to speak a reply in the study language. A recitation that does not answer the moment is not a clear reply.
 - Finish sends transcripts only. Each beat is judged missed, partial, or clear. Code turns those points into the numbers. The model does not choose the 1–5.
@@ -77,7 +75,7 @@ Sessions belong to a device token, not an account. `StudySessionsService.save` r
 - The model judges each beat as 0, 1, or 2. `StudyExamScoring` maps the points to 1–5 so the bands stay testable and the model cannot invent the grade.
 - The scene script lives on `StudySessionResponse.examScene`, like `playScenarios`, so a retake uses the same conversation. The grade does not live in that blob.
 - The grade is a sibling `examGrade` on the saved-session record. Only the score endpoint writes it, and only for the owning device. Client saves preserve the existing grade and cannot supply one.
-- The scene is generated when the learner opens Test, not when the session opens. That avoids an extra model call and avoids copying a community session just by opening it.
+- The scene is generated during session creation, alongside the other creation steps, so the progress list can show it. A retake reuses that scene.
 - Speaking is scored from the hold-to-speak transcript. There is no pronunciation model to grade the recording.
 
 ### Proposed Changes
@@ -150,7 +148,7 @@ graph LR
 ### Risks
 - Transcript quality limits the speaking score. A failed recognition should stay editable in the field before the learner continues, using the existing `ChatInput` text.
 - A stale progressive save can wipe new session fields. The save merge must keep a stored scene and must never accept a client grade.
-- Putting Test in `StudySessionMode` without filtering it would start the exam inside All.
+- Rendering Test inside All must not auto-play the listen line, or opening the session would start the exam audio.
 - Calling `studyPlayTurn` from Test would turn the exam into another Play chat. The Test tab only calls the scene and score endpoints.
 - Character portraits may still be loading. The beat can render the name first and attach `imageUrl` when it arrives.
 - The model may add an overall number. Parsers ignore every key except the beat points and feedback.
