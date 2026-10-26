@@ -10,6 +10,7 @@ import io.ktor.client.request.delete
 import io.ktor.client.request.get
 import io.ktor.client.request.header
 import io.ktor.client.request.post
+import io.ktor.client.request.put
 import io.ktor.client.request.setBody
 import io.ktor.client.statement.bodyAsText
 import io.ktor.http.ContentType
@@ -98,6 +99,7 @@ class StudySessionsRoutesTest {
         assertTrue("\"sentenceImageUrls\":[\"https://img/sentence\"]" in createdBody)
         val saved = json.decodeFromString(SavedStudySessionSummary.serializer(), createdBody)
         assertEquals("Xin chào.", saved.text)
+        assertEquals("Xin chào.", saved.name)
         assertEquals("m1", saved.sourceMessageId)
         assertEquals("vi", saved.textLanguageTag)
 
@@ -111,6 +113,7 @@ class StudySessionsRoutesTest {
         val itemsA = json.decodeFromString(SavedStudySessionsResponse.serializer(), listBody)
         assertEquals(1, itemsA.items.size)
         assertEquals(saved.id, itemsA.items.single().id)
+        assertEquals(saved.name, itemsA.items.single().name)
 
         val listB = client.get("/api/chat/study/sessions") {
             header(DEVICE_TOKEN_HEADER, tokenB)
@@ -128,6 +131,7 @@ class StudySessionsRoutesTest {
         val fetched = json.decodeFromString(SavedStudySession.serializer(), shared.bodyAsText())
         assertEquals(saved.id, fetched.id)
         assertEquals("Xin chào.", fetched.text)
+        assertEquals(saved.name, fetched.name)
         assertEquals("Xin chào.", fetched.session.text)
         assertEquals(1, fetched.session.sentences.size)
 
@@ -140,6 +144,38 @@ class StudySessionsRoutesTest {
             header(DEVICE_TOKEN_HEADER, tokenB)
         }
         assertEquals(HttpStatusCode.NotFound, foreignDelete.status)
+
+        val foreignRename = client.put("/api/chat/study/sessions/${saved.id}") {
+            header(DEVICE_TOKEN_HEADER, tokenB)
+            contentType(ContentType.Application.Json)
+            setBody("""{"name":"Foreign name"}""")
+        }
+        assertEquals(HttpStatusCode.NotFound, foreignRename.status)
+
+        val blankRename = client.put("/api/chat/study/sessions/${saved.id}") {
+            header(DEVICE_TOKEN_HEADER, tokenA)
+            contentType(ContentType.Application.Json)
+            setBody("""{"name":"   "}""")
+        }
+        assertEquals(HttpStatusCode.BadRequest, blankRename.status)
+
+        val ownedRename = client.put("/api/chat/study/sessions/${saved.id}") {
+            header(DEVICE_TOKEN_HEADER, tokenA)
+            contentType(ContentType.Application.Json)
+            setBody("""{"name":"Greetings in Vietnamese"}""")
+        }
+        assertEquals(HttpStatusCode.OK, ownedRename.status)
+        val renamed = json.decodeFromString(SavedStudySessionSummary.serializer(), ownedRename.bodyAsText())
+        assertEquals("Greetings in Vietnamese", renamed.name)
+
+        val fetchedAfterRename = client.get("/api/chat/study/sessions/${saved.id}") {
+            header(DEVICE_TOKEN_HEADER, tokenA)
+        }
+        assertEquals(HttpStatusCode.OK, fetchedAfterRename.status)
+        assertEquals(
+            "Greetings in Vietnamese",
+            json.decodeFromString(SavedStudySession.serializer(), fetchedAfterRename.bodyAsText()).name,
+        )
 
         val ownedDelete = client.delete("/api/chat/study/sessions/${saved.id}") {
             header(DEVICE_TOKEN_HEADER, tokenA)

@@ -1504,6 +1504,8 @@ internal class FakeStudyAiClient(
     private val extractedText: String? = null,
     private val composedText: String? = null,
     private val intendedScene: String = INTENDED_SCENE,
+    private val sessionName: String = "A study session",
+    private val sessionNameFailure: Boolean = false,
 ) : StudyAiClient {
     var lastExtractRequest: StudyGenerationRequest? = null
     var lastIntentRequest: StudyGenerationRequest? = null
@@ -1518,6 +1520,7 @@ internal class FakeStudyAiClient(
     var lastListenCheckRequest: StudyListenCheckGenerationRequest? = null
     var lastExpressGenerateRequest: StudyExpressGenerateGenerationRequest? = null
     var lastSceneRequest: StudySceneGenerationRequest? = null
+    var studySessionNameCalls = 0
 
     companion object {
         const val INTENDED_SCENE =
@@ -1537,6 +1540,12 @@ internal class FakeStudyAiClient(
     override suspend fun designIntendedScene(request: StudySceneGenerationRequest): String {
         lastSceneRequest = request
         return intendedScene
+    }
+
+    override suspend fun generateStudySessionName(text: String, languageTag: String): String {
+        studySessionNameCalls += 1
+        if (sessionNameFailure) error("Study session name generation failed")
+        return sessionName
     }
 
     override suspend fun generateSkeleton(request: StudyGenerationRequest): StudySessionResponse {

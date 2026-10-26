@@ -54,6 +54,7 @@ class ArangoStudySessionsRepository private constructor(
                     languageTag: doc.languageTag,
                     text: doc.text,
                     textLanguageTag: doc.textLanguageTag,
+                    name: NOT_NULL(doc.name, ""),
                     createdAt: doc.createdAt,
                     updatedAt: doc.updatedAt,
                     sentenceImageUrls: (
@@ -201,6 +202,7 @@ class ArangoStudySessionsRepository private constructor(
                     languageTag: doc.languageTag,
                     text: doc.text,
                     textLanguageTag: doc.textLanguageTag,
+                    name: NOT_NULL(doc.name, ""),
                     createdAt: doc.createdAt,
                     updatedAt: doc.updatedAt,
                     sentenceImageUrls: (
@@ -359,6 +361,7 @@ private data class SavedStudySessionSummaryDocument(
     val createdAt: Long,
     val updatedAt: Long,
     val sentenceImageUrls: List<String> = emptyList(),
+    val name: String = "",
 ) {
     fun toRecord() = SavedStudySessionSummaryRecord(
         id = key,
@@ -369,6 +372,7 @@ private data class SavedStudySessionSummaryDocument(
         createdAt = createdAt,
         updatedAt = updatedAt,
         sentenceImageUrls = sentenceImageUrls,
+        name = name,
     )
 }
 
@@ -383,6 +387,7 @@ private data class SavedStudySessionDocument(
     val session: StudySessionResponse,
     val createdAt: Long,
     val updatedAt: Long,
+    val name: String = "",
 ) {
     fun toRecord() = SavedStudySessionRecord(
         id = _key,
@@ -394,6 +399,7 @@ private data class SavedStudySessionDocument(
         session = session,
         createdAt = createdAt,
         updatedAt = updatedAt,
+        name = name,
     )
 
     companion object {
@@ -407,6 +413,7 @@ private data class SavedStudySessionDocument(
             session = record.session,
             createdAt = record.createdAt,
             updatedAt = record.updatedAt,
+            name = record.name,
         )
     }
 }

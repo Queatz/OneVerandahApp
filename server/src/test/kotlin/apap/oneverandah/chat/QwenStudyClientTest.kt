@@ -87,6 +87,28 @@ class QwenStudyClientTest {
     }
 
     @Test
+    fun `study session name generation returns a learner-facing title`() = runBlocking {
+        var requestBody = ""
+        val engine = MockEngine { request ->
+            requestBody = (request.body as OutgoingContent.ByteArrayContent).bytes().decodeToString()
+            respond(
+                content = qwenChatResponse("""{"name":"Ordering food politely"}"""),
+                status = HttpStatusCode.OK,
+                headers = headersOf(HttpHeaders.ContentType, "application/json"),
+            )
+        }
+        val client = HttpClient(engine)
+        val ai = DashScopeStudyAiClient(qwenConfig(), client)
+
+        val name = ai.generateStudySessionName("Ordering food in Vietnamese", "en")
+
+        assertEquals("Ordering food politely", name)
+        assertContains(requestBody, "what the learner will know how to say")
+        assertContains(requestBody, "English")
+        client.close()
+    }
+
+    @Test
     fun `study intent retries when the model connection closes before any data`() = runBlocking {
         var calls = 0
         val engine = MockEngine {

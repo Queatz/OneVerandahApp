@@ -196,6 +196,20 @@ object QwenStudyExtractParser {
     }
 }
 
+object QwenStudySessionNameParser {
+    private val json = Json { ignoreUnknownKeys = true; explicitNulls = false; isLenient = true }
+
+    fun parse(content: String): String {
+        val normalized = stripJsonFences(content)
+        val element = runCatching { json.parseToJsonElement(normalized) }
+            .getOrElse { throw IllegalArgumentException("Qwen study session name is not valid JSON", it) }
+        val root = element as? JsonObject
+            ?: throw IllegalArgumentException("Qwen study session name root must be a JSON object")
+        return root.string("name")?.trim()?.takeIf { it.isNotEmpty() }
+            ?: throw IllegalArgumentException("Qwen study session name missing name")
+    }
+}
+
 private fun JsonObject.string(key: String): String? =
     this[key]?.jsonPrimitive?.contentOrNull
 
@@ -308,6 +322,18 @@ class DashScopeStudyAiClient(
             temperature = 0.6,
         )
         return QwenStudyExtractParser.parse(content)
+    }
+
+    override suspend fun generateStudySessionName(text: String, languageTag: String): String {
+        val content = complete(
+            systemPrompt = """
+                Create a concise study-session title in ${languageName(languageTag)}. Describe what the learner will know how to say after studying the material, not just its general topic. Use a short, natural phrase of at most eight words. Return only a JSON object with a single string field named \"name\".
+            """.trimIndent(),
+            userContent = text.trim(),
+            label = "study session name",
+            temperature = 0.4,
+        )
+        return QwenStudySessionNameParser.parse(content)
     }
 
     override suspend fun designIntendedScene(request: StudySceneGenerationRequest): String {

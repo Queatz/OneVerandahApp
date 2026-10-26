@@ -849,6 +849,14 @@ data class SaveStudySessionRequest(
     }
 }
 
+@Serializable
+data class RenameStudySessionRequest(val name: String = "") {
+    fun normalizedOrNull(): RenameStudySessionRequest? {
+        val normalizedName = name.trim().takeIf { it.isNotEmpty() } ?: return null
+        return copy(name = normalizedName)
+    }
+}
+
 /** A study session snapshot scoped to a device token. */
 @Serializable
 data class SavedStudySession(
@@ -860,6 +868,7 @@ data class SavedStudySession(
     val session: StudySessionResponse,
     val createdAt: Long,
     val updatedAt: Long,
+    val name: String = "",
 )
 
 @Serializable
@@ -872,6 +881,7 @@ data class SavedStudySessionSummary(
     val createdAt: Long,
     val updatedAt: Long,
     val sentenceImageUrls: List<String> = emptyList(),
+    val name: String = "",
 )
 
 fun StudySessionResponse.sentenceImageUrls(): List<String> = sentences.mapNotNull { sentence ->

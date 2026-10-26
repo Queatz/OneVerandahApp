@@ -7,6 +7,7 @@ import apap.oneverandah.api.SavedStudySessionSummary
 import apap.oneverandah.api.SavedStudySessionsResponse
 import apap.oneverandah.api.StudySessionResponse
 import apap.oneverandah.api.sentenceImageUrls
+import kotlinx.coroutines.CancellationException
 import kotlinx.coroutines.sync.Mutex
 import kotlinx.coroutines.sync.withLock
 import java.util.UUID
@@ -21,6 +22,7 @@ data class SavedStudySessionRecord(
     val session: StudySessionResponse,
     val createdAt: Long,
     val updatedAt: Long,
+    val name: String = "",
 ) {
     fun toApi() = SavedStudySession(
         id = id,
@@ -31,6 +33,7 @@ data class SavedStudySessionRecord(
         session = session,
         createdAt = createdAt,
         updatedAt = updatedAt,
+        name = name,
     )
 
     fun toSummaryApi() = SavedStudySessionSummary(
@@ -42,6 +45,7 @@ data class SavedStudySessionRecord(
         createdAt = createdAt,
         updatedAt = updatedAt,
         sentenceImageUrls = session.sentenceImageUrls(),
+        name = name,
     )
 }
 
@@ -54,6 +58,7 @@ data class SavedStudySessionSummaryRecord(
     val createdAt: Long,
     val updatedAt: Long,
     val sentenceImageUrls: List<String> = emptyList(),
+    val name: String = "",
 ) {
     fun toApi() = SavedStudySessionSummary(
         id = id,
@@ -64,6 +69,7 @@ data class SavedStudySessionSummaryRecord(
         createdAt = createdAt,
         updatedAt = updatedAt,
         sentenceImageUrls = sentenceImageUrls,
+        name = name,
     )
 }
 
@@ -76,6 +82,7 @@ private fun SavedStudySessionRecord.toSummaryRecord() = SavedStudySessionSummary
     createdAt = createdAt,
     updatedAt = updatedAt,
     sentenceImageUrls = session.sentenceImageUrls(),
+    name = name,
 )
 
 interface StudySessionsRepository {
@@ -171,6 +178,7 @@ class StudySessionsService(
     private val clock: () -> Long = System::currentTimeMillis,
     private val idGenerator: () -> String = { UUID.randomUUID().toString() },
     private val maxPerDevice: Int = DEFAULT_MAX_PER_DEVICE,
+    private val studyAiClient: StudyAiClient? = null,
 ) {
     suspend fun list(rawDeviceToken: String?): SavedStudySessionsResponse {
         val device = requireDevice(rawDeviceToken)
@@ -231,6 +239,7 @@ class StudySessionsService(
             session = request.session,
             createdAt = existing?.createdAt ?: now,
             updatedAt = now,
+            name = existing?.name ?: generateSessionName(request.session.text, request.languageTag),
         )
         val saved = repository.upsert(record)
         repository.deleteOldestBeyond(device.tokenHash, maxPerDevice)
@@ -254,12 +263,39 @@ class StudySessionsService(
         return repository.delete(id)
     }
 
+    /** Renames a session only when it belongs to the current device. */
+    suspend fun rename(rawDeviceToken: String?, id: String, rawName: String): SavedStudySessionSummary? {
+        val device = requireDevice(rawDeviceToken)
+        val name = rawName.trim().takeIf { it.isNotEmpty() } ?: return null
+        val existing = repository.findById(id.trim()) ?: return null
+        if (existing.deviceTokenHash != device.tokenHash) return null
+        return repository.upsert(existing.copy(name = name, updatedAt = clock())).toSummaryApi()
+    }
+
+    private suspend fun generateSessionName(text: String, languageTag: String): String {
+        val generated = try {
+            studyAiClient?.generateStudySessionName(text, languageTag)
+        } catch (cancelled: CancellationException) {
+            throw cancelled
+        } catch (_: Exception) {
+            null
+        }?.trim()?.takeIf { it.isNotEmpty() }
+        if (generated != null) return generated.take(MAX_STUDY_SESSION_NAME_LENGTH).trimEnd()
+        val fallback = text.trim()
+        return if (fallback.length > MAX_STUDY_SESSION_NAME_LENGTH) {
+            fallback.take(MAX_STUDY_SESSION_NAME_LENGTH - 1).trimEnd() + "…"
+        } else {
+            fallback
+        }
+    }
+
     private suspend fun requireDevice(rawDeviceToken: String?): DeviceRecord {
         return deviceService.findValid(rawDeviceToken)
             ?: throw UnauthorizedDeviceException()
     }
 
     companion object {
+        private const val MAX_STUDY_SESSION_NAME_LENGTH = 80
         const val DEFAULT_MAX_PER_DEVICE = 50
         const val DEFAULT_COMMUNITY_PAGE_SIZE = 20
         const val MAX_COMMUNITY_PAGE_SIZE = 50

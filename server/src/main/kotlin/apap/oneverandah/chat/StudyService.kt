@@ -190,6 +190,8 @@ interface StudyAiClient {
      */
     suspend fun generateStudyIntent(request: StudyGenerationRequest): String = request.text.trim()
 
+    suspend fun generateStudySessionName(text: String, languageTag: String): String = text.trim().take(80)
+
     /**
      * Turns a study sentence (or a word's first example) into a detailed English
      * movie-still description. Default is empty so tests and lighter fakes stay

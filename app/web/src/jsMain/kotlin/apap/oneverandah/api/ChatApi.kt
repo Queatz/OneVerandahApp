@@ -8,6 +8,7 @@ import io.ktor.client.request.get
 import io.ktor.client.request.header
 import io.ktor.client.request.parameter
 import io.ktor.client.request.post
+import io.ktor.client.request.put
 import io.ktor.client.request.preparePost
 import io.ktor.client.request.setBody
 import io.ktor.client.statement.bodyAsChannel
@@ -329,6 +330,19 @@ object ChatApi {
             header(DEVICE_TOKEN_HEADER, token)
             contentType(ContentType.Application.Json)
             setBody(json.encodeToString(SaveStudySessionRequest.serializer(), request))
+        }
+        val text = response.bodyAsText()
+        if (!response.status.isSuccess()) throw ChatApiException(errorMessage(text, response.status.value))
+        return json.decodeFromString(SavedStudySessionSummary.serializer(), text)
+    }
+
+    suspend fun renameStudySession(id: String, name: String): SavedStudySessionSummary {
+        val token = DeviceTokenStore.ensureToken()
+        val request = RenameStudySessionRequest(name = name)
+        val response = client.put(chatApiUrl("/study/sessions/$id")) {
+            header(DEVICE_TOKEN_HEADER, token)
+            contentType(ContentType.Application.Json)
+            setBody(json.encodeToString(RenameStudySessionRequest.serializer(), request))
         }
         val text = response.bodyAsText()
         if (!response.status.isSuccess()) throw ChatApiException(errorMessage(text, response.status.value))

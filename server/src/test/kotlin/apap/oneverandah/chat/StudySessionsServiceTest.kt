@@ -139,6 +139,87 @@ class StudySessionsServiceTest {
     }
 
     @Test
+    fun `AI generated session name is preserved across progressive saves`() = runBlocking {
+        val deviceService = DeviceService(
+            repository = InMemoryDeviceRepository(),
+            tokenGenerator = { "named-study-token-abcdefghijklmnop" },
+        )
+        val aiClient = FakeStudyAiClient(sessionName = "Ordering food politely")
+        val service = StudySessionsService(
+            repository = InMemoryStudySessionsRepository(),
+            deviceService = deviceService,
+            studyAiClient = aiClient,
+            idGenerator = { "named-study-1" },
+        )
+        val token = deviceService.issueToken().deviceToken
+
+        val first = service.save(
+            token,
+            SaveStudySessionRequest(
+                sourceMessageId = "named-source",
+                languageTag = "en",
+                session = sampleSession("Xin chào.", pending = true),
+            ),
+        )
+        val second = service.save(
+            token,
+            SaveStudySessionRequest(
+                sourceMessageId = "named-source",
+                languageTag = "en",
+                session = sampleSession("Xin chào.", pending = false),
+            ),
+        )
+
+        assertEquals("Ordering food politely", first.name)
+        assertEquals(first.name, second.name)
+        assertEquals(1, aiClient.studySessionNameCalls)
+    }
+
+    @Test
+    fun `AI name failure falls back to a bounded study text title`() = runBlocking {
+        val deviceService = DeviceService(
+            repository = InMemoryDeviceRepository(),
+            tokenGenerator = { "fallback-study-token-abcdefghijklmnop" },
+        )
+        val service = StudySessionsService(
+            repository = InMemoryStudySessionsRepository(),
+            deviceService = deviceService,
+            studyAiClient = FakeStudyAiClient(sessionNameFailure = true),
+        )
+        val token = deviceService.issueToken().deviceToken
+        val text = "A useful phrase for ordering meals ".repeat(5).trim()
+
+        val saved = service.save(token, SaveStudySessionRequest(languageTag = "en", session = sampleSession(text)))
+
+        assertTrue(saved.name.length <= 80)
+        assertTrue(saved.name.endsWith("…"))
+        assertEquals(text.take(79).trimEnd() + "…", saved.name)
+    }
+
+    @Test
+    fun `rename is restricted to owning device and updates the session`() = runBlocking {
+        val deviceService = DeviceService(
+            repository = InMemoryDeviceRepository(),
+            tokenGenerator = sequenceTokenGenerator(),
+        )
+        val service = StudySessionsService(
+            repository = InMemoryStudySessionsRepository(),
+            deviceService = deviceService,
+            idGenerator = { "rename-study-1" },
+        )
+        val ownerToken = deviceService.issueToken().deviceToken
+        val otherToken = deviceService.issueToken().deviceToken
+        val saved = service.save(ownerToken, request("Hello there"))
+
+        assertNull(service.rename(otherToken, saved.id, "Foreign name"))
+        val renamed = service.rename(ownerToken, saved.id, "  A warm greeting  ")
+
+        assertEquals("A warm greeting", renamed?.name)
+        assertEquals("A warm greeting", service.get(ownerToken, saved.id)?.name)
+        assertNull(service.rename(ownerToken, "missing", "Name"))
+    }
+
+    @Test
     fun `cap drops oldest sessions for the device`() = runBlocking {
         var now = 0L
         val deviceService = DeviceService(

@@ -13,6 +13,13 @@ class ChatApiModelsTest {
     }
 
     @Test
+    fun `study session rename trims a name and rejects blank names`() {
+        assertEquals("My title", RenameStudySessionRequest("  My title  ").normalizedOrNull()?.name)
+        assertNull(RenameStudySessionRequest("   ").normalizedOrNull())
+        assertNull(RenameStudySessionRequest().normalizedOrNull())
+    }
+
+    @Test
     fun `chat request trims content and resolves supported language`() {
         val request = ChatRequest(message = "  Xin chào  ", languageTag = "vi-VN")
 

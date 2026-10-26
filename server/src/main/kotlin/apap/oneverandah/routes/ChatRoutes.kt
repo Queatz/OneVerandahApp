@@ -5,6 +5,7 @@ import apap.oneverandah.api.ChatHistoryResponse
 import apap.oneverandah.api.ChatRequest
 import apap.oneverandah.api.SaveChatMessageRequest
 import apap.oneverandah.api.SaveStudySessionRequest
+import apap.oneverandah.api.RenameStudySessionRequest
 import apap.oneverandah.api.SpeechRequest
 import apap.oneverandah.api.SpeechResponse
 import apap.oneverandah.api.StudyDissectSentenceRequest
@@ -41,6 +42,7 @@ import io.ktor.server.routing.Route
 import io.ktor.server.routing.delete
 import io.ktor.server.routing.get
 import io.ktor.server.routing.post
+import io.ktor.server.routing.put
 import io.ktor.server.websocket.webSocket
 import java.util.Base64
 import kotlinx.coroutines.Dispatchers
@@ -333,6 +335,31 @@ fun Route.chatRoutes(
             }
             try {
                 call.respond(studySessionsService.save(token, request))
+            } catch (_: UnauthorizedDeviceException) {
+                call.respond(HttpStatusCode.Unauthorized, ChatErrorResponse("Valid device token required"))
+            }
+        }
+
+        put("/api/chat/study/sessions/{id}") {
+            val token = call.request.header(DEVICE_TOKEN_HEADER)
+            val id = call.parameters["id"]?.trim().orEmpty()
+            if (id.isEmpty()) {
+                call.respond(HttpStatusCode.BadRequest, ChatErrorResponse("Study session id is required"))
+                return@put
+            }
+            val request = call.receiveStudyPayload<RenameStudySessionRequest>()
+            val normalized = request.normalizedOrNull()
+            if (normalized == null) {
+                call.respond(HttpStatusCode.BadRequest, ChatErrorResponse("Study session name must not be blank"))
+                return@put
+            }
+            try {
+                val renamed = studySessionsService.rename(token, id, normalized.name)
+                if (renamed == null) {
+                    call.respond(HttpStatusCode.NotFound, ChatErrorResponse("Study session not found"))
+                    return@put
+                }
+                call.respondStudyPayload(renamed)
             } catch (_: UnauthorizedDeviceException) {
                 call.respond(HttpStatusCode.Unauthorized, ChatErrorResponse("Valid device token required"))
             }

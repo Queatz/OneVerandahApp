@@ -121,6 +121,7 @@ class ChatSystem(
                 )
                 null
             }
+            val studyAiClient = DashScopeStudyAiClient(config.qwenChat, providerClient)
             return ChatSystem(
                 chatService = ChatService(
                     repository = repository,
@@ -140,7 +141,7 @@ class ChatSystem(
                     },
                 ),
                 studyService = StudyService(
-                    aiClient = DashScopeStudyAiClient(config.qwenChat, providerClient),
+                    aiClient = studyAiClient,
                     imageGenerator = playgroundImageGenerator,
                     scope = scope,
                 ),
@@ -153,6 +154,7 @@ class ChatSystem(
                 studySessionsService = StudySessionsService(
                     repository = studySessionsRepository,
                     deviceService = deviceService,
+                    studyAiClient = studyAiClient,
                 ),
                 clonedVoicesService = clonedVoicesService,
                 arangoHttpClient = arangoClient,

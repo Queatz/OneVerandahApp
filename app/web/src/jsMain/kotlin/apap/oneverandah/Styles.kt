@@ -3748,7 +3748,13 @@ object Styles {
         }
         .${studyWatchImage}.${studyWatchImageBkg} {
             object-fit: cover;
-            filter: blur(8px) brightness(.5);
+            filter: blur(8px) brightness(1.25);
+            scale: 1.05;
+        }
+        @media (prefers-color-scheme: dark) {
+            .${studyWatchImage}.${studyWatchImageBkg} {
+                filter: blur(8px) brightness(.75);
+            }
         }
         .${studyWatchStageStatus} {
             position: absolute;

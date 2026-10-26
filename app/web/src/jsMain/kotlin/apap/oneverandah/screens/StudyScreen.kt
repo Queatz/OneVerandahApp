@@ -39,6 +39,7 @@ import apap.oneverandah.api.StudySentence
 import apap.oneverandah.api.StudySentenceImageRequest
 import apap.oneverandah.api.StudySessionRequest
 import apap.oneverandah.api.StudySessionResponse
+import apap.oneverandah.api.sentenceImageUrls
 import apap.oneverandah.api.StudyStoryCharacter
 import apap.oneverandah.api.StudyStoryCharactersRequest
 import apap.oneverandah.api.StudyToken
@@ -129,6 +130,9 @@ fun StudyScreen(
     var communitySessionsLoading by remember { mutableStateOf(false) }
     var communitySessionsLoadingMore by remember { mutableStateOf(false) }
     var communityNextCursor by remember { mutableStateOf<String?>(null) }
+    var activeStudySessionItem by remember { mutableStateOf<SavedStudySessionSummary?>(null) }
+    var activeStudySessionOwned by remember { mutableStateOf(false) }
+    var pendingStudySessionRename by remember { mutableStateOf<SavedStudySessionSummary?>(null) }
     // Exact = current behavior (study the typed text). Off (default from the list) parses first.
     var studyStartExact by remember { mutableStateOf(true) }
 
@@ -203,6 +207,10 @@ fun StudyScreen(
                 studySessionItems = (listOf(saved) + studySessionItems.filterNot {
                     it.id == saved.id || (saved.sourceMessageId != null && it.sourceMessageId == saved.sourceMessageId)
                 }).sortedByDescending { it.updatedAt }
+                if (studyTarget?.id == messageId) {
+                    activeStudySessionItem = saved
+                    activeStudySessionOwned = true
+                }
                 if (studyTarget?.id == messageId && sessionId.isNullOrBlank()) {
                     onOpenSession(saved.id)
                 }
@@ -1121,11 +1129,27 @@ fun StudyScreen(
                 createdAt = item.createdAt,
             ),
         )
+        activeStudySessionItem = studySessionItems.firstOrNull { it.id == item.id }
+            ?: communitySessionItems.firstOrNull { it.id == item.id }
+            ?: SavedStudySessionSummary(
+                id = item.id,
+                sourceMessageId = item.sourceMessageId,
+                languageTag = item.languageTag,
+                text = item.text,
+                textLanguageTag = item.textLanguageTag,
+                createdAt = item.createdAt,
+                updatedAt = item.updatedAt,
+                sentenceImageUrls = item.session.sentenceImageUrls(),
+                name = item.name,
+            )
+        activeStudySessionOwned = !fromCommunity && studySessionItems.any { it.id == item.id }
     }
 
     fun startStudyFromText(raw: String?, exact: Boolean = true) {
         val text = raw?.trim().orEmpty()
         if (text.isEmpty()) return
+        activeStudySessionItem = null
+        activeStudySessionOwned = false
         studyStartExact = exact
         if (exact) {
             openStudy(
@@ -1177,6 +1201,9 @@ fun StudyScreen(
 
     fun closeStudy() {
         studySessionVisible = false
+        activeStudySessionItem = null
+        activeStudySessionOwned = false
+        pendingStudySessionRename = null
         stopActiveStudyAudio()
         if (!sessionId.isNullOrBlank()) {
             onCloseSession()
@@ -1197,6 +1224,18 @@ fun StudyScreen(
                     if (sessionId == item.id) {
                         closeStudy()
                     }
+                }
+                .onFailure { Toaster.show(strings.chatStudySessionsError) }
+        }
+    }
+
+    fun renameStudySession(item: SavedStudySessionSummary, name: String) {
+        scope.launch {
+            runCatching { ChatApi.renameStudySession(item.id, name) }
+                .onSuccess { renamed ->
+                    studySessionItems = studySessionItems.map { if (it.id == renamed.id) renamed else it }
+                    communitySessionItems = communitySessionItems.map { if (it.id == renamed.id) renamed else it }
+                    if (activeStudySessionItem?.id == renamed.id) activeStudySessionItem = renamed
                 }
                 .onFailure { Toaster.show(strings.chatStudySessionsError) }
         }
@@ -1272,11 +1311,30 @@ fun StudyScreen(
     }
 
     Scaffold(
-        title = if (studySessionVisible) strings.chatStudyTitle else strings.studyTitle,
+        title = if (studySessionVisible) {
+            activeStudySessionItem?.let(::studySessionDisplayName)?.takeIf { it.isNotBlank() }
+                ?: strings.chatStudyTitle
+        } else {
+            strings.studyTitle
+        },
         onBack = {
             if (studySessionVisible) closeStudy() else onBack()
         },
         onHome = onHome,
+        appBarAction = if (studySessionVisible && activeStudySessionOwned && activeStudySessionItem != null) {
+            {
+                Button(attrs = {
+                    classes(Styles.appBarIcon)
+                    attr("type", "button")
+                    attr("aria-label", strings.chatStudySessionsRename)
+                    onClick { pendingStudySessionRename = activeStudySessionItem }
+                }) {
+                    MaterialSymbol("edit")
+                }
+            }
+        } else {
+            null
+        },
     ) {
         if (studySessionVisible) {
             StudySessionPane(
@@ -1330,10 +1388,20 @@ fun StudyScreen(
                 onOpen = { onOpenSession(it.id) },
                 onOpenCommunity = { onOpenSession(it.id) },
                 onRemove = ::removeStudySession,
+                onRename = { pendingStudySessionRename = it },
                 onLoadMoreCommunity = { loadCommunitySessions() },
             )
         }
     }
+    StudySessionRenameDialog(
+        item = pendingStudySessionRename,
+        strings = strings,
+        onDismiss = { pendingStudySessionRename = null },
+        onConfirm = { item, name ->
+            pendingStudySessionRename = null
+            renameStudySession(item, name)
+        },
+    )
 }
 
 
@@ -1350,6 +1418,7 @@ private fun StudySessionsList(
     onOpen: (SavedStudySessionSummary) -> Unit,
     onOpenCommunity: (SavedStudySessionSummary) -> Unit,
     onRemove: (SavedStudySessionSummary) -> Unit,
+    onRename: (SavedStudySessionSummary) -> Unit,
     onLoadMoreCommunity: () -> Unit,
 ) {
     var draft by remember { mutableStateOf("") }
@@ -1445,6 +1514,7 @@ private fun StudySessionsList(
                         if (entry.removable) onOpen(entry.item) else onOpenCommunity(entry.item)
                     },
                     onRemove = { if (entry.removable) pendingRemove = entry.item },
+                    onRename = { if (entry.removable) onRename(entry.item) },
                 )
             }
         }
@@ -1489,6 +1559,7 @@ private fun StudySessionCard(
     removable: Boolean,
     onOpen: () -> Unit,
     onRemove: () -> Unit,
+    onRename: () -> Unit,
 ) {
     Div(attrs = { classes(Styles.savedItem, Styles.studySessionCard) }) {
         if (removable) {
@@ -1516,8 +1587,19 @@ private fun StudySessionCard(
         Span(attrs = { classes(Styles.savedItemSender) }) {
             Text(strings.chatStudyTitle)
         }
-        P(attrs = { classes(Styles.savedItemText) }) { Text(item.text) }
+        P(attrs = { classes(Styles.savedItemText) }) { Text(studySessionDisplayName(item)) }
         Div(attrs = { classes(Styles.savedItemActions) }) {
+            if (removable) {
+                Button(attrs = {
+                    classes(Styles.savedItemAction)
+                    attr("type", "button")
+                    attr("aria-label", strings.chatStudySessionsRename)
+                    onClick { onRename() }
+                }) {
+                    MaterialSymbol("edit")
+                    Text(strings.chatStudySessionsRename)
+                }
+            }
             Button(attrs = {
                 classes(Styles.btnPrimary)
                 attr("type", "button")
@@ -1526,6 +1608,45 @@ private fun StudySessionCard(
                 MaterialSymbol("menu_book")
                 Text(strings.chatStudySessionsOpen)
             }
+        }
+    }
+}
+
+@Composable
+private fun StudySessionRenameDialog(
+    item: SavedStudySessionSummary?,
+    strings: UiStrings,
+    onDismiss: () -> Unit,
+    onConfirm: (SavedStudySessionSummary, String) -> Unit,
+) {
+    var name by remember(item?.id, item?.name) { mutableStateOf(item?.name.orEmpty()) }
+    BottomDialog(
+        visible = item != null,
+        closeLabel = strings.close,
+        onDismiss = onDismiss,
+    ) {
+        Div(attrs = { classes(Styles.dialogHeader) }) {
+            P(attrs = { classes(Styles.dialogTitle) }) { Text(strings.chatStudySessionsRename) }
+        }
+        Input(type = InputType.Text) {
+            classes(Styles.studyPlaygroundInput)
+            value(name)
+            attr("placeholder", strings.chatStudySessionsNamePlaceholder)
+            attr("aria-label", strings.chatStudySessionsNamePlaceholder)
+            onInput { event -> name = event.value }
+        }
+        Div(attrs = { classes(Styles.dialogActions) }) {
+            Button(attrs = {
+                classes(Styles.btnText)
+                attr("type", "button")
+                onClick { onDismiss() }
+            }) { Text(strings.close) }
+            Button(attrs = {
+                classes(Styles.btnPrimary)
+                attr("type", "button")
+                if (name.trim().isEmpty()) attr("disabled", "")
+                onClick { item?.let { onConfirm(it, name.trim()) } }
+            }) { Text(strings.chatStudySessionsSaveName) }
         }
     }
 }
@@ -2565,6 +2686,9 @@ private fun studyCreationImageCounts(
 /** Completed sentence visuals for a saved study card, in reading order. */
 internal fun studySessionPhraseImageUrls(item: SavedStudySessionSummary): List<String> =
     item.sentenceImageUrls.mapNotNull { it.trim().takeIf(String::isNotEmpty) }
+
+internal fun studySessionDisplayName(item: SavedStudySessionSummary): String =
+    item.name.trim().ifBlank { item.text }
 
 internal const val STUDY_COMMUNITY_PAGE_SIZE = 20
 

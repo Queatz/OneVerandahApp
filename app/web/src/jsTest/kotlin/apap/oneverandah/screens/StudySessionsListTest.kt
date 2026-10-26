@@ -28,6 +28,15 @@ class StudySessionsListTest {
     }
 
     @Test
+    fun `session display name falls back to source text when unnamed`() {
+        val named = sampleSaved("named", "Original text").copy(name = "  Order coffee  ")
+        val unnamed = sampleSaved("unnamed", "Original text")
+
+        assertEquals("Order coffee", studySessionDisplayName(named))
+        assertEquals("Original text", studySessionDisplayName(unnamed))
+    }
+
+    @Test
     fun `community pages append unique sessions`() {
         val first = sampleSaved("a", "One")
         val second = sampleSaved("b", "Two")
