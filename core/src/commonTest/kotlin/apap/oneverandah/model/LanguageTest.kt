@@ -52,6 +52,15 @@ class LanguageTest {
     }
 
     @Test
+    fun learnerLanguageTagKeepsUnsupportedNamesAndCodes() {
+        assertEquals("fr", Language.normalizeLearnerLanguageTag("French"))
+        assertEquals("it", Language.normalizeLearnerLanguageTag("it-IT"))
+        assertEquals("Klingon", Language.normalizeLearnerLanguageTag("  Klingon  "))
+        assertEquals("en", Language.normalizeLearnerLanguageTag("   "))
+        assertEquals("vi", Language.normalizeLearnerLanguageTag("Vietnamese"))
+    }
+
+    @Test
     fun localizedTextResolvesSpanish() {
         val textWithSpanish = LocalizedText(en = "Hello", vi = "Xin chào", es = "Hola")
         assertEquals("Hola", textWithSpanish.resolve(Language.SPANISH))

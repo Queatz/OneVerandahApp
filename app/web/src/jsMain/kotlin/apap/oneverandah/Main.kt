@@ -58,13 +58,8 @@ fun App() {
     var pendingChatMessage by remember { mutableStateOf<String?>(null) }
     var pendingChatPanel by remember { mutableStateOf<ChatInitialPanel?>(null) }
     var pendingStudyText by remember { mutableStateOf<String?>(null) }
-    // Load generated cover images on launch and keep them fresh by polling the
-    // backend. Failures are swallowed inside ImageStore so the UI always renders.
     LaunchedEffect(Unit) {
-        while (true) {
-            ImageStore.refresh()
-            delay(60_000)
-        }
+        ImageStore.refresh()
     }
     LaunchedEffect(Unit) {
         runCatching {

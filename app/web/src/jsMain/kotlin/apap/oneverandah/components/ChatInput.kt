@@ -88,6 +88,8 @@ internal fun installHoldListeners(element: Element, gesture: HoldToSpeakGesture)
  *   or the send button).
  * @param placeholder placeholder text shown while the field is empty.
  * @param autoFocus when `true`, the field grabs focus once it is mounted.
+ * @param highlighted when `true`, draws a primary outline so the field is easy to find.
+ * @param focusNonce increment to re-focus an already mounted field.
  * @param languageTag BCP-47 / app language tag used for hold-to-speak ASR.
  *   Defaults to the active UI language; pass the study text language when the
  *   learner should speak the language being practiced.
@@ -101,6 +103,8 @@ fun ChatInput(
     autoFocus: Boolean = false,
     multiline: Boolean = false,
     languageTag: String? = null,
+    highlighted: Boolean = false,
+    focusNonce: Int = 0,
 ) {
     val hasText = value.isNotEmpty()
     var textAreaRef by remember { mutableStateOf<HTMLTextAreaElement?>(null) }
@@ -157,6 +161,11 @@ fun ChatInput(
             textAreaRef?.let(::resizeChatInput)
         }
     }
+    LaunchedEffect(focusNonce, textAreaRef, inputRef) {
+        if (focusNonce <= 0) return@LaunchedEffect
+        val element = textAreaRef ?: inputRef ?: return@LaunchedEffect
+        element.asDynamic().focus(js("{ preventScroll: true }"))
+    }
     // While voice is active, keep the caret/viewport on the newest characters.
     LaunchedEffect(value, voiceState, textAreaRef, inputRef) {
         if (voiceState == VoiceInputUiState.Idle) return@LaunchedEffect
@@ -170,6 +179,7 @@ fun ChatInput(
         classes(Styles.chatInput)
         if (activeVoice) classes(Styles.chatInputListening)
         if (voiceState == VoiceInputUiState.Connecting) classes(Styles.chatInputConnecting)
+        if (highlighted) classes(Styles.chatInputHighlighted)
     }) {
         if (multiline) {
             TextArea(value = value) {

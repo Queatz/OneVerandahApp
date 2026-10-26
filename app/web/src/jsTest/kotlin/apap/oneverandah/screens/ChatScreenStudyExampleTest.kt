@@ -68,16 +68,52 @@ class ChatScreenStudyExampleTest {
                     ),
                 ),
             ),
+            practiceSentences = listOf(
+                StudyExampleSentence(text = "More tea, please.", translation = "Noch Tee, bitte."),
+                StudyExampleSentence(text = "Xin chào.", translation = "Hello."),
+            ),
         )
 
         assertEquals(
             listOf(
                 StudyExampleSentence(text = "Xin chào.", translation = "Hello."),
                 StudyExampleSentence(text = "Chào bạn.", translation = "Hi friend."),
+                StudyExampleSentence(text = "More tea, please.", translation = "Noch Tee, bitte."),
             ),
             collectExpressPracticeSentences(session),
         )
         assertEquals(listOf("Xin chào"), collectExpressVocabulary(session))
+    }
+
+    @Test
+    fun `story continue wraps from last sentence to the first word step`() {
+        assertEquals(
+            StudyStoryPhase.WORDS to 0,
+            nextStoryContinuePosition(
+                phase = StudyStoryPhase.SENTENCES,
+                stepIndex = 2,
+                wordStepCount = 4,
+                sentenceCount = 3,
+            ),
+        )
+        assertEquals(
+            StudyStoryPhase.WORDS to 0,
+            nextStoryContinuePosition(
+                phase = StudyStoryPhase.WORDS,
+                stepIndex = 3,
+                wordStepCount = 4,
+                sentenceCount = 0,
+            ),
+        )
+        assertEquals(
+            StudyStoryPhase.SENTENCES to 0,
+            nextStoryContinuePosition(
+                phase = StudyStoryPhase.SENTENCES,
+                stepIndex = 0,
+                wordStepCount = 0,
+                sentenceCount = 1,
+            ),
+        )
     }
 
     @Test

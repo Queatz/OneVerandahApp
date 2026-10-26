@@ -28,6 +28,29 @@ class ChatApiModelsTest {
     }
 
     @Test
+    fun `study session request keeps typed learner languages outside the UI set`() {
+        assertEquals("fr", StudySessionRequest(text = "Hello", languageTag = "French").normalizedOrNull()?.languageTag)
+        assertEquals("it", StudySessionRequest(text = "Hello", languageTag = "it-IT").normalizedOrNull()?.languageTag)
+        assertEquals("Klingon", StudySessionRequest(text = "Hello", languageTag = "Klingon").normalizedOrNull()?.languageTag)
+    }
+
+    @Test
+    fun `study session practice sentences default empty and round trip`() {
+        val original = StudySessionResponse(
+            text = "Xin chào.",
+            textLanguageTag = "vi",
+            sentences = listOf(StudySentence(text = "Xin chào.", tokens = emptyList())),
+            practiceSentences = listOf(StudyExampleSentence(text = "Xin chào.", translation = "Hello.")),
+        )
+        val decoded = json.decodeFromString<StudySessionResponse>(json.encodeToString(original))
+        assertEquals(original.practiceSentences, decoded.practiceSentences)
+        val withoutField = json.decodeFromString<StudySessionResponse>(
+            """{"text":"Xin chào.","textLanguageTag":"vi","sentences":[{"text":"Xin chào.","tokens":[]}]}""",
+        )
+        assertEquals(emptyList(), withoutField.practiceSentences)
+    }
+
+    @Test
     fun `blank chat request is rejected`() {
         assertNull(ChatRequest(message = "  ", languageTag = "en").normalizedOrNull())
     }

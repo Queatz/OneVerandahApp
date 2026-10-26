@@ -54,6 +54,7 @@ import apap.oneverandah.components.MaterialSymbol
 import apap.oneverandah.components.Scaffold
 import apap.oneverandah.i18n.Localization
 import apap.oneverandah.i18n.UiStrings
+import apap.oneverandah.model.Language
 import apap.oneverandah.state.Toaster
 import kotlinx.browser.document
 import kotlinx.browser.window
@@ -134,6 +135,8 @@ fun StudyScreen(
     var activeStudySessionItem by remember { mutableStateOf<SavedStudySessionSummary?>(null) }
     var activeStudySessionOwned by remember { mutableStateOf(false) }
     var pendingStudySessionRename by remember { mutableStateOf<SavedStudySessionSummary?>(null) }
+    var pendingStudyLanguageClone by remember { mutableStateOf(false) }
+    val studyLanguageByMessageId = remember { mutableStateMapOf<String, String>() }
     // Exact = current behavior (study the typed text). Off (default from the list) parses first.
     var studyStartExact by remember { mutableStateOf(true) }
 
@@ -201,7 +204,7 @@ fun StudyScreen(
                 ChatApi.saveStudySession(
                     SaveStudySessionRequest(
                         sourceMessageId = messageId,
-                        languageTag = language.tag,
+                        languageTag = studyLanguageByMessageId[messageId] ?: language.tag,
                         session = session,
                     ),
                 )
@@ -1071,7 +1074,7 @@ fun StudyScreen(
         }
     }
 
-    fun openStudy(message: ChatMessage) {
+    fun openStudy(message: ChatMessage, learnerLanguageTag: String = language.tag) {
         val text = studyTextFromChatMessage(message)
         if (text.isEmpty()) return
         studyTarget = message
@@ -1089,12 +1092,13 @@ fun StudyScreen(
             loadMissingPlayScenarios(message.id, cached)
             return
         }
+        studyLanguageByMessageId[message.id] = learnerLanguageTag
         studySession = null
         studySentenceStatus.clear()
         studyLoading = true
         scope.launch {
             runCatching {
-                ChatApi.study(StudySessionRequest(text = text, languageTag = language.tag))
+                ChatApi.study(StudySessionRequest(text = text, languageTag = learnerLanguageTag))
             }.onSuccess { session ->
                 studyCache[message.id] = session
                 persistStudySession(message.id, session)
@@ -1119,12 +1123,8 @@ fun StudyScreen(
 
     fun openSavedStudySession(item: SavedStudySession, fromCommunity: Boolean = false) {
         val key = if (fromCommunity) item.id else (item.sourceMessageId ?: item.id)
-        // Meanings are in the learner language stored with the session; regenerate if UI language changed.
-        if (item.languageTag == language.tag) {
-            studyCache[key] = item.session
-        } else {
-            studyCache.remove(key)
-        }
+        studyCache[key] = item.session
+        studyLanguageByMessageId[key] = item.languageTag
         if (!fromCommunity) {
             studyPersistedBySourceId[key] = item.id
         }
@@ -1150,6 +1150,36 @@ fun StudyScreen(
                 name = item.name,
             )
         activeStudySessionOwned = !fromCommunity && studySessionItems.any { it.id == item.id }
+    }
+
+    fun appendPracticeSentences(messageId: String, extras: List<StudyExampleSentence>) {
+        val current = studyCache[messageId] ?: studySession?.takeIf { studyTarget?.id == messageId } ?: return
+        val merged = mergePracticeSentences(current.practiceSentences, extras)
+        if (merged == current.practiceSentences) return
+        val updated = current.copy(practiceSentences = merged)
+        studyCache[messageId] = updated
+        persistStudySession(messageId, updated)
+        if (studyTarget?.id == messageId) studySession = updated
+    }
+
+    fun startStudyInAnotherLanguage(rawLanguage: String) {
+        val text = studySession?.text?.trim().orEmpty().ifEmpty {
+            studyTarget?.let(::studyTextFromChatMessage).orEmpty()
+        }
+        if (text.isEmpty()) return
+        pendingStudyLanguageClone = false
+        activeStudySessionItem = null
+        activeStudySessionOwned = false
+        studyStartExact = true
+        openStudy(
+            ChatMessage(
+                id = "study-${Date.now().toLong()}",
+                sender = ChatSender.YOU,
+                text = text,
+                createdAt = Date.now().toLong(),
+            ),
+            learnerLanguageTag = Language.normalizeLearnerLanguageTag(rawLanguage),
+        )
     }
 
     fun startStudyFromText(raw: String?, exact: Boolean = true) {
@@ -1283,6 +1313,7 @@ fun StudyScreen(
         // Definitions are localized to the active UI language, so drop stale sessions.
         studyCache.clear()
         studySentenceStatus.clear()
+        studyLanguageByMessageId.clear()
         if (studySessionVisible) {
             studyTarget?.let(::openStudy)
         } else {
@@ -1335,14 +1366,22 @@ fun StudyScreen(
             if (studySessionVisible) closeStudy() else onBack()
         },
         onHome = onHome,
-        appBarAction = if (studySessionVisible && activeStudySessionOwned && activeStudySessionItem != null) {
+        appBarAction = if (studySessionVisible) {
             {
                 Span(attrs = {
                     classes(Styles.materialSymbols, Styles.appBarIcon)
                     attr("role", "button")
-                    attr("aria-label", strings.chatStudySessionsRename)
-                    onClick { pendingStudySessionRename = activeStudySessionItem }
-                }) { Text("edit") }
+                    attr("aria-label", strings.chatStudyAnotherLanguage)
+                    onClick { pendingStudyLanguageClone = true }
+                }) { Text("translate") }
+                if (activeStudySessionOwned && activeStudySessionItem != null) {
+                    Span(attrs = {
+                        classes(Styles.materialSymbols, Styles.appBarIcon)
+                        attr("role", "button")
+                        attr("aria-label", strings.chatStudySessionsRename)
+                        onClick { pendingStudySessionRename = activeStudySessionItem }
+                    }) { Text("edit") }
+                }
             }
         } else {
             null
@@ -1386,6 +1425,10 @@ fun StudyScreen(
                     val targetId = studyTarget?.id ?: return@StudySessionPane
                     applyPlayMessageImage(targetId, scenarioId, imageId, imageUrl)
                 },
+                onPracticeSentences = { extras ->
+                    val targetId = studyTarget?.id ?: return@StudySessionPane
+                    appendPracticeSentences(targetId, extras)
+                },
             )
         } else {
             StudySessionsList(
@@ -1413,6 +1456,12 @@ fun StudyScreen(
             pendingStudySessionRename = null
             renameStudySession(item, name)
         },
+    )
+    StudySessionLanguageDialog(
+        visible = pendingStudyLanguageClone,
+        strings = strings,
+        onDismiss = { pendingStudyLanguageClone = false },
+        onConfirm = ::startStudyInAnotherLanguage,
     )
 }
 
@@ -1676,6 +1725,59 @@ private fun StudySessionRenameDialog(
 }
 
 @Composable
+private fun StudySessionLanguageDialog(
+    visible: Boolean,
+    strings: UiStrings,
+    onDismiss: () -> Unit,
+    onConfirm: (String) -> Unit,
+) {
+    var languageName by remember(visible) { mutableStateOf("") }
+    var languageInput by remember(visible) { mutableStateOf<HTMLInputElement?>(null) }
+    LaunchedEffect(visible) {
+        if (visible) {
+            delay(32)
+            languageInput?.focus()
+            languageInput?.select()
+        }
+    }
+    BottomDialog(
+        visible = visible,
+        closeLabel = strings.close,
+        onDismiss = onDismiss,
+    ) {
+        Div(attrs = { classes(Styles.dialogHeader) }) {
+            P(attrs = { classes(Styles.dialogTitle) }) { Text(strings.chatStudyAnotherLanguage) }
+        }
+        Input(type = InputType.Text) {
+            classes(Styles.textInput)
+            value(languageName)
+            attr("placeholder", strings.chatStudyAnotherLanguagePlaceholder)
+            attr("aria-label", strings.chatStudyAnotherLanguagePlaceholder)
+            onInput { event -> languageName = event.value }
+            autoFocus()
+            ref {
+                val input = it
+                languageInput = input
+                onDispose { if (languageInput === input) languageInput = null }
+            }
+        }
+        Div(attrs = { classes(Styles.dialogActions) }) {
+            Button(attrs = {
+                classes(Styles.btnText)
+                attr("type", "button")
+                onClick { onDismiss() }
+            }) { Text(strings.close) }
+            Button(attrs = {
+                classes(Styles.btnPrimary)
+                attr("type", "button")
+                if (languageName.trim().isEmpty()) attr("disabled", "")
+                onClick { languageName.trim().takeIf { it.isNotEmpty() }?.let(onConfirm) }
+            }) { Text(strings.chatStudyAnotherLanguageConfirm) }
+        }
+    }
+}
+
+@Composable
 private fun StudySessionRemoveConfirmDialog(
     item: SavedStudySessionSummary?,
     strings: UiStrings,
@@ -1725,6 +1827,7 @@ private fun StudySessionPane(
     onRetryPlay: () -> Unit,
     onPlayScenarioUpdate: (String, (StudyPlayScenario) -> StudyPlayScenario) -> Unit,
     onPlayMessageImage: (scenarioId: String, imageId: String, imageUrl: String?) -> Unit,
+    onPracticeSentences: (List<StudyExampleSentence>) -> Unit,
 ) {
     val progress = studyCreationProgress(
         session = session,
@@ -1771,6 +1874,7 @@ private fun StudySessionPane(
                         onRetryPlay = onRetryPlay,
                         onPlayScenarioUpdate = onPlayScenarioUpdate,
                         onPlayMessageImage = onPlayMessageImage,
+                        onPracticeSentences = onPracticeSentences,
                     )
                 } else if (!progress.visible) {
                     Div(attrs = { classes(Styles.chatStatus) }) {
@@ -1875,6 +1979,7 @@ private fun StudySessionContent(
     onRetryPlay: () -> Unit,
     onPlayScenarioUpdate: (String, (StudyPlayScenario) -> StudyPlayScenario) -> Unit,
     onPlayMessageImage: (scenarioId: String, imageId: String, imageUrl: String?) -> Unit,
+    onPracticeSentences: (List<StudyExampleSentence>) -> Unit,
 ) {
     val scope = rememberCoroutineScope()
     val sentenceAudio = remember(session.text, session.textLanguageTag) {
@@ -2187,6 +2292,7 @@ private fun StudySessionContent(
                     anyLoading = anyLoading,
                     strings = strings,
                     autoFocus = mode != StudySessionMode.ALL,
+                    onPracticeSentences = onPracticeSentences,
                 )
             }
             StudySessionMode.READ -> {
@@ -2203,7 +2309,7 @@ private fun StudySessionContent(
                     )
                     onClick {
                         if (readAudioReady) {
-                            playAudioSequence(readClipUrls)
+                            playAudioSequence(readClipUrls, toggleIfPlaying = true)
                         }
                     }
                 }) {
@@ -2263,6 +2369,7 @@ private fun StudySessionContent(
                     anyLoading = anyLoading,
                     strings = strings,
                     autoFocus = mode != StudySessionMode.ALL,
+                    onPracticeSentences = onPracticeSentences,
                 )
             }
             StudySessionMode.PLAY -> {
@@ -2485,7 +2592,25 @@ private fun watchKeyboardTargetIsEditable(target: HTMLElement?): Boolean {
     return target.isContentEditable
 }
 
-private enum class StudyStoryPhase { WORDS, SENTENCES }
+internal enum class StudyStoryPhase { WORDS, SENTENCES }
+
+internal fun nextStoryContinuePosition(
+    phase: StudyStoryPhase,
+    stepIndex: Int,
+    wordStepCount: Int,
+    sentenceCount: Int,
+): Pair<StudyStoryPhase, Int> = when (phase) {
+    StudyStoryPhase.WORDS -> when {
+        stepIndex < wordStepCount - 1 -> StudyStoryPhase.WORDS to (stepIndex + 1)
+        sentenceCount > 0 -> StudyStoryPhase.SENTENCES to 0
+        else -> StudyStoryPhase.WORDS to 0
+    }
+    StudyStoryPhase.SENTENCES -> when {
+        stepIndex < sentenceCount - 1 -> StudyStoryPhase.SENTENCES to (stepIndex + 1)
+        wordStepCount > 0 -> StudyStoryPhase.WORDS to 0
+        else -> StudyStoryPhase.SENTENCES to 0
+    }
+}
 
 /** Ordered story-walkthrough steps for non-plain study tokens and their examples. */
 internal data class StoryWordStep(
@@ -3273,27 +3398,18 @@ private fun StudyStoryTab(
     val learnerLanguageTag = Localization.language.tag
 
     fun advanceStory() {
-        // Start each next story step (or the Study tab handoff) from the top.
+        // Start each next story step from the top, wrapping to the first card at the end.
         if (scrollOnContinue) scrollStudyContentToTop()
-        when (phase) {
-            StudyStoryPhase.WORDS -> {
-                if (stepIndex < wordSteps.lastIndex) {
-                    stepIndex += 1
-                } else if (sentenceCount > 0) {
-                    phase = StudyStoryPhase.SENTENCES
-                    stepIndex = 0
-                } else {
-                    onFinished()
-                }
-            }
-            StudyStoryPhase.SENTENCES -> {
-                if (stepIndex < sentenceCount - 1) {
-                    stepIndex += 1
-                } else {
-                    onFinished()
-                }
-            }
-        }
+        val (nextPhase, nextIndex) = nextStoryContinuePosition(
+            phase = phase,
+            stepIndex = stepIndex,
+            wordStepCount = wordSteps.size,
+            sentenceCount = sentenceCount,
+        )
+        phase = nextPhase
+        stepIndex = nextIndex
+        lastAutoplayKey = null
+        replayNonce += 1
     }
 
     fun replayStoryAudio() {
@@ -3795,22 +3911,26 @@ private fun StudyExampleSentenceText(
  * Prefer [StudyExampleSentence.translation] (learner language) as the shown meaning.
  */
 internal fun collectExpressPracticeSentences(session: StudySessionResponse): List<StudyExampleSentence> {
+    val fromTokens = session.sentences.flatMap { sentence ->
+        sentence.tokens.flatMap { it.exampleSentences }
+    }
+    return mergePracticeSentences(fromTokens, session.practiceSentences)
+}
+
+internal fun mergePracticeSentences(
+    existing: List<StudyExampleSentence>,
+    additions: List<StudyExampleSentence>,
+): List<StudyExampleSentence> {
     val seen = linkedSetOf<String>()
     val result = mutableListOf<StudyExampleSentence>()
-    session.sentences.forEach { sentence ->
-        sentence.tokens.forEach { token ->
-            token.exampleSentences.forEach { example ->
-                val text = example.text.trim()
-                val translation = example.translation.trim()
-                if (text.isEmpty() && translation.isEmpty()) return@forEach
-                // Prompt must be in the learner language when possible.
-                val meaning = translation.ifEmpty { text }
-                val reference = text
-                val key = "${meaning.lowercase()}|${reference.lowercase()}"
-                if (!seen.add(key)) return@forEach
-                result += StudyExampleSentence(text = reference, translation = meaning)
-            }
-        }
+    (existing + additions).forEach { example ->
+        val text = example.text.trim()
+        val translation = example.translation.trim()
+        if (text.isEmpty() && translation.isEmpty()) return@forEach
+        val meaning = translation.ifEmpty { text }
+        val key = "${meaning.lowercase()}|${text.lowercase()}"
+        if (!seen.add(key)) return@forEach
+        result += StudyExampleSentence(text = text, translation = meaning)
     }
     return result
 }
@@ -3832,6 +3952,7 @@ private fun StudyExpressTab(
     anyLoading: Boolean,
     strings: UiStrings,
     autoFocus: Boolean,
+    onPracticeSentences: (List<StudyExampleSentence>) -> Unit,
 ) {
     val scope = rememberCoroutineScope()
     val languageTag = Localization.language.tag
@@ -3886,6 +4007,7 @@ private fun StudyExpressTab(
                 }
                 if (fresh.isNotEmpty()) {
                     queue = queue + fresh.shuffledPracticeSentences()
+                    onPracticeSentences(fresh)
                 } else {
                     generateError = strings.chatExpressFeedbackError
                 }
@@ -4062,6 +4184,7 @@ private fun StudyListenTab(
     anyLoading: Boolean,
     strings: UiStrings,
     autoFocus: Boolean,
+    onPracticeSentences: (List<StudyExampleSentence>) -> Unit,
 ) {
     val scope = rememberCoroutineScope()
     val languageTag = Localization.language.tag
@@ -4148,6 +4271,7 @@ private fun StudyListenTab(
                 }
                 if (fresh.isNotEmpty()) {
                     queue = queue + fresh.shuffledPracticeSentences()
+                    onPracticeSentences(fresh)
                 } else {
                     generateError = strings.chatExpressFeedbackError
                 }
@@ -4247,8 +4371,14 @@ private fun StudyListenPracticeCard(
     var checking by remember(sessionText, itemIndex, item.text) { mutableStateOf(false) }
     var feedback by remember(sessionText, itemIndex, item.text) { mutableStateOf<String?>(null) }
     var correct by remember(sessionText, itemIndex, item.text) { mutableStateOf(false) }
+    var focusNonce by remember(sessionText, itemIndex, item.text) { mutableStateOf(0) }
     val audioReady = audioUrl != null
     val playing = audioUrl?.let(::isStudyAudioPlaying) == true
+    val playLabel = when {
+        correct -> item.text
+        playing -> strings.chatStudyPauseSentence
+        else -> strings.chatStudyPlaySentence
+    }
 
     fun check(value: String?) {
         val candidate = value?.trim().orEmpty()
@@ -4291,14 +4421,16 @@ private fun StudyListenPracticeCard(
             classes(Styles.sentencePlay)
             attr("type", "button")
             if (!audioReady && (audioLoading || !audioFailed)) attr("disabled", "")
-            attr("aria-label", if (playing) strings.chatStudyPauseSentence else strings.chatStudyPlaySentence)
+            attr("aria-label", playLabel)
             onClick {
                 if (audioUrl != null) {
                     played = true
+                    focusNonce += 1
                     playAudio(audioUrl)
                 } else if (!audioLoading) {
                     onRequestAudio { url ->
                         played = true
+                        focusNonce += 1
                         playAudio(url)
                     }
                 }
@@ -4311,7 +4443,7 @@ private fun StudyListenPracticeCard(
                     else -> "play_circle"
                 },
             )
-            Text(if (playing) strings.chatStudyPauseSentence else strings.chatStudyPlaySentence)
+            Text(playLabel)
         }
         if (audioFailed) {
             P(attrs = {
@@ -4319,44 +4451,44 @@ private fun StudyListenPracticeCard(
                 attr("role", "status")
             }) { Text(strings.chatStudySentenceError) }
         }
-        if (played) {
-            if (correct) {
-                Div(attrs = {
-                    classes(Styles.studyWriteCorrect)
-                    attr("role", "status")
-                }) {
-                    MaterialSymbol("check_circle")
-                    Span { Text(strings.chatExpressCorrect) }
+        if (correct) {
+            Div(attrs = {
+                classes(Styles.studyWriteCorrect)
+                attr("role", "status")
+            }) {
+                MaterialSymbol("check_circle")
+                Span { Text(strings.chatExpressCorrect) }
+            }
+        } else {
+            ChatInput(
+                value = draft,
+                onValueChange = {
+                    draft = it
+                    if (feedback != null) feedback = null
+                },
+                onSend = { check(it) },
+                placeholder = strings.chatListenPlaceholder,
+                languageTag = languageTag,
+                multiline = item.translation.length > 48,
+                autoFocus = autoFocus,
+                highlighted = played,
+                focusNonce = focusNonce,
+            )
+            when {
+                checking -> {
+                    Div(attrs = {
+                        classes(Styles.studyWriteChecking)
+                        attr("role", "status")
+                    }) {
+                        MaterialSymbol("progress_activity")
+                        Span { Text(strings.chatListenChecking) }
+                    }
                 }
-            } else {
-                ChatInput(
-                    value = draft,
-                    onValueChange = {
-                        draft = it
-                        if (feedback != null) feedback = null
-                    },
-                    onSend = { check(it) },
-                    placeholder = strings.chatListenPlaceholder,
-                    languageTag = languageTag,
-                    multiline = item.translation.length > 48,
-                    autoFocus = autoFocus,
-                )
-                when {
-                    checking -> {
-                        Div(attrs = {
-                            classes(Styles.studyWriteChecking)
-                            attr("role", "status")
-                        }) {
-                            MaterialSymbol("progress_activity")
-                            Span { Text(strings.chatListenChecking) }
-                        }
-                    }
-                    feedback != null -> {
-                        P(attrs = {
-                            classes(Styles.studyWriteFeedback)
-                            attr("role", "status")
-                        }) { Text(feedback!!) }
-                    }
+                feedback != null -> {
+                    P(attrs = {
+                        classes(Styles.studyWriteFeedback)
+                        attr("role", "status")
+                    }) { Text(feedback!!) }
                 }
             }
         }
@@ -5158,9 +5290,20 @@ private fun clearStudyAudioPlaylist() {
 private fun clearStudyAudioHandlers(element: HTMLAudioElement) {
     element.asDynamic().ontimeupdate = null
     element.asDynamic().onloadedmetadata = null
+    element.asDynamic().oncanplay = null
     element.asDynamic().onended = null
     element.asDynamic().onpause = null
     element.asDynamic().onplay = null
+}
+
+private fun tryPlayStudyAudio(element: HTMLAudioElement) {
+    element.asDynamic().play()?.catch { }
+}
+
+private fun startStudyAudioPlayback(element: HTMLAudioElement, url: String) {
+    element.asDynamic().oncanplay = { tryPlayStudyAudio(element) }
+    element.src = url
+    if (element.readyState >= 2) tryPlayStudyAudio(element)
 }
 
 private fun stopActiveStudyAudio(clearPlaylist: Boolean = true) {
@@ -5302,18 +5445,18 @@ internal fun playAudio(url: String, restart: Boolean = false) {
     activeStudyAudioUrl = url
     studyAudioPlayingUrl = url
     bindStudyAudioPlaybackState(element, url)
-    element.src = url
-    element.play()
+    startStudyAudioPlayback(element, url)
 }
 
 /**
  * Plays sentence clips back-to-back (used by the Read tab full-text control).
  * Tapping again while the playlist is playing stops playback.
  */
-private fun playAudioSequence(urls: List<String>) {
+private fun playAudioSequence(urls: List<String>, toggleIfPlaying: Boolean = false) {
     if (urls.isEmpty()) return
     val current = activeStudyAudio
     if (
+        toggleIfPlaying &&
         studyAudioPlaylistActive &&
         current != null &&
         !current.paused &&
@@ -5351,8 +5494,7 @@ private fun playStudyAudioPlaylistItem(index: Int) {
             stopActiveStudyAudio()
         }
     }
-    element.src = url
-    element.play()
+    startStudyAudioPlayback(element, url)
 }
 
 /**
@@ -5368,14 +5510,15 @@ private fun playAudioSegment(url: String, beginMs: Int, endMs: Int) {
     activeStudyAudioUrl = url
     studyAudioPlayingUrl = url
     bindStudyAudioPlaybackState(element, url)
-    element.src = url
-    element.asDynamic().onloadedmetadata = {
-        // Clamp if metadata duration is shorter than requested end.
+    fun applyStartAndPlay() {
         val duration = element.duration
         val safeStart = if (duration.isFinite() && duration > 0) startSec.coerceAtMost(duration) else startSec
         element.currentTime = safeStart
-        element.play()
+        tryPlayStudyAudio(element)
     }
+    element.asDynamic().onloadedmetadata = { applyStartAndPlay() }
+    element.asDynamic().oncanplay = { applyStartAndPlay() }
+    element.src = url
     element.asDynamic().ontimeupdate = {
         val duration = element.duration
         val stopAt = if (duration.isFinite() && duration > 0) endSec.coerceAtMost(duration) else endSec
@@ -5385,12 +5528,7 @@ private fun playAudioSegment(url: String, beginMs: Int, endMs: Int) {
         }
     }
     // Some browsers fire loadedmetadata before the handler is attached for cached data URLs.
-    if (element.readyState >= 1) {
-        val duration = element.duration
-        val safeStart = if (duration.isFinite() && duration > 0) startSec.coerceAtMost(duration) else startSec
-        element.currentTime = safeStart
-        element.play()
-    }
+    if (element.readyState >= 1) applyStartAndPlay()
 }
 
 

@@ -45,6 +45,44 @@ enum class Language(val tag: String) {
             return normalized.takeIf { it.length in 2..3 && it.all { character -> character in 'a'..'z' } }
                 ?: DEFAULT.tag
         }
+
+        /** Resolves a manually entered learner language name or tag without falling back to English. */
+        fun normalizeLearnerLanguageTag(language: String?): String {
+            val input = language?.trim()?.takeIf { it.isNotEmpty() } ?: return DEFAULT.tag
+            val normalizedName = input.lowercase()
+            entries.firstOrNull { it.displayName.lowercase() == normalizedName }?.let { return it.tag }
+            val namedLanguageTags = mapOf(
+                "arabic" to "ar",
+                "danish" to "da",
+                "dutch" to "nl",
+                "finnish" to "fi",
+                "french" to "fr",
+                "greek" to "el",
+                "hebrew" to "he",
+                "hindi" to "hi",
+                "indonesian" to "id",
+                "italian" to "it",
+                "khmer" to "km",
+                "lao" to "lo",
+                "malay" to "ms",
+                "norwegian" to "no",
+                "polish" to "pl",
+                "portuguese" to "pt",
+                "swedish" to "sv",
+                "tagalog" to "tl",
+                "thai" to "th",
+                "turkish" to "tr",
+                "ukrainian" to "uk",
+            )
+            namedLanguageTags[normalizedName]?.let { return it }
+
+            val normalizedTag = input.replace('_', '-').substringBefore('-')
+            return if (normalizedTag.length in 2..3 && normalizedTag.all { it.isLetter() }) {
+                normalizedTag.lowercase()
+            } else {
+                input
+            }
+        }
     }
 }
 

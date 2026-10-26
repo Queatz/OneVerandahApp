@@ -220,6 +220,7 @@ object Styles {
     const val chatInput = "chat-input"
     const val chatInputListening = "chat-input-listening"
     const val chatInputConnecting = "chat-input-connecting"
+    const val chatInputHighlighted = "chat-input-highlighted"
     const val chatInputField = "chat-input-field"
     const val chatInputFieldMultiline = "chat-input-field-multiline"
     const val chatInputFieldFilled = "chat-input-field-filled"
@@ -1953,6 +1954,10 @@ object Styles {
             background: color-mix(in srgb, var(--md-sys-color-primary) 6%, transparent);
             box-shadow: 0 0 0 2px color-mix(in srgb, var(--md-sys-color-primary) 55%, transparent);
         }
+        .${chatInputHighlighted} .${chatInputField} {
+            background: color-mix(in srgb, var(--md-sys-color-primary) 10%, transparent);
+            box-shadow: 0 0 0 2px var(--md-sys-color-primary);
+        }
         .${chatInputConnecting} .${chatVoiceIndicator} .${materialSymbols} {
             animation: spin 1.1s linear infinite;
         }
@@ -3248,6 +3253,7 @@ object Styles {
         }
         .${studySessionCard} {
             position: relative;
+            border: none;
         }
         .${studySessionCardTitle} {
             margin: 0 88px 8px 0;
@@ -3301,7 +3307,6 @@ object Styles {
             gap: 10px;
             padding: 12px;
             border-radius: 16px;
-            border: 1px solid var(--md-sys-color-outline);
             background: color-mix(in srgb, var(--md-sys-color-primary) 6%, var(--md-sys-color-surface));
         }
         .${studyCreationProgressHeader} {
@@ -3377,7 +3382,6 @@ object Styles {
         .${studyReadBlock} {
             padding: 12px;
             border-radius: 16px;
-            border: 1px solid var(--md-sys-color-outline);
             background: color-mix(in srgb, var(--md-sys-color-primary) 5%, var(--md-sys-color-surface));
         }
         .${studyReadSentence} {
@@ -3396,7 +3400,6 @@ object Styles {
             gap: 10px;
             padding: 12px;
             border-radius: 16px;
-            border: 1px solid var(--md-sys-color-outline);
             background: color-mix(in srgb, var(--md-sys-color-primary) 5%, var(--md-sys-color-surface));
         }
         .${studyWritePrompt} {
@@ -3445,7 +3448,6 @@ object Styles {
             gap: 10px;
             padding: 12px;
             border-radius: 16px;
-            border: 1px solid var(--md-sys-color-outline);
             background: color-mix(in srgb, var(--md-sys-color-primary) 5%, var(--md-sys-color-surface));
         }
         .${studyPlayDescription} {
@@ -3511,7 +3513,6 @@ object Styles {
             gap: 10px;
             padding: 12px;
             border-radius: 16px;
-            border: 1px solid var(--md-sys-color-outline);
             background: color-mix(in srgb, var(--md-sys-color-primary) 5%, var(--md-sys-color-surface));
         }
         .${studySentenceBlock} .${languageSentence} {
@@ -3597,7 +3598,6 @@ object Styles {
             gap: 16px;
             padding: 18px 16px 16px;
             border-radius: 22px;
-            border: 1px solid color-mix(in srgb, var(--md-sys-color-primary) 22%, var(--md-sys-color-outline));
             background:
                 radial-gradient(circle at top, color-mix(in srgb, var(--md-sys-color-primary) 14%, transparent), transparent 58%),
                 color-mix(in srgb, var(--md-sys-color-primary) 4%, var(--md-sys-color-surface));
