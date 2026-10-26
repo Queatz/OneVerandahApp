@@ -450,6 +450,33 @@ class QwenStudyClientTest {
     }
 
     @Test
+    fun `study exam plan parser reads setting and outline`() {
+        val plan = QwenStudyExamPlanParser.parse(
+            """{"id":"tea","setting":"At a tea stall.","outline":["Help Min order tea","Give Min the tea"]}""",
+        )
+
+        assertEquals("tea", plan.id)
+        assertEquals("At a tea stall.", plan.setting)
+        assertEquals(listOf("Help Min order tea", "Give Min the tea"), plan.outline)
+    }
+
+    @Test
+    fun `study exam scene parser reads a beats-only chunk`() {
+        val beats = QwenStudyExamSceneParser.parseBeats(
+            """
+            {"beats":[
+              {"id":"listen-1","kind":"LISTEN","speakerId":"main","speakerName":"Lan","line":"Chào buổi sáng.","prompt":"What did Lan mean?","expectedMeaning":"A greeting.","sourceSentence":"Xin chào."},
+              {"id":"speak-1","kind":"SPEAK","speakerId":"main","speakerName":"Lan","prompt":"Greet Lan.","expectedMeaning":"Return the greeting.","sourceSentence":"Xin chào."}
+            ]}
+            """.trimIndent(),
+        )
+
+        assertEquals(2, beats.size)
+        assertEquals("Chào buổi sáng.", beats.first().line)
+        assertEquals(StudyExamBeatKind.LISTEN, beats.first().kind)
+    }
+
+    @Test
     fun `study exam scene parser keeps a beat when the source sentence is omitted`() {
         val scene = QwenStudyExamSceneParser.parse(
             """
@@ -486,16 +513,11 @@ class QwenStudyClientTest {
         val bodies = mutableListOf<String>()
         val engine = MockEngine { request ->
             bodies += (request.body as OutgoingContent.ByteArrayContent).bytes().decodeToString()
-            val content = if (bodies.size == 1) {
-                """
-                {"id":"scene-1","setting":"At a market.","beats":[
-                  {"id":"listen-1","kind":"LISTEN","speakerId":"main","speakerName":"Lan","line":"Xin chào.","prompt":"What did Lan mean?","expectedMeaning":"A greeting.","sourceSentence":"Xin chào."},
-                  {"id":"speak-1","kind":"SPEAK","speakerId":"main","speakerName":"Lan","prompt":"Greet Lan.","expectedMeaning":"Return the greeting.","sourceSentence":"Xin chào."},
-                  {"id":"speak-2","kind":"SPEAK","speakerId":"main","speakerName":"Lan","prompt":"Ask if Lan is well.","expectedMeaning":"Ask a polite follow-up.","sourceSentence":"Xin chào."}
-                ]}
-                """.trimIndent()
-            } else {
-                """{"points":2,"feedback":"You responded clearly."}"""
+            val content = when (bodies.size) {
+                1 -> examPlanJson()
+                2 -> examBeatChunkJson(1, 5)
+                3 -> examBeatChunkJson(6, 10)
+                else -> """{"points":2,"feedback":"You responded clearly."}"""
             }
             respond(
                 content = qwenChatResponse(content),
@@ -525,15 +547,41 @@ class QwenStudyClientTest {
             ),
         )
 
-        assertEquals(3, scene.beats.size)
+        assertEquals(20, scene.beats.size)
+        assertEquals("market-scene", scene.id)
+        assertEquals(10, scene.outline.size)
+        assertEquals((1..10).map { "Câu $it." }, scene.beats.filter { it.kind == StudyExamBeatKind.LISTEN }.map { it.line })
         assertEquals(2, judgment.points)
-        assertContains(bodies[0], "EXACTLY 10 rounds")
-        assertContains(bodies[0], "EXACTLY 20 beats")
+        assertEquals(4, bodies.size)
+        bodies.take(3).forEach { body ->
+            assertContains(body, "qwen3.8-max")
+            assertContains(body, "\"enable_thinking\":false")
+        }
+        assertContains(bodies[0], "Never copy or quote the study sentences")
         assertContains(bodies[0], "Allowed cast only")
         assertContains(bodies[0], "Lan")
-        assertContains(bodies[1], "Merely repeating the heard study-language line is not comprehension")
-        assertContains(bodies[1], "without responding to the moment")
+        assertContains(bodies[1], "Never paste, quote, or lightly reframe a study sentence")
+        assertContains(bodies[1], "EXACTLY 5 rounds")
+        assertContains(bodies[1], "EXACTLY 10 beats")
+        assertContains(bodies[2], "Write rounds 6-10 only")
+        assertContains(bodies[3], "Merely repeating the heard study-language line is not comprehension")
+        assertContains(bodies[3], "without responding to the moment")
         client.close()
+    }
+
+    private fun examPlanJson(): String {
+        val outline = (1..10).joinToString(",") { "\"Task $it\"" }
+        return """{"id":"market-scene","setting":"At the neighborhood market.","outline":[$outline]}"""
+    }
+
+    private fun examBeatChunkJson(roundStart: Int, roundEnd: Int): String {
+        val beats = (roundStart..roundEnd).flatMap { round ->
+            listOf(
+                """{"id":"listen-$round","kind":"LISTEN","speakerId":"main","speakerName":"Lan","line":"Câu $round.","prompt":"What did Lan mean?","expectedMeaning":"Meaning $round.","sourceSentence":"Xin chào."}""",
+                """{"id":"speak-$round","kind":"SPEAK","speakerId":"main","speakerName":"Lan","prompt":"Reply $round.","expectedMeaning":"Reply $round.","sourceSentence":"Xin chào."}""",
+            )
+        }.joinToString(",")
+        return """{"beats":[$beats]}"""
     }
 
     private fun qwenConfig() = QwenChatConfig(

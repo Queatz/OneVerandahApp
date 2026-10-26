@@ -692,8 +692,8 @@ class StudyService(
             )
             val speaker = knownCharacters[beat.speakerId.trim()] ?: fallbackSpeaker
             val line = if (beat.kind == StudyExamBeatKind.LISTEN) {
-                val spoken = beat.line?.trim()?.takeIf(String::isNotEmpty) ?: sourceSentence
-                if (spoken.contains(sourceSentence, ignoreCase = true)) spoken else "$spoken $sourceSentence".trim()
+                beat.line?.trim()?.takeIf(String::isNotEmpty)
+                    ?: throw IllegalArgumentException("Study exam listen beat missing line")
             } else {
                 null
             }

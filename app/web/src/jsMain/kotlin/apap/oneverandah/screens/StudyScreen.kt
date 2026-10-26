@@ -5350,7 +5350,7 @@ private fun StudyTestTab(
                         }
                     }
                     Button(attrs = {
-                        classes(Styles.chip, Styles.studyExamStart)
+                        classes(Styles.btnPrimary)
                         attr("type", "button")
                         onClick { onStart() }
                     }) { Text(strings.chatTestStart) }
@@ -5475,6 +5475,8 @@ private fun StudyTestTab(
                                 session.textLanguageTag
                             },
                             multiline = true,
+                            autoFocus = autoPlayListen,
+                            focusNonce = if (autoPlayListen) attempt.beatIndex + 1 else 0,
                         )
                         Button(attrs = {
                             classes(Styles.chip)

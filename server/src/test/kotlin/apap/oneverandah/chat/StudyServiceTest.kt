@@ -1261,6 +1261,34 @@ class StudyServiceTest {
     }
 
     @Test
+    fun `invented listen lines are not overwritten with study sentences`() = runBlocking {
+        val invented = fakeExamScene().copy(
+            beats = fakeExamScene().beats.mapIndexed { index, beat ->
+                if (beat.kind == StudyExamBeatKind.LISTEN) {
+                    beat.copy(line = "Câu mới số ${index / 2 + 1}.")
+                } else {
+                    beat
+                }
+            },
+        )
+        val scene = StudyService(FakeStudyAiClient(examScene = invented)).examScene(
+            StudyExamSceneRequest(
+                session = StudySessionResponse(
+                    text = "Xin chào.",
+                    textLanguageTag = "vi",
+                    sentences = listOf(StudySentence(text = "Xin chào.", tokens = emptyList())),
+                    characters = listOf(StudyStoryCharacter("main", "Lan", "main", "A neighbor.")),
+                ),
+                languageTag = "en",
+            ),
+        )
+
+        val listenLines = scene.beats.filter { it.kind == StudyExamBeatKind.LISTEN }.map { it.line }
+        assertEquals((1..10).map { "Câu mới số $it." }, listenLines)
+        assertTrue(listenLines.none { it.orEmpty().contains("Xin chào") })
+    }
+
+    @Test
     fun `failed exam generation falls back to a playable scene`() = runBlocking {
         val scene = StudyService(FakeStudyAiClient(examSceneFailure = true)).examScene(
             StudyExamSceneRequest(

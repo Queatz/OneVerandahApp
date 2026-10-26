@@ -222,3 +222,14 @@ The latest grade is visible on the learner's own session card and inside the ope
 - Update the in-memory owned summary when scoring finishes so the open card changes without a reload.
 - Leave community cards and unowned opens ungraded even if a shared session payload contains a scene.
 - Add the badge style in `Styles.kt` and cover badge visibility with the existing pure helper test style in `StudySessionsListTest`.
+
+### ✓ Step 5: Split exam generation and invent natural conversation lines
+The 20-beat scene is too large for one Qwen call, and listen lines currently copy the study sentences.
+
+- Generate the scene with the heavy model in smaller calls: one plan, then two 5-round beat chunks.
+- Prompt for a natural conversation that reuses grammar and vocabulary without pasting study sentences.
+- Keep invented listen lines as-is; do not append a source sentence onto the spoken line.
+- Cover the split prompt, unique invented lines, and older-payload parser behavior in unit tests.
+
+### ✓ Step 6: Use the app's primary button for Test Start
+The Test Start control should use the same primary button style as the rest of the app.

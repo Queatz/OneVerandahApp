@@ -5032,8 +5032,9 @@ object Styles {
             border-color: transparent;
             font-weight: 700;
         }
-        .${studyExamBriefing} .${studyExamStart} {
-            align-self: flex-start;
+        .${studyExamBriefing} .${btnPrimary} {
+            width: 100%;
+            align-self: stretch;
         }
         @media (max-width: 520px) {
             .${studyExamSkills} { grid-template-columns: 1fr; }
