@@ -513,12 +513,8 @@ class QwenStudyClientTest {
         val bodies = mutableListOf<String>()
         val engine = MockEngine { request ->
             bodies += (request.body as OutgoingContent.ByteArrayContent).bytes().decodeToString()
-            val content = when (bodies.size) {
-                1 -> examPlanJson()
-                2 -> examBeatChunkJson(1, 5)
-                3 -> examBeatChunkJson(6, 10)
-                else -> """{"points":2,"feedback":"You responded clearly."}"""
-            }
+            val content = examGenerationContent(bodies.size)
+                ?: """{"points":2,"feedback":"You responded clearly."}"""
             respond(
                 content = qwenChatResponse(content),
                 status = HttpStatusCode.OK,
@@ -552,36 +548,28 @@ class QwenStudyClientTest {
         assertEquals(10, scene.outline.size)
         assertEquals((1..10).map { "Câu $it." }, scene.beats.filter { it.kind == StudyExamBeatKind.LISTEN }.map { it.line })
         assertEquals(2, judgment.points)
-        assertEquals(4, bodies.size)
-        bodies.take(3).forEach { body ->
-            assertContains(body, "qwen3.8-max")
+        assertEquals(2, bodies.size)
+        bodies.forEach { body ->
+            assertContains(body, "qwen3.8-flash")
             assertContains(body, "\"enable_thinking\":false")
         }
         assertContains(bodies[0], "Never copy or quote the study sentences")
         assertContains(bodies[0], "Allowed cast only")
         assertContains(bodies[0], "Lan")
-        assertContains(bodies[1], "Never paste, quote, or lightly reframe a study sentence")
-        assertContains(bodies[1], "EXACTLY 5 rounds")
-        assertContains(bodies[1], "EXACTLY 10 beats")
-        assertContains(bodies[1], "listen-1, speak-1")
-        assertContains(bodies[2], "Write rounds 6-10 only")
-        assertContains(bodies[2], "listen-6, speak-6")
-        assertContains(bodies[2], "Never restart at listen-1")
-        assertContains(bodies[3], "Merely repeating the heard study-language line is not comprehension")
-        assertContains(bodies[3], "without responding to the moment")
+        assertContains(bodies[0], "Never paste, quote, or lightly reframe a study sentence")
+        assertContains(bodies[0], "EXACTLY 10 rounds")
+        assertContains(bodies[0], "EXACTLY 20 beats")
+        assertContains(bodies[1], "Merely repeating the heard study-language line is not comprehension")
+        assertContains(bodies[1], "without responding to the moment")
         client.close()
     }
 
     @Test
-    fun `study exam generation remumbers colliding beat ids from later chunks`() = runBlocking {
+    fun `study exam generation remumbers colliding beat ids`() = runBlocking {
         val bodies = mutableListOf<String>()
         val engine = MockEngine { request ->
             bodies += (request.body as OutgoingContent.ByteArrayContent).bytes().decodeToString()
-            val content = when (bodies.size) {
-                1 -> examPlanJson()
-                2 -> examBeatChunkJson(1, 5)
-                else -> examBeatChunkJson(1, 5)
-            }
+            val content = examSceneJson(reuseFirstIds = true)
             respond(
                 content = qwenChatResponse(content),
                 status = HttpStatusCode.OK,
@@ -608,19 +596,19 @@ class QwenStudyClientTest {
         client.close()
     }
 
-    private fun examPlanJson(): String {
-        val outline = (1..10).joinToString(",") { "\"Task $it\"" }
-        return """{"id":"market-scene","setting":"At the neighborhood market.","outline":[$outline]}"""
-    }
+    private fun examGenerationContent(callIndex: Int): String? =
+        if (callIndex == 1) examSceneJson() else null
 
-    private fun examBeatChunkJson(roundStart: Int, roundEnd: Int): String {
-        val beats = (roundStart..roundEnd).flatMap { round ->
+    private fun examSceneJson(reuseFirstIds: Boolean = false): String {
+        val outline = (1..10).joinToString(",") { "\"Task $it\"" }
+        val beats = (1..10).flatMap { round ->
+            val idRound = if (reuseFirstIds) 1 else round
             listOf(
-                """{"id":"listen-$round","kind":"LISTEN","speakerId":"main","speakerName":"Lan","line":"Câu $round.","prompt":"What did Lan mean?","expectedMeaning":"Meaning $round.","sourceSentence":"Xin chào."}""",
-                """{"id":"speak-$round","kind":"SPEAK","speakerId":"main","speakerName":"Lan","prompt":"Reply $round.","expectedMeaning":"Reply $round.","sourceSentence":"Xin chào."}""",
+                """{"id":"listen-$idRound","kind":"LISTEN","speakerId":"main","speakerName":"Lan","line":"Câu $round.","prompt":"What did Lan mean?","expectedMeaning":"Meaning $round.","sourceSentence":"Xin chào."}""",
+                """{"id":"speak-$idRound","kind":"SPEAK","speakerId":"main","speakerName":"Lan","prompt":"Reply $round.","expectedMeaning":"Reply $round.","sourceSentence":"Xin chào."}""",
             )
         }.joinToString(",")
-        return """{"beats":[$beats]}"""
+        return """{"id":"market-scene","setting":"At the neighborhood market.","outline":[$outline],"beats":[$beats]}"""
     }
 
     private fun qwenConfig() = QwenChatConfig(

@@ -1,5 +1,6 @@
 package apap.oneverandah.chat
 
+import apap.oneverandah.api.STUDY_EXAM_BEAT_COUNT
 import apap.oneverandah.api.STUDY_EXAM_ROUND_COUNT
 import apap.oneverandah.api.StudyExampleSentence
 import apap.oneverandah.api.StudyExamBeat
@@ -314,8 +315,6 @@ object QwenStudyPlaygroundParser {
             ?: throw IllegalArgumentException("Qwen study playground root must be a JSON object")
     }
 }
-
-private const val EXAM_SCENE_CHUNK_ROUNDS = 5
 
 internal data class StudyExamScenePlan(
     val id: String,
@@ -637,93 +636,48 @@ class DashScopeStudyAiClient(
     }
 
     override suspend fun generateExamScene(request: StudyExamSceneGenerationRequest): StudyExamScene {
-        val materials = examSceneMaterials(request)
-        val plan = QwenStudyExamPlanParser.parse(
-            complete(
-                systemPrompt = examPlanSystemPrompt(
-                    activeLanguageTag = request.languageTag,
-                    textLanguageTag = request.textLanguageTag,
-                ),
-                userContent = materials,
-                label = "study exam plan",
-                temperature = 0.5,
-                model = config.chatHeavyModel,
-                enableThinking = false,
-            ),
+        val startedAt = System.nanoTime()
+        log.info(
+            "Study exam scene start: studyLang={} uiLang={} sentences={} characters={}",
+            request.textLanguageTag,
+            request.languageTag,
+            request.sentences.size,
+            request.characters.joinToString { it.name },
         )
-        val beats = mutableListOf<StudyExamBeat>()
-        var roundStart = 1
-        while (roundStart <= STUDY_EXAM_ROUND_COUNT) {
-            val roundEnd = (roundStart + EXAM_SCENE_CHUNK_ROUNDS - 1).coerceAtMost(STUDY_EXAM_ROUND_COUNT)
-            beats += generateExamBeatChunk(
-                request = request,
-                materials = materials,
-                plan = plan,
-                roundStart = roundStart,
-                roundEnd = roundEnd,
-                previousBeats = beats.toList(),
-            )
-            roundStart = roundEnd + 1
-        }
-        return StudyExamScene(
-            id = plan.id,
-            setting = plan.setting,
-            outline = plan.outline,
-            beats = beats,
-        )
-    }
-
-    private suspend fun generateExamBeatChunk(
-        request: StudyExamSceneGenerationRequest,
-        materials: String,
-        plan: StudyExamScenePlan,
-        roundStart: Int,
-        roundEnd: Int,
-        previousBeats: List<StudyExamBeat>,
-    ): List<StudyExamBeat> {
-        val userContent = buildString {
-            append(materials)
-            appendLine()
-            appendLine("Situation: ${plan.setting}")
-            appendLine("Full outline of what the learner needs to do:")
-            plan.outline.forEachIndexed { index, item ->
-                appendLine("${index + 1}. $item")
-            }
-            if (previousBeats.isNotEmpty()) {
-                appendLine()
-                appendLine("Conversation so far (continue from here; do not repeat these listen lines):")
-                previousBeats.forEach { beat ->
-                    when (beat.kind) {
-                        StudyExamBeatKind.LISTEN -> appendLine("${beat.speakerName}: ${beat.line.orEmpty()}")
-                        StudyExamBeatKind.SPEAK -> appendLine("Learner cue: ${beat.prompt}")
-                    }
-                }
-            }
-            appendLine()
-            appendLine("Write rounds $roundStart-$roundEnd only.")
-        }
         val content = complete(
-            systemPrompt = examBeatChunkSystemPrompt(
+            systemPrompt = examSceneSystemPrompt(
                 activeLanguageTag = request.languageTag,
                 textLanguageTag = request.textLanguageTag,
-                roundStart = roundStart,
-                roundEnd = roundEnd,
             ),
-            userContent = userContent,
-            label = "study exam beats $roundStart-$roundEnd",
+            userContent = examSceneMaterials(request),
+            label = "study exam scene",
             temperature = 0.5,
-            model = config.chatHeavyModel,
-            enableThinking = false,
         )
-        val beats = QwenStudyExamSceneParser.parseBeats(content)
-        val expectedBeats = (roundEnd - roundStart + 1) * 2
-        require(beats.size == expectedBeats) {
-            "Qwen study exam beat chunk $roundStart-$roundEnd must contain $expectedBeats beats"
+        val scene = runCatching { QwenStudyExamSceneParser.parse(content) }
+            .onFailure { error ->
+                log.warn(
+                    "Study exam scene parse failed: {} contentSnippet={}",
+                    error.chainSummary(),
+                    content.take(500),
+                    error,
+                )
+            }
+            .getOrThrow()
+        require(scene.beats.size == STUDY_EXAM_BEAT_COUNT) {
+            "Qwen study exam scene must contain $STUDY_EXAM_BEAT_COUNT beats, got ${scene.beats.size}"
         }
-        return beats.mapIndexed { index, beat ->
-            val round = roundStart + index / 2
+        val beats = scene.beats.mapIndexed { index, beat ->
+            val round = index / 2 + 1
             beat.copy(id = if (index % 2 == 0) "listen-$round" else "speak-$round")
         }
+        log.info(
+            "Study exam scene ready: id={} outline={} beats={} elapsedMs={}",
+            scene.id,
+            scene.outline.size,
+            beats.size,
+            elapsedMs(startedAt),
+        )
+        return scene.copy(beats = beats)
     }
 
     private fun examSceneMaterials(request: StudyExamSceneGenerationRequest): String = buildString {
@@ -919,24 +873,49 @@ class DashScopeStudyAiClient(
             put("response_format", buildJsonObject { put("type", "json_object") })
             put("temperature", temperature)
         }
-        val responseText = withTransientHttpRetry(label) {
+        val startedAt = System.nanoTime()
+        log.info(
+            "Qwen {} request: model={} thinking={} systemChars={} userChars={}",
+            label,
+            model,
+            thinkingEnabled,
+            systemPrompt.length,
+            userContent.length,
+        )
+        val responseText = withTransientHttpRetry(label) { attempt ->
+            val attemptAt = System.nanoTime()
             val response = client.post(config.chatEndpoint) {
                 header(HttpHeaders.Authorization, "Bearer ${config.apiKey}")
                 contentType(ContentType.Application.Json)
                 setBody(json.encodeToString(JsonObject.serializer(), body))
             }
             val text = response.bodyAsText()
+            log.info(
+                "Qwen {} response: attempt={} status={} bytes={} elapsedMs={}",
+                label,
+                attempt,
+                response.status.value,
+                text.length,
+                elapsedMs(attemptAt),
+            )
             if (!response.status.isSuccess()) {
                 throw QwenChatException("Qwen $label failed (${response.status}): $text")
             }
             text
         }
         val root = json.parseToJsonElement(responseText).jsonObject
-        return root["choices"]?.jsonArray
+        val content = root["choices"]?.jsonArray
             ?.firstOrNull()?.jsonObject
             ?.get("message")?.jsonObject
             ?.get("content")?.jsonPrimitive?.content
             ?: throw QwenChatException("Qwen $label returned no structured content: $responseText")
+        log.info(
+            "Qwen {} content: chars={} totalElapsedMs={}",
+            label,
+            content.length,
+            elapsedMs(startedAt),
+        )
+        return content
     }
 
     /**
@@ -947,27 +926,50 @@ class DashScopeStudyAiClient(
     private suspend fun <T> withTransientHttpRetry(
         label: String,
         attempts: Int = 3,
-        block: suspend () -> T,
+        block: suspend (attempt: Int) -> T,
     ): T {
         var last: Throwable? = null
         repeat(attempts) { attempt ->
             try {
-                return block()
+                return block(attempt + 1)
             } catch (e: Throwable) {
                 last = e
-                if (!isTransientHttpClose(e) || attempt == attempts - 1) throw e
+                val retryable = isTransientHttpClose(e)
+                if (!retryable || attempt == attempts - 1) {
+                    log.warn(
+                        "Qwen {} failed on attempt {}/{}: {}",
+                        label,
+                        attempt + 1,
+                        attempts,
+                        e.chainSummary(),
+                        e,
+                    )
+                    throw e
+                }
                 log.warn(
                     "Retrying Qwen {} after transient close (attempt {}/{}): {}",
                     label,
                     attempt + 1,
                     attempts,
-                    e.message,
+                    e.chainSummary(),
+                    e,
                 )
                 delay(400L * (attempt + 1))
             }
         }
         throw last ?: error("Qwen $label retry exhausted")
     }
+
+    private fun elapsedMs(startedAt: Long): Long =
+        (System.nanoTime() - startedAt) / 1_000_000L
+
+    private fun Throwable.chainSummary(): String =
+        generateSequence(this) { it.cause }
+            .joinToString(" <- ") { cause ->
+                val message = cause.message?.trim().orEmpty()
+                if (message.isEmpty()) cause::class.java.simpleName
+                else "${cause::class.java.simpleName}: $message"
+            }
 
     /** CIO reports dropped keep-alives / idle cuts as a parse EOF. */
     private fun isTransientHttpClose(error: Throwable): Boolean =
@@ -1128,47 +1130,26 @@ class DashScopeStudyAiClient(
         - Do not wrap the JSON in markdown. Do not add extra keys.
     """.trimIndent()
 
-    private fun examPlanSystemPrompt(
+    private fun examSceneSystemPrompt(
         activeLanguageTag: String,
         textLanguageTag: String,
     ): String = """
-        You plan one continuous real-life conversation for a language-learning final test.
+        You write one continuous real-life conversation for a language-learning final test.
         Always return one JSON object and no markdown. The schema is exactly:
-        {"id":"scene-id","setting":"short situation in the learner UI language","outline":["Help Min order tea","Give Min the tea"]}
+        {"id":"scene-id","setting":"short situation in the learner UI language","outline":["Help Min order tea","Give Min the tea"],"beats":[{"id":"listen-1","kind":"LISTEN","speakerId":"main or secondary","speakerName":"known cast name","line":"new study-language line","prompt":"short cue in the learner UI language","expectedMeaning":"answer intent in the learner UI language","sourceSentence":"the study sentence whose grammar or vocabulary this round tests"},{"id":"speak-1","kind":"SPEAK","speakerId":"main or secondary","speakerName":"known cast name","prompt":"short cue in the learner UI language","expectedMeaning":"answer intent in the learner UI language","sourceSentence":"the study sentence whose grammar or vocabulary this round tests"}]}
         Rules:
-        - This must feel like one coherent everyday situation, not a quiz list, and use only the supplied cast. Never invent another person.
-        - "outline" is exactly 10 short action lines in the learner UI language ${languageName(activeLanguageTag)} ($activeLanguageTag), one per round, describing what the learner needs to do. Style: "Help Min order tea". Do not reveal hidden study-language lines.
-        - Cover the study vocabulary and grammatical structures across the 10 rounds. Never copy or quote the study sentences; later turns will invent new wording that still uses those patterns.
+        - Write EXACTLY $STUDY_EXAM_ROUND_COUNT rounds and EXACTLY $STUDY_EXAM_BEAT_COUNT beats. Each round is a LISTEN beat immediately followed by a SPEAK beat. Start with LISTEN. Never place two SPEAK beats in a row.
+        - Beat ids must be listen-1, speak-1 through listen-$STUDY_EXAM_ROUND_COUNT, speak-$STUDY_EXAM_ROUND_COUNT.
+        - This is one coherent everyday situation, not a quiz. Use only the supplied cast ids and names. Never invent another person.
+        - "outline" is exactly $STUDY_EXAM_ROUND_COUNT short action lines in the learner UI language ${languageName(activeLanguageTag)} ($activeLanguageTag), one per round, describing what the learner needs to do. Style: "Help Min order tea". Do not reveal hidden study-language lines.
         - "setting" is a short situation in the learner UI language.
-        - The study language is ${languageName(textLanguageTag)} ($textLanguageTag).
-        - Do not wrap the JSON in markdown. Do not add extra keys or beats.
+        - Invent NEW spoken LISTEN lines in ${languageName(textLanguageTag)} ($textLanguageTag) that reuse the session's vocabulary and grammatical structures. Never paste, quote, or lightly reframe a study sentence. Never copy or quote the study sentences. Each listen line must be unique and must advance the conversation.
+        - A SPEAK beat has no line field. Its prompt is that round's outline item, asking for a situated reply in the study language. expectedMeaning describes what a useful reply must communicate.
+        - sourceSentence names the study sentence whose pattern this round tests. It is metadata only — it must not be copied into line.
+        - Write prompts and expectedMeaning ONLY in the learner UI language ${languageName(activeLanguageTag)} ($activeLanguageTag).
+        - Keep each cue and answer intent short, clear, and suitable for a beginner or intermediate learner. Do not include a grade, points, transcript, or answer text.
+        - Do not wrap the JSON in markdown. Do not add extra keys.
     """.trimIndent()
-
-    private fun examBeatChunkSystemPrompt(
-        activeLanguageTag: String,
-        textLanguageTag: String,
-        roundStart: Int,
-        roundEnd: Int,
-    ): String {
-        val rounds = roundEnd - roundStart + 1
-        val beats = rounds * 2
-        return """
-            You write part of one continuous real-life conversation for a language-learning final test.
-            Always return one JSON object and no markdown. The schema is exactly:
-            {"beats":[{"id":"listen-$roundStart","kind":"LISTEN or SPEAK","speakerId":"main or secondary","speakerName":"known cast name","line":"new study-language line for LISTEN; omit for SPEAK","prompt":"short cue in the learner UI language","expectedMeaning":"answer intent in the learner UI language","sourceSentence":"the study sentence whose grammar or vocabulary this round tests"}]}
-            Rules:
-            - Write EXACTLY $rounds rounds and EXACTLY $beats beats for rounds $roundStart through $roundEnd. Each round is a LISTEN beat immediately followed by a SPEAK beat. Start with LISTEN. Never place two SPEAK beats in a row.
-            - Beat ids must be ${(roundStart..roundEnd).joinToString { "listen-$it, speak-$it" }}. Never restart at listen-1 or reuse an earlier id.
-            - This is one coherent everyday situation, not a quiz. Use only the supplied cast ids and names. Never invent another person.
-            - Invent NEW spoken LISTEN lines in ${languageName(textLanguageTag)} ($textLanguageTag) that reuse the session's vocabulary and grammatical structures. Never paste, quote, or lightly reframe a study sentence. Each listen line must be unique and must advance the conversation.
-            - A SPEAK beat has no line field. Its prompt is that round's outline item, asking for a situated reply in the study language. expectedMeaning describes what a useful reply must communicate.
-            - sourceSentence names the study sentence whose pattern this round tests. It is metadata only — it must not be copied into line.
-            - Write prompts and expectedMeaning ONLY in the learner UI language ${languageName(activeLanguageTag)} ($activeLanguageTag).
-            - Continue naturally from any conversation so far. Do not repeat earlier listen lines.
-            - Keep each cue and answer intent short, clear, and suitable for a beginner or intermediate learner. Do not include a grade, points, transcript, or answer text.
-            - Do not wrap the JSON in markdown. Do not add extra keys.
-        """.trimIndent()
-    }
 
     private fun examBeatJudgmentSystemPrompt(activeLanguageTag: String, textLanguageTag: String): String = """
         You judge one spoken transcript from a character-led language exam.

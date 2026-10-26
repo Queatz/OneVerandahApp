@@ -602,13 +602,18 @@ class StudyService(
                 ),
             )
         }.getOrElse { error ->
-            log.warn("Study exam scene generation failed: {}", error.message)
+            log.warn("Study exam scene generation failed: {}", error.message, error)
             null
         }
         val normalized = generated?.let { scene ->
             runCatching { normalizeExamScene(scene, request.session.sentences, characters) }
-                .onFailure { error -> log.warn("Study exam scene normalization failed: {}", error.message) }
+                .onFailure { error ->
+                    log.warn("Study exam scene normalization failed: {}", error.message, error)
+                }
                 .getOrNull()
+        }
+        if (normalized == null) {
+            log.warn("Study exam scene falling back to a local script: generated={} beats={}", generated != null, generated?.beats?.size)
         }
         return normalized ?: fallbackExamScene(
             sentences = request.session.sentences,
