@@ -65,6 +65,7 @@ import kotlinx.coroutines.launch
 import kotlinx.coroutines.sync.Semaphore
 import kotlinx.coroutines.sync.withPermit
 import org.jetbrains.compose.web.attributes.InputType
+import org.jetbrains.compose.web.attributes.autoFocus
 import org.jetbrains.compose.web.css.DisplayStyle
 import org.jetbrains.compose.web.css.FlexDirection
 import org.jetbrains.compose.web.css.cssRem
@@ -137,9 +138,11 @@ fun StudyScreen(
     var studyStartExact by remember { mutableStateOf(true) }
 
     fun applyStudySessionItems(items: List<SavedStudySessionSummary>) {
-        studySessionItems = items
+        val refreshedItems = mergeStudySessionItems(studySessionItems, items)
+        studySessionItems = refreshedItems
+        activeStudySessionItem = refreshedActiveStudySessionItem(activeStudySessionItem, refreshedItems)
         studyPersistedBySourceId.clear()
-        items.forEach { item ->
+        refreshedItems.forEach { item ->
             val key = item.sourceMessageId ?: item.id
             studyPersistedBySourceId[key] = item.id
         }
@@ -204,15 +207,19 @@ fun StudyScreen(
                 )
             }.onSuccess { saved ->
                 studyPersistedBySourceId[messageId] = saved.id
-                studySessionItems = (listOf(saved) + studySessionItems.filterNot {
+                val savedSummary = mergeStudySessionSummary(
+                    current = studySessionItems.firstOrNull { it.id == saved.id },
+                    incoming = saved,
+                )
+                studySessionItems = (listOf(savedSummary) + studySessionItems.filterNot {
                     it.id == saved.id || (saved.sourceMessageId != null && it.sourceMessageId == saved.sourceMessageId)
                 }).sortedByDescending { it.updatedAt }
                 if (studyTarget?.id == messageId) {
-                    activeStudySessionItem = saved
+                    activeStudySessionItem = mergeStudySessionSummary(activeStudySessionItem, saved)
                     activeStudySessionOwned = true
                 }
                 if (studyTarget?.id == messageId && sessionId.isNullOrBlank()) {
-                    onOpenSession(saved.id)
+                    onOpenSession(savedSummary.id)
                 }
             }
         }
@@ -1233,9 +1240,16 @@ fun StudyScreen(
         scope.launch {
             runCatching { ChatApi.renameStudySession(item.id, name) }
                 .onSuccess { renamed ->
-                    studySessionItems = studySessionItems.map { if (it.id == renamed.id) renamed else it }
-                    communitySessionItems = communitySessionItems.map { if (it.id == renamed.id) renamed else it }
-                    if (activeStudySessionItem?.id == renamed.id) activeStudySessionItem = renamed
+                    studySessionItems = studySessionItems.map {
+                        if (it.id == renamed.id) mergeStudySessionSummary(it, renamed) else it
+                    }
+                    communitySessionItems = communitySessionItems.map {
+                        if (it.id == renamed.id) mergeStudySessionSummary(it, renamed) else it
+                    }
+                    if (activeStudySessionItem?.id == renamed.id) {
+                        activeStudySessionItem = mergeStudySessionSummary(activeStudySessionItem, renamed)
+                    }
+                    refreshStudySessions(silent = true)
                 }
                 .onFailure { Toaster.show(strings.chatStudySessionsError) }
         }
@@ -1323,14 +1337,12 @@ fun StudyScreen(
         onHome = onHome,
         appBarAction = if (studySessionVisible && activeStudySessionOwned && activeStudySessionItem != null) {
             {
-                Button(attrs = {
-                    classes(Styles.appBarIcon)
-                    attr("type", "button")
+                Span(attrs = {
+                    classes(Styles.materialSymbols, Styles.appBarIcon)
+                    attr("role", "button")
                     attr("aria-label", strings.chatStudySessionsRename)
                     onClick { pendingStudySessionRename = activeStudySessionItem }
-                }) {
-                    MaterialSymbol("edit")
-                }
+                }) { Text("edit") }
             }
         } else {
             null
@@ -1563,15 +1575,27 @@ private fun StudySessionCard(
 ) {
     Div(attrs = { classes(Styles.savedItem, Styles.studySessionCard) }) {
         if (removable) {
-            Button(attrs = {
-                classes(Styles.studySessionRemoveBtn)
-                attr("type", "button")
-                attr("aria-label", strings.chatStudySessionsRemove)
-                onClick { onRemove() }
-            }) {
-                MaterialSymbol("delete")
+            Div(attrs = { classes(Styles.studySessionCardActions) }) {
+                Button(attrs = {
+                    classes(Styles.studySessionRemoveBtn)
+                    attr("type", "button")
+                    attr("aria-label", strings.chatStudySessionsRename)
+                    onClick { onRename() }
+                }) {
+                    MaterialSymbol("edit")
+                }
+                Button(attrs = {
+                    classes(Styles.studySessionRemoveBtn)
+                    attr("type", "button")
+                    attr("aria-label", strings.chatStudySessionsRemove)
+                    onClick { onRemove() }
+                }) {
+                    MaterialSymbol("delete")
+                }
             }
         }
+        val cardContent = studySessionCardContent(item, strings.chatStudyTitle)
+        P(attrs = { classes(Styles.studySessionCardTitle) }) { Text(cardContent.title) }
         val phraseImages = studySessionPhraseImageUrls(item)
         if (phraseImages.isNotEmpty()) {
             Div(attrs = { classes(Styles.studySessionPhraseRow) }) {
@@ -1584,22 +1608,8 @@ private fun StudySessionCard(
                 }
             }
         }
-        Span(attrs = { classes(Styles.savedItemSender) }) {
-            Text(strings.chatStudyTitle)
-        }
-        P(attrs = { classes(Styles.savedItemText) }) { Text(studySessionDisplayName(item)) }
+        P(attrs = { classes(Styles.savedItemText) }) { Text(cardContent.text) }
         Div(attrs = { classes(Styles.savedItemActions) }) {
-            if (removable) {
-                Button(attrs = {
-                    classes(Styles.savedItemAction)
-                    attr("type", "button")
-                    attr("aria-label", strings.chatStudySessionsRename)
-                    onClick { onRename() }
-                }) {
-                    MaterialSymbol("edit")
-                    Text(strings.chatStudySessionsRename)
-                }
-            }
             Button(attrs = {
                 classes(Styles.btnPrimary)
                 attr("type", "button")
@@ -1620,6 +1630,14 @@ private fun StudySessionRenameDialog(
     onConfirm: (SavedStudySessionSummary, String) -> Unit,
 ) {
     var name by remember(item?.id, item?.name) { mutableStateOf(item?.name.orEmpty()) }
+    var nameInput by remember(item?.id) { mutableStateOf<HTMLInputElement?>(null) }
+    LaunchedEffect(item?.id) {
+        if (item != null) {
+            delay(32)
+            nameInput?.focus()
+            nameInput?.select()
+        }
+    }
     BottomDialog(
         visible = item != null,
         closeLabel = strings.close,
@@ -1629,11 +1647,17 @@ private fun StudySessionRenameDialog(
             P(attrs = { classes(Styles.dialogTitle) }) { Text(strings.chatStudySessionsRename) }
         }
         Input(type = InputType.Text) {
-            classes(Styles.studyPlaygroundInput)
+            classes(Styles.textInput)
             value(name)
             attr("placeholder", strings.chatStudySessionsNamePlaceholder)
             attr("aria-label", strings.chatStudySessionsNamePlaceholder)
             onInput { event -> name = event.value }
+            autoFocus()
+            ref {
+                val input = it
+                nameInput = input
+                onDispose { if (nameInput === input) nameInput = null }
+            }
         }
         Div(attrs = { classes(Styles.dialogActions) }) {
             Button(attrs = {
@@ -2689,6 +2713,43 @@ internal fun studySessionPhraseImageUrls(item: SavedStudySessionSummary): List<S
 
 internal fun studySessionDisplayName(item: SavedStudySessionSummary): String =
     item.name.trim().ifBlank { item.text }
+
+internal data class StudySessionCardContent(
+    val title: String,
+    val text: String,
+)
+
+internal fun studySessionCardContent(item: SavedStudySessionSummary, fallbackTitle: String): StudySessionCardContent =
+    StudySessionCardContent(
+        title = item.name.trim().ifBlank { fallbackTitle },
+        text = item.text,
+    )
+
+internal fun mergeStudySessionSummary(
+    current: SavedStudySessionSummary?,
+    incoming: SavedStudySessionSummary,
+): SavedStudySessionSummary {
+    if (current == null) return incoming
+    val currentNameIsNewer = current.updatedAt > incoming.updatedAt ||
+        (current.updatedAt == incoming.updatedAt && current.name != incoming.name)
+    return if (currentNameIsNewer) incoming.copy(name = current.name, updatedAt = current.updatedAt) else incoming
+}
+
+internal fun mergeStudySessionItems(
+    currentItems: List<SavedStudySessionSummary>,
+    refreshedItems: List<SavedStudySessionSummary>,
+): List<SavedStudySessionSummary> = refreshedItems.map { refreshed ->
+    mergeStudySessionSummary(currentItems.firstOrNull { it.id == refreshed.id }, refreshed)
+}
+
+internal fun refreshedActiveStudySessionItem(
+    activeItem: SavedStudySessionSummary?,
+    refreshedItems: List<SavedStudySessionSummary>,
+): SavedStudySessionSummary? = activeItem?.let { active ->
+    refreshedItems.firstOrNull { it.id == active.id }?.let { refreshed ->
+        mergeStudySessionSummary(active, refreshed)
+    } ?: active
+}
 
 internal const val STUDY_COMMUNITY_PAGE_SIZE = 20
 

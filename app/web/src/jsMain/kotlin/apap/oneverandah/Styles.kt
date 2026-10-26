@@ -385,6 +385,8 @@ object Styles {
     const val studySessionPhraseRow = "study-session-phrase-row"
     const val studySessionPhraseImage = "study-session-phrase-image"
     const val studySessionCard = "study-session-card"
+    const val studySessionCardTitle = "study-session-card-title"
+    const val studySessionCardActions = "study-session-card-actions"
     const val studySessionSectionTitle = "study-session-section-title"
     const val studySessionRemoveBtn = "study-session-remove-btn"
     const val studySessionBody = "study-session-body"
@@ -3247,14 +3249,23 @@ object Styles {
         .${studySessionCard} {
             position: relative;
         }
-        .${studySessionCard} .${savedItemSender} {
-            padding-right: 40px;
+        .${studySessionCardTitle} {
+            margin: 0 88px 8px 0;
+            font-size: 17px;
+            line-height: 1.35;
+            font-weight: 700;
+            color: var(--md-sys-color-on-surface);
+            overflow-wrap: anywhere;
         }
-        .${studySessionRemoveBtn} {
+        .${studySessionCardActions} {
             position: absolute;
             top: 8px;
             right: 8px;
             z-index: 1;
+            display: flex;
+            gap: 4px;
+        }
+        .${studySessionRemoveBtn} {
             width: 36px;
             height: 36px;
             display: inline-flex;
@@ -3264,9 +3275,12 @@ object Styles {
             border: none;
             border-radius: 50%;
             background: color-mix(in srgb, var(--md-sys-color-surface) 88%, transparent);
-            color: var(--md-sys-color-error, #b3261e);
+            color: var(--md-sys-color-on-surface-variant);
             box-shadow: 0 1px 6px color-mix(in srgb, var(--md-sys-color-shadow, #000) 22%, transparent);
             cursor: pointer;
+        }
+        .${studySessionCardActions} .${studySessionRemoveBtn}:last-child {
+            color: var(--md-sys-color-error, #b3261e);
         }
         .${studySessionRemoveBtn} .${materialSymbols} {
             font-size: 20px;

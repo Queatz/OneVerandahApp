@@ -37,6 +37,26 @@ class StudySessionsListTest {
     }
 
     @Test
+    fun `session card keeps source text beneath the name header`() {
+        val named = sampleSaved("named", "Original text").copy(name = "  Order coffee  ")
+        val unnamed = sampleSaved("unnamed", "Original text")
+
+        assertEquals(StudySessionCardContent("Order coffee", "Original text"), studySessionCardContent(named, "Study"))
+        assertEquals(StudySessionCardContent("Study", "Original text"), studySessionCardContent(unnamed, "Study"))
+    }
+
+    @Test
+    fun `session refresh updates the active title and keeps newer rename over stale data`() {
+        val renamed = sampleSaved("session", "Original text").copy(name = "New title", updatedAt = 200L)
+        val stale = renamed.copy(name = "Old title", updatedAt = 100L)
+        val refreshedItems = mergeStudySessionItems(listOf(renamed), listOf(stale))
+        val activeAfterRefresh = refreshedActiveStudySessionItem(stale, refreshedItems)
+
+        assertEquals("New title", refreshedItems.single().name)
+        assertEquals("New title", activeAfterRefresh?.name)
+    }
+
+    @Test
     fun `community pages append unique sessions`() {
         val first = sampleSaved("a", "One")
         val second = sampleSaved("b", "Two")
