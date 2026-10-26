@@ -107,6 +107,7 @@ object StoryLogic {
         if (sample.any { it in '\u3040'..'\u30FF' }) return Language.JAPANESE.tag
         if (sample.any { it in '\uAC00'..'\uD7AF' }) return Language.KOREAN.tag
         if (sample.any { it in '\u4E00'..'\u9FFF' }) return Language.CHINESE.tag
+        if (sample.any { it in '\u1000'..'\u109F' || it in '\uA9E0'..'\uA9FF' || it in '\uAA60'..'\uAA7F' }) return Language.BURMESE.tag
         if (sample.any { it in VIETNAMESE_MARKS }) return Language.VIETNAMESE.tag
         return Language.ENGLISH.tag
     }

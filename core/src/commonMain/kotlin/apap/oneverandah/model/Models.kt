@@ -14,7 +14,8 @@ enum class Language(val tag: String) {
     KOREAN("ko"),
     RUSSIAN("ru"),
     SPANISH("es"),
-    GERMAN("de");
+    GERMAN("de"),
+    BURMESE("my");
 
     /** Capitalized English name for menus — never the ISO tag. */
     val displayName: String
@@ -67,6 +68,7 @@ data class LocalizedText(
     val ru: String = en,
     val es: String = en,
     val de: String = en,
+    val my: String = en,
 ) {
     fun resolve(language: Language): String = when (language) {
         Language.ENGLISH -> en
@@ -77,6 +79,7 @@ data class LocalizedText(
         Language.RUSSIAN -> ru
         Language.SPANISH -> es
         Language.GERMAN -> de
+        Language.BURMESE -> my
     }
 }
 

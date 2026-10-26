@@ -705,6 +705,7 @@ private fun ClonedVoicesPanel(
         Language.RUSSIAN.tag to "Русский",
         Language.SPANISH.tag to "Español",
         Language.GERMAN.tag to "Deutsch",
+        Language.BURMESE.tag to "မြန်မာစာ",
     )
 
     SectionTitle(strings.adminVoicesTab)

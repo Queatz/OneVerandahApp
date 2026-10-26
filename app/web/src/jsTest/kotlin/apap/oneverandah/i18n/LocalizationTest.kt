@@ -41,6 +41,35 @@ class LocalizationTest {
     }
 
     @Test
+    fun burmeseStringsArePopulated() {
+        val burmese = stringsFor(Language.BURMESE)
+        assertEquals("မြန်မာစာ", burmese.languageName)
+        assertEquals("ပင်မစာမျက်နှာ", burmese.menuHome)
+        assertEquals("ကျွန်ုပ်တို့အကြောင်း", burmese.menuAbout)
+        assertEquals("အကူအညီနှင့် ပံ့ပိုးမှု", burmese.menuHelp)
+        assertEquals("ဒီဝန်ဆောင်မှုကို ရယူမည်", burmese.bookThisService)
+        assertEquals("ဝန်ဆောင်မှုအသေးစိတ်", burmese.serviceDetails)
+        assertEquals("ဒီကနေ့ ဘာကူညီပေးရမလဲ။", burmese.homePrompt)
+        assertEquals("အက်ဒမင်", burmese.adminTitle)
+        assertEquals("5 မိနစ်", burmese.minutes(5))
+        assertEquals("2 နာရီ", burmese.hours("2"))
+        assertEquals("(3 သုံးသပ်ချက်)", burmese.reviews(3))
+        assertEquals("စာမျက်နှာ 1 / 5", burmese.storiesPageOf(1, 5))
+        assertEquals("1 မျက်နှာ", burmese.storiesPages(1))
+        assertEquals("4 မျက်နှာ", burmese.storiesPages(4))
+        assertEquals("ကမ်းလှမ်းချက် 1 ခု ကျန်ရှိပါသည်", burmese.meetsRemaining(1))
+        assertEquals("ကမ်းလှမ်းချက် 3 ခု ကျန်ရှိပါသည်", burmese.meetsRemaining(3))
+        assertEquals("Jacob ထံ ကမ်းလှမ်းမည်", burmese.meetsPitchPerson("Jacob"))
+        assertEquals("မျက်နှာပြင်ပြည့်", burmese.layoutFullscreen)
+        assertEquals("မျက်နှာပြင်ပြည့်မှ ထွက်မည်", burmese.layoutExitFullscreen)
+    }
+
+    @Test
+    fun flagForBurmeseReturnsCorrectFlag() {
+        assertEquals("\uD83C\uDDF2\uD83C\uDDF2", flagFor(Language.BURMESE))
+    }
+
+    @Test
     fun allLanguagesHaveNonEmptyStringsAndFlags() {
         Language.entries.forEach { lang ->
             val strings = stringsFor(lang)
@@ -57,6 +86,18 @@ class LocalizationTest {
             Localization.setLanguage(Language.GERMAN)
             assertEquals(Language.GERMAN, Localization.language)
             assertEquals("Deutsch", Localization.strings.languageName)
+        } finally {
+            Localization.setLanguage(original)
+        }
+    }
+
+    @Test
+    fun localizationStateSwitchesToBurmese() {
+        val original = Localization.language
+        try {
+            Localization.setLanguage(Language.BURMESE)
+            assertEquals(Language.BURMESE, Localization.language)
+            assertEquals("မြန်မာစာ", Localization.strings.languageName)
         } finally {
             Localization.setLanguage(original)
         }
