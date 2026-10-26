@@ -49,6 +49,7 @@ import io.ktor.server.routing.put
 import io.ktor.server.websocket.webSocket
 import java.util.Base64
 import kotlinx.coroutines.Dispatchers
+import kotlinx.coroutines.NonCancellable
 import kotlinx.coroutines.withContext
 import kotlinx.serialization.json.Json
 
@@ -120,12 +121,18 @@ fun Route.chatRoutes(
 
     if (studyService != null) {
         post("/api/chat/study") {
-            val request = call.receive<StudySessionRequest>()
-            if (request.normalizedOrNull() == null) {
+            val request = call.receive<StudySessionRequest>().normalizedOrNull()
+            if (request == null) {
                 call.respond(HttpStatusCode.BadRequest, ChatErrorResponse("Study text must not be blank"))
                 return@post
             }
-            call.respondStudyPayload(studyService.skeleton(request))
+            val token = call.request.header(DEVICE_TOKEN_HEADER)
+            val session = if (studySessionsService != null) {
+                studySessionsService.createFromStudyRequest(token, request) { studyService.skeleton(it) }
+            } else {
+                withContext(NonCancellable) { studyService.skeleton(request) }
+            }
+            call.respondStudyPayload(session)
         }
 
         post("/api/chat/study/intent") {

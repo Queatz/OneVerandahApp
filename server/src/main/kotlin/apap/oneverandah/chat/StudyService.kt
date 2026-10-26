@@ -52,8 +52,10 @@ import java.util.UUID
 import java.util.concurrent.ConcurrentHashMap
 import kotlinx.coroutines.CoroutineScope
 import kotlinx.coroutines.Dispatchers
+import kotlinx.coroutines.NonCancellable
 import kotlinx.coroutines.SupervisorJob
 import kotlinx.coroutines.launch
+import kotlinx.coroutines.withContext
 import org.slf4j.LoggerFactory
 
 data class StudyGenerationRequest(
@@ -286,18 +288,19 @@ class StudyService(
     }
 
     /** Fast skeleton: language + sentences + tokens (no full dissections). */
-    suspend fun skeleton(rawRequest: StudySessionRequest): StudySessionResponse {
-        val request = requireNotNull(rawRequest.normalizedOrNull()) { "Study text must not be blank" }
-        val generationRequest = StudyGenerationRequest(
-            text = request.text,
-            languageTag = request.languageTag,
-        )
-        val extracted = aiClient.extractStudyText(generationRequest).trim().ifEmpty { request.text }
-        val generated = aiClient.generateSkeleton(
-            generationRequest.copy(text = extracted),
-        )
-        return generated.normalizedSkeleton(sourceText = extracted)
-    }
+    suspend fun skeleton(rawRequest: StudySessionRequest): StudySessionResponse =
+        withContext(NonCancellable) {
+            val request = requireNotNull(rawRequest.normalizedOrNull()) { "Study text must not be blank" }
+            val generationRequest = StudyGenerationRequest(
+                text = request.text,
+                languageTag = request.languageTag,
+            )
+            val extracted = aiClient.extractStudyText(generationRequest).trim().ifEmpty { request.text }
+            val generated = aiClient.generateSkeleton(
+                generationRequest.copy(text = extracted),
+            )
+            generated.normalizedSkeleton(sourceText = extracted)
+        }
 
     /** Full dissection for one skeleton sentence; tokens must match the skeleton order/text. */
     suspend fun dissectSentence(rawRequest: StudyDissectSentenceRequest): StudyDissectSentenceResponse {

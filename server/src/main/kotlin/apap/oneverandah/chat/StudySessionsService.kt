@@ -6,11 +6,14 @@ import apap.oneverandah.api.SavedStudySession
 import apap.oneverandah.api.SavedStudySessionSummary
 import apap.oneverandah.api.SavedStudySessionsResponse
 import apap.oneverandah.api.StudyExamGrade
+import apap.oneverandah.api.StudySessionRequest
 import apap.oneverandah.api.StudySessionResponse
 import apap.oneverandah.api.sentenceImageUrls
 import kotlinx.coroutines.CancellationException
+import kotlinx.coroutines.NonCancellable
 import kotlinx.coroutines.sync.Mutex
 import kotlinx.coroutines.sync.withLock
+import kotlinx.coroutines.withContext
 import java.util.UUID
 
 data class SavedStudySessionRecord(
@@ -248,35 +251,72 @@ class StudySessionsService(
         )
     }
 
-    suspend fun save(rawDeviceToken: String?, rawRequest: SaveStudySessionRequest): SavedStudySessionSummary {
-        val device = requireDevice(rawDeviceToken)
-        val request = requireNotNull(rawRequest.normalizedOrNull()) {
-            "Study session requires non-blank text and at least one sentence"
-        }
-        val now = clock()
-        val existing = request.sourceMessageId?.let {
-            repository.findByDeviceAndSource(device.tokenHash, it)
-        }
-        val session = request.session.copy(
-            examScene = request.session.examScene ?: existing?.session?.examScene,
-        )
-        val record = SavedStudySessionRecord(
-            id = existing?.id ?: idGenerator(),
-            deviceTokenHash = device.tokenHash,
-            sourceMessageId = request.sourceMessageId,
-            languageTag = request.languageTag,
-            text = session.text,
-            textLanguageTag = session.textLanguageTag,
+    /**
+     * Generate a study skeleton and persist it even if the caller is cancelled
+     * after the request body has been received.
+     */
+    suspend fun createFromStudyRequest(
+        rawDeviceToken: String?,
+        rawRequest: StudySessionRequest,
+        generate: suspend (StudySessionRequest) -> StudySessionResponse,
+    ): StudySessionResponse = withContext(NonCancellable) {
+        val session = generate(rawRequest)
+        val persist = SaveStudySessionRequest(
+            sourceMessageId = rawRequest.sourceMessageId,
+            languageTag = rawRequest.languageTag,
             session = session,
-            createdAt = existing?.createdAt ?: now,
-            updatedAt = now,
-            name = existing?.name ?: generateSessionName(request.session.text, request.languageTag),
-            examGrade = existing?.examGrade,
         )
-        val saved = repository.upsert(record)
-        repository.deleteOldestBeyond(device.tokenHash, maxPerDevice)
-        return saved.toSummaryApi()
+        if (!rawDeviceToken.isNullOrBlank() && persist.normalizedOrNull() != null) {
+            try {
+                save(rawDeviceToken, persist)
+            } catch (_: UnauthorizedDeviceException) {
+                // Generation still succeeds; the client can retry persist later.
+            }
+        }
+        session
     }
+
+    suspend fun save(rawDeviceToken: String?, rawRequest: SaveStudySessionRequest): SavedStudySessionSummary =
+        withContext(NonCancellable) {
+            val device = requireDevice(rawDeviceToken)
+            val request = requireNotNull(rawRequest.normalizedOrNull()) {
+                "Study session requires non-blank text and at least one sentence"
+            }
+            val now = clock()
+            val existing = request.sourceMessageId?.let {
+                repository.findByDeviceAndSource(device.tokenHash, it)
+            }
+            val session = request.session.copy(
+                examScene = request.session.examScene ?: existing?.session?.examScene,
+            )
+            val fallbackName = existing?.name?.takeIf(String::isNotBlank) ?: fallbackSessionName(session.text)
+            val record = SavedStudySessionRecord(
+                id = existing?.id ?: idGenerator(),
+                deviceTokenHash = device.tokenHash,
+                sourceMessageId = request.sourceMessageId,
+                languageTag = request.languageTag,
+                text = session.text,
+                textLanguageTag = session.textLanguageTag,
+                session = session,
+                createdAt = existing?.createdAt ?: now,
+                updatedAt = now,
+                name = fallbackName,
+                examGrade = existing?.examGrade,
+            )
+            val saved = repository.upsert(record)
+            repository.deleteOldestBeyond(device.tokenHash, maxPerDevice)
+            if (existing?.name.isNullOrBlank()) {
+                val generatedName = generateSessionName(session.text, request.languageTag)
+                if (generatedName != saved.name) {
+                    val current = repository.findById(saved.id)
+                    val renamed = current
+                        ?.takeIf { it.deviceTokenHash == device.tokenHash && it.name == fallbackName }
+                        ?.let { repository.upsert(it.copy(name = generatedName)) }
+                    return@withContext (renamed ?: current ?: saved).toSummaryApi()
+                }
+            }
+            saved.toSummaryApi()
+        }
 
     /** Harvest named portraits from recent study sessions for Mini Story photo generation. */
     suspend fun listRecentCharacters(limit: Int = 40): List<apap.oneverandah.api.StudyStoryCharacter> =
@@ -313,6 +353,10 @@ class StudySessionsService(
             null
         }?.trim()?.takeIf { it.isNotEmpty() }
         if (generated != null) return generated.take(MAX_STUDY_SESSION_NAME_LENGTH).trimEnd()
+        return fallbackSessionName(text)
+    }
+
+    private fun fallbackSessionName(text: String): String {
         val fallback = text.trim()
         return if (fallback.length > MAX_STUDY_SESSION_NAME_LENGTH) {
             fallback.take(MAX_STUDY_SESSION_NAME_LENGTH - 1).trimEnd() + "…"

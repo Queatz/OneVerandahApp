@@ -69,6 +69,7 @@ import apap.oneverandah.state.Toaster
 import kotlinx.browser.document
 import kotlinx.browser.window
 import kotlinx.coroutines.CompletableDeferred
+import kotlinx.coroutines.NonCancellable
 import kotlinx.coroutines.async
 import kotlinx.coroutines.awaitAll
 import kotlinx.coroutines.coroutineScope
@@ -76,6 +77,7 @@ import kotlinx.coroutines.delay
 import kotlinx.coroutines.launch
 import kotlinx.coroutines.sync.Semaphore
 import kotlinx.coroutines.sync.withPermit
+import kotlinx.coroutines.withContext
 import org.jetbrains.compose.web.attributes.InputType
 import org.jetbrains.compose.web.attributes.autoFocus
 import org.jetbrains.compose.web.css.DisplayStyle
@@ -220,13 +222,15 @@ fun StudyScreen(
     fun persistStudySession(messageId: String, session: StudySessionResponse) {
         scope.launch {
             runCatching {
-                ChatApi.saveStudySession(
-                    SaveStudySessionRequest(
-                        sourceMessageId = messageId,
-                        languageTag = studyLanguageByMessageId[messageId] ?: language.tag,
-                        session = session,
-                    ),
-                )
+                withContext(NonCancellable) {
+                    ChatApi.saveStudySession(
+                        SaveStudySessionRequest(
+                            sourceMessageId = messageId,
+                            languageTag = studyLanguageByMessageId[messageId] ?: language.tag,
+                            session = session,
+                        ),
+                    )
+                }
             }.onSuccess { saved ->
                 studyPersistedBySourceId[messageId] = saved.id
                 val savedSummary = mergeStudySessionSummary(
@@ -1163,7 +1167,13 @@ fun StudyScreen(
         studyLoading = true
         scope.launch {
             runCatching {
-                ChatApi.study(StudySessionRequest(text = text, languageTag = learnerLanguageTag))
+                ChatApi.study(
+                    StudySessionRequest(
+                        text = text,
+                        languageTag = learnerLanguageTag,
+                        sourceMessageId = message.id,
+                    ),
+                )
             }.onSuccess { session ->
                 studyCache[message.id] = session
                 persistStudySession(message.id, session)

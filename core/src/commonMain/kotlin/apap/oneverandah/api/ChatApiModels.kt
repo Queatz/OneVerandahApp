@@ -160,12 +160,14 @@ enum class StudyTokenStatus {
 data class StudySessionRequest(
     val text: String,
     val languageTag: String,
+    val sourceMessageId: String? = null,
 ) {
     fun normalizedOrNull(): StudySessionRequest? {
         val normalizedText = text.trim().takeIf { it.isNotEmpty() } ?: return null
         return copy(
             text = normalizedText,
             languageTag = Language.normalizeLearnerLanguageTag(languageTag),
+            sourceMessageId = sourceMessageId?.trim()?.takeIf { it.isNotEmpty() },
         )
     }
 }

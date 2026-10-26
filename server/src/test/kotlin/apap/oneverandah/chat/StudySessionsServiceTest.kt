@@ -7,9 +7,12 @@ import apap.oneverandah.api.StudyPlayChatMessage
 import apap.oneverandah.api.StudyPlayScenario
 import apap.oneverandah.api.StudyPlaySpeaker
 import apap.oneverandah.api.StudySentence
+import apap.oneverandah.api.StudySessionRequest
 import apap.oneverandah.api.StudySessionResponse
 import apap.oneverandah.api.StudyToken
 import apap.oneverandah.api.StudyTokenStatus
+import kotlinx.coroutines.CompletableDeferred
+import kotlinx.coroutines.launch
 import kotlinx.coroutines.runBlocking
 import kotlin.test.Test
 import kotlin.test.assertEquals
@@ -245,6 +248,86 @@ class StudySessionsServiceTest {
         assertEquals(listOf("three", "two"), items.map { it.text })
         assertNull(items.find { it.id == first.id })
         Unit
+    }
+
+    @Test
+    fun `cancelling while generating a session name still persists the session`() = runBlocking {
+        val namingStarted = CompletableDeferred<Unit>()
+        val finishNaming = CompletableDeferred<String>()
+        val repository = InMemoryStudySessionsRepository()
+        val deviceService = DeviceService(
+            repository = InMemoryDeviceRepository(),
+            tokenGenerator = { "cancel-study-token-abcdefghijklmnopqrstuv" },
+        )
+        val service = StudySessionsService(
+            repository = repository,
+            deviceService = deviceService,
+            idGenerator = { "study-cancel-1" },
+            studyAiClient = object : StudyAiClient by FakeStudyAiClient() {
+                override suspend fun generateStudySessionName(text: String, languageTag: String): String {
+                    namingStarted.complete(Unit)
+                    return finishNaming.await()
+                }
+            },
+        )
+        val token = deviceService.issueToken().deviceToken
+        val saveJob = launch {
+            service.save(token, request("A session that must be saved"))
+        }
+
+        namingStarted.await()
+        saveJob.cancel()
+        finishNaming.complete("A saved session")
+        saveJob.join()
+
+        assertEquals("A session that must be saved", repository.listByDevice(
+            deviceService.findValid(token)!!.tokenHash,
+        ).single().text)
+    }
+
+    @Test
+    fun `cancelling while generating a skeleton still persists the session`() = runBlocking {
+        val skeletonStarted = CompletableDeferred<Unit>()
+        val finishSkeleton = CompletableDeferred<StudySessionResponse>()
+        val repository = InMemoryStudySessionsRepository()
+        val deviceService = DeviceService(
+            repository = InMemoryDeviceRepository(),
+            tokenGenerator = { "cancel-skeleton-token-abcdefghijklmnopqrst" },
+        )
+        val session = sampleSession("A session that must be saved")
+        val studyService = StudyService(
+            aiClient = object : StudyAiClient by FakeStudyAiClient(skeleton = session) {
+                override suspend fun generateSkeleton(request: StudyGenerationRequest): StudySessionResponse {
+                    skeletonStarted.complete(Unit)
+                    return finishSkeleton.await()
+                }
+            },
+        )
+        val service = StudySessionsService(
+            repository = repository,
+            deviceService = deviceService,
+            idGenerator = { "study-skeleton-cancel-1" },
+        )
+        val token = deviceService.issueToken().deviceToken
+        val job = launch {
+            service.createFromStudyRequest(
+                token,
+                StudySessionRequest(
+                    text = "A session that must be saved",
+                    languageTag = "en",
+                    sourceMessageId = "msg-1",
+                ),
+            ) { studyService.skeleton(it) }
+        }
+
+        skeletonStarted.await()
+        job.cancel()
+        finishSkeleton.complete(session)
+        job.join()
+
+        val stored = repository.listByDevice(deviceService.findValid(token)!!.tokenHash).single()
+        assertEquals("A session that must be saved", stored.text)
+        assertEquals("msg-1", stored.sourceMessageId)
     }
 
     @Test

@@ -22,16 +22,18 @@ import io.ktor.http.HttpHeaders
 import io.ktor.http.contentType
 import io.ktor.http.isSuccess
 import io.ktor.utils.io.readLine
+import kotlinx.coroutines.NonCancellable
 import kotlinx.coroutines.sync.Semaphore
+import kotlinx.coroutines.withContext
 import kotlinx.coroutines.withTimeoutOrNull
 import kotlinx.serialization.json.Json
 import kotlin.time.Duration.Companion.milliseconds
 
 object ChatApi {
     private const val DEVICE_TOKEN_HEADER = "X-Device-Token"
-    private const val REQUEST_TIMEOUT_MILLIS = 60_000L
-    private const val REQUEST_SLOT_WAIT_TIMEOUT_MILLIS = 20_000L
-    private const val STUDY_SESSION_READ_TIMEOUT_MILLIS = 15_000L
+    private const val REQUEST_TIMEOUT_MILLIS = 180_000L
+    private const val REQUEST_SLOT_WAIT_TIMEOUT_MILLIS = 60_000L
+    private const val STUDY_SESSION_READ_TIMEOUT_MILLIS = 60_000L
     private const val REQUEST_TIMEOUT_MESSAGE = "Chat request timed out"
     private const val STREAM_IDLE_TIMEOUT_MILLIS = 60_000L
 
@@ -161,15 +163,21 @@ object ChatApi {
     }
 
     /** Fast study skeleton: language + sentences + tokens (meanings still pending). */
-    suspend fun study(request: StudySessionRequest): StudySessionResponse = apiRequest(
-        request = {
-            client.post(chatApiUrl("/study")) {
-                contentType(ContentType.Application.Json)
-                setBody(json.encodeToString(StudySessionRequest.serializer(), request))
-            }
-        },
-        decode = { json.decodeFromString(StudySessionResponse.serializer(), it) },
-    )
+    suspend fun study(request: StudySessionRequest): StudySessionResponse =
+        withContext(NonCancellable) {
+            val token = DeviceTokenStore.ensureToken()
+            executeApiRequest(
+                request = {
+                    client.post(chatApiUrl("/study")) {
+                        header(DEVICE_TOKEN_HEADER, token)
+                        contentType(ContentType.Application.Json)
+                        setBody(json.encodeToString(StudySessionRequest.serializer(), request))
+                    }
+                },
+                decode = { json.decodeFromString(StudySessionResponse.serializer(), it) },
+                timeoutMillis = REQUEST_TIMEOUT_MILLIS,
+            )
+        }
 
     /** Parse-mode prep: generate the study text the learner asked for. */
     suspend fun studyIntent(request: StudySessionRequest): StudyIntentResponse = apiRequest(
@@ -394,17 +402,20 @@ object ChatApi {
     }
 
     suspend fun saveStudySession(request: SaveStudySessionRequest): SavedStudySessionSummary {
-        val token = DeviceTokenStore.ensureToken()
-        return apiRequest(
-            request = {
-                client.post(chatApiUrl("/study/sessions")) {
-                    header(DEVICE_TOKEN_HEADER, token)
-                    contentType(ContentType.Application.Json)
-                    setBody(json.encodeToString(SaveStudySessionRequest.serializer(), request))
-                }
-            },
-            decode = { json.decodeFromString(SavedStudySessionSummary.serializer(), it) },
-        )
+        return withContext(NonCancellable) {
+            val token = DeviceTokenStore.ensureToken()
+            executeApiRequest(
+                request = {
+                    client.post(chatApiUrl("/study/sessions")) {
+                        header(DEVICE_TOKEN_HEADER, token)
+                        contentType(ContentType.Application.Json)
+                        setBody(json.encodeToString(SaveStudySessionRequest.serializer(), request))
+                    }
+                },
+                decode = { json.decodeFromString(SavedStudySessionSummary.serializer(), it) },
+                timeoutMillis = REQUEST_TIMEOUT_MILLIS,
+            )
+        }
     }
 
     suspend fun renameStudySession(id: String, name: String): SavedStudySessionSummary {
