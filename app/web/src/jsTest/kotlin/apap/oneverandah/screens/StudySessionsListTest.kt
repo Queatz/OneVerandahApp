@@ -1,6 +1,7 @@
 package apap.oneverandah.screens
 
 import apap.oneverandah.api.SavedStudySessionSummary
+import apap.oneverandah.api.StudyExamGrade
 import apap.oneverandah.api.StudySentence
 import apap.oneverandah.api.StudySessionResponse
 import apap.oneverandah.api.StudyStoryCharacter
@@ -9,6 +10,7 @@ import apap.oneverandah.api.StudyTokenStatus
 import kotlin.test.Test
 import kotlin.test.assertEquals
 import kotlin.test.assertFalse
+import kotlin.test.assertNull
 import kotlin.test.assertTrue
 
 class StudySessionsListTest {
@@ -46,6 +48,16 @@ class StudySessionsListTest {
     }
 
     @Test
+    fun `exam grade badge is visible only on owned cards`() {
+        val grade = StudyExamGrade(4, 5, 3, "A strong attempt.", 100L)
+        val graded = sampleSaved("graded", "Hello.").copy(examGrade = grade)
+
+        assertEquals(4, studySessionExamGradeBadge(graded, owned = true))
+        assertNull(studySessionExamGradeBadge(graded, owned = false))
+        assertNull(studySessionExamGradeBadge(sampleSaved("ungraded", "Hello."), owned = true))
+    }
+
+    @Test
     fun `session refresh updates the active title and keeps newer rename over stale data`() {
         val renamed = sampleSaved("session", "Original text").copy(name = "New title", updatedAt = 200L)
         val stale = renamed.copy(name = "Old title", updatedAt = 100L)
@@ -54,6 +66,15 @@ class StudySessionsListTest {
 
         assertEquals("New title", refreshedItems.single().name)
         assertEquals("New title", activeAfterRefresh?.name)
+    }
+
+    @Test
+    fun `stale session refresh preserves a newer exam grade`() {
+        val grade = StudyExamGrade(4, 5, 3, "A strong attempt.", 200L)
+        val current = sampleSaved("session", "Hello.").copy(updatedAt = 200L, examGrade = grade)
+        val stale = sampleSaved("session", "Hello.").copy(updatedAt = 100L)
+
+        assertEquals(grade, mergeStudySessionSummary(current, stale).examGrade)
     }
 
     @Test

@@ -5,6 +5,7 @@ import apap.oneverandah.api.SaveStudySessionRequest
 import apap.oneverandah.api.SavedStudySession
 import apap.oneverandah.api.SavedStudySessionSummary
 import apap.oneverandah.api.SavedStudySessionsResponse
+import apap.oneverandah.api.StudyExamGrade
 import apap.oneverandah.api.StudySessionResponse
 import apap.oneverandah.api.sentenceImageUrls
 import kotlinx.coroutines.CancellationException
@@ -23,8 +24,9 @@ data class SavedStudySessionRecord(
     val createdAt: Long,
     val updatedAt: Long,
     val name: String = "",
+    val examGrade: StudyExamGrade? = null,
 ) {
-    fun toApi() = SavedStudySession(
+    fun toApi(includeExamGrade: Boolean = true) = SavedStudySession(
         id = id,
         sourceMessageId = sourceMessageId,
         languageTag = languageTag,
@@ -34,6 +36,7 @@ data class SavedStudySessionRecord(
         createdAt = createdAt,
         updatedAt = updatedAt,
         name = name,
+        examGrade = examGrade.takeIf { includeExamGrade },
     )
 
     fun toSummaryApi() = SavedStudySessionSummary(
@@ -46,6 +49,7 @@ data class SavedStudySessionRecord(
         updatedAt = updatedAt,
         sentenceImageUrls = session.sentenceImageUrls(),
         name = name,
+        examGrade = examGrade,
     )
 }
 
@@ -59,8 +63,9 @@ data class SavedStudySessionSummaryRecord(
     val updatedAt: Long,
     val sentenceImageUrls: List<String> = emptyList(),
     val name: String = "",
+    val examGrade: StudyExamGrade? = null,
 ) {
-    fun toApi() = SavedStudySessionSummary(
+    fun toApi(includeExamGrade: Boolean = true) = SavedStudySessionSummary(
         id = id,
         sourceMessageId = sourceMessageId,
         languageTag = languageTag,
@@ -70,10 +75,11 @@ data class SavedStudySessionSummaryRecord(
         updatedAt = updatedAt,
         sentenceImageUrls = sentenceImageUrls,
         name = name,
+        examGrade = examGrade.takeIf { includeExamGrade },
     )
 }
 
-private fun SavedStudySessionRecord.toSummaryRecord() = SavedStudySessionSummaryRecord(
+private fun SavedStudySessionRecord.toSummaryRecord(includeExamGrade: Boolean = true) = SavedStudySessionSummaryRecord(
     id = id,
     sourceMessageId = sourceMessageId,
     languageTag = languageTag,
@@ -83,6 +89,7 @@ private fun SavedStudySessionRecord.toSummaryRecord() = SavedStudySessionSummary
     updatedAt = updatedAt,
     sentenceImageUrls = session.sentenceImageUrls(),
     name = name,
+    examGrade = examGrade.takeIf { includeExamGrade },
 )
 
 interface StudySessionsRepository {
@@ -168,7 +175,7 @@ class InMemoryStudySessionsRepository : StudySessionsRepository {
                         .thenByDescending { it.id },
                 )
                 .take(limit.coerceAtLeast(0))
-                .map { it.toSummaryRecord() }
+                .map { it.toSummaryRecord(includeExamGrade = false) }
         }
 }
 
@@ -188,10 +195,31 @@ class StudySessionsService(
 
     /** Any saved session can be opened by id so `/study/{id}` links are shareable. */
     suspend fun get(rawDeviceToken: String?, id: String): SavedStudySession? {
-        requireDevice(rawDeviceToken)
+        val device = requireDevice(rawDeviceToken)
         val key = id.trim()
         if (key.isEmpty()) return null
-        return repository.findById(key)?.toApi()
+        val record = repository.findById(key) ?: return null
+        return record.toApi(includeExamGrade = record.deviceTokenHash == device.tokenHash)
+    }
+
+    suspend fun getOwned(rawDeviceToken: String?, id: String): SavedStudySession? {
+        val device = requireDevice(rawDeviceToken)
+        val key = id.trim().takeIf(String::isNotEmpty) ?: return null
+        val record = repository.findById(key) ?: return null
+        if (record.deviceTokenHash != device.tokenHash) return null
+        return record.toApi()
+    }
+
+    suspend fun saveExamGrade(
+        rawDeviceToken: String?,
+        id: String,
+        grade: StudyExamGrade,
+    ): SavedStudySession? {
+        val device = requireDevice(rawDeviceToken)
+        val key = id.trim().takeIf(String::isNotEmpty) ?: return null
+        val record = repository.findById(key) ?: return null
+        if (record.deviceTokenHash != device.tokenHash) return null
+        return repository.upsert(record.copy(examGrade = grade, updatedAt = clock())).toApi()
     }
 
     suspend fun listCommunity(
@@ -215,7 +243,7 @@ class StudySessionsService(
             null
         }
         return CommunityStudySessionsResponse(
-            items = page.map { it.toApi() },
+            items = page.map { it.toApi(includeExamGrade = false) },
             nextCursor = nextCursor,
         )
     }
@@ -229,17 +257,21 @@ class StudySessionsService(
         val existing = request.sourceMessageId?.let {
             repository.findByDeviceAndSource(device.tokenHash, it)
         }
+        val session = request.session.copy(
+            examScene = request.session.examScene ?: existing?.session?.examScene,
+        )
         val record = SavedStudySessionRecord(
             id = existing?.id ?: idGenerator(),
             deviceTokenHash = device.tokenHash,
             sourceMessageId = request.sourceMessageId,
             languageTag = request.languageTag,
-            text = request.session.text,
-            textLanguageTag = request.session.textLanguageTag,
-            session = request.session,
+            text = session.text,
+            textLanguageTag = session.textLanguageTag,
+            session = session,
             createdAt = existing?.createdAt ?: now,
             updatedAt = now,
             name = existing?.name ?: generateSessionName(request.session.text, request.languageTag),
+            examGrade = existing?.examGrade,
         )
         val saved = repository.upsert(record)
         repository.deleteOldestBeyond(device.tokenHash, maxPerDevice)

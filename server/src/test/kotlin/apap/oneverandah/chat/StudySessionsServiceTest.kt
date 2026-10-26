@@ -1,6 +1,8 @@
 package apap.oneverandah.chat
 
 import apap.oneverandah.api.SaveStudySessionRequest
+import apap.oneverandah.api.StudyExamGrade
+import apap.oneverandah.api.StudyExamScene
 import apap.oneverandah.api.StudyPlayChatMessage
 import apap.oneverandah.api.StudyPlayScenario
 import apap.oneverandah.api.StudyPlaySpeaker
@@ -309,6 +311,52 @@ class StudySessionsServiceTest {
         assertEquals("Chào bạn!", scenario.messages[1].text)
         assertEquals("https://cdn.example/play2.png", scenario.messages[2].imageUrl)
         Unit
+    }
+
+    @Test
+    fun `progressive saves preserve exam scene and owner-only grade`() = runBlocking {
+        val repository = InMemoryStudySessionsRepository()
+        val deviceService = DeviceService(
+            repository = InMemoryDeviceRepository(),
+            tokenGenerator = sequenceTokenGenerator(),
+        )
+        val service = StudySessionsService(repository = repository, deviceService = deviceService)
+        val ownerToken = deviceService.issueToken().deviceToken
+        val otherToken = deviceService.issueToken().deviceToken
+        val scene = StudyExamScene(id = "scene-1", setting = "At a market.")
+        val grade = StudyExamGrade(
+            overall = 4,
+            listening = 5,
+            speaking = 3,
+            feedback = "A strong attempt.",
+            scoredAt = 100L,
+        )
+        val initial = service.save(
+            ownerToken,
+            SaveStudySessionRequest(
+                sourceMessageId = "exam-session",
+                languageTag = "en",
+                session = sampleSession("Xin chào.").copy(examScene = scene),
+            ),
+        )
+        val stored = repository.findById(initial.id)!!
+        repository.upsert(stored.copy(examGrade = grade))
+
+        val progressive = service.save(
+            ownerToken,
+            SaveStudySessionRequest(
+                sourceMessageId = "exam-session",
+                languageTag = "en",
+                session = sampleSession("Xin chào. Cảm ơn."),
+            ),
+        )
+
+        assertEquals(grade, progressive.examGrade)
+        assertEquals(grade, service.list(ownerToken).items.single().examGrade)
+        assertEquals(scene, service.get(ownerToken, initial.id)?.session?.examScene)
+        assertEquals(grade, service.get(ownerToken, initial.id)?.examGrade)
+        assertNull(service.get(otherToken, initial.id)?.examGrade)
+        assertNull(service.listCommunity(otherToken).items.single().examGrade)
     }
 
     @Test

@@ -2,6 +2,13 @@ package apap.oneverandah.chat
 
 import apap.oneverandah.api.StudyDissectSentenceRequest
 import apap.oneverandah.api.StudyDissectSentenceResponse
+import apap.oneverandah.api.StudyExamBeat
+import apap.oneverandah.api.StudyExamBeatKind
+import apap.oneverandah.api.StudyExamBeatScore
+import apap.oneverandah.api.StudyExamScene
+import apap.oneverandah.api.StudyExamSceneRequest
+import apap.oneverandah.api.StudyExamScoreRequest
+import apap.oneverandah.api.StudyExamScoreResponse
 import apap.oneverandah.api.StudyExampleSentence
 import apap.oneverandah.api.StudyExpressCheckRequest
 import apap.oneverandah.api.StudyExpressCheckResponse
@@ -121,6 +128,27 @@ data class StudyPlayTurnDesign(
     val reply: String,
 )
 
+data class StudyExamSceneGenerationRequest(
+    val text: String,
+    val textLanguageTag: String,
+    val languageTag: String,
+    val sentences: List<StudySentence>,
+    val characters: List<StudyStoryCharacter>,
+)
+
+data class StudyExamBeatJudgmentRequest(
+    val setting: String,
+    val beat: StudyExamBeat,
+    val transcript: String,
+    val textLanguageTag: String,
+    val languageTag: String,
+)
+
+data class StudyExamJudgment(
+    val points: Int,
+    val feedback: String,
+)
+
 data class StudyWriteCheckGenerationRequest(
     val expected: String,
     val attempt: String,
@@ -209,6 +237,11 @@ interface StudyAiClient {
     suspend fun designStoryCharacters(request: StudyCharactersGenerationRequest): List<StudyCharacterDesign>
     suspend fun generatePlayScenarios(request: StudyPlayScenariosGenerationRequest): List<StudyPlayScenarioDesign>
     suspend fun generatePlayTurn(request: StudyPlayTurnGenerationRequest): StudyPlayTurnDesign
+    suspend fun generateExamScene(request: StudyExamSceneGenerationRequest): StudyExamScene =
+        throw UnsupportedOperationException("Study exam scene generation is not supported")
+
+    suspend fun evaluateExamBeat(request: StudyExamBeatJudgmentRequest): StudyExamJudgment =
+        StudyExamJudgment(points = 0, feedback = "")
     suspend fun evaluateWriteAttempt(request: StudyWriteCheckGenerationRequest): StudyWriteFeedback
     suspend fun evaluateExpressAttempt(request: StudyExpressCheckGenerationRequest): StudyExpressJudgment
     suspend fun evaluateListenAttempt(request: StudyListenCheckGenerationRequest): StudyExpressJudgment =
@@ -221,6 +254,7 @@ class StudyService(
     private val imageGenerator: StudyPlaygroundImageGenerator? = null,
     private val scope: CoroutineScope = CoroutineScope(SupervisorJob() + Dispatchers.IO),
     private val idGenerator: () -> String = { UUID.randomUUID().toString() },
+    private val clock: () -> Long = System::currentTimeMillis,
 ) {
     private val log = LoggerFactory.getLogger(StudyService::class.java)
     /** Shared async job store for playground stills, character portraits, and sentence visuals. */
@@ -547,6 +581,167 @@ class StudyService(
             reply = reply,
             imageId = imageId,
         )
+    }
+
+    suspend fun examScene(rawRequest: StudyExamSceneRequest): StudyExamScene {
+        val request = requireNotNull(rawRequest.normalizedOrNull()) {
+            "Study exam scene requires non-blank text and at least one sentence"
+        }
+        val characters = normalizeExamCharacters(request.session.characters)
+        val generated = aiClient.generateExamScene(
+            StudyExamSceneGenerationRequest(
+                text = request.session.text,
+                textLanguageTag = request.session.textLanguageTag,
+                languageTag = request.languageTag,
+                sentences = request.session.sentences,
+                characters = characters,
+            ),
+        )
+        return normalizeExamScene(generated, request.session.sentences, characters)
+    }
+
+    suspend fun scoreExam(
+        scene: StudyExamScene,
+        request: StudyExamScoreRequest,
+        textLanguageTag: String,
+        languageTag: String,
+    ): StudyExamScoreResponse {
+        val answersByBeat = request.answers
+            .mapNotNull { answer -> answer.beatId.trim().takeIf(String::isNotEmpty)?.let { it to answer.transcript.trim() } }
+            .toMap()
+        val beatScores = scene.beats.map { beat ->
+            val transcript = answersByBeat[beat.id].orEmpty()
+            if (transcript.isBlank()) {
+                StudyExamBeatScore(beatId = beat.id, points = 0, feedback = "")
+            } else {
+                val judgment = runCatching {
+                    aiClient.evaluateExamBeat(
+                        StudyExamBeatJudgmentRequest(
+                            setting = scene.setting,
+                            beat = beat,
+                            transcript = transcript,
+                            textLanguageTag = Language.normalizeContentTag(textLanguageTag),
+                            languageTag = Language.normalizeLearnerLanguageTag(languageTag),
+                        ),
+                    )
+                }.getOrElse { error ->
+                    log.warn("Study exam beat judgment failed: {}", error.message)
+                    StudyExamJudgment(points = 0, feedback = "")
+                }
+                StudyExamBeatScore(
+                    beatId = beat.id,
+                    points = judgment.points.coerceIn(0, 2),
+                    feedback = judgment.feedback.trim(),
+                )
+            }
+        }
+        val grade = StudyExamScoring.grade(
+            beats = scene.beats,
+            beatScores = beatScores,
+            scoredAt = clock(),
+            feedback = StudyExamScoring.feedback(languageTag),
+        )
+        return StudyExamScoreResponse(grade = grade, beats = beatScores)
+    }
+
+    private fun normalizeExamScene(
+        generated: StudyExamScene,
+        sentences: List<StudySentence>,
+        characters: List<StudyStoryCharacter>,
+    ): StudyExamScene {
+        val sourceSentences = sentences.map { it.text.trim() }.filter(String::isNotEmpty)
+        require(sourceSentences.isNotEmpty()) { "Study exam requires at least one source sentence" }
+        val expectedBeatCount = when (sourceSentences.size) {
+            1 -> 3
+            in 2..6 -> null
+            else -> 6
+        }
+        require(generated.beats.size in 3..6) { "Study exam scene must contain 3 to 6 beats" }
+        if (expectedBeatCount != null) {
+            require(generated.beats.size == expectedBeatCount) {
+                "Study exam scene must contain exactly $expectedBeatCount beats"
+            }
+        } else if (sourceSentences.size in 2..6) {
+            require(generated.beats.size in 4..6) { "Study exam scene must contain 4 to 6 beats" }
+        }
+        require(generated.setting.isNotBlank()) { "Study exam scene setting must not be blank" }
+        require(generated.beats.map { it.id.trim() }.distinct().size == generated.beats.size) {
+            "Study exam beat ids must be unique"
+        }
+        require(generated.beats.any { it.kind == StudyExamBeatKind.LISTEN }) {
+            "Study exam scene must include a listening beat"
+        }
+        require(generated.beats.any { it.kind == StudyExamBeatKind.SPEAK }) {
+            "Study exam scene must include a speaking beat"
+        }
+        if (sourceSentences.size == 1) {
+            require(generated.beats.count { it.kind == StudyExamBeatKind.LISTEN } == 1) {
+                "A one-sentence exam scene must contain one listening beat"
+            }
+            require(generated.beats.count { it.kind == StudyExamBeatKind.SPEAK } == 2) {
+                "A one-sentence exam scene must contain two speaking beats"
+            }
+        }
+        val knownCharacters = characters.associateBy { it.id }
+        val fallbackSpeaker = characters.first()
+        val beats = generated.beats.mapIndexed { index, beat ->
+            val id = beat.id.trim().ifEmpty { "beat-${index + 1}" }
+            val sourceSentence = beat.sourceSentence.trim().takeIf { source ->
+                sourceSentences.any { it.equals(source, ignoreCase = true) }
+            } ?: throw IllegalArgumentException("Study exam beat must reference a source sentence")
+            val speaker = knownCharacters[beat.speakerId.trim()] ?: fallbackSpeaker
+            val line = if (beat.kind == StudyExamBeatKind.LISTEN) {
+                beat.line?.trim()?.takeIf(String::isNotEmpty)
+                    ?: throw IllegalArgumentException("Study exam listening beat requires a spoken line")
+            } else {
+                null
+            }
+            if (line != null) {
+                require(line.contains(sourceSentence, ignoreCase = true)) {
+                    "Study exam listening line must include its source sentence"
+                }
+            }
+            require(beat.prompt.isNotBlank()) { "Study exam beat prompt must not be blank" }
+            require(beat.expectedMeaning.isNotBlank()) { "Study exam beat meaning must not be blank" }
+            beat.copy(
+                id = id,
+                speakerId = speaker.id,
+                speakerName = speaker.name,
+                line = line,
+                prompt = beat.prompt.trim(),
+                expectedMeaning = beat.expectedMeaning.trim(),
+                sourceSentence = sourceSentence,
+            )
+        }
+        require(beats.map { it.id }.distinct().size == beats.size) { "Study exam beat ids must be unique" }
+        return generated.copy(
+            id = generated.id.trim().ifEmpty { idGenerator().trim().ifEmpty { UUID.randomUUID().toString() } },
+            setting = generated.setting.trim(),
+            beats = beats,
+        )
+    }
+
+    private fun normalizeExamCharacters(characters: List<StudyStoryCharacter>): List<StudyStoryCharacter> {
+        val known = characters
+            .mapNotNull { character ->
+                val id = character.id.trim().takeIf(String::isNotEmpty) ?: return@mapNotNull null
+                val name = character.name.trim().takeIf(String::isNotEmpty) ?: return@mapNotNull null
+                if (character.role != "main" && character.role != "secondary") return@mapNotNull null
+                character.copy(id = id, name = name)
+            }
+            .sortedBy { if (it.role == "main") 0 else 1 }
+            .distinctBy { it.id }
+            .take(2)
+        return known.ifEmpty {
+            listOf(
+                StudyStoryCharacter(
+                    id = "main",
+                    name = "Ari",
+                    role = "main",
+                    description = "A friendly local who helps the learner in the situation.",
+                ),
+            )
+        }
     }
 
     /**

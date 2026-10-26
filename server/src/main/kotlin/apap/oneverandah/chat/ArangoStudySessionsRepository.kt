@@ -57,6 +57,7 @@ class ArangoStudySessionsRepository private constructor(
                     name: NOT_NULL(doc.name, ""),
                     createdAt: doc.createdAt,
                     updatedAt: doc.updatedAt,
+                    examGrade: doc.examGrade,
                     sentenceImageUrls: (
                       FOR sentence IN NOT_NULL(doc.session.sentences, [])
                       FILTER IS_STRING(sentence.imageUrl) AND TRIM(sentence.imageUrl) != ""
@@ -362,6 +363,7 @@ private data class SavedStudySessionSummaryDocument(
     val updatedAt: Long,
     val sentenceImageUrls: List<String> = emptyList(),
     val name: String = "",
+    val examGrade: apap.oneverandah.api.StudyExamGrade? = null,
 ) {
     fun toRecord() = SavedStudySessionSummaryRecord(
         id = key,
@@ -373,6 +375,7 @@ private data class SavedStudySessionSummaryDocument(
         updatedAt = updatedAt,
         sentenceImageUrls = sentenceImageUrls,
         name = name,
+        examGrade = examGrade,
     )
 }
 
@@ -388,6 +391,7 @@ private data class SavedStudySessionDocument(
     val createdAt: Long,
     val updatedAt: Long,
     val name: String = "",
+    val examGrade: apap.oneverandah.api.StudyExamGrade? = null,
 ) {
     fun toRecord() = SavedStudySessionRecord(
         id = _key,
@@ -400,6 +404,7 @@ private data class SavedStudySessionDocument(
         createdAt = createdAt,
         updatedAt = updatedAt,
         name = name,
+        examGrade = examGrade,
     )
 
     companion object {
@@ -414,6 +419,7 @@ private data class SavedStudySessionDocument(
             createdAt = record.createdAt,
             updatedAt = record.updatedAt,
             name = record.name,
+            examGrade = record.examGrade,
         )
     }
 }

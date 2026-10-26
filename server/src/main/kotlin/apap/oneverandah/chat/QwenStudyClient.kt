@@ -1,6 +1,9 @@
 package apap.oneverandah.chat
 
 import apap.oneverandah.api.StudyExampleSentence
+import apap.oneverandah.api.StudyExamBeat
+import apap.oneverandah.api.StudyExamBeatKind
+import apap.oneverandah.api.StudyExamScene
 import apap.oneverandah.api.StudySentence
 import apap.oneverandah.api.StudySessionResponse
 import apap.oneverandah.api.StudyTranslateRequest
@@ -622,6 +625,73 @@ class DashScopeStudyAiClient(
         return QwenStudyPlayTurnParser.parse(content)
     }
 
+    override suspend fun generateExamScene(request: StudyExamSceneGenerationRequest): StudyExamScene {
+        val userContent = buildString {
+            appendLine("Study/source language: ${languageName(request.textLanguageTag)} (${request.textLanguageTag})")
+            appendLine("Learner UI language: ${languageName(request.languageTag)} (${request.languageTag})")
+            appendLine()
+            appendLine("Allowed cast only:")
+            request.characters.forEach { character ->
+                appendLine("- id=${character.id}; name=${character.name}; role=${character.role}; appearance=${character.description}")
+            }
+            appendLine()
+            appendLine("Study sentences and their saved study meanings:")
+            request.sentences.forEachIndexed { index, sentence ->
+                appendLine("${index + 1}. ${sentence.text.trim()}")
+                sentence.tokens
+                    .flatMap { token -> listOf(token.contextualMeaning, token.literalMeaning) }
+                    .map(String::trim)
+                    .filter(String::isNotEmpty)
+                    .distinct()
+                    .forEach { appendLine("   Meaning clue: $it") }
+            }
+            appendLine()
+            appendLine("Full source text:")
+            append(request.text)
+        }
+        val content = complete(
+            systemPrompt = examSceneSystemPrompt(
+                activeLanguageTag = request.languageTag,
+                textLanguageTag = request.textLanguageTag,
+                sentenceCount = request.sentences.size,
+            ),
+            userContent = userContent,
+            label = "study exam scene",
+            temperature = 0.4,
+        )
+        return QwenStudyExamSceneParser.parse(content)
+    }
+
+    override suspend fun evaluateExamBeat(request: StudyExamBeatJudgmentRequest): StudyExamJudgment {
+        val userContent = buildString {
+            appendLine("Situation (learner UI language ${request.languageTag}):")
+            appendLine(request.setting)
+            appendLine()
+            appendLine("Beat kind: ${request.beat.kind}")
+            appendLine("Learner cue in the UI language:")
+            appendLine(request.beat.prompt)
+            appendLine()
+            appendLine("Source sentence (study language ${request.textLanguageTag}):")
+            appendLine(request.beat.sourceSentence)
+            appendLine()
+            appendLine("Expected meaning / intent (UI language):")
+            appendLine(request.beat.expectedMeaning)
+            appendLine()
+            appendLine("Learner transcript:")
+            append(request.transcript)
+        }
+        val content = complete(
+            systemPrompt = examBeatJudgmentSystemPrompt(
+                activeLanguageTag = request.languageTag,
+                textLanguageTag = request.textLanguageTag,
+            ),
+            userContent = userContent,
+            label = "study exam beat judgment",
+            temperature = 0.1,
+        )
+        return QwenStudyExamJudgmentParser.parse(content)
+    }
+
     override suspend fun evaluateWriteAttempt(
         request: StudyWriteCheckGenerationRequest,
     ): StudyWriteFeedback {
@@ -968,6 +1038,41 @@ class DashScopeStudyAiClient(
         - Do not wrap the JSON in markdown. Do not add extra keys.
     """.trimIndent()
 
+    private fun examSceneSystemPrompt(
+        activeLanguageTag: String,
+        textLanguageTag: String,
+        sentenceCount: Int,
+    ): String = """
+        You write one continuous real-life conversation for a language-learning final test.
+        Always return one JSON object and no markdown. The schema is exactly:
+        {"id":"scene-id","setting":"short situation in the learner UI language","beats":[{"id":"beat-1","kind":"LISTEN or SPEAK","speakerId":"main or secondary","speakerName":"known cast name","line":"study-language line for LISTEN; omit for SPEAK","prompt":"short cue in the learner UI language","expectedMeaning":"answer intent in the learner UI language","sourceSentence":"exact study sentence"}]}
+        Rules:
+        - This must feel like one coherent everyday situation, not a quiz list, and use only the supplied cast ids and names. Never invent another person.
+        - There are $sentenceCount supplied study sentence(s); choose the matching beat-length rule below.
+        - Write setting, prompts, and expectedMeaning ONLY in the learner UI language ${languageName(activeLanguageTag)} ($activeLanguageTag).
+        - A LISTEN line is spoken text ONLY in the study language ${languageName(textLanguageTag)} ($textLanguageTag). Keep the exact source sentence intact inside the line; a short natural frame may surround it.
+        - A SPEAK beat has no line field. Its prompt is a short UI-language cue for a situated reply in the study language; expectedMeaning describes what a useful reply must communicate.
+        - Include both LISTEN and SPEAK beats. Each sourceSentence must exactly match one supplied study sentence.
+        - For exactly one study sentence, return EXACTLY 3 scored beats: one LISTEN beat asking what the character meant, then two distinct SPEAK beats that use the same meaning in two natural moments of this single situation. The two speaking prompts must ask different, useful things.
+        - For 2–6 study sentences, return 4–6 beats, placing each study sentence once in the conversation and including both skills.
+        - For more than 6 sentences, return EXACTLY 6 beats and select the sentences that best carry the situation.
+        - Keep each cue and answer intent short, clear, and suitable for a beginner or intermediate learner. Do not include a grade, points, transcript, or answer text.
+        - Do not wrap the JSON in markdown. Do not add extra keys.
+    """.trimIndent()
+
+    private fun examBeatJudgmentSystemPrompt(activeLanguageTag: String, textLanguageTag: String): String = """
+        You judge one spoken transcript from a character-led language exam.
+        Return exactly one JSON object: {"points":0,"feedback":"one short note"}. Do not output an overall grade or any other keys.
+        Points are only 0, 1, or 2: 0 = missed, 1 = partial, 2 = clear.
+        Rules:
+        - Feedback MUST be one brief, supportive note in the learner UI language ${languageName(activeLanguageTag)} ($activeLanguageTag).
+        - For LISTEN, the transcript must explain the character's meaning in the learner UI language. Merely repeating the heard study-language line is not comprehension. A wrong-language or unrelated answer scores 0.
+        - For SPEAK, the transcript must answer the cue in the study language ${languageName(textLanguageTag)} ($textLanguageTag) and fit the situation. Merely reciting the source sentence without responding to the moment, an off-situation answer, or a wrong-language answer scores 0.
+        - Give 1 for a relevant attempt in the required language that conveys only part of the intended meaning; give 2 for a clear, situated response. Exact wording is not required.
+        - Do not judge accent or pronunciation; only the transcript is available.
+        - Do not wrap the JSON in markdown. Do not include a numeric grade.
+    """.trimIndent()
+
     private fun writeCheckSystemPrompt(activeLanguageTag: String, textLanguageTag: String): String = """
         You are a precise writing coach for language study.
         The learner must type the expected sentence exactly (same words and punctuation).
@@ -1191,6 +1296,82 @@ object QwenStudyPlayTurnParser {
             .getOrElse { throw IllegalArgumentException("Qwen study play turn is not valid JSON", it) }
         return element as? JsonObject
             ?: throw IllegalArgumentException("Qwen study play turn root must be a JSON object")
+    }
+}
+
+object QwenStudyExamSceneParser {
+    private val json = Json { ignoreUnknownKeys = true; explicitNulls = false; isLenient = true }
+
+    fun parse(content: String): StudyExamScene {
+        val root = parseRootObject(content)
+        val setting = root.string("setting")?.trim()?.takeIf(String::isNotEmpty)
+            ?: throw IllegalArgumentException("Qwen study exam scene missing setting")
+        val beatsArray = root["beats"] as? JsonArray
+            ?: throw IllegalArgumentException("Qwen study exam scene missing beats array")
+        val beats = beatsArray.mapIndexed { index, element ->
+            val obj = element as? JsonObject
+                ?: throw IllegalArgumentException("Qwen study exam beat must be an object")
+            val id = obj.string("id")?.trim()?.takeIf(String::isNotEmpty) ?: "beat-${index + 1}"
+            val kind = when (obj.string("kind")?.trim()?.uppercase()) {
+                "LISTEN", "LISTENING" -> StudyExamBeatKind.LISTEN
+                "SPEAK", "SPEAKING" -> StudyExamBeatKind.SPEAK
+                else -> throw IllegalArgumentException("Qwen study exam beat has an invalid kind")
+            }
+            val prompt = obj.string("prompt")?.trim()?.takeIf(String::isNotEmpty)
+                ?: throw IllegalArgumentException("Qwen study exam beat missing prompt")
+            val expectedMeaning = obj.string("expectedMeaning")?.trim()?.takeIf(String::isNotEmpty)
+                ?: obj.string("meaning")?.trim()?.takeIf(String::isNotEmpty)
+                ?: throw IllegalArgumentException("Qwen study exam beat missing expected meaning")
+            val sourceSentence = obj.string("sourceSentence")?.trim()?.takeIf(String::isNotEmpty)
+                ?: obj.string("sentence")?.trim()?.takeIf(String::isNotEmpty)
+                ?: throw IllegalArgumentException("Qwen study exam beat missing source sentence")
+            StudyExamBeat(
+                id = id,
+                kind = kind,
+                speakerId = obj.string("speakerId")?.trim()?.takeIf(String::isNotEmpty) ?: "main",
+                speakerName = obj.string("speakerName")?.trim().orEmpty(),
+                line = obj.string("line")?.trim()?.takeIf(String::isNotEmpty),
+                prompt = prompt,
+                expectedMeaning = expectedMeaning,
+                sourceSentence = sourceSentence,
+            )
+        }
+        require(beats.size in 3..6) { "Qwen study exam scene must contain 3 to 6 beats" }
+        return StudyExamScene(
+            id = root.string("id")?.trim()?.takeIf(String::isNotEmpty) ?: "exam-scene",
+            setting = setting,
+            beats = beats,
+        )
+    }
+
+    private fun parseRootObject(content: String): JsonObject {
+        val normalized = stripJsonFences(content)
+        val element = runCatching { json.parseToJsonElement(normalized) }
+            .getOrElse { throw IllegalArgumentException("Qwen study exam scene is not valid JSON", it) }
+        return element as? JsonObject
+            ?: throw IllegalArgumentException("Qwen study exam scene root must be a JSON object")
+    }
+}
+
+object QwenStudyExamJudgmentParser {
+    private val json = Json { ignoreUnknownKeys = true; explicitNulls = false; isLenient = true }
+
+    fun parse(content: String): StudyExamJudgment {
+        val root = parseRootObject(content)
+        val points = root["points"]?.jsonPrimitive?.contentOrNull?.toIntOrNull()
+            ?: throw IllegalArgumentException("Qwen study exam judgment missing points")
+        require(points in 0..2) { "Qwen study exam judgment points must be 0, 1, or 2" }
+        val feedback = root.string("feedback")?.trim().orEmpty()
+            .ifEmpty { root.string("note")?.trim().orEmpty() }
+        return StudyExamJudgment(points = points, feedback = feedback)
+    }
+
+    private fun parseRootObject(content: String): JsonObject {
+        val normalized = stripJsonFences(content)
+        val element = runCatching { json.parseToJsonElement(normalized) }
+            .getOrElse { throw IllegalArgumentException("Qwen study exam judgment is not valid JSON", it) }
+        return element as? JsonObject
+            ?: throw IllegalArgumentException("Qwen study exam judgment root must be a JSON object")
     }
 }
 

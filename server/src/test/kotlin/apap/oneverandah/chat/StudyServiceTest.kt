@@ -2,6 +2,12 @@ package apap.oneverandah.chat
 
 import apap.oneverandah.api.StudyDissectSentenceRequest
 import apap.oneverandah.api.StudyExampleSentence
+import apap.oneverandah.api.StudyExamBeat
+import apap.oneverandah.api.StudyExamBeatKind
+import apap.oneverandah.api.StudyExamScene
+import apap.oneverandah.api.StudyExamSceneRequest
+import apap.oneverandah.api.StudyExamScoreAnswer
+import apap.oneverandah.api.StudyExamScoreRequest
 import apap.oneverandah.api.StudyPlayHistoryMessage
 import apap.oneverandah.api.StudyPlayScenariosRequest
 import apap.oneverandah.api.StudyPlaySpeaker
@@ -1134,6 +1140,100 @@ class StudyServiceTest {
     }
 
     @Test
+    fun `exam scene uses known cast and scores only nonblank known beats`() = runBlocking {
+        var now = 40L
+        val ai = FakeStudyAiClient()
+        val service = StudyService(aiClient = ai, clock = { now++ })
+        val session = StudySessionResponse(
+            text = "Xin chào.",
+            textLanguageTag = "vi-VN",
+            sentences = listOf(
+                StudySentence(
+                    text = "Xin chào.",
+                    tokens = listOf(StudyToken(text = "Xin", status = StudyTokenStatus.READY, literalMeaning = "Hello")),
+                ),
+            ),
+            characters = listOf(
+                StudyStoryCharacter(
+                    id = "main",
+                    name = "Lan",
+                    role = "main",
+                    description = "A neighbor.",
+                ),
+            ),
+        )
+
+        val scene = service.examScene(StudyExamSceneRequest(session = session, languageTag = "en-US"))
+
+        assertEquals("vi", ai.lastExamSceneRequest?.textLanguageTag)
+        assertEquals("en", ai.lastExamSceneRequest?.languageTag)
+        assertEquals(listOf("main"), ai.lastExamSceneRequest?.characters?.map { it.id })
+        assertEquals(3, scene.beats.size)
+        assertTrue(scene.beats.all { it.speakerId == "main" && it.speakerName == "Lan" })
+        assertTrue(scene.beats.filter { it.kind == StudyExamBeatKind.SPEAK }.all { it.line == null })
+
+        val scored = service.scoreExam(
+            scene = scene,
+            request = StudyExamScoreRequest(
+                sessionId = "saved-1",
+                answers = listOf(
+                    StudyExamScoreAnswer("listen-1", "Hello."),
+                    StudyExamScoreAnswer("speak-1", "Chào Lan."),
+                    StudyExamScoreAnswer("speak-2", "   "),
+                    StudyExamScoreAnswer("unknown", "not used"),
+                ),
+            ),
+            textLanguageTag = "vi",
+            languageTag = "en",
+        )
+
+        assertEquals(2, ai.examBeatRequests.size)
+        assertEquals(listOf("listen-1", "speak-1", "speak-2"), scored.beats.map { it.beatId })
+        assertEquals(listOf(2, 2, 0), scored.beats.map { it.points })
+        assertEquals(5, scored.grade.listening)
+        assertEquals(3, scored.grade.speaking)
+        assertEquals(4, scored.grade.overall)
+        assertEquals(StudyExamScoring.feedback("en"), scored.grade.feedback)
+        assertEquals(40L, scored.grade.scoredAt)
+
+        val fallbackScene = service.examScene(
+            StudyExamSceneRequest(session = session.copy(characters = emptyList()), languageTag = "en"),
+        )
+        assertTrue(fallbackScene.beats.all { it.speakerId == "main" && it.speakerName == "Ari" })
+    }
+
+    @Test
+    fun `six study sentences stay in one six beat conversation`() = runBlocking {
+        val sentences = (1..6).map { StudySentence(text = "Sentence $it.", tokens = emptyList()) }
+        val beats = sentences.mapIndexed { index, sentence ->
+            val kind = if (index % 2 == 0) StudyExamBeatKind.LISTEN else StudyExamBeatKind.SPEAK
+            StudyExamBeat(
+                id = "beat-${index + 1}",
+                kind = kind,
+                speakerId = "main",
+                speakerName = "Lan",
+                line = if (kind == StudyExamBeatKind.LISTEN) sentence.text else null,
+                prompt = "Respond to this moment.",
+                expectedMeaning = "Use the sentence meaning.",
+                sourceSentence = sentence.text,
+            )
+        }
+        val ai = FakeStudyAiClient(
+            examScene = StudyExamScene(id = "six-line-scene", setting = "At a market.", beats = beats),
+        )
+        val session = StudySessionResponse(
+            text = sentences.joinToString(" ") { it.text },
+            textLanguageTag = "en",
+            sentences = sentences,
+        )
+
+        val scene = StudyService(ai).examScene(StudyExamSceneRequest(session = session, languageTag = "en"))
+
+        assertEquals(6, scene.beats.size)
+        assertEquals(sentences.map { it.text }, scene.beats.map { it.sourceSentence })
+    }
+
+    @Test
     fun `play turn returns reply and starts cover image job`() = runBlocking {
         val prompts = java.util.concurrent.CopyOnWriteArrayList<String>()
         val ai = FakeStudyAiClient()
@@ -1534,6 +1634,8 @@ internal class FakeStudyAiClient(
     private val intendedScene: String = INTENDED_SCENE,
     private val sessionName: String = "A study session",
     private val sessionNameFailure: Boolean = false,
+    private val examScene: StudyExamScene = fakeExamScene(),
+    private val examJudgment: StudyExamJudgment = StudyExamJudgment(points = 2, feedback = "Clear answer."),
 ) : StudyAiClient {
     var lastExtractRequest: StudyGenerationRequest? = null
     var lastIntentRequest: StudyGenerationRequest? = null
@@ -1549,6 +1651,8 @@ internal class FakeStudyAiClient(
     var lastListenCheckRequest: StudyListenCheckGenerationRequest? = null
     var lastExpressGenerateRequest: StudyExpressGenerateGenerationRequest? = null
     var lastSceneRequest: StudySceneGenerationRequest? = null
+    var lastExamSceneRequest: StudyExamSceneGenerationRequest? = null
+    val examBeatRequests = mutableListOf<StudyExamBeatJudgmentRequest>()
     var studySessionNameCalls = 0
 
     companion object {
@@ -1620,6 +1724,16 @@ internal class FakeStudyAiClient(
         return playTurn
     }
 
+    override suspend fun generateExamScene(request: StudyExamSceneGenerationRequest): StudyExamScene {
+        lastExamSceneRequest = request
+        return examScene
+    }
+
+    override suspend fun evaluateExamBeat(request: StudyExamBeatJudgmentRequest): StudyExamJudgment {
+        examBeatRequests += request
+        return examJudgment
+    }
+
     override suspend fun evaluateWriteAttempt(
         request: StudyWriteCheckGenerationRequest,
     ): StudyWriteFeedback {
@@ -1648,3 +1762,39 @@ internal class FakeStudyAiClient(
         return expressSentences
     }
 }
+
+private fun fakeExamScene() = StudyExamScene(
+    id = "exam-1",
+    setting = "At the neighborhood market.",
+    beats = listOf(
+        StudyExamBeat(
+            id = "listen-1",
+            kind = StudyExamBeatKind.LISTEN,
+            speakerId = "invented",
+            speakerName = "Someone else",
+            line = "Xin chào.",
+            prompt = "What did the neighbor mean?",
+            expectedMeaning = "A greeting.",
+            sourceSentence = "Xin chào.",
+        ),
+        StudyExamBeat(
+            id = "speak-1",
+            kind = StudyExamBeatKind.SPEAK,
+            speakerId = "invented",
+            speakerName = "Someone else",
+            line = "This line must not be shown.",
+            prompt = "Greet the neighbor.",
+            expectedMeaning = "Return the greeting.",
+            sourceSentence = "Xin chào.",
+        ),
+        StudyExamBeat(
+            id = "speak-2",
+            kind = StudyExamBeatKind.SPEAK,
+            speakerId = "invented",
+            speakerName = "Someone else",
+            prompt = "Ask if the neighbor is well.",
+            expectedMeaning = "Ask a polite follow-up.",
+            sourceSentence = "Xin chào.",
+        ),
+    ),
+)

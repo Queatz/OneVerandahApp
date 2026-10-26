@@ -1,6 +1,9 @@
 package apap.oneverandah.chat
 
 import apap.oneverandah.api.StudyTranslateRequest
+import apap.oneverandah.api.StudyExamBeatKind
+import apap.oneverandah.api.StudySentence
+import apap.oneverandah.api.StudyStoryCharacter
 import apap.oneverandah.config.QwenChatConfig
 import io.ktor.client.HttpClient
 import io.ktor.client.engine.mock.MockEngine
@@ -418,6 +421,98 @@ class QwenStudyClientTest {
             """.trimIndent(),
         )
         assertEquals("A neighbor waves from a courtyard in warm evening light.", scene)
+    }
+
+    @Test
+    fun `study exam scene parser accepts a three beat script`() {
+        val scene = QwenStudyExamSceneParser.parse(
+            """
+            ```json
+            {
+              "id":"market-scene",
+              "setting":"At the neighborhood market.",
+              "beats":[
+                {"id":"listen-1","kind":"LISTEN","speakerId":"main","speakerName":"Lan","line":"Xin chào.","prompt":"What did Lan mean?","expectedMeaning":"A greeting.","sourceSentence":"Xin chào."},
+                {"id":"speak-1","kind":"SPEAK","speakerId":"main","speakerName":"Lan","prompt":"Greet Lan.","expectedMeaning":"Return the greeting.","sourceSentence":"Xin chào."},
+                {"id":"speak-2","kind":"SPEAK","speakerId":"main","speakerName":"Lan","prompt":"Ask if Lan is well.","expectedMeaning":"Ask a polite follow-up.","sourceSentence":"Xin chào."}
+              ],
+              "overall":5
+            }
+            ```
+            """.trimIndent(),
+        )
+
+        assertEquals("market-scene", scene.id)
+        assertEquals(3, scene.beats.size)
+        assertEquals(listOf(StudyExamBeatKind.LISTEN, StudyExamBeatKind.SPEAK, StudyExamBeatKind.SPEAK), scene.beats.map { it.kind })
+        assertEquals("Xin chào.", scene.beats.first().line)
+    }
+
+    @Test
+    fun `study exam judgment parser accepts only beat points and feedback`() {
+        val judgment = QwenStudyExamJudgmentParser.parse(
+            """{"points":2,"feedback":"You understood and responded clearly.","overall":5,"grade":5}""",
+        )
+
+        assertEquals(2, judgment.points)
+        assertEquals("You understood and responded clearly.", judgment.feedback)
+        assertFailsWith<IllegalArgumentException> {
+            QwenStudyExamJudgmentParser.parse("""{"points":5,"feedback":"Too high."}""")
+        }
+    }
+
+    @Test
+    fun `study exam prompts constrain the cast languages and situated transcript scores`() = runBlocking {
+        val bodies = mutableListOf<String>()
+        val engine = MockEngine { request ->
+            bodies += (request.body as OutgoingContent.ByteArrayContent).bytes().decodeToString()
+            val content = if (bodies.size == 1) {
+                """
+                {"id":"scene-1","setting":"At a market.","beats":[
+                  {"id":"listen-1","kind":"LISTEN","speakerId":"main","speakerName":"Lan","line":"Xin chào.","prompt":"What did Lan mean?","expectedMeaning":"A greeting.","sourceSentence":"Xin chào."},
+                  {"id":"speak-1","kind":"SPEAK","speakerId":"main","speakerName":"Lan","prompt":"Greet Lan.","expectedMeaning":"Return the greeting.","sourceSentence":"Xin chào."},
+                  {"id":"speak-2","kind":"SPEAK","speakerId":"main","speakerName":"Lan","prompt":"Ask if Lan is well.","expectedMeaning":"Ask a polite follow-up.","sourceSentence":"Xin chào."}
+                ]}
+                """.trimIndent()
+            } else {
+                """{"points":2,"feedback":"You responded clearly."}"""
+            }
+            respond(
+                content = qwenChatResponse(content),
+                status = HttpStatusCode.OK,
+                headers = headersOf(HttpHeaders.ContentType, "application/json"),
+            )
+        }
+        val client = HttpClient(engine)
+        val ai = DashScopeStudyAiClient(qwenConfig(), client)
+
+        val scene = ai.generateExamScene(
+            StudyExamSceneGenerationRequest(
+                text = "Xin chào.",
+                textLanguageTag = "vi",
+                languageTag = "en",
+                sentences = listOf(StudySentence(text = "Xin chào.", tokens = emptyList())),
+                characters = listOf(StudyStoryCharacter("main", "Lan", "main", "A neighbor.")),
+            ),
+        )
+        val judgment = ai.evaluateExamBeat(
+            StudyExamBeatJudgmentRequest(
+                setting = scene.setting,
+                beat = scene.beats.first(),
+                transcript = "Hello.",
+                textLanguageTag = "vi",
+                languageTag = "en",
+            ),
+        )
+
+        assertEquals(3, scene.beats.size)
+        assertEquals(2, judgment.points)
+        assertContains(bodies[0], "EXACTLY 3 scored beats")
+        assertContains(bodies[0], "Allowed cast only")
+        assertContains(bodies[0], "Lan")
+        assertContains(bodies[1], "Merely repeating the heard study-language line is not comprehension")
+        assertContains(bodies[1], "without responding to the moment")
+        client.close()
     }
 
     private fun qwenConfig() = QwenChatConfig(

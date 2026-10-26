@@ -692,4 +692,67 @@ class ChatApiModelsTest {
         assertEquals(original, decoded)
     }
 
+    @Test
+    fun `legacy saved study sessions decode without exam fields`() {
+        val saved = json.decodeFromString<SavedStudySession>(
+            """{"id":"study-old","languageTag":"en","text":"Hello.","textLanguageTag":"en","session":{"text":"Hello.","textLanguageTag":"en","sentences":[]},"createdAt":10,"updatedAt":20}""",
+        )
+        val summary = json.decodeFromString<SavedStudySessionSummary>(
+            """{"id":"study-old","languageTag":"en","text":"Hello.","textLanguageTag":"en","createdAt":10,"updatedAt":20}""",
+        )
+
+        assertNull(saved.examGrade)
+        assertNull(saved.session.examScene)
+        assertNull(summary.examGrade)
+    }
+
+    @Test
+    fun `study exam contracts round trip as structured JSON`() {
+        val scene = StudyExamScene(
+            id = "scene-1",
+            setting = "At a neighborhood market.",
+            beats = listOf(
+                StudyExamBeat(
+                    id = "listen-1",
+                    kind = StudyExamBeatKind.LISTEN,
+                    speakerId = "main",
+                    speakerName = "Lan",
+                    line = "Xin chào!",
+                    prompt = "What did Lan mean?",
+                    expectedMeaning = "Hello.",
+                    sourceSentence = "Xin chào!",
+                ),
+                StudyExamBeat(
+                    id = "speak-1",
+                    kind = StudyExamBeatKind.SPEAK,
+                    speakerId = "main",
+                    speakerName = "Lan",
+                    prompt = "Reply by greeting Lan.",
+                    expectedMeaning = "A suitable greeting.",
+                    sourceSentence = "Xin chào!",
+                ),
+            ),
+        )
+        val grade = StudyExamGrade(
+            overall = 4,
+            listening = 5,
+            speaking = 3,
+            feedback = "You understood the line and gave a useful reply.",
+            scoredAt = 100L,
+        )
+        val scoreRequest = StudyExamScoreRequest(
+            sessionId = "study-1",
+            answers = listOf(StudyExamScoreAnswer(beatId = "listen-1", transcript = "Hello.")),
+        )
+        val scoreResponse = StudyExamScoreResponse(
+            grade = grade,
+            beats = listOf(StudyExamBeatScore("listen-1", 2, "Clear meaning.")),
+        )
+
+        assertEquals(scene, json.decodeFromString<StudyExamScene>(json.encodeToString(scene)))
+        assertEquals(grade, json.decodeFromString<StudyExamGrade>(json.encodeToString(grade)))
+        assertEquals(scoreRequest, json.decodeFromString<StudyExamScoreRequest>(json.encodeToString(scoreRequest)))
+        assertEquals(scoreResponse, json.decodeFromString<StudyExamScoreResponse>(json.encodeToString(scoreResponse)))
+    }
+
 }

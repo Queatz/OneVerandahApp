@@ -11,6 +11,8 @@ import apap.oneverandah.api.SpeechResponse
 import apap.oneverandah.api.StudyDissectSentenceRequest
 import apap.oneverandah.api.StudyExpressCheckRequest
 import apap.oneverandah.api.StudyExpressGenerateRequest
+import apap.oneverandah.api.StudyExamSceneRequest
+import apap.oneverandah.api.StudyExamScoreRequest
 import apap.oneverandah.api.StudyListenCheckRequest
 import apap.oneverandah.api.StudyPlayScenariosRequest
 import apap.oneverandah.api.StudyPlayTurnRequest
@@ -228,6 +230,18 @@ fun Route.chatRoutes(
             call.respond(studyService.playTurn(request))
         }
 
+        post("/api/chat/study/exam/scene") {
+            val request = call.receiveStudyPayload<StudyExamSceneRequest>()
+            if (request.normalizedOrNull() == null) {
+                call.respond(
+                    HttpStatusCode.BadRequest,
+                    ChatErrorResponse("Study exam scene requires non-blank text and at least one sentence"),
+                )
+                return@post
+            }
+            call.respondStudyPayload(studyService.examScene(request))
+        }
+
         post("/api/chat/study/write/check") {
             val request = call.receive<StudyWriteCheckRequest>()
             if (request.normalizedOrNull() == null) {
@@ -288,6 +302,44 @@ fun Route.chatRoutes(
                 return@get
             }
             call.respond(image)
+        }
+    }
+
+    if (studyService != null && studySessionsService != null) {
+        post("/api/chat/study/exam/score") {
+            val token = call.request.header(DEVICE_TOKEN_HEADER)
+            val request = call.receiveStudyPayload<StudyExamScoreRequest>()
+            val normalized = request.normalizedOrNull()
+            if (normalized == null) {
+                call.respond(HttpStatusCode.BadRequest, ChatErrorResponse("Study exam session id is required"))
+                return@post
+            }
+            try {
+                val saved = studySessionsService.getOwned(token, normalized.sessionId)
+                if (saved == null) {
+                    call.respond(HttpStatusCode.NotFound, ChatErrorResponse("Study session not found"))
+                    return@post
+                }
+                val scene = saved.session.examScene
+                if (scene == null) {
+                    call.respond(HttpStatusCode.BadRequest, ChatErrorResponse("Study exam scene has not been saved"))
+                    return@post
+                }
+                val result = studyService.scoreExam(
+                    scene = scene,
+                    request = normalized,
+                    textLanguageTag = saved.textLanguageTag,
+                    languageTag = saved.languageTag,
+                )
+                val updated = studySessionsService.saveExamGrade(token, saved.id, result.grade)
+                if (updated == null) {
+                    call.respond(HttpStatusCode.NotFound, ChatErrorResponse("Study session not found"))
+                    return@post
+                }
+                call.respondStudyPayload(result)
+            } catch (_: UnauthorizedDeviceException) {
+                call.respond(HttpStatusCode.Unauthorized, ChatErrorResponse("Valid device token required"))
+            }
         }
     }
 

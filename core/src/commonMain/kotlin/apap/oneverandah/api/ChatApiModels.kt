@@ -241,6 +241,97 @@ data class StudySessionResponse(
     val playScenarios: List<StudyPlayScenario> = emptyList(),
     /** Extra Listen/Express prompts shared across both tabs and persisted with the session. */
     val practiceSentences: List<StudyExampleSentence> = emptyList(),
+    /** Fixed character-led exam script, generated lazily when Test is first opened. */
+    val examScene: StudyExamScene? = null,
+)
+
+@Serializable
+enum class StudyExamBeatKind {
+    LISTEN,
+    SPEAK,
+}
+
+@Serializable
+data class StudyExamBeat(
+    val id: String,
+    val kind: StudyExamBeatKind,
+    val speakerId: String,
+    val speakerName: String,
+    val line: String? = null,
+    val prompt: String,
+    val expectedMeaning: String,
+    val sourceSentence: String,
+)
+
+@Serializable
+data class StudyExamScene(
+    val id: String,
+    val setting: String,
+    val beats: List<StudyExamBeat> = emptyList(),
+)
+
+@Serializable
+data class StudyExamGrade(
+    val overall: Int,
+    val listening: Int,
+    val speaking: Int,
+    val feedback: String,
+    val scoredAt: Long,
+)
+
+@Serializable
+data class StudyExamSceneRequest(
+    val session: StudySessionResponse,
+    val languageTag: String,
+) {
+    fun normalizedOrNull(): StudyExamSceneRequest? {
+        val normalizedText = session.text.trim().takeIf { it.isNotEmpty() } ?: return null
+        if (session.sentences.isEmpty()) return null
+        return copy(
+            languageTag = Language.normalizeLearnerLanguageTag(languageTag),
+            session = session.copy(
+                text = normalizedText,
+                textLanguageTag = Language.normalizeContentTag(session.textLanguageTag),
+                examScene = null,
+            ),
+        )
+    }
+}
+
+@Serializable
+data class StudyExamScoreAnswer(
+    val beatId: String,
+    val transcript: String,
+)
+
+@Serializable
+data class StudyExamScoreRequest(
+    val sessionId: String,
+    val answers: List<StudyExamScoreAnswer> = emptyList(),
+) {
+    fun normalizedOrNull(): StudyExamScoreRequest? {
+        val normalizedSessionId = sessionId.trim().takeIf { it.isNotEmpty() } ?: return null
+        return copy(
+            sessionId = normalizedSessionId,
+            answers = answers.mapNotNull { answer ->
+                val beatId = answer.beatId.trim().takeIf { it.isNotEmpty() } ?: return@mapNotNull null
+                answer.copy(beatId = beatId, transcript = answer.transcript.trim())
+            },
+        )
+    }
+}
+
+@Serializable
+data class StudyExamBeatScore(
+    val beatId: String,
+    val points: Int,
+    val feedback: String,
+)
+
+@Serializable
+data class StudyExamScoreResponse(
+    val grade: StudyExamGrade,
+    val beats: List<StudyExamBeatScore> = emptyList(),
 )
 
 /** One sentence from the source text, tokenized for interactive study. */
@@ -889,6 +980,7 @@ data class SavedStudySession(
     val createdAt: Long,
     val updatedAt: Long,
     val name: String = "",
+    val examGrade: StudyExamGrade? = null,
 )
 
 @Serializable
@@ -902,6 +994,7 @@ data class SavedStudySessionSummary(
     val updatedAt: Long,
     val sentenceImageUrls: List<String> = emptyList(),
     val name: String = "",
+    val examGrade: StudyExamGrade? = null,
 )
 
 fun StudySessionResponse.sentenceImageUrls(): List<String> = sentences.mapNotNull { sentence ->

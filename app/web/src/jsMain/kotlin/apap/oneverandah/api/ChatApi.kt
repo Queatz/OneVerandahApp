@@ -252,6 +252,30 @@ object ChatApi {
         return json.decodeFromString(StudyPlayTurnResponse.serializer(), text)
     }
 
+    suspend fun studyExamScene(request: StudyExamSceneRequest): StudyExamScene {
+        val response = client.post(chatApiUrl("/study/exam/scene")) {
+            contentType(ContentType.Application.Json)
+            setBody(json.encodeToString(StudyExamSceneRequest.serializer(), request))
+        }
+        val text = response.bodyAsText()
+        if (!response.status.isSuccess()) throw ChatApiException(errorMessage(text, response.status.value))
+        return json.decodeFromString(StudyExamScene.serializer(), text)
+    }
+
+    suspend fun studyExamScore(request: StudyExamScoreRequest): StudyExamScoreResponse {
+        val token = DeviceTokenStore.ensureToken()
+        val response = client.post(chatApiUrl("/study/exam/score")) {
+            header(DEVICE_TOKEN_HEADER, token)
+            contentType(ContentType.Application.Json)
+            setBody(json.encodeToString(StudyExamScoreRequest.serializer(), request))
+        }
+        val text = response.bodyAsText()
+        if (!response.status.isSuccess()) {
+            throw ChatApiException(errorMessage(text, response.status.value), response.status.value)
+        }
+        return json.decodeFromString(StudyExamScoreResponse.serializer(), text)
+    }
+
     suspend fun studyWriteCheck(request: StudyWriteCheckRequest): StudyWriteCheckResponse {
         val response = client.post(chatApiUrl("/study/write/check")) {
             contentType(ContentType.Application.Json)

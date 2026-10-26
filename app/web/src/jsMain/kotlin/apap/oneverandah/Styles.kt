@@ -387,6 +387,8 @@ object Styles {
     const val studySessionPhraseImage = "study-session-phrase-image"
     const val studySessionCard = "study-session-card"
     const val studySessionCardTitle = "study-session-card-title"
+    const val studySessionExamGradeBadge = "study-session-exam-grade-badge"
+    const val studySessionHeaderExamGradeBadge = "study-session-header-exam-grade-badge"
     const val studySessionCardActions = "study-session-card-actions"
     const val studySessionSectionTitle = "study-session-section-title"
     const val studySessionRemoveBtn = "study-session-remove-btn"
@@ -3262,6 +3264,39 @@ object Styles {
             font-weight: 700;
             color: var(--md-sys-color-on-surface);
             overflow-wrap: anywhere;
+        }
+        .${studySessionExamGradeBadge} {
+            display: inline-flex;
+            align-items: center;
+            align-self: flex-start;
+            gap: 4px;
+            width: fit-content;
+            margin: 0 0 8px;
+            padding: 4px 9px;
+            border-radius: 999px;
+            background: color-mix(in srgb, var(--md-sys-color-primary) 9%, var(--md-sys-color-surface));
+            color: var(--md-sys-color-primary);
+            font-size: 12px;
+            font-weight: 700;
+            font-variant-numeric: tabular-nums;
+        }
+        .${studySessionExamGradeBadge} .${materialSymbols} {
+            font-size: 14px;
+        }
+        .${studySessionHeaderExamGradeBadge} {
+            display: inline-flex;
+            align-items: center;
+            justify-content: center;
+            min-width: 42px;
+            height: 30px;
+            margin: 0 4px;
+            padding: 0 8px;
+            border-radius: 999px;
+            background: color-mix(in srgb, var(--md-sys-color-primary) 9%, var(--md-sys-color-surface));
+            color: var(--md-sys-color-primary);
+            font-size: 12px;
+            font-weight: 700;
+            font-variant-numeric: tabular-nums;
         }
         .${studySessionCardActions} {
             position: absolute;
