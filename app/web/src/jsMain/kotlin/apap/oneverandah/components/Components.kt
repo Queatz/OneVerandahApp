@@ -9,6 +9,7 @@ import androidx.compose.runtime.remember
 import androidx.compose.runtime.rememberUpdatedState
 import androidx.compose.runtime.setValue
 import apap.oneverandah.Styles
+import apap.oneverandah.state.FullscreenStore
 import apap.oneverandah.state.LayoutModeStore
 import apap.oneverandah.state.Toaster
 import apap.oneverandah.i18n.Localization
@@ -221,6 +222,10 @@ private fun NavMenuItems(
             if (preferDesktop) onNavigate()
         }
     }
+    DrawerItem("fullscreen", strings.layoutFullscreen) {
+        onNavigate()
+        FullscreenStore.enter()
+    }
 
     Div(attrs = { classes(Styles.drawerSection) }) { Text(strings.menuLanguage) }
     LanguageOptions(onSelected = { /* stay open so user can compare */ })
@@ -378,30 +383,54 @@ fun Scaffold(
     val viewportWide = LayoutModeStore.viewportWide
     val layoutPreference = LayoutModeStore.preference
     val isDesktop = viewportWide && layoutPreference == LayoutModeStore.Preference.DESKTOP
+    val isFullscreen = FullscreenStore.active
 
     LaunchedEffect(Unit) {
         LayoutModeStore.ensureViewportListener()
+        FullscreenStore.ensureFullscreenChangeListener()
     }
     LaunchedEffect(isDesktop) {
         if (isDesktop) drawerOpen = false
+    }
+    LaunchedEffect(isFullscreen) {
+        if (isFullscreen) {
+            drawerOpen = false
+            languageDialogOpen = false
+        }
     }
 
     Div(attrs = {
         classes(Styles.appShell)
         if (isDesktop) classes(Styles.layoutDesktop) else classes(Styles.layoutMobile)
+        if (isFullscreen) classes(Styles.layoutFullscreen)
     }) {
         Div(attrs = { classes(Styles.appFrame) }) {
-            AppBar(
-                title = title,
-                onBack = onBack,
-                // Hamburger only in mobile layout; desktop keeps the rail open.
-                onMenu = if (isDesktop) null else ({ drawerOpen = true }),
-                onLanguageClick = { languageDialogOpen = true },
-                showPhrasesAction = false, // disabled for now
-                appBarAction = appBarAction,
-            )
+            if (!isFullscreen) {
+                AppBar(
+                    title = title,
+                    onBack = onBack,
+                    // Hamburger only in mobile layout; desktop keeps the rail open.
+                    onMenu = if (isDesktop) null else ({ drawerOpen = true }),
+                    onLanguageClick = { languageDialogOpen = true },
+                    showPhrasesAction = false, // disabled for now
+                    appBarAction = appBarAction,
+                )
+            }
 
-            if (isDesktop) {
+            if (isFullscreen) {
+                Div(attrs = { classes(Styles.appBody) }) {
+                    Div(attrs = { classes(Styles.appMain) }) {
+                        ScaffoldMainColumn(
+                            showBanner = showBanner,
+                            bannerImageUrl = bannerImageUrl,
+                            footer = footer,
+                            lockScroll = lockScroll,
+                            scrollKey = scrollKey,
+                            content = content,
+                        )
+                    }
+                }
+            } else if (isDesktop) {
                 Div(attrs = { classes(Styles.appBody) }) {
                     NavigationSidebar(onHome = onHome)
                     Div(attrs = { classes(Styles.appMain) }) {
@@ -435,10 +464,22 @@ fun Scaffold(
             // (phone chrome or full desktop shell), not the page outside it.
             overlay?.invoke()
             ToastHost()
-            LanguageDialog(
-                visible = languageDialogOpen,
-                onDismiss = { languageDialogOpen = false },
-            )
+            if (!isFullscreen) {
+                LanguageDialog(
+                    visible = languageDialogOpen,
+                    onDismiss = { languageDialogOpen = false },
+                )
+            }
+        }
+        if (isFullscreen) {
+            Button(attrs = {
+                classes(Styles.fullscreenExit)
+                attr("type", "button")
+                attr("aria-label", Localization.strings.layoutExitFullscreen)
+                onClick { FullscreenStore.exit() }
+            }) {
+                MaterialSymbol("close")
+            }
         }
     }
 }

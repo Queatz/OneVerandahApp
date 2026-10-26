@@ -27,6 +27,12 @@ class LocalizationTest {
         assertEquals("1 Anfrage übrig", german.meetsRemaining(1))
         assertEquals("3 Anfragen übrig", german.meetsRemaining(3))
         assertEquals("Anfrage an Jacob senden", german.meetsPitchPerson("Jacob"))
+
+        val english = stringsFor(Language.ENGLISH)
+        assertEquals("Fullscreen", english.layoutFullscreen)
+        assertEquals("Exit fullscreen", english.layoutExitFullscreen)
+        assertEquals("Vollbild", german.layoutFullscreen)
+        assertEquals("Vollbild beenden", german.layoutExitFullscreen)
     }
 
     @Test

@@ -44,10 +44,25 @@ class ArangoStudySessionsRepository private constructor(
         val body = buildJsonObject {
             put(
                 "query",
-                "FOR doc IN $collection FILTER doc.deviceTokenHash == @deviceTokenHash SORT doc.updatedAt DESC " +
-                    "RETURN { _key: doc._key, sourceMessageId: doc.sourceMessageId, languageTag: doc.languageTag, " +
-                    "text: doc.text, textLanguageTag: doc.textLanguageTag, createdAt: doc.createdAt, " +
-                    "updatedAt: doc.updatedAt }",
+                """
+                FOR doc IN $collection
+                  FILTER doc.deviceTokenHash == @deviceTokenHash
+                  SORT doc.updatedAt DESC
+                  RETURN {
+                    _key: doc._key,
+                    sourceMessageId: doc.sourceMessageId,
+                    languageTag: doc.languageTag,
+                    text: doc.text,
+                    textLanguageTag: doc.textLanguageTag,
+                    createdAt: doc.createdAt,
+                    updatedAt: doc.updatedAt,
+                    sentenceImageUrls: (
+                      FOR sentence IN NOT_NULL(doc.session.sentences, [])
+                      FILTER IS_STRING(sentence.imageUrl) AND TRIM(sentence.imageUrl) != ""
+                      RETURN TRIM(sentence.imageUrl)
+                    )
+                  }
+                """.trimIndent(),
             )
             put("bindVars", buildJsonObject { put("deviceTokenHash", deviceTokenHash) })
         }
@@ -187,7 +202,12 @@ class ArangoStudySessionsRepository private constructor(
                     text: doc.text,
                     textLanguageTag: doc.textLanguageTag,
                     createdAt: doc.createdAt,
-                    updatedAt: doc.updatedAt
+                    updatedAt: doc.updatedAt,
+                    sentenceImageUrls: (
+                      FOR sentence IN NOT_NULL(doc.session.sentences, [])
+                      FILTER IS_STRING(sentence.imageUrl) AND TRIM(sentence.imageUrl) != ""
+                      RETURN TRIM(sentence.imageUrl)
+                    )
                   }
                 """.trimIndent(),
             )
@@ -338,6 +358,7 @@ private data class SavedStudySessionSummaryDocument(
     val textLanguageTag: String,
     val createdAt: Long,
     val updatedAt: Long,
+    val sentenceImageUrls: List<String> = emptyList(),
 ) {
     fun toRecord() = SavedStudySessionSummaryRecord(
         id = key,
@@ -347,6 +368,7 @@ private data class SavedStudySessionSummaryDocument(
         textLanguageTag = textLanguageTag,
         createdAt = createdAt,
         updatedAt = updatedAt,
+        sentenceImageUrls = sentenceImageUrls,
     )
 }
 

@@ -14,7 +14,7 @@ class LongRunningHttpClientTest {
             val config = client.engine.config as CIOEngineConfig
             assertEquals(0L, config.requestTimeout)
             assertTrue(config.dispatcher != null)
-            assertEquals(128, config.maxConnectionsCount)
+            assertEquals(512, config.maxConnectionsCount)
             assertEquals(32, config.endpoint.maxConnectionsPerRoute)
         } finally {
             client.close()

@@ -23,6 +23,8 @@ object Styles {
     const val sidebar = "sidebar"
     const val layoutDesktop = "layout-desktop"
     const val layoutMobile = "layout-mobile"
+    const val layoutFullscreen = "layout-fullscreen"
+    const val fullscreenExit = "fullscreen-exit"
     const val appBar = "app-bar"
     const val appBarIcon = "app-bar-icon"
     const val appBarTitle = "app-bar-title"
@@ -4994,6 +4996,58 @@ object Styles {
         .${zaloQrDialog} .${dialogActions} {
             width: 100%;
             justify-content: center;
+        }
+
+        .${appShell}.${layoutFullscreen} {
+            justify-content: stretch;
+            align-items: stretch;
+            min-height: 100vh;
+            min-height: 100dvh;
+            padding: 0;
+        }
+        .${appShell}.${layoutFullscreen} .${appFrame} {
+            width: 100%;
+            max-width: none;
+            height: 100vh;
+            height: 100dvh;
+            max-height: none;
+            min-height: 0;
+            border-radius: 0;
+            box-shadow: none;
+        }
+        .${appShell}.${layoutFullscreen} .${appBody} {
+            display: flex;
+            flex: 1 1 auto;
+            min-height: 0;
+            min-width: 0;
+        }
+        .${appShell}.${layoutFullscreen} .${appMain} {
+            flex: 1 1 auto;
+            min-height: 0;
+            min-width: 0;
+            width: 100%;
+        }
+        .${fullscreenExit} {
+            position: fixed;
+            top: 12px;
+            left: 12px;
+            z-index: 1000;
+            display: grid;
+            place-items: center;
+            width: 40px;
+            height: 40px;
+            padding: 0;
+            border: 0;
+            border-radius: 50%;
+            background: var(--md-sys-color-surface);
+            color: var(--md-sys-color-on-surface);
+            opacity: 0.28;
+            cursor: pointer;
+            transition: opacity 150ms ease, background-color 150ms ease;
+        }
+        .${fullscreenExit}:hover,
+        .${fullscreenExit}:focus-visible {
+            opacity: 0.9;
         }
     """.trimIndent()
 }

@@ -14,25 +14,16 @@ import kotlin.test.assertTrue
 class StudySessionsListTest {
     @Test
     fun `phrase image urls keep sentence order and skip blanks`() {
-        val session = StudySessionResponse(
-            text = "Hello. Hi.",
-            textLanguageTag = "en",
-            sentences = listOf(
-                StudySentence(text = "Hello.", tokens = emptyList(), imageUrl = " https://img/a "),
-                StudySentence(text = "Hi.", tokens = emptyList(), imageUrl = "  "),
-                StudySentence(text = "Bye.", tokens = emptyList(), imageUrl = null),
-                StudySentence(text = "Later.", tokens = emptyList(), imageUrl = "https://img/b"),
-            ),
+        val item = sampleSaved("images", "Hello. Hi.").copy(
+            sentenceImageUrls = listOf(" https://img/a ", "  ", "https://img/b"),
         )
         assertEquals(
             listOf("https://img/a", "https://img/b"),
-            studySessionPhraseImageUrls(session),
+            studySessionPhraseImageUrls(item),
         )
         assertEquals(
             emptyList(),
-            studySessionPhraseImageUrls(
-                StudySessionResponse(text = "Hi", textLanguageTag = "en", sentences = emptyList()),
-            ),
+            studySessionPhraseImageUrls(sampleSaved("empty", "Hi")),
         )
     }
 

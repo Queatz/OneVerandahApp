@@ -6,6 +6,7 @@ import apap.oneverandah.api.SavedStudySession
 import apap.oneverandah.api.SavedStudySessionSummary
 import apap.oneverandah.api.SavedStudySessionsResponse
 import apap.oneverandah.api.StudySessionResponse
+import apap.oneverandah.api.sentenceImageUrls
 import kotlinx.coroutines.sync.Mutex
 import kotlinx.coroutines.sync.withLock
 import java.util.UUID
@@ -40,6 +41,7 @@ data class SavedStudySessionRecord(
         textLanguageTag = textLanguageTag,
         createdAt = createdAt,
         updatedAt = updatedAt,
+        sentenceImageUrls = session.sentenceImageUrls(),
     )
 }
 
@@ -51,6 +53,7 @@ data class SavedStudySessionSummaryRecord(
     val textLanguageTag: String,
     val createdAt: Long,
     val updatedAt: Long,
+    val sentenceImageUrls: List<String> = emptyList(),
 ) {
     fun toApi() = SavedStudySessionSummary(
         id = id,
@@ -60,6 +63,7 @@ data class SavedStudySessionSummaryRecord(
         textLanguageTag = textLanguageTag,
         createdAt = createdAt,
         updatedAt = updatedAt,
+        sentenceImageUrls = sentenceImageUrls,
     )
 }
 
@@ -71,6 +75,7 @@ private fun SavedStudySessionRecord.toSummaryRecord() = SavedStudySessionSummary
     textLanguageTag = textLanguageTag,
     createdAt = createdAt,
     updatedAt = updatedAt,
+    sentenceImageUrls = session.sentenceImageUrls(),
 )
 
 interface StudySessionsRepository {

@@ -1501,6 +1501,18 @@ private fun StudySessionCard(
                 MaterialSymbol("delete")
             }
         }
+        val phraseImages = studySessionPhraseImageUrls(item)
+        if (phraseImages.isNotEmpty()) {
+            Div(attrs = { classes(Styles.studySessionPhraseRow) }) {
+                phraseImages.forEach { url ->
+                    Img(
+                        src = url,
+                        alt = strings.chatStudySentenceImageAlt,
+                        attrs = { classes(Styles.studySessionPhraseImage) },
+                    )
+                }
+            }
+        }
         Span(attrs = { classes(Styles.savedItemSender) }) {
             Text(strings.chatStudyTitle)
         }
@@ -2551,10 +2563,8 @@ private fun studyCreationImageCounts(
 }
 
 /** Completed sentence visuals for a saved study card, in reading order. */
-internal fun studySessionPhraseImageUrls(session: StudySessionResponse): List<String> =
-    session.sentences.mapNotNull { sentence ->
-        sentence.imageUrl?.trim()?.takeIf { it.isNotEmpty() }
-    }
+internal fun studySessionPhraseImageUrls(item: SavedStudySessionSummary): List<String> =
+    item.sentenceImageUrls.mapNotNull { it.trim().takeIf(String::isNotEmpty) }
 
 internal const val STUDY_COMMUNITY_PAGE_SIZE = 20
 

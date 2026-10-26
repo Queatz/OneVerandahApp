@@ -18,6 +18,34 @@ import kotlin.test.assertTrue
 
 class StudySessionsServiceTest {
     @Test
+    fun `summary responses include nonblank sentence image urls in order`() = runBlocking {
+        val deviceService = DeviceService(
+            repository = InMemoryDeviceRepository(),
+            tokenGenerator = { "summary-image-study-token-abcdefghijklmnop" },
+        )
+        val service = StudySessionsService(
+            repository = InMemoryStudySessionsRepository(),
+            deviceService = deviceService,
+        )
+        val token = deviceService.issueToken().deviceToken
+        val session = StudySessionResponse(
+            text = "Hello. Hi. Bye.",
+            textLanguageTag = "en",
+            sentences = listOf(
+                StudySentence(text = "Hello.", tokens = emptyList(), imageUrl = " https://img/a "),
+                StudySentence(text = "Hi.", tokens = emptyList(), imageUrl = "  "),
+                StudySentence(text = "Bye.", tokens = emptyList(), imageUrl = "https://img/b"),
+            ),
+        )
+
+        val saved = service.save(token, SaveStudySessionRequest(languageTag = "en", session = session))
+        val listed = service.list(token).items.single()
+
+        assertEquals(listOf("https://img/a", "https://img/b"), saved.sentenceImageUrls)
+        assertEquals(saved.sentenceImageUrls, listed.sentenceImageUrls)
+    }
+
+    @Test
     fun `save list and delete are scoped by device token`() = runBlocking {
         val deviceService = DeviceService(
             repository = InMemoryDeviceRepository(),

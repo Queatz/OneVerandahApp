@@ -871,7 +871,12 @@ data class SavedStudySessionSummary(
     val textLanguageTag: String,
     val createdAt: Long,
     val updatedAt: Long,
+    val sentenceImageUrls: List<String> = emptyList(),
 )
+
+fun StudySessionResponse.sentenceImageUrls(): List<String> = sentences.mapNotNull { sentence ->
+    sentence.imageUrl?.trim()?.takeIf { it.isNotEmpty() }
+}
 
 @Serializable
 data class SavedStudySessionsResponse(val items: List<SavedStudySessionSummary>)

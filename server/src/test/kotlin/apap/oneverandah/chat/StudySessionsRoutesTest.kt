@@ -83,6 +83,7 @@ class StudySessionsRoutesTest {
                     "sentences":[
                       {
                         "text":"Xin chào.",
+                        "imageUrl":" https://img/sentence ",
                         "tokens":[{"text":"Xin","status":"PENDING"},{"text":"chào","status":"PENDING"}]
                       }
                     ]
@@ -94,6 +95,7 @@ class StudySessionsRoutesTest {
         assertEquals(HttpStatusCode.OK, created.status)
         val createdBody = created.bodyAsText()
         assertTrue("\"session\"" !in createdBody)
+        assertTrue("\"sentenceImageUrls\":[\"https://img/sentence\"]" in createdBody)
         val saved = json.decodeFromString(SavedStudySessionSummary.serializer(), createdBody)
         assertEquals("Xin chào.", saved.text)
         assertEquals("m1", saved.sourceMessageId)
@@ -105,6 +107,7 @@ class StudySessionsRoutesTest {
         assertEquals(HttpStatusCode.OK, listA.status)
         val listBody = listA.bodyAsText()
         assertTrue("\"session\"" !in listBody)
+        assertTrue("\"sentenceImageUrls\":[\"https://img/sentence\"]" in listBody)
         val itemsA = json.decodeFromString(SavedStudySessionsResponse.serializer(), listBody)
         assertEquals(1, itemsA.items.size)
         assertEquals(saved.id, itemsA.items.single().id)
@@ -203,6 +206,7 @@ class StudySessionsRoutesTest {
         assertEquals(HttpStatusCode.OK, firstPage.status)
         val firstPageBody = firstPage.bodyAsText()
         assertTrue("\"session\"" !in firstPageBody)
+        assertTrue("\"sentenceImageUrls\":[\"https://img/community-two\"]" in firstPageBody)
         val page = json.decodeFromString(CommunityStudySessionsResponse.serializer(), firstPageBody)
         assertEquals(1, page.items.size)
         assertEquals("community-two", page.items.single().text)
@@ -226,6 +230,7 @@ class StudySessionsRoutesTest {
             "sentences":[
               {
                 "text":"$text",
+                "imageUrl":"https://img/$text",
                 "tokens":[{"text":"${text.split(" ").first()}","status":"PENDING"}]
               }
             ]
