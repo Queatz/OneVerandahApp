@@ -1404,9 +1404,11 @@ fun StudyScreen(
     }
 
 
-    LaunchedEffect(Unit) {
-        refreshStudySessions(silent = true)
-        loadCommunitySessions(reset = true)
+    LaunchedEffect(studySessionVisible) {
+        if (!studySessionVisible) {
+            refreshStudySessions(silent = true)
+            loadCommunitySessions(reset = true)
+        }
     }
 
     LaunchedEffect(language.tag) {
