@@ -68,6 +68,7 @@ import apap.oneverandah.state.Toaster
 import kotlinx.browser.document
 import kotlinx.browser.window
 import kotlinx.coroutines.CompletableDeferred
+import kotlinx.coroutines.Deferred
 import kotlinx.coroutines.Job
 import kotlinx.coroutines.NonCancellable
 import kotlinx.coroutines.async
@@ -1020,17 +1021,15 @@ fun StudyScreen(
         onHome = onHome,
         appBarAction = if (studySessionVisible) {
             {
-                if (activeStudySessionOwned) {
-                    activeStudySessionItem?.examGrade?.let { grade ->
-                        val summary = studyExamGradeSummary(
-                            grade.overall,
-                            studyExamLevelLabel(grade.overall, strings),
-                        )
-                        Span(attrs = {
-                            classes(Styles.studySessionHeaderExamGradeBadge)
-                            attr("aria-label", "${strings.chatTestGradeLabel}: $summary")
-                        }) { Text(summary) }
-                    }
+                activeStudySessionItem?.examGrade?.let { grade ->
+                    val summary = studyExamGradeSummary(
+                        grade.overall,
+                        studyExamLevelLabel(grade.overall, strings),
+                    )
+                    Span(attrs = {
+                        classes(Styles.studySessionHeaderExamGradeBadge)
+                        attr("aria-label", "${strings.chatTestGradeLabel}: $summary")
+                    }) { Text(summary) }
                 }
                 Span(attrs = {
                     classes(Styles.materialSymbols, Styles.appBarIcon)
@@ -1058,8 +1057,8 @@ fun StudyScreen(
                 session = studySession,
                 sentenceStatus = studySentenceStatus.toMap(),
                 messageId = studyTarget?.id,
-                examScoreSessionId = studyTarget?.id?.let { studyPersistedBySourceId[it] },
-                examScoreAllowed = activeStudySessionOwned,
+                examScoreSessionId = activeStudySessionItem?.id
+                    ?: studyTarget?.id?.let { studyPersistedBySourceId[it] },
                 savedExamGrade = activeStudySessionItem?.examGrade,
                 imageFailed = studyImageFailed.toMap(),
                 wordImageFailed = studyWordImageFailed.toMap(),
@@ -1114,14 +1113,20 @@ fun StudyScreen(
                     appendPracticeSentences(targetId, extras)
                 },
                 onExamScoreFinished = { grade ->
-                    if (!activeStudySessionOwned) return@StudySessionPane
                     val targetId = studyTarget?.id ?: return@StudySessionPane
-                    val savedId = studyPersistedBySourceId[targetId] ?: return@StudySessionPane
+                    val savedId = activeStudySessionItem?.id
+                        ?: studyPersistedBySourceId[targetId]
+                        ?: return@StudySessionPane
                     val current = activeStudySessionItem?.takeIf { it.id == savedId }
+                        ?: studySessionItems.firstOrNull { it.id == savedId }
+                        ?: communitySessionItems.firstOrNull { it.id == savedId }
                         ?: return@StudySessionPane
                     val updated = current.copy(examGrade = grade, updatedAt = grade.scoredAt)
                     activeStudySessionItem = updated
                     studySessionItems = studySessionItems.map { item ->
+                        if (item.id == savedId) updated else item
+                    }
+                    communitySessionItems = communitySessionItems.map { item ->
                         if (item.id == savedId) updated else item
                     }
                 },
@@ -1341,7 +1346,7 @@ private fun StudySessionCard(
         }
         val cardContent = studySessionCardContent(item, strings.chatStudyTitle)
         P(attrs = { classes(Styles.studySessionCardTitle) }) { Text(cardContent.title) }
-        studySessionExamGradeBadge(item, removable)?.let { grade ->
+        studySessionExamGradeBadge(item)?.let { grade ->
             val summary = studyExamGradeSummary(grade, studyExamLevelLabel(grade, strings))
             Div(attrs = {
                 classes(Styles.studySessionExamGradeBadge)
@@ -1548,7 +1553,6 @@ private fun StudySessionPane(
     sentenceStatus: Map<Int, StudySentenceLoadState>,
     messageId: String?,
     examScoreSessionId: String?,
-    examScoreAllowed: Boolean,
     savedExamGrade: StudyExamGrade?,
     imageFailed: Map<String, Boolean>,
     wordImageFailed: Map<String, Boolean>,
@@ -1607,7 +1611,6 @@ private fun StudySessionPane(
                         messageId = messageId,
                         charactersLoading = charactersLoading,
                         examScoreSessionId = examScoreSessionId,
-                        examScoreAllowed = examScoreAllowed,
                         savedExamGrade = savedExamGrade,
                         imageFailed = imageFailed,
                         wordImageFailed = wordImageFailed,
@@ -1725,7 +1728,6 @@ private fun StudySessionContent(
     messageId: String?,
     charactersLoading: Boolean,
     examScoreSessionId: String?,
-    examScoreAllowed: Boolean,
     savedExamGrade: StudyExamGrade?,
     imageFailed: Map<String, Boolean>,
     wordImageFailed: Map<String, Boolean>,
@@ -1762,8 +1764,8 @@ private fun StudySessionContent(
 
     fun finishExam(scene: StudyExamScene, answers: Map<String, String>) {
         val sessionId = examScoreSessionId?.trim()?.takeIf { it.isNotEmpty() }
-        if (!examScoreAllowed || sessionId == null) {
-            examAttempt = examAttempt.copy(error = strings.chatTestOwnerOnly, isScoring = false)
+        if (sessionId == null) {
+            examAttempt = examAttempt.copy(error = strings.chatTestScoreError, isScoring = false)
             return
         }
         examAttempt = examAttempt.copy(error = null, isScoring = true)
@@ -1777,13 +1779,8 @@ private fun StudySessionContent(
                     examAttempt = examAttempt.copy(result = response, error = null, isScoring = false)
                     onExamScoreFinished(response.grade)
                 }
-                .onFailure { error ->
-                    val message = if ((error as? ChatApiException)?.statusCode == 404) {
-                        strings.chatTestOwnerOnly
-                    } else {
-                        strings.chatTestScoreError
-                    }
-                    examAttempt = examAttempt.copy(error = message, isScoring = false)
+                .onFailure {
+                    examAttempt = examAttempt.copy(error = strings.chatTestScoreError, isScoring = false)
                 }
         }
     }
@@ -2214,8 +2211,6 @@ private fun StudySessionContent(
                     learnerLanguageTag = Localization.language.tag,
                     sceneLoading = charactersLoading && session.examScene == null,
                     sceneError = examFailed,
-                    scoreSessionId = examScoreSessionId,
-                    scoreAllowed = examScoreAllowed,
                     savedGrade = savedExamGrade,
                     attempt = examAttempt,
                     autoPlayListen = mode == StudySessionMode.TEST,
@@ -2739,8 +2734,8 @@ internal fun studySessionCardContent(item: SavedStudySessionSummary, fallbackTit
         text = item.text,
     )
 
-internal fun studySessionExamGradeBadge(item: SavedStudySessionSummary, owned: Boolean): Int? =
-    item.examGrade?.overall?.takeIf { owned }
+internal fun studySessionExamGradeBadge(item: SavedStudySessionSummary): Int? =
+    item.examGrade?.overall
 
 internal fun studyExamGradeSummary(overall: Int, levelName: String): String =
     "$overall/5 · $levelName"
@@ -4807,8 +4802,10 @@ private fun StudyExamResult(
     }) {
         Div(attrs = { classes(Styles.studyExamHero) }) {
             Div(attrs = { classes(Styles.studyExamGradeMark) }) {
-                Span(attrs = { classes(Styles.studyExamGradeNumber) }) { Text(grade.overall.toString()) }
-                Span(attrs = { classes(Styles.studyExamGradeOutOf) }) { Text("/5") }
+                Span(attrs = { classes(Styles.studyExamGradeValue) }) {
+                    Span(attrs = { classes(Styles.studyExamGradeNumber) }) { Text(grade.overall.toString()) }
+                    Span(attrs = { classes(Styles.studyExamGradeOutOf) }) { Text("/5") }
+                }
             }
             Div(attrs = { classes(Styles.studyExamHeroCopy) }) {
                 P(attrs = { classes(Styles.studyExamLevel) }) { Text(levelLabel) }
@@ -4831,9 +4828,12 @@ private fun StudyExamResult(
             }
         }
         Button(attrs = {
-            classes(Styles.chip, Styles.studyExamStart)
+            classes(Styles.btnPrimary)
             attr("type", "button")
-            onClick { onRetake() }
+            onClick {
+                primeStudyAudioPlayback()
+                onRetake()
+            }
         }) { Text(strings.chatTestRetake) }
     }
 }
@@ -4862,8 +4862,6 @@ private fun StudyTestTab(
     learnerLanguageTag: String,
     sceneLoading: Boolean,
     sceneError: Boolean,
-    scoreSessionId: String?,
-    scoreAllowed: Boolean,
     savedGrade: StudyExamGrade?,
     attempt: StudyExamAttemptState,
     autoPlayListen: Boolean,
@@ -4873,6 +4871,25 @@ private fun StudyTestTab(
     onStart: () -> Unit,
     onRetake: () -> Unit,
 ) {
+    val audioScope = rememberCoroutineScope()
+    val audioCache = remember { mutableStateMapOf<String, String>() }
+    val audioRequests = remember { mutableStateMapOf<String, Deferred<String>>() }
+
+    suspend fun listenAudioUrl(key: String, line: String, languageTag: String): String {
+        audioCache[key]?.let { return it }
+        val request = audioRequests[key] ?: audioScope.async {
+            withSpeechRetry {
+                ChatApi.speechDataUrl(SpeechRequest(line, languageTag))
+            }.also { audioCache[key] = it }
+        }.also { created ->
+            audioRequests[key] = created
+            created.invokeOnCompletion {
+                if (audioRequests[key] === created) audioRequests.remove(key)?.cancel()
+            }
+        }
+        return request.await()
+    }
+
     val scene = session.examScene?.takeIf { it.isTenRoundExam() }
     when {
         scene == null && (sceneLoading || !sceneError) -> {
@@ -4916,7 +4933,10 @@ private fun StudyTestTab(
                     Button(attrs = {
                         classes(Styles.btnPrimary)
                         attr("type", "button")
-                        onClick { onStart() }
+                        onClick {
+                            primeStudyAudioPlayback()
+                            onStart()
+                        }
                     }) { Text(strings.chatTestStart) }
                 }
             } else if (beat == null) {
@@ -4931,34 +4951,47 @@ private fun StudyTestTab(
                 }
             } else {
                 val audioKey = "${scene.id}|${beat.id}|${session.textLanguageTag}"
-                val scope = rememberCoroutineScope()
-                var audioUrl by remember(audioKey) { mutableStateOf<String?>(null) }
+                val currentAudioKey = rememberUpdatedState(audioKey)
+                val currentScoring = rememberUpdatedState(attempt.isScoring)
+                var audioUrl by remember(audioKey) { mutableStateOf(audioCache[audioKey]) }
                 var audioLoading by remember(audioKey) { mutableStateOf(false) }
                 var audioError by remember(audioKey) { mutableStateOf(false) }
                 val character = session.characters.firstOrNull { it.id == beat.speakerId }
-                val portraitUrl = character?.imageUrl?.trim()?.takeIf { it.isNotEmpty() }
+                val isSpeakBeat = beat.kind == StudyExamBeatKind.SPEAK
+                val speakerLabel = if (isSpeakBeat) strings.chatPlayYouLabel else beat.speakerName
+                val portraitUrl = if (isSpeakBeat) null else character?.imageUrl?.trim()?.takeIf { it.isNotEmpty() }
 
                 fun playListenLine() {
                     if (beat.kind != StudyExamBeatKind.LISTEN || audioLoading) return
-                    audioUrl?.let {
-                        playAudio(it, restart = true)
+                    (audioUrl ?: audioCache[audioKey])?.let { url ->
+                        audioUrl = url
+                        playAudio(url, restart = true)
                         return
                     }
                     val line = beat.line?.trim()?.takeIf { it.isNotEmpty() } ?: return
                     audioLoading = true
                     audioError = false
-                    scope.launch {
+                    audioScope.launch {
                         runCatching {
-                            withSpeechRetry {
-                                ChatApi.speechDataUrl(SpeechRequest(line, session.textLanguageTag))
-                            }
+                            listenAudioUrl(audioKey, line, session.textLanguageTag)
                         }.onSuccess { url ->
+                            if (currentAudioKey.value != audioKey || currentScoring.value) return@onSuccess
                             audioUrl = url
                             playAudio(url, restart = true)
                         }.onFailure {
-                            audioError = true
+                            if (currentAudioKey.value == audioKey) audioError = true
                         }
-                        audioLoading = false
+                        if (currentAudioKey.value == audioKey) audioLoading = false
+                    }
+                }
+
+                LaunchedEffect(scene.id, attempt.beatIndex, session.textLanguageTag) {
+                    val upcomingListenBeat = scene.beats.drop(attempt.beatIndex + 1)
+                        .firstOrNull { it.kind == StudyExamBeatKind.LISTEN }
+                    val upcomingLine = upcomingListenBeat?.line?.trim()?.takeIf { it.isNotEmpty() }
+                    if (upcomingListenBeat != null && upcomingLine != null) {
+                        val upcomingKey = "${scene.id}|${upcomingListenBeat.id}|${session.textLanguageTag}"
+                        runCatching { listenAudioUrl(upcomingKey, upcomingLine, session.textLanguageTag) }
                     }
                 }
 
@@ -4971,9 +5004,12 @@ private fun StudyTestTab(
                     P(attrs = { classes(Styles.studySessionHint) }) {
                         Text(strings.chatTestBeatProgress(attempt.beatIndex / 2 + 1, scene.outline.size))
                     }
-                    Div(attrs = { classes(Styles.studyPlayLine, Styles.studyPlayLineOther) }) {
+                    Div(attrs = {
+                        classes(Styles.studyPlayLine)
+                        classes(if (isSpeakBeat) Styles.studyPlayLineYou else Styles.studyPlayLineOther)
+                    }) {
                         if (portraitUrl != null) {
-                            Img(src = portraitUrl, alt = beat.speakerName, attrs = {
+                            Img(src = portraitUrl, alt = speakerLabel, attrs = {
                                 classes(Styles.studyStoryImage)
                                 style {
                                     property("width", "64px")
@@ -4993,7 +5029,7 @@ private fun StudyTestTab(
                                 }
                             }) { MaterialSymbol("person") }
                         }
-                        Span(attrs = { classes(Styles.studyPlaySpeaker) }) { Text(beat.speakerName) }
+                        Span(attrs = { classes(Styles.studyPlaySpeaker) }) { Text(speakerLabel) }
                         P { Text(beat.prompt) }
                         if (beat.kind == StudyExamBeatKind.LISTEN) {
                             Button(attrs = {
@@ -5001,7 +5037,10 @@ private fun StudyTestTab(
                                 attr("type", "button")
                                 if (audioLoading) attr("disabled", "")
                                 attr("aria-label", strings.chatTestPlayLine)
-                                onClick { playListenLine() }
+                                onClick {
+                                    primeStudyAudioPlayback()
+                                    playListenLine()
+                                }
                             }) {
                                 MaterialSymbol(if (audioLoading) "progress_activity" else "replay")
                                 Text(strings.chatTestPlayLine)
@@ -5031,7 +5070,10 @@ private fun StudyTestTab(
                         ChatInput(
                             value = attempt.draft,
                             onValueChange = onDraftChange,
-                            onSend = onSubmitAnswer,
+                            onSend = { answer ->
+                                primeStudyAudioPlayback()
+                                onSubmitAnswer(answer)
+                            },
                             placeholder = strings.chatTestInputPlaceholder,
                             languageTag = if (beat.kind == StudyExamBeatKind.LISTEN) {
                                 learnerLanguageTag
@@ -5046,7 +5088,10 @@ private fun StudyTestTab(
                             classes(Styles.chip)
                             attr("type", "button")
                             if (attempt.draft.trim().isEmpty()) attr("disabled", "")
-                            onClick { onSubmitAnswer(attempt.draft) }
+                            onClick {
+                                primeStudyAudioPlayback()
+                                onSubmitAnswer(attempt.draft)
+                            }
                         }) {
                             Text(if (attempt.beatIndex == scene.beats.lastIndex) strings.chatTestFinish else strings.chatTestNext)
                         }
@@ -5056,9 +5101,6 @@ private fun StudyTestTab(
                             MaterialSymbol("error")
                             Span { Text(attempt.error) }
                         }
-                    }
-                    if (!scoreAllowed || scoreSessionId.isNullOrBlank()) {
-                        P(attrs = { classes(Styles.studySessionHint) }) { Text(strings.chatTestOwnerOnly) }
                     }
                 }
             }
@@ -5432,6 +5474,10 @@ private fun sentenceNeedsDissect(sentence: StudySentence): Boolean =
 
 private var activeStudyAudio: HTMLAudioElement? = null
 private var activeStudyAudioUrl: String? = null
+private var primedStudyAudio: HTMLAudioElement? = null
+
+private const val SILENT_STUDY_AUDIO_DATA_URL =
+    "data:audio/wav;base64,UklGRiYAAABXQVZFZm10IBAAAAABAAEAQB8AAIA+AAACABAAZGF0YQIAAAAAAA=="
 
 /** URL of the clip currently playing; drives play/pause button state in Compose. */
 private var studyAudioPlayingUrl by mutableStateOf<String?>(null)
@@ -5464,6 +5510,19 @@ private fun clearStudyAudioHandlers(element: HTMLAudioElement) {
 
 private fun tryPlayStudyAudio(element: HTMLAudioElement) {
     element.asDynamic().play()?.catch { }
+}
+
+internal fun primeStudyAudioPlayback() {
+    if (primedStudyAudio != null) return
+    val element = document.createElement("audio") as HTMLAudioElement
+    primedStudyAudio = element
+    element.src = SILENT_STUDY_AUDIO_DATA_URL
+    element.asDynamic().play()?.catch {
+        if (primedStudyAudio === element) {
+            runCatching { element.pause() }
+            primedStudyAudio = null
+        }
+    }
 }
 
 private fun startStudyAudioPlayback(element: HTMLAudioElement, url: String) {
@@ -5606,7 +5665,8 @@ internal fun playAudio(url: String, restart: Boolean = false) {
         return
     }
     stopActiveStudyAudio()
-    val element = document.createElement("audio") as HTMLAudioElement
+    val element = primedStudyAudio ?: (document.createElement("audio") as HTMLAudioElement)
+    if (primedStudyAudio === element) primedStudyAudio = null
     activeStudyAudio = element
     activeStudyAudioUrl = url
     studyAudioPlayingUrl = url

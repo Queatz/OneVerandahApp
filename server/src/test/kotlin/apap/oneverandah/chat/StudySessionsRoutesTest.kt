@@ -308,7 +308,7 @@ class StudySessionsRoutesTest {
     }
 
     @Test
-    fun `exam routes generate a scene and only score the owning device saved scene`() = testApplication {
+    fun `exam routes let any device score a saved scene and keep grades device scoped`() = testApplication {
         val deviceService = DeviceService(InMemoryDeviceRepository())
         val repository = InMemoryStudySessionsRepository()
         val studySessionsService = StudySessionsService(repository, deviceService)
@@ -395,8 +395,11 @@ class StudySessionsRoutesTest {
             contentType(ContentType.Application.Json)
             setBody(json.encodeToString(StudyExamScoreRequest.serializer(), scoreRequest))
         }
-        assertEquals(HttpStatusCode.NotFound, foreignScore.status)
-        assertEquals(2, examAi.examBeatRequests.size)
+        assertEquals(HttpStatusCode.OK, foreignScore.status)
+        val foreignResult = json.decodeFromString(StudyExamScoreResponse.serializer(), foreignScore.bodyAsText())
+        assertEquals(foreignResult.grade, studySessionsService.get(otherToken, saved.id)?.examGrade)
+        assertEquals(result.grade, studySessionsService.get(ownerToken, saved.id)?.examGrade)
+        assertEquals(4, examAi.examBeatRequests.size)
     }
 
     private fun sessionBody(text: String) = """

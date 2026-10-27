@@ -49,13 +49,12 @@ class StudySessionsListTest {
     }
 
     @Test
-    fun `exam grade badge is visible only on owned cards`() {
+    fun `exam grade badge is visible for any card with a grade`() {
         val grade = StudyExamGrade(4, 5, 3, "A strong attempt.", 100L)
         val graded = sampleSaved("graded", "Hello.").copy(examGrade = grade)
 
-        assertEquals(4, studySessionExamGradeBadge(graded, owned = true))
-        assertNull(studySessionExamGradeBadge(graded, owned = false))
-        assertNull(studySessionExamGradeBadge(sampleSaved("ungraded", "Hello."), owned = true))
+        assertEquals(4, studySessionExamGradeBadge(graded))
+        assertNull(studySessionExamGradeBadge(sampleSaved("ungraded", "Hello.")))
         assertEquals("1/5 · Beginner", studyExamGradeSummary(1, "Beginner"))
         assertEquals("4/5 · Advanced", studyExamGradeSummary(4, "Advanced"))
     }

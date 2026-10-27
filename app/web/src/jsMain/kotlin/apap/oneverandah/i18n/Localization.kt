@@ -23,7 +23,6 @@ class StudyTestStrings(
     val finish: String,
     val scoring: String,
     val scoreError: String,
-    val ownerOnly: String,
     val resultTitle: String,
     val gradeLabel: String,
     val listeningLabel: String,
@@ -672,7 +671,6 @@ data class UiStrings(
     val chatTestFinish: String get() = chatTest.finish
     val chatTestScoring: String get() = chatTest.scoring
     val chatTestScoreError: String get() = chatTest.scoreError
-    val chatTestOwnerOnly: String get() = chatTest.ownerOnly
     val chatTestResultTitle: String get() = chatTest.resultTitle
     val chatTestGradeLabel: String get() = chatTest.gradeLabel
     val chatTestListeningLabel: String get() = chatTest.listeningLabel
@@ -1025,7 +1023,6 @@ private val English = UiStrings(
         finish = "Finish test",
         scoring = "Scoring your answers…",
         scoreError = "Couldn't score the test. Try again.",
-        ownerOnly = "This session is saved on another device. You can practice here, but its grade cannot be saved here.",
         resultTitle = "Test result",
         gradeLabel = "Overall grade",
         listeningLabel = "Listening",
@@ -1670,7 +1667,6 @@ private val Vietnamese = UiStrings(
         finish = "Hoàn tất bài kiểm tra",
         scoring = "Đang chấm câu trả lời…",
         scoreError = "Không thể chấm bài kiểm tra. Hãy thử lại.",
-        ownerOnly = "Phiên học này được lưu trên thiết bị khác. Bạn có thể luyện tập tại đây nhưng không thể lưu điểm ở thiết bị này.",
         resultTitle = "Kết quả kiểm tra",
         gradeLabel = "Điểm tổng",
         listeningLabel = "Nghe hiểu",
@@ -2314,7 +2310,6 @@ private val Chinese = UiStrings(
         finish = "完成测试",
         scoring = "正在评分…",
         scoreError = "无法评分，请重试。",
-        ownerOnly = "此学习会话保存在另一台设备上。你可以在此练习，但无法在此保存成绩。",
         resultTitle = "测试结果",
         gradeLabel = "总评",
         listeningLabel = "听力理解",
@@ -2958,7 +2953,6 @@ private val Japanese = UiStrings(
         finish = "テストを終了",
         scoring = "回答を採点中…",
         scoreError = "テストを採点できませんでした。もう一度お試しください。",
-        ownerOnly = "この学習セッションは別の端末に保存されています。ここで練習できますが、成績は保存できません。",
         resultTitle = "テスト結果",
         gradeLabel = "総合評価",
         listeningLabel = "聞き取り",
@@ -3602,7 +3596,6 @@ private val Korean = UiStrings(
         finish = "테스트 완료",
         scoring = "답변을 채점하는 중…",
         scoreError = "테스트를 채점하지 못했습니다. 다시 시도하세요.",
-        ownerOnly = "이 학습 세션은 다른 기기에 저장되어 있습니다. 여기서 연습할 수 있지만 점수는 저장할 수 없습니다.",
         resultTitle = "테스트 결과",
         gradeLabel = "종합 점수",
         listeningLabel = "듣기",
@@ -4246,7 +4239,6 @@ private val Russian = UiStrings(
         finish = "Завершить тест",
         scoring = "Оцениваем ответы…",
         scoreError = "Не удалось оценить ответы. Попробуйте ещё раз.",
-        ownerOnly = "Эта сессия сохранена на другом устройстве. Здесь можно практиковаться, но нельзя сохранить оценку.",
         resultTitle = "Результат теста",
         gradeLabel = "Общая оценка",
         listeningLabel = "Аудирование",
@@ -4891,7 +4883,6 @@ private val Spanish = UiStrings(
         finish = "Terminar prueba",
         scoring = "Evaluando tus respuestas…",
         scoreError = "No se pudo evaluar la prueba. Inténtalo de nuevo.",
-        ownerOnly = "Esta sesión está guardada en otro dispositivo. Puedes practicar aquí, pero no guardar la nota.",
         resultTitle = "Resultado de la prueba",
         gradeLabel = "Nota general",
         listeningLabel = "Comprensión auditiva",
@@ -5536,7 +5527,6 @@ private val German = UiStrings(
         finish = "Test beenden",
         scoring = "Antworten werden bewertet…",
         scoreError = "Test konnte nicht bewertet werden. Bitte erneut versuchen.",
-        ownerOnly = "Diese Sitzung ist auf einem anderen Gerät gespeichert. Du kannst hier üben, aber die Note nicht speichern.",
         resultTitle = "Testergebnis",
         gradeLabel = "Gesamtnote",
         listeningLabel = "Hörverständnis",
@@ -6181,7 +6171,6 @@ private val Burmese = UiStrings(
         finish = "စမ်းသပ်မှု ပြီးရန်",
         scoring = "အဖြေများကို အမှတ်ပေးနေသည်…",
         scoreError = "စမ်းသပ်မှုကို အမှတ်မပေးနိုင်ပါ။ ပြန်စမ်းပါ။",
-        ownerOnly = "ဤလေ့လာမှုစက်ရှင်ကို အခြားစက်ပေါ်တွင် သိမ်းထားသည်။ ဤနေရာတွင် လေ့ကျင့်နိုင်သော်လည်း အမှတ်ကို သိမ်း၍မရပါ။",
         resultTitle = "စမ်းသပ်မှုရလဒ်",
         gradeLabel = "စုစုပေါင်းအဆင့်",
         listeningLabel = "နားထောင်နားလည်မှု",

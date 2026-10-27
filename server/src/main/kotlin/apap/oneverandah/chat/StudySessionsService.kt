@@ -31,10 +31,14 @@ data class SavedStudySessionRecord(
     val updatedAt: Long,
     val name: String = "",
     val examGrade: StudyExamGrade? = null,
+    val visitorExamGrades: Map<String, StudyExamGrade> = emptyMap(),
     val build: StudyBuildState? = null,
     val buildRequest: StudyBuildRequest? = null,
 ) {
-    fun toApi(includeExamGrade: Boolean = true) = SavedStudySession(
+    fun examGradeFor(deviceTokenHash: String): StudyExamGrade? =
+        if (this.deviceTokenHash == deviceTokenHash) examGrade else visitorExamGrades[deviceTokenHash]
+
+    fun toApi(viewerExamGrade: StudyExamGrade? = examGrade) = SavedStudySession(
         id = id,
         sourceMessageId = sourceMessageId,
         languageTag = languageTag,
@@ -44,7 +48,7 @@ data class SavedStudySessionRecord(
         createdAt = createdAt,
         updatedAt = updatedAt,
         name = name,
-        examGrade = examGrade.takeIf { includeExamGrade },
+        examGrade = viewerExamGrade,
         build = build,
     )
 
@@ -88,7 +92,7 @@ data class SavedStudySessionSummaryRecord(
     )
 }
 
-private fun SavedStudySessionRecord.toSummaryRecord(includeExamGrade: Boolean = true) = SavedStudySessionSummaryRecord(
+private fun SavedStudySessionRecord.toSummaryRecord(viewerExamGrade: StudyExamGrade? = examGrade) = SavedStudySessionSummaryRecord(
     id = id,
     sourceMessageId = sourceMessageId,
     languageTag = languageTag,
@@ -98,7 +102,7 @@ private fun SavedStudySessionRecord.toSummaryRecord(includeExamGrade: Boolean = 
     updatedAt = updatedAt,
     sentenceImageUrls = session.sentenceImageUrls(),
     name = name,
-    examGrade = examGrade.takeIf { includeExamGrade },
+    examGrade = viewerExamGrade,
 )
 
 interface StudySessionsRepository {
@@ -195,7 +199,7 @@ class InMemoryStudySessionsRepository : StudySessionsRepository {
                         .thenByDescending { it.id },
                 )
                 .take(limit.coerceAtLeast(0))
-                .map { it.toSummaryRecord(includeExamGrade = false) }
+                .map { it.toSummaryRecord(viewerExamGrade = it.examGradeFor(excludeDeviceTokenHash)) }
         }
 }
 
@@ -220,7 +224,7 @@ class StudySessionsService(
         val key = id.trim()
         if (key.isEmpty()) return null
         val record = sessionStore.findById(key) ?: return null
-        return record.toApi(includeExamGrade = record.deviceTokenHash == device.tokenHash)
+        return record.toApi(viewerExamGrade = record.examGradeFor(device.tokenHash))
     }
 
     suspend fun getOwned(rawDeviceToken: String?, id: String): SavedStudySession? {
@@ -239,10 +243,13 @@ class StudySessionsService(
         val device = requireDevice(rawDeviceToken)
         val key = id.trim().takeIf(String::isNotEmpty) ?: return null
         val record = sessionStore.update(key, immediate = true) { stored ->
-            if (stored.deviceTokenHash != device.tokenHash) return@update null
-            stored.copy(examGrade = grade)
+            if (stored.deviceTokenHash == device.tokenHash) {
+                stored.copy(examGrade = grade)
+            } else {
+                stored.copy(visitorExamGrades = stored.visitorExamGrades + (device.tokenHash to grade))
+            }
         } ?: return null
-        return record.toApi()
+        return record.toApi(viewerExamGrade = record.examGradeFor(device.tokenHash))
     }
 
     suspend fun listCommunity(
@@ -266,7 +273,7 @@ class StudySessionsService(
             null
         }
         return CommunityStudySessionsResponse(
-            items = page.map { it.toApi(includeExamGrade = false) },
+            items = page.map { it.toApi() },
             nextCursor = nextCursor,
         )
     }

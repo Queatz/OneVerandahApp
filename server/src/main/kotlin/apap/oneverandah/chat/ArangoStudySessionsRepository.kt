@@ -228,6 +228,7 @@ class ArangoStudySessionsRepository private constructor(
                     name: NOT_NULL(doc.name, ""),
                     createdAt: doc.createdAt,
                     updatedAt: doc.updatedAt,
+                    examGrade: doc.visitorExamGrades[@excludeDeviceTokenHash],
                     sentenceImageUrls: (
                       FOR sentence IN NOT_NULL(doc.session.sentences, [])
                       FILTER IS_STRING(sentence.imageUrl) AND TRIM(sentence.imageUrl) != ""
@@ -414,6 +415,7 @@ private data class SavedStudySessionDocument(
     val updatedAt: Long,
     val name: String = "",
     val examGrade: apap.oneverandah.api.StudyExamGrade? = null,
+    val visitorExamGrades: Map<String, apap.oneverandah.api.StudyExamGrade> = emptyMap(),
     val build: StudyBuildState? = null,
     val buildRequest: StudyBuildRequest? = null,
 ) {
@@ -429,6 +431,7 @@ private data class SavedStudySessionDocument(
         updatedAt = updatedAt,
         name = name,
         examGrade = examGrade,
+        visitorExamGrades = visitorExamGrades,
         build = build,
         buildRequest = buildRequest,
     )
@@ -446,6 +449,7 @@ private data class SavedStudySessionDocument(
             updatedAt = record.updatedAt,
             name = record.name,
             examGrade = record.examGrade,
+            visitorExamGrades = record.visitorExamGrades,
             build = record.build,
             buildRequest = record.buildRequest,
         )

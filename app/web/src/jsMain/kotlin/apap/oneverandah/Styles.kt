@@ -392,6 +392,7 @@ object Styles {
     const val studyExamResult = "study-exam-result"
     const val studyExamHero = "study-exam-hero"
     const val studyExamGradeMark = "study-exam-grade-mark"
+    const val studyExamGradeValue = "study-exam-grade-value"
     const val studyExamGradeNumber = "study-exam-grade-number"
     const val studyExamGradeOutOf = "study-exam-grade-out-of"
     const val studyExamHeroCopy = "study-exam-hero-copy"
@@ -4889,7 +4890,7 @@ object Styles {
         }
         .${studyExamGradeMark} {
             display: flex;
-            align-items: baseline;
+            align-items: center;
             justify-content: center;
             width: 128px;
             height: 128px;
@@ -4902,6 +4903,10 @@ object Styles {
             box-shadow:
                 0 0 0 10px color-mix(in srgb, var(--exam-accent) 16%, transparent),
                 0 18px 40px -20px var(--exam-accent);
+        }
+        .${studyExamGradeValue} {
+            display: inline-flex;
+            align-items: baseline;
         }
         .${studyExamGradeNumber} {
             font-size: 56px;
@@ -5036,6 +5041,7 @@ object Styles {
             width: 100%;
             align-self: stretch;
         }
+        .${studyExamResult} .${btnPrimary} { width: 100%; }
         @media (max-width: 520px) {
             .${studyExamSkills} { grid-template-columns: 1fr; }
             .${studyExamGradeMark} { width: 112px; height: 112px; }

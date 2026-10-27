@@ -365,7 +365,7 @@ fun Route.chatRoutes(
                 return@post
             }
             try {
-                val saved = studySessionsService.getOwned(token, normalized.sessionId)
+                val saved = studySessionsService.get(token, normalized.sessionId)
                 if (saved == null) {
                     call.respond(HttpStatusCode.NotFound, ChatErrorResponse("Study session not found"))
                     return@post
@@ -464,7 +464,13 @@ fun Route.chatRoutes(
                         }
 
                         suspend fun writeEvent(event: StudyBuildEvent) {
-                            output.appendLine(studyPayloadJson.encodeToString(StudyBuildEvent.serializer(), event))
+                            val viewerEvent = when (event) {
+                                is StudyBuildEvent.Snapshot -> event.copy(
+                                    session = event.session.copy(examGrade = accessible.examGrade),
+                                )
+                                else -> event
+                            }
+                            output.appendLine(studyPayloadJson.encodeToString(StudyBuildEvent.serializer(), viewerEvent))
                             output.flush()
                         }
                         try {

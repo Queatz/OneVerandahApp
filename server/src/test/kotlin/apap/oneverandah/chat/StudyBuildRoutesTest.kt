@@ -14,6 +14,7 @@ import apap.oneverandah.api.StudyBuildStatus
 import apap.oneverandah.api.StudyDissectSentenceRequest
 import apap.oneverandah.api.StudyExamBeat
 import apap.oneverandah.api.StudyExamBeatKind
+import apap.oneverandah.api.StudyExamGrade
 import apap.oneverandah.api.StudyExamScene
 import apap.oneverandah.api.StudyExampleSentence
 import apap.oneverandah.api.StudyPlayScenario
@@ -51,6 +52,7 @@ import kotlinx.serialization.json.Json
 import kotlin.test.Test
 import kotlin.test.assertEquals
 import kotlin.test.assertIs
+import kotlin.test.assertNull
 import kotlin.test.assertTrue
 
 class StudyBuildRoutesTest {
@@ -91,13 +93,14 @@ class StudyBuildRoutesTest {
             maxAttempts = 1,
             retryBackoffMillis = listOf(1L),
         )
+        val ownerGrade = StudyExamGrade(4, 5, 3, "Owner grade.", 100L)
         sessions.sessionStore.create(
             record(
                 id = "complete-session",
                 deviceTokenHash = DeviceService.hashToken(token),
                 build = StudyBuildState(status = StudyBuildStatus.COMPLETE),
                 name = "Complete",
-            ),
+            ).copy(examGrade = ownerGrade),
         )
         sessions.sessionStore.create(
             record(
@@ -175,7 +178,20 @@ class StudyBuildRoutesTest {
                 .toList()
             assertIs<StudyBuildEvent.Snapshot>(events.first())
             assertEquals("complete-session", (events.first() as StudyBuildEvent.Snapshot).session.id)
+            assertEquals(ownerGrade, (events.first() as StudyBuildEvent.Snapshot).session.examGrade)
             assertEquals(StudyBuildEvent.Done, events.last())
+
+            val foreignStream = client.get("/api/chat/study/sessions/complete-session/events") {
+                header(DEVICE_TOKEN_HEADER, otherToken)
+            }
+            assertEquals(HttpStatusCode.OK, foreignStream.status)
+            val foreignEvents = foreignStream.bodyAsText()
+                .lineSequence()
+                .filter { it.isNotBlank() }
+                .map { json.decodeFromString<StudyBuildEvent>(it) }
+                .toList()
+            val foreignSnapshot = assertIs<StudyBuildEvent.Snapshot>(foreignEvents.first())
+            assertNull(foreignSnapshot.session.examGrade)
 
             val retry = client.post("/api/chat/study/sessions/retry-session/build/retry") {
                 header(DEVICE_TOKEN_HEADER, token)

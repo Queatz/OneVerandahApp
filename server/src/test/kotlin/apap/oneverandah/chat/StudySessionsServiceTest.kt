@@ -443,7 +443,7 @@ class StudySessionsServiceTest {
     }
 
     @Test
-    fun `progressive saves preserve exam scene and owner-only grade`() = runBlocking {
+    fun `progressive saves preserve exam scene and per-device grades`() = runBlocking {
         val repository = InMemoryStudySessionsRepository()
         val deviceService = DeviceService(
             repository = InMemoryDeviceRepository(),
@@ -460,6 +460,13 @@ class StudySessionsServiceTest {
             feedback = "A strong attempt.",
             scoredAt = 100L,
         )
+        val visitorGrade = StudyExamGrade(
+            overall = 2,
+            listening = 1,
+            speaking = 3,
+            feedback = "Keep practicing.",
+            scoredAt = 101L,
+        )
         val initial = service.save(
             ownerToken,
             SaveStudySessionRequest(
@@ -469,6 +476,7 @@ class StudySessionsServiceTest {
             ),
         )
         service.saveExamGrade(ownerToken, initial.id, grade)
+        service.saveExamGrade(otherToken, initial.id, visitorGrade)
 
         val progressive = service.save(
             ownerToken,
@@ -483,8 +491,11 @@ class StudySessionsServiceTest {
         assertEquals(grade, service.list(ownerToken).items.single().examGrade)
         assertEquals(scene, service.get(ownerToken, initial.id)?.session?.examScene)
         assertEquals(grade, service.get(ownerToken, initial.id)?.examGrade)
-        assertNull(service.get(otherToken, initial.id)?.examGrade)
-        assertNull(service.listCommunity(otherToken).items.single().examGrade)
+        assertEquals(visitorGrade, service.get(otherToken, initial.id)?.examGrade)
+        assertEquals(visitorGrade, service.listCommunity(otherToken).items.single().examGrade)
+        val thirdToken = deviceService.issueToken().deviceToken
+        assertNull(service.get(thirdToken, initial.id)?.examGrade)
+        assertNull(service.listCommunity(thirdToken).items.single().examGrade)
     }
 
     @Test
