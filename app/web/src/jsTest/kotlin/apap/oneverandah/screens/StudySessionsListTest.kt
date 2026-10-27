@@ -1,6 +1,7 @@
 package apap.oneverandah.screens
 
 import apap.oneverandah.api.SavedStudySessionSummary
+import apap.oneverandah.api.StudyBuildStatus
 import apap.oneverandah.api.StudyExamScene
 import apap.oneverandah.api.StudyExamGrade
 import apap.oneverandah.api.StudySentence
@@ -154,6 +155,35 @@ class StudySessionsListTest {
         assertEquals(StudyCreationStepStatus.UPCOMING, progress.test.status)
         assertEquals(33, progress.percent)
         assertTrue(progress.visible)
+    }
+
+    @Test
+    fun `server placeholder without sentences is not treated as a finished structure`() {
+        val placeholder = StudySessionResponse(text = "Hello world.", textLanguageTag = "en", sentences = emptyList())
+        val exact = studyCreationProgress(
+            session = placeholder,
+            loading = true,
+            exactText = true,
+            buildStatus = StudyBuildStatus.BUILDING,
+        )
+        assertEquals(StudyCreationStepStatus.COMPLETED, exact.text.status)
+        assertEquals(StudyCreationStepStatus.RUNNING, exact.structure.status)
+        assertEquals(StudyCreationStepStatus.UPCOMING, exact.dissections.status)
+        assertEquals(StudyCreationStepStatus.UPCOMING, exact.images.status)
+        assertEquals(StudyCreationStepStatus.UPCOMING, exact.test.status)
+        assertEquals(33, exact.percent)
+
+        val preparing = studyCreationProgress(
+            session = placeholder,
+            loading = true,
+            exactText = true,
+            buildStatus = StudyBuildStatus.PREPARING,
+        )
+        assertEquals(StudyCreationStepStatus.RUNNING, preparing.text.status)
+        assertEquals(StudyCreationStepStatus.UPCOMING, preparing.structure.status)
+        assertEquals(StudyCreationStepStatus.UPCOMING, preparing.test.status)
+        assertEquals(0, preparing.percent)
+        assertNull(studySessionWithStructure(placeholder))
     }
 
     @Test

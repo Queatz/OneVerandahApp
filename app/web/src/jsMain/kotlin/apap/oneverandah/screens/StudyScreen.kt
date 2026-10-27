@@ -749,7 +749,10 @@ fun StudyScreen(
         activeStudySessionItem = null
         activeStudySessionOwned = false
         studyCache.remove(message.id)
-        studyBuildStateByMessageId.remove(message.id)
+        // Provisional state until the create response arrives, so prep shows as running.
+        studyBuildStateByMessageId[message.id] = StudyBuildState(
+            status = if (mode == StudyBuildMode.EXACT) StudyBuildStatus.BUILDING else StudyBuildStatus.PREPARING,
+        )
         studySession = null
         studySentenceStatus.clear()
         studyLoading = true
@@ -1065,6 +1068,7 @@ fun StudyScreen(
                 charactersLoading = studyTarget?.id?.let { studyCharactersInFlight[it] == true } == true,
                 examFailed = studyTarget?.id?.let { studyExamFailed[it] == true } == true,
                 exactText = studyStartExact,
+                buildStatus = studyTarget?.id?.let { studyBuildStateByMessageId[it]?.status },
                 playLoading = studyTarget?.id?.let { studyPlayInFlight[it] == true } == true,
                 playFailed = studyTarget?.id?.let { studyPlayFailed[it] == true } == true,
                 strings = strings,
@@ -1559,6 +1563,7 @@ private fun StudySessionPane(
     charactersLoading: Boolean,
     examFailed: Boolean,
     exactText: Boolean,
+    buildStatus: StudyBuildStatus?,
     playLoading: Boolean,
     playFailed: Boolean,
     strings: UiStrings,
@@ -1573,10 +1578,13 @@ private fun StudySessionPane(
     onPracticeSentences: (List<StudyExampleSentence>) -> Unit,
     onExamScoreFinished: (StudyExamGrade) -> Unit,
 ) {
+    // A server build in PREPARING has a placeholder record without sentences; it is not a session yet.
+    val session = studySessionWithStructure(session)
     val progress = studyCreationProgress(
         session = session,
         loading = loading,
         exactText = exactText,
+        buildStatus = buildStatus,
         sentenceStatus = sentenceStatus,
         messageId = messageId,
         imageFailed = imageFailed,
@@ -2563,8 +2571,17 @@ internal fun studyCreationProgress(
     wordImageFailed: Map<String, Boolean> = emptyMap(),
     charactersLoading: Boolean = false,
     examFailed: Boolean = false,
+    buildStatus: StudyBuildStatus? = null,
 ): StudyCreationProgress {
-    val textCompleted = exactText || session != null
+    val session = studySessionWithStructure(session)
+    val textCompleted = session != null || when (buildStatus) {
+        null -> exactText
+        StudyBuildStatus.PREPARING -> false
+        StudyBuildStatus.BUILDING,
+        StudyBuildStatus.COMPLETE,
+        StudyBuildStatus.PARTIAL,
+        -> true
+    }
     val text = StudyCreationStepProgress(
         status = when {
             textCompleted -> StudyCreationStepStatus.COMPLETED
@@ -2657,6 +2674,10 @@ internal fun studyCreationProgress(
         test = testStep,
     )
 }
+
+/** Returns [session] only once the skeleton exists; server PREPARING placeholders have no sentences. */
+internal fun studySessionWithStructure(session: StudySessionResponse?): StudySessionResponse? =
+    session?.takeIf { it.sentences.isNotEmpty() }
 
 private fun studyCreationSentenceState(
     sentence: StudySentence,
