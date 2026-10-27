@@ -36,7 +36,7 @@ object ChatApi {
     private const val DEVICE_TOKEN_HEADER = "X-Device-Token"
     private const val REQUEST_TIMEOUT_MILLIS = 180_000L
     private const val REQUEST_SLOT_WAIT_TIMEOUT_MILLIS = 60_000L
-    private const val STUDY_SESSION_READ_TIMEOUT_MILLIS = 60_000L
+    private const val STUDY_SESSION_READ_TIMEOUT_MILLIS = 20_000L
     private const val REQUEST_TIMEOUT_MESSAGE = "Chat request timed out"
     private const val STREAM_IDLE_TIMEOUT_MILLIS = 60_000L
     private val STUDY_EVENT_RECONNECT_BACKOFF_MILLIS = listOf(1_000L, 2_000L, 5_000L, 10_000L)
@@ -362,9 +362,9 @@ object ChatApi {
     suspend fun studyImage(imageId: String): StudyPlaygroundImageResponse = studyPlaygroundImage(imageId)
 
     suspend fun listStudySessions(): SavedStudySessionsResponse {
-        val token = DeviceTokenStore.ensureToken()
         return apiReadRequest(
             request = {
+                val token = DeviceTokenStore.ensureToken()
                 client.get(chatApiUrl("/study/sessions")) {
                     header(DEVICE_TOKEN_HEADER, token)
                     timeout { requestTimeoutMillis = STUDY_SESSION_READ_TIMEOUT_MILLIS }
@@ -375,9 +375,9 @@ object ChatApi {
     }
 
     suspend fun getStudySession(id: String): SavedStudySession {
-        val token = DeviceTokenStore.ensureToken()
         return apiReadRequest(
             request = {
+                val token = DeviceTokenStore.ensureToken()
                 client.get(chatApiUrl("/study/sessions/$id")) {
                     header(DEVICE_TOKEN_HEADER, token)
                     timeout { requestTimeoutMillis = STUDY_SESSION_READ_TIMEOUT_MILLIS }
@@ -471,9 +471,9 @@ object ChatApi {
         cursor: String? = null,
         limit: Int = 20,
     ): CommunityStudySessionsResponse {
-        val token = DeviceTokenStore.ensureToken()
         return apiReadRequest(
             request = {
+                val token = DeviceTokenStore.ensureToken()
                 client.get(chatApiUrl("/study/sessions/community")) {
                     header(DEVICE_TOKEN_HEADER, token)
                     parameter("limit", limit)

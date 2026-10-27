@@ -44,6 +44,7 @@ import io.ktor.server.request.receive
 import io.ktor.server.request.receiveText
 import io.ktor.server.application.ApplicationCall
 import io.ktor.server.response.respond
+import io.ktor.server.response.respondBytesWriter
 import io.ktor.server.response.respondText
 import io.ktor.server.response.respondTextWriter
 import io.ktor.server.routing.Route
@@ -52,6 +53,7 @@ import io.ktor.server.routing.get
 import io.ktor.server.routing.post
 import io.ktor.server.routing.put
 import io.ktor.server.websocket.webSocket
+import io.ktor.utils.io.writeStringUtf8
 import java.util.Base64
 import kotlinx.coroutines.Dispatchers
 import kotlinx.coroutines.CoroutineStart
@@ -418,7 +420,14 @@ fun Route.chatRoutes(
             val limit = call.request.queryParameters["limit"]?.toIntOrNull()
                 ?: StudySessionsService.DEFAULT_COMMUNITY_PAGE_SIZE
             try {
-                call.respond(studySessionsService.listCommunity(token, cursor, limit))
+                val page = withTimeoutOrNull(STUDY_SESSION_LIST_TIMEOUT_MILLIS) {
+                    studySessionsService.listCommunity(token, cursor, limit)
+                }
+                if (page == null) {
+                    call.respond(HttpStatusCode.ServiceUnavailable, ChatErrorResponse("Study sessions request timed out"))
+                } else {
+                    call.respond(page)
+                }
             } catch (_: UnauthorizedDeviceException) {
                 call.respond(HttpStatusCode.Unauthorized, ChatErrorResponse("Valid device token required"))
             }
@@ -427,7 +436,14 @@ fun Route.chatRoutes(
         get("/api/chat/study/sessions") {
             val token = call.request.header(DEVICE_TOKEN_HEADER)
             try {
-                call.respond(studySessionsService.list(token))
+                val sessions = withTimeoutOrNull(STUDY_SESSION_LIST_TIMEOUT_MILLIS) {
+                    studySessionsService.list(token)
+                }
+                if (sessions == null) {
+                    call.respond(HttpStatusCode.ServiceUnavailable, ChatErrorResponse("Study sessions request timed out"))
+                } else {
+                    call.respond(sessions)
+                }
             } catch (_: UnauthorizedDeviceException) {
                 call.respond(HttpStatusCode.Unauthorized, ChatErrorResponse("Valid device token required"))
             }
@@ -455,8 +471,7 @@ fun Route.chatRoutes(
                 call.response.headers.append(HttpHeaders.CacheControl, "no-cache")
                 call.response.headers.append("X-Accel-Buffering", "no")
                 val eventFlow = studyBuildService.events(id)
-                call.respondTextWriter(contentType = ndjsonContentType) {
-                    val output = this
+                call.respondBytesWriter(contentType = ndjsonContentType) {
                     coroutineScope {
                         val channel = Channel<StudyBuildEvent>(Channel.BUFFERED)
                         val collector = launch(start = CoroutineStart.UNDISPATCHED) {
@@ -470,8 +485,10 @@ fun Route.chatRoutes(
                                 )
                                 else -> event
                             }
-                            output.appendLine(studyPayloadJson.encodeToString(StudyBuildEvent.serializer(), viewerEvent))
-                            output.flush()
+                            writeStringUtf8(
+                                studyPayloadJson.encodeToString(StudyBuildEvent.serializer(), viewerEvent) + "\n",
+                            )
+                            flush()
                         }
                         try {
                             val snapshot = studyBuildService.ensureBuilding(id)
@@ -670,6 +687,7 @@ private suspend inline fun <reified T> ApplicationCall.respondStudyPayload(
 }
 
 private const val STUDY_BUILD_HEARTBEAT_MILLIS = 15_000L
+private const val STUDY_SESSION_LIST_TIMEOUT_MILLIS = 15_000L
 
 fun Route.asrRoutes(asrRelay: QwenAsrRelay) {
     webSocket("/api/chat/asr") {

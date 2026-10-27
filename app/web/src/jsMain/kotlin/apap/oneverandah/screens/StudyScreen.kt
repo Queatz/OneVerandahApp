@@ -68,6 +68,9 @@ import apap.oneverandah.state.Toaster
 import kotlinx.browser.document
 import kotlinx.browser.window
 import kotlinx.coroutines.CompletableDeferred
+import kotlinx.coroutines.CancellationException
+import kotlinx.coroutines.CoroutineStart
+import kotlinx.coroutines.currentCoroutineContext
 import kotlinx.coroutines.Deferred
 import kotlinx.coroutines.Job
 import kotlinx.coroutines.NonCancellable
@@ -152,9 +155,11 @@ fun StudyScreen(
     val studyPersistedBySourceId = remember { mutableStateMapOf<String, String>() }
     var studySessionItems by remember { mutableStateOf<List<SavedStudySessionSummary>>(emptyList()) }
     var studySessionsLoading by remember { mutableStateOf(false) }
+    var studySessionsJob by remember { mutableStateOf<Job?>(null) }
     var communitySessionItems by remember { mutableStateOf<List<SavedStudySessionSummary>>(emptyList()) }
     var communitySessionsLoading by remember { mutableStateOf(false) }
     var communitySessionsLoadingMore by remember { mutableStateOf(false) }
+    var communitySessionsJob by remember { mutableStateOf<Job?>(null) }
     var communityNextCursor by remember { mutableStateOf<String?>(null) }
     var activeStudySessionItem by remember { mutableStateOf<SavedStudySessionSummary?>(null) }
     var activeStudySessionOwned by remember { mutableStateOf(false) }
@@ -168,6 +173,9 @@ fun StudyScreen(
         val refreshedItems = mergeStudySessionItems(studySessionItems, items)
         studySessionItems = refreshedItems
         activeStudySessionItem = refreshedActiveStudySessionItem(activeStudySessionItem, refreshedItems)
+        activeStudySessionOwned = activeStudySessionItem?.let { active ->
+            refreshedItems.any { it.id == active.id }
+        } == true
         studyPersistedBySourceId.clear()
         refreshedItems.forEach { item ->
             val key = item.sourceMessageId ?: item.id
@@ -176,50 +184,77 @@ fun StudyScreen(
     }
 
     fun refreshStudySessions(silent: Boolean = false) {
-        scope.launch {
-            if (!silent) studySessionsLoading = true
-            runCatching { ChatApi.listStudySessions() }
-                .onSuccess { applyStudySessionItems(it.items) }
-                .onFailure {
-                    if (!silent) Toaster.show(strings.chatStudySessionsError)
+        studySessionsJob?.cancel()
+        val job = scope.launch(start = CoroutineStart.LAZY) {
+            try {
+                val response = ChatApi.listStudySessions()
+                applyStudySessionItems(response.items)
+            } catch (cancelled: CancellationException) {
+                throw cancelled
+            } catch (_: Throwable) {
+                if (!silent) Toaster.show(strings.chatStudySessionsError)
+            } finally {
+                if (studySessionsJob === currentCoroutineContext()[Job]) {
+                    studySessionsLoading = false
+                    studySessionsJob = null
                 }
-            studySessionsLoading = false
+            }
         }
+        studySessionsJob = job
+        studySessionsLoading = !silent
+        job.start()
     }
 
     fun loadCommunitySessions(reset: Boolean = false) {
         if (!reset) {
-            if (communitySessionsLoadingMore) return
+            if (communitySessionsLoadingMore || communitySessionsLoading || communitySessionsJob?.isActive == true) return
             val cursor = communityNextCursor ?: return
-            communitySessionsLoadingMore = true
-            scope.launch {
-                runCatching {
-                    ChatApi.listCommunityStudySessions(
+            val job = scope.launch(start = CoroutineStart.LAZY) {
+                try {
+                    val page = ChatApi.listCommunityStudySessions(
                         cursor = cursor,
                         limit = STUDY_COMMUNITY_PAGE_SIZE,
                     )
-                }.onSuccess { page ->
                     communitySessionItems = mergeCommunityStudySessions(communitySessionItems, page.items)
                     communityNextCursor = page.nextCursor
-                }.onFailure {
+                } catch (cancelled: CancellationException) {
+                    throw cancelled
+                } catch (_: Throwable) {
                     Toaster.show(strings.chatStudySessionsError)
+                } finally {
+                    if (communitySessionsJob === currentCoroutineContext()[Job]) {
+                        communitySessionsLoadingMore = false
+                        communitySessionsJob = null
+                    }
                 }
-                communitySessionsLoadingMore = false
             }
+            communitySessionsJob = job
+            communitySessionsLoadingMore = true
+            job.start()
             return
         }
-        scope.launch {
-            if (communitySessionItems.isEmpty()) communitySessionsLoading = true
-            runCatching {
-                ChatApi.listCommunityStudySessions(limit = STUDY_COMMUNITY_PAGE_SIZE)
-            }.onSuccess { page ->
+        communitySessionsJob?.cancel()
+        val job = scope.launch(start = CoroutineStart.LAZY) {
+            try {
+                val page = ChatApi.listCommunityStudySessions(limit = STUDY_COMMUNITY_PAGE_SIZE)
                 communitySessionItems = page.items
                 communityNextCursor = page.nextCursor
-            }.onFailure {
+            } catch (cancelled: CancellationException) {
+                throw cancelled
+            } catch (_: Throwable) {
                 Toaster.show(strings.chatStudySessionsError)
+            } finally {
+                if (communitySessionsJob === currentCoroutineContext()[Job]) {
+                    communitySessionsLoading = false
+                    communitySessionsLoadingMore = false
+                    communitySessionsJob = null
+                }
             }
-            communitySessionsLoading = false
         }
+        communitySessionsJob = job
+        communitySessionsLoading = communitySessionItems.isEmpty()
+        communitySessionsLoadingMore = false
+        job.start()
     }
 
     fun persistStudySession(messageId: String, session: StudySessionResponse) {
@@ -986,21 +1021,21 @@ fun StudyScreen(
         studySessionVisible = true
         studyLoading = true
         studyError = null
-        val ownItems = runCatching { ChatApi.listStudySessions() }.getOrNull()?.items
-        if (ownItems != null) applyStudySessionItems(ownItems)
-        runCatching { ChatApi.getStudySession(id) }
-            .onSuccess { item ->
-                openSavedStudySession(
-                    item,
-                    fromCommunity = studySessionItems.none { owned -> owned.id == item.id },
-                )
-            }
-            .onFailure {
-                studyLoading = false
-                studySessionVisible = false
-                Toaster.show(strings.chatStudySessionsError)
-                onCloseSession()
-            }
+        refreshStudySessions(silent = true)
+        try {
+            val item = ChatApi.getStudySession(id)
+            openSavedStudySession(
+                item,
+                fromCommunity = studySessionItems.none { owned -> owned.id == item.id },
+            )
+        } catch (cancelled: CancellationException) {
+            throw cancelled
+        } catch (_: Throwable) {
+            studyLoading = false
+            studySessionVisible = false
+            Toaster.show(strings.chatStudySessionsError)
+            onCloseSession()
+        }
     }
 
     LaunchedEffect(initialText, sessionId) {
