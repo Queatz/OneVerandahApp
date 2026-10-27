@@ -2,6 +2,8 @@ package apap.oneverandah.chat
 
 import apap.oneverandah.api.StudyDissectSentenceRequest
 import apap.oneverandah.api.StudyDissectSentenceResponse
+import apap.oneverandah.api.StudyBuildMode
+import apap.oneverandah.api.StudyBuildRequest
 import apap.oneverandah.api.StudyExamBeat
 import apap.oneverandah.api.StudyExamBeatKind
 import apap.oneverandah.api.StudyExamBeatScore
@@ -247,10 +249,12 @@ interface StudyAiClient {
 
     suspend fun evaluateExamBeat(request: StudyExamBeatJudgmentRequest): StudyExamJudgment =
         StudyExamJudgment(points = 0, feedback = "")
+
     suspend fun evaluateWriteAttempt(request: StudyWriteCheckGenerationRequest): StudyWriteFeedback
     suspend fun evaluateExpressAttempt(request: StudyExpressCheckGenerationRequest): StudyExpressJudgment
     suspend fun evaluateListenAttempt(request: StudyListenCheckGenerationRequest): StudyExpressJudgment =
         StudyExpressJudgment(correct = false, feedback = "")
+
     suspend fun generateExpressSentences(request: StudyExpressGenerateGenerationRequest): List<StudyExampleSentence>
 }
 
@@ -262,6 +266,7 @@ class StudyService(
     private val clock: () -> Long = System::currentTimeMillis,
 ) {
     private val log = LoggerFactory.getLogger(StudyService::class.java)
+
     /** Shared async job store for playground stills, character portraits, and sentence visuals. */
     private val studyImages = ConcurrentHashMap<String, StudyPlaygroundImageResponse>()
 
@@ -282,9 +287,28 @@ class StudyService(
 
     /** Translate existing lesson text before creating a study session for it. */
     suspend fun translateStudyText(rawRequest: StudyTranslateRequest): StudyIntentResponse {
-        val request = requireNotNull(rawRequest.normalizedOrNull()) { "Study translation requires text and a target language" }
+        val request =
+            requireNotNull(rawRequest.normalizedOrNull()) { "Study translation requires text and a target language" }
         val translated = aiClient.translateStudyText(request).trim().ifEmpty { request.text }
         return StudyIntentResponse(text = translated)
+    }
+
+    suspend fun prepareText(rawRequest: StudyBuildRequest): String {
+        val request = requireNotNull(rawRequest.normalizedOrNull()) { "Study text must not be blank" }
+        return when (request.mode) {
+            StudyBuildMode.EXACT -> request.text
+            StudyBuildMode.INTENT -> intendedStudyText(
+                StudySessionRequest(text = request.text, languageTag = request.languageTag),
+            ).text
+
+            StudyBuildMode.TRANSLATE -> translateStudyText(
+                StudyTranslateRequest(
+                    text = request.text,
+                    targetLanguageTag = requireNotNull(request.targetLanguageTag),
+                    sourceLanguageTag = request.sourceLanguageTag,
+                ),
+            ).text
+        }
     }
 
     /** Fast skeleton: language + sentences + tokens (no full dissections). */
@@ -302,8 +326,8 @@ class StudyService(
             generated.normalizedSkeleton(sourceText = extracted)
         }
 
-    /** Full dissection for one skeleton sentence; tokens must match the skeleton order/text. */
-    suspend fun dissectSentence(rawRequest: StudyDissectSentenceRequest): StudyDissectSentenceResponse {
+    /** Full dissection without starting per-token image jobs. */
+    suspend fun dissectOnly(rawRequest: StudyDissectSentenceRequest): StudyDissectSentenceResponse {
         val request = requireNotNull(rawRequest.normalizedOrNull()) {
             "Study dissect request requires non-blank text, sentence, and tokens"
         }
@@ -317,12 +341,16 @@ class StudyService(
             ),
         )
         val sentence = generated.normalizedDissected(expectedTokens = request.tokens)
-        // Pre-generate an expressive word visual for every dissectable token.
-        val tokensWithImages = sentence.tokens.map { token -> attachWordImageJob(token) }
         return StudyDissectSentenceResponse(
             sentenceText = sentence.text,
-            tokens = tokensWithImages,
+            tokens = sentence.tokens,
         )
+    }
+
+    /** Full dissection for one skeleton sentence; tokens must match the skeleton order/text. */
+    suspend fun dissectSentence(rawRequest: StudyDissectSentenceRequest): StudyDissectSentenceResponse {
+        val dissected = dissectOnly(rawRequest)
+        return dissected.copy(tokens = dissected.tokens.map { token -> attachWordImageJob(token) })
     }
 
     /**
@@ -373,6 +401,26 @@ class StudyService(
         val request = requireNotNull(rawRequest.normalizedOrNull()) {
             "Study story characters require non-blank text"
         }
+        val cast = designCast(request.text, request.textLanguageTag)
+        val withJobs = cast.map { character ->
+            val imageId = idGenerator().trim().ifBlank { UUID.randomUUID().toString() }
+            enqueueStudyImage(
+                imageId = imageId,
+                prompt = characterPortraitPrompt(
+                    StudyCharacterDesign(character.id, character.name, character.role, character.description),
+                ),
+                referenceImageUrls = emptyList(),
+                logLabel = "character portrait (${character.name})",
+            )
+            character.copy(imageId = imageId, imageUrl = null)
+        }
+        return StudyStoryCharactersResponse(characters = withJobs)
+    }
+
+    suspend fun designCast(text: String, textLanguageTag: String): List<StudyStoryCharacter> {
+        val request = requireNotNull(
+            StudyStoryCharactersRequest(text = text, textLanguageTag = textLanguageTag).normalizedOrNull(),
+        ) { "Study story characters require non-blank text" }
         val designed = runCatching {
             aiClient.designStoryCharacters(
                 StudyCharactersGenerationRequest(
@@ -384,26 +432,24 @@ class StudyService(
             log.warn("Study character design failed: {}", error.message)
             emptyList()
         }
-        val cast = normalizeCharacterDesigns(designed).ifEmpty { defaultStoryCharacters(request.text) }
-        val withJobs = cast.map { character ->
-            val imageId = idGenerator().trim().ifBlank { UUID.randomUUID().toString() }
-            enqueueStudyImage(
-                imageId = imageId,
-                prompt = characterPortraitPrompt(character),
-                referenceImageUrls = emptyList(),
-                logLabel = "character portrait (${character.name})",
-            )
-            StudyStoryCharacter(
-                id = character.id,
-                name = character.name,
-                role = character.role,
-                description = character.description,
-                imageId = imageId,
-                imageUrl = null,
-            )
-        }
-        return StudyStoryCharactersResponse(characters = withJobs)
+        return normalizeCharacterDesigns(designed).ifEmpty { defaultStoryCharacters(request.text) }
+            .map { character ->
+                StudyStoryCharacter(
+                    id = character.id,
+                    name = character.name,
+                    role = character.role,
+                    description = character.description,
+                )
+            }
     }
+
+    suspend fun renderPortrait(character: StudyStoryCharacter): String = renderStudyImage(
+        prompt = characterPortraitPrompt(
+            StudyCharacterDesign(character.id, character.name, character.role, character.description),
+        ),
+        referenceImageUrls = emptyList(),
+        label = "character portrait (${character.name})",
+    )
 
     /**
      * Starts an async expressive visual for one study sentence.
@@ -418,27 +464,37 @@ class StudyService(
         val referenceUrls = request.characters.mapNotNull { it.imageUrl?.trim()?.takeIf(String::isNotEmpty) }
         enqueueStudyImage(
             imageId = imageId,
-            prompt = {
-                val scene = resolveIntendedScene(
-                    StudySceneGenerationRequest(
-                        sentence = request.sentenceText,
-                        fullText = request.fullText,
-                        sentenceIndex = request.sentenceIndex,
-                        sentenceCount = request.sentenceCount,
-                        characters = request.characters,
-                    ),
-                )
-                sentenceVisualPrompt(
-                    intendedScene = scene,
-                    sentenceIndex = request.sentenceIndex,
-                    sentenceCount = request.sentenceCount,
-                    characters = request.characters,
-                )
-            },
+            prompt = { sentenceImagePrompt(request) },
             referenceImageUrls = referenceUrls,
             logLabel = "sentence visual",
         )
         return StudySentenceImageResponse(imageId = imageId)
+    }
+
+    suspend fun renderSentenceImage(rawRequest: StudySentenceImageRequest): String {
+        val request = requireNotNull(rawRequest.normalizedOrNull()) {
+            "Study sentence image requires non-blank sentence text"
+        }
+        val references = request.characters.mapNotNull { it.imageUrl?.trim()?.takeIf(String::isNotEmpty) }
+        return renderStudyImage(sentenceImagePrompt(request), references, "sentence visual")
+    }
+
+    private suspend fun sentenceImagePrompt(request: StudySentenceImageRequest): String {
+        val scene = resolveIntendedScene(
+            StudySceneGenerationRequest(
+                sentence = request.sentenceText,
+                fullText = request.fullText,
+                sentenceIndex = request.sentenceIndex,
+                sentenceCount = request.sentenceCount,
+                characters = request.characters,
+            ),
+        )
+        return sentenceVisualPrompt(
+            intendedScene = scene,
+            sentenceIndex = request.sentenceIndex,
+            sentenceCount = request.sentenceCount,
+            characters = request.characters,
+        )
     }
 
     /**
@@ -463,11 +519,47 @@ class StudyService(
         return StudyWordImageResponse(imageId = imageId)
     }
 
+    suspend fun renderWordImage(token: StudyToken): String {
+        val request = requireNotNull(
+            StudyWordImageRequest(
+                word = token.text,
+                contextualMeaning = token.contextualMeaning,
+                exampleSentences = token.exampleSentences,
+            ).normalizedOrNull(),
+        ) { "Study word image requires non-blank word text" }
+        val prompt = wordImagePrompt(request.word, request.contextualMeaning, request.exampleSentences).invoke()
+        return renderStudyImage(
+            prompt = prompt,
+            referenceImageUrls = emptyList(),
+            label = "word visual",
+        )
+    }
+
     /**
      * Generates four related role-play scenario starters and starts async cover images.
      * Poll [playgroundImage] for each scenario's [StudyPlayScenario.imageId].
      */
     suspend fun playScenarios(rawRequest: StudyPlayScenariosRequest): StudyPlayScenariosResponse {
+        val request = requireNotNull(rawRequest.normalizedOrNull()) {
+            "Study play scenarios require non-blank text"
+        }
+        val scenarios = designPlayScenarios(request).map { scenario ->
+            val imageId = scenario.id
+            val referenceUrls = request.characters.mapNotNull {
+                it.imageUrl?.trim()?.takeIf(String::isNotEmpty)
+            }
+            enqueueStudyImage(
+                imageId = imageId,
+                prompt = { playCoverPrompt(request, scenario) },
+                referenceImageUrls = referenceUrls,
+                logLabel = "play scenario cover",
+            )
+            scenario.copy(imageId = imageId)
+        }
+        return StudyPlayScenariosResponse(scenarios = scenarios)
+    }
+
+    suspend fun designPlayScenarios(rawRequest: StudyPlayScenariosRequest): List<StudyPlayScenario> {
         val request = requireNotNull(rawRequest.normalizedOrNull()) {
             "Study play scenarios require non-blank text"
         }
@@ -496,41 +588,42 @@ class StudyService(
             .distinctBy { it.description.trim().lowercase() }
             .take(4)
             .let { merged -> if (merged.size < 4) defaults.take(4) else merged }
-        val scenarios = designs.map { design ->
-            val imageId = idGenerator().trim().ifBlank { UUID.randomUUID().toString() }
-            val referenceUrls = request.characters.mapNotNull {
-                it.imageUrl?.trim()?.takeIf(String::isNotEmpty)
-            }
-            enqueueStudyImage(
-                imageId = imageId,
-                prompt = {
-                    val scene = resolveIntendedScene(
-                        StudySceneGenerationRequest(
-                            sentence = "",
-                            fullText = request.text,
-                            characters = request.characters,
-                            scenarioDescription = design.description,
-                            spokenLine = design.openingLine.orEmpty(),
-                        ),
-                    )
-                    playScenarioVisualPrompt(
-                        intendedScene = scene,
-                        characters = request.characters,
-                    )
-                },
-                referenceImageUrls = referenceUrls,
-                logLabel = "play scenario cover",
-            )
+        return designs.map { design ->
+            val id = idGenerator().trim().ifBlank { UUID.randomUUID().toString() }
             StudyPlayScenario(
-                id = imageId,
+                id = id,
                 description = design.description,
                 openingLine = design.openingLine,
-                imageId = imageId,
-                imageUrl = null,
             )
         }
-        require(scenarios.size == 4) { "Play tab requires exactly four scenarios" }
-        return StudyPlayScenariosResponse(scenarios = scenarios)
+            .also { require(it.size == 4) { "Play tab requires exactly four scenarios" } }
+    }
+
+    suspend fun renderPlayCover(
+        rawRequest: StudyPlayScenariosRequest,
+        scenario: StudyPlayScenario,
+    ): String {
+        val request = requireNotNull(rawRequest.normalizedOrNull()) {
+            "Study play scenarios require non-blank text"
+        }
+        val references = request.characters.mapNotNull { it.imageUrl?.trim()?.takeIf(String::isNotEmpty) }
+        return renderStudyImage(playCoverPrompt(request, scenario), references, "play scenario cover")
+    }
+
+    private suspend fun playCoverPrompt(
+        request: StudyPlayScenariosRequest,
+        scenario: StudyPlayScenario,
+    ): String {
+        val scene = resolveIntendedScene(
+            StudySceneGenerationRequest(
+                sentence = "",
+                fullText = request.text,
+                characters = request.characters,
+                scenarioDescription = scenario.description,
+                spokenLine = scenario.openingLine.orEmpty(),
+            ),
+        )
+        return playScenarioVisualPrompt(intendedScene = scene, characters = request.characters)
     }
 
     /**
@@ -616,7 +709,11 @@ class StudyService(
                 .getOrNull()
         }
         if (normalized == null) {
-            log.warn("Study exam scene falling back to a local script: generated={} beats={}", generated != null, generated?.beats?.size)
+            log.warn(
+                "Study exam scene falling back to a local script: generated={} beats={}",
+                generated != null,
+                generated?.beats?.size
+            )
         }
         return normalized ?: fallbackExamScene(
             sentences = request.session.sentences,
@@ -632,7 +729,9 @@ class StudyService(
         languageTag: String,
     ): StudyExamScoreResponse {
         val answersByBeat = request.answers
-            .mapNotNull { answer -> answer.beatId.trim().takeIf(String::isNotEmpty)?.let { it to answer.transcript.trim() } }
+            .mapNotNull { answer ->
+                answer.beatId.trim().takeIf(String::isNotEmpty)?.let { it to answer.transcript.trim() }
+            }
             .toMap()
         val beatScores = scene.beats.map { beat ->
             val transcript = answersByBeat[beat.id].orEmpty()
@@ -984,6 +1083,35 @@ class StudyService(
             )
     }
 
+    suspend fun renderStudyImage(
+        prompt: String,
+        referenceImageUrls: List<String>,
+        label: String,
+    ): String {
+        val generator = imageGenerator ?: throw IllegalStateException("Study image generator is not configured")
+        val references = referenceImageUrls.map { it.trim() }.filter { it.isNotEmpty() }
+        val startedAt = System.currentTimeMillis()
+        val url = runCatching { generator.generate(prompt, references) }
+            .recoverCatching { error ->
+                if (references.isEmpty()) throw error
+                log.warn(
+                    "Study {} with {} ref(s) failed: {}. Retrying without references.",
+                    label,
+                    references.size,
+                    error.message,
+                )
+                generator.generate(prompt, emptyList())
+            }
+            .getOrThrow()
+        log.info(
+            "Study {} image completed in {}ms (urlHost={})",
+            label,
+            System.currentTimeMillis() - startedAt,
+            runCatching { java.net.URI(url).host }.getOrNull() ?: "?",
+        )
+        return url
+    }
+
     private fun enqueueStudyImage(
         imageId: String,
         prompt: String,
@@ -1044,30 +1172,11 @@ class StudyService(
                 )
                 return@launch
             }
-            val result = runCatching { generator.generate(builtPrompt, refs) }
-                .recoverCatching { error ->
-                    // Reference-to-image is slower/flakier (re-host + multimodal).
-                    // Fall back to text-only so sentence panels still complete.
-                    if (refs.isEmpty()) throw error
-                    log.warn(
-                        "Study {} with {} ref(s) failed for {}: {}. Retrying without references.",
-                        logLabel,
-                        refs.size,
-                        imageId,
-                        error.message,
-                    )
-                    generator.generate(builtPrompt, emptyList())
-                }
+            val result = runCatching { renderStudyImage(builtPrompt, refs, logLabel) }
             val elapsedMs = System.currentTimeMillis() - startedAt
             result
                 .onSuccess { url ->
-                    log.info(
-                        "Study {} completed for {} in {}ms (urlHost={})",
-                        logLabel,
-                        imageId,
-                        elapsedMs,
-                        runCatching { java.net.URI(url).host }.getOrNull() ?: "?",
-                    )
+                    log.info("Study {} completed for {} in {}ms", logLabel, imageId, elapsedMs)
                     studyImages[imageId] = StudyPlaygroundImageResponse(
                         imageId = imageId,
                         status = StudyPlaygroundImageStatus.COMPLETED,
@@ -1285,6 +1394,7 @@ private fun fallbackExamTasks(languageTag: String, name: String): List<String> {
             "Đề nghị giúp $name",
             "Chào tạm biệt $name",
         )
+
         "zh" -> listOf(
             "帮${name}点单",
             "把东西递给${name}",
@@ -1297,6 +1407,7 @@ private fun fallbackExamTasks(languageTag: String, name: String): List<String> {
             "提出帮${name}的忙",
             "和${name}道别",
         )
+
         "ja" -> listOf(
             "${name}の注文を手伝う",
             "${name}に頼んだものを渡す",
@@ -1309,6 +1420,7 @@ private fun fallbackExamTasks(languageTag: String, name: String): List<String> {
             "${name}を手伝うと申し出る",
             "${name}に別れを告げる",
         )
+
         "ko" -> listOf(
             "${name}의 주문을 돕기",
             "${name}에게 주문한 것을 건네기",
@@ -1321,6 +1433,7 @@ private fun fallbackExamTasks(languageTag: String, name: String): List<String> {
             "${name}를 돕겠다고 제안하기",
             "${name}에게 작별 인사하기",
         )
+
         "ru" -> listOf(
             "Помогите $name сделать заказ",
             "Передайте $name заказанное",
@@ -1333,6 +1446,7 @@ private fun fallbackExamTasks(languageTag: String, name: String): List<String> {
             "Предложите помочь $name",
             "Попрощайтесь с $name",
         )
+
         "es" -> listOf(
             "Ayuda a $name a pedir",
             "Entrégale a $name lo pedido",
@@ -1345,6 +1459,7 @@ private fun fallbackExamTasks(languageTag: String, name: String): List<String> {
             "Ofrécete a ayudar a $name",
             "Despídete de $name",
         )
+
         "de" -> listOf(
             "Hilf $name beim Bestellen",
             "Gib $name das Bestellte",
@@ -1357,6 +1472,7 @@ private fun fallbackExamTasks(languageTag: String, name: String): List<String> {
             "Biete $name Hilfe an",
             "Verabschiede dich von $name",
         )
+
         "my" -> listOf(
             "$name မှာယူတာကို ကူညီပါ",
             "$name ကို မှာထားတာ ပေးပါ",
@@ -1369,6 +1485,7 @@ private fun fallbackExamTasks(languageTag: String, name: String): List<String> {
             "$name ကို ကူညီမယ်လို့ ကမ်းလှမ်းပါ",
             "$name ကို နှုတ်ဆက်ပါ",
         )
+
         else -> listOf(
             "Help $name place an order",
             "Give $name what was ordered",
@@ -1386,17 +1503,18 @@ private fun fallbackExamTasks(languageTag: String, name: String): List<String> {
     return lines
 }
 
-private fun fallbackExamMeaning(languageTag: String, sentence: String): String = when (Language.fromTag(languageTag).tag) {
-    "vi" -> "Dùng đúng ý của câu: $sentence"
-    "zh" -> "表达这句的意思：$sentence"
-    "ja" -> "この文の意味を使う：$sentence"
-    "ko" -> "이 문장의 의미를 사용하세요: $sentence"
-    "ru" -> "Используйте смысл фразы: $sentence"
-    "es" -> "Usa el significado de esta frase: $sentence"
-    "de" -> "Verwende die Bedeutung dieses Satzes: $sentence"
-    "my" -> "ဒီဝါကျရဲ့ အဓိပ္ပာယ်ကို သုံးပါ။ $sentence"
-    else -> "Use the meaning of this study sentence: $sentence"
-}
+private fun fallbackExamMeaning(languageTag: String, sentence: String): String =
+    when (Language.fromTag(languageTag).tag) {
+        "vi" -> "Dùng đúng ý của câu: $sentence"
+        "zh" -> "表达这句的意思：$sentence"
+        "ja" -> "この文の意味を使う：$sentence"
+        "ko" -> "이 문장의 의미를 사용하세요: $sentence"
+        "ru" -> "Используйте смысл фразы: $sentence"
+        "es" -> "Usa el significado de esta frase: $sentence"
+        "de" -> "Verwende die Bedeutung dieses Satzes: $sentence"
+        "my" -> "ဒီဝါကျရဲ့ အဓိပ္ပာယ်ကို သုံးပါ။ $sentence"
+        else -> "Use the meaning of this study sentence: $sentence"
+    }
 
 internal fun writeAttemptMatches(expected: String, actual: String): Boolean {
     fun normalize(value: String): String =
@@ -1509,7 +1627,6 @@ internal fun defaultExpressSentences(
 }
 
 
-
 internal fun normalizeCharacterDesigns(designs: List<StudyCharacterDesign>): List<StudyCharacterDesign> {
     val cleaned = designs.mapNotNull { design ->
         val name = design.name.trim().takeIf { it.isNotEmpty() } ?: return@mapNotNull null
@@ -1530,7 +1647,10 @@ internal fun normalizeCharacterDesigns(designs: List<StudyCharacterDesign>): Lis
         .firstOrNull { it.role == "secondary" && !it.name.equals(main.name, ignoreCase = true) }
         ?.copy(id = "secondary", role = "secondary")
         ?: cleaned.firstOrNull {
-            it.role != "main" && !it.name.equals(main.name, ignoreCase = true) && it !== cleaned.firstOrNull { c -> c.role == "main" }
+            it.role != "main" && !it.name.equals(
+                main.name,
+                ignoreCase = true
+            ) && it !== cleaned.firstOrNull { c -> c.role == "main" }
         }?.copy(id = "secondary", role = "secondary")
         ?: cleaned.drop(1).firstOrNull { !it.name.equals(main.name, ignoreCase = true) }
             ?.copy(id = "secondary", role = "secondary")
@@ -1540,8 +1660,8 @@ internal fun normalizeCharacterDesigns(designs: List<StudyCharacterDesign>): Lis
 
 internal fun defaultStoryCharacters(sourceText: String): List<StudyCharacterDesign> {
     val looksVietnamese = sourceText.any { it in '\u00C0'..'\u1EF9' } ||
-        sourceText.contains("Tôi", ignoreCase = true) ||
-        sourceText.contains("bạn", ignoreCase = true)
+            sourceText.contains("Tôi", ignoreCase = true) ||
+            sourceText.contains("bạn", ignoreCase = true)
     val looksRussian = sourceText.any { it in '\u0400'..'\u04FF' }
     return when {
         looksVietnamese -> listOf(
@@ -1558,6 +1678,7 @@ internal fun defaultStoryCharacters(sourceText: String): List<StudyCharacterDesi
                 description = "Young Vietnamese man around 30, short neat black hair, friendly open face, light shirt and dark trousers, slightly taller companion",
             ),
         )
+
         looksRussian -> listOf(
             StudyCharacterDesign(
                 id = "main",
@@ -1572,6 +1693,7 @@ internal fun defaultStoryCharacters(sourceText: String): List<StudyCharacterDesi
                 description = "Young Russian man around 30, short sandy hair, gentle smile, wool scarf and practical jacket, calm supportive presence",
             ),
         )
+
         else -> listOf(
             StudyCharacterDesign(
                 id = "main",
@@ -1717,10 +1839,10 @@ internal fun StudySentence.normalizedDissected(expectedTokens: List<String>): St
 
 private fun StudyToken.hasDissectionContent(): Boolean =
     literalMeaning.isNotBlank() ||
-        contextualMeaning.isNotBlank() ||
-        register.isNotBlank() ||
-        nearSynonyms.isNotEmpty() ||
-        exampleSentences.isNotEmpty()
+            contextualMeaning.isNotBlank() ||
+            register.isNotBlank() ||
+            nearSynonyms.isNotEmpty() ||
+            exampleSentences.isNotEmpty()
 
 /** Heuristic for pure punctuation / symbols when the model omits an explicit plain flag. */
 internal fun looksLikePunctuationOnly(text: String): Boolean {

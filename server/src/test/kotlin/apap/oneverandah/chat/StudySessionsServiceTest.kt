@@ -3,6 +3,9 @@ package apap.oneverandah.chat
 import apap.oneverandah.api.SaveStudySessionRequest
 import apap.oneverandah.api.StudyExamGrade
 import apap.oneverandah.api.StudyExamScene
+import apap.oneverandah.api.StudyExampleSentence
+import apap.oneverandah.api.StudyBuildState
+import apap.oneverandah.api.StudyBuildStatus
 import apap.oneverandah.api.StudyPlayChatMessage
 import apap.oneverandah.api.StudyPlayScenario
 import apap.oneverandah.api.StudyPlaySpeaker
@@ -22,6 +25,47 @@ import kotlin.test.assertNull
 import kotlin.test.assertTrue
 
 class StudySessionsServiceTest {
+    @Test
+    fun `incomplete build query includes preparing and building records only`() = runBlocking {
+        val repository = InMemoryStudySessionsRepository()
+        val session = StudySessionResponse(text = "Hello.", textLanguageTag = "en", sentences = emptyList())
+        val statuses = listOf(
+            "preparing" to StudyBuildStatus.PREPARING,
+            "building" to StudyBuildStatus.BUILDING,
+            "complete" to StudyBuildStatus.COMPLETE,
+            "partial" to StudyBuildStatus.PARTIAL,
+        )
+        statuses.forEachIndexed { index, (id, status) ->
+            repository.upsert(
+                SavedStudySessionRecord(
+                    id = id,
+                    deviceTokenHash = "device-hash",
+                    languageTag = "en",
+                    text = session.text,
+                    textLanguageTag = session.textLanguageTag,
+                    session = session,
+                    createdAt = index.toLong(),
+                    updatedAt = index.toLong(),
+                    build = StudyBuildState(status = status),
+                ),
+            )
+        }
+        repository.upsert(
+            SavedStudySessionRecord(
+                id = "legacy",
+                deviceTokenHash = "device-hash",
+                languageTag = "en",
+                text = session.text,
+                textLanguageTag = session.textLanguageTag,
+                session = session,
+                createdAt = 5L,
+                updatedAt = 5L,
+            ),
+        )
+
+        assertEquals(setOf("preparing", "building"), repository.listIncompleteBuilds().toSet())
+    }
+
     @Test
     fun `summary responses include nonblank sentence image urls in order`() = runBlocking {
         val deviceService = DeviceService(
@@ -280,9 +324,11 @@ class StudySessionsServiceTest {
         finishNaming.complete("A saved session")
         saveJob.join()
 
-        assertEquals("A session that must be saved", repository.listByDevice(
-            deviceService.findValid(token)!!.tokenHash,
-        ).single().text)
+        assertEquals(
+            "A session that must be saved", repository.listByDevice(
+                deviceService.findValid(token)!!.tokenHash,
+            ).single().text
+        )
     }
 
     @Test
@@ -422,8 +468,7 @@ class StudySessionsServiceTest {
                 session = sampleSession("Xin chào.").copy(examScene = scene),
             ),
         )
-        val stored = repository.findById(initial.id)!!
-        repository.upsert(stored.copy(examGrade = grade))
+        service.saveExamGrade(ownerToken, initial.id, grade)
 
         val progressive = service.save(
             ownerToken,
@@ -440,6 +485,75 @@ class StudySessionsServiceTest {
         assertEquals(grade, service.get(ownerToken, initial.id)?.examGrade)
         assertNull(service.get(otherToken, initial.id)?.examGrade)
         assertNull(service.listCommunity(otherToken).items.single().examGrade)
+    }
+
+    @Test
+    fun `stale client save cannot downgrade built meanings and images`() = runBlocking {
+        val repository = InMemoryStudySessionsRepository()
+        val deviceService = DeviceService(
+            repository = InMemoryDeviceRepository(),
+            tokenGenerator = sequenceTokenGenerator(),
+        )
+        val service = StudySessionsService(repository = repository, deviceService = deviceService)
+        val token = deviceService.issueToken().deviceToken
+        val source = "stale-merge"
+        val skeleton = StudySessionResponse(
+            text = "Xin chào.",
+            textLanguageTag = "vi",
+            sentences = listOf(
+                StudySentence(
+                    text = "Xin chào.",
+                    tokens = listOf(StudyToken(text = "Xin", status = StudyTokenStatus.PENDING)),
+                ),
+            ),
+        )
+        val created = service.save(
+            token,
+            SaveStudySessionRequest(sourceMessageId = source, languageTag = "en", session = skeleton),
+        )
+        service.sessionStore.update(created.id, immediate = true) { stored ->
+            stored.copy(
+                build = StudyBuildState(status = StudyBuildStatus.BUILDING),
+                session = stored.session.copy(
+                    sentences = listOf(
+                        StudySentence(
+                            text = "Xin chào.",
+                            tokens = listOf(
+                                StudyToken(
+                                    text = "Xin",
+                                    status = StudyTokenStatus.READY,
+                                    literalMeaning = "hello",
+                                    imageId = "word-image",
+                                    imageUrl = "https://img/word",
+                                ),
+                            ),
+                            imageId = "sentence-image",
+                            imageUrl = "https://img/sentence",
+                        ),
+                    ),
+                ),
+            )
+        }
+
+        service.save(
+            token,
+            SaveStudySessionRequest(
+                sourceMessageId = source,
+                languageTag = "en",
+                session = skeleton.copy(
+                    practiceSentences = listOf(StudyExampleSentence("Practice.", "Try this.")),
+                ),
+            ),
+        )
+
+        val saved = service.get(token, created.id)!!
+        val sentence = saved.session.sentences.single()
+        assertEquals(StudyTokenStatus.READY, sentence.tokens.single().status)
+        assertEquals("hello", sentence.tokens.single().literalMeaning)
+        assertEquals("https://img/word", sentence.tokens.single().imageUrl)
+        assertEquals("https://img/sentence", sentence.imageUrl)
+        assertEquals(listOf(StudyExampleSentence("Practice.", "Try this.")), saved.session.practiceSentences)
+        assertEquals(StudyBuildStatus.BUILDING, saved.build?.status)
     }
 
     @Test

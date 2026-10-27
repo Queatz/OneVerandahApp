@@ -16,6 +16,13 @@ import apap.oneverandah.api.ChatApi
 import apap.oneverandah.api.ChatApiException
 import apap.oneverandah.api.ChatMessage
 import apap.oneverandah.api.ChatSender
+import apap.oneverandah.api.StudyBuildElement
+import apap.oneverandah.api.StudyBuildElementKind
+import apap.oneverandah.api.StudyBuildEvent
+import apap.oneverandah.api.StudyBuildMode
+import apap.oneverandah.api.StudyBuildRequest
+import apap.oneverandah.api.StudyBuildState
+import apap.oneverandah.api.StudyBuildStatus
 import apap.oneverandah.api.LanguageStudyMiniApp
 import apap.oneverandah.api.SaveStudySessionRequest
 import apap.oneverandah.api.SavedStudySession
@@ -23,13 +30,11 @@ import apap.oneverandah.api.SavedStudySessionSummary
 import apap.oneverandah.api.SpeechRequest
 import apap.oneverandah.api.SpeechTimingAligner
 import apap.oneverandah.api.SpeechWordTiming
-import apap.oneverandah.api.StudyDissectSentenceRequest
 import apap.oneverandah.api.StudyExampleSentence
 import apap.oneverandah.api.StudyExamBeatKind
 import apap.oneverandah.api.StudyExamBeatScore
 import apap.oneverandah.api.StudyExamGrade
 import apap.oneverandah.api.StudyExamScene
-import apap.oneverandah.api.StudyExamSceneRequest
 import apap.oneverandah.api.isTenRoundExam
 import apap.oneverandah.api.StudyExamScoreAnswer
 import apap.oneverandah.api.StudyExamScoreRequest
@@ -40,21 +45,15 @@ import apap.oneverandah.api.StudyListenCheckRequest
 import apap.oneverandah.api.StudyPlayChatMessage
 import apap.oneverandah.api.StudyPlayHistoryMessage
 import apap.oneverandah.api.StudyPlayScenario
-import apap.oneverandah.api.StudyPlayScenariosRequest
 import apap.oneverandah.api.StudyPlaySpeaker
 import apap.oneverandah.api.StudyPlayTurnRequest
 import apap.oneverandah.api.StudyPlaygroundImageStatus
 import apap.oneverandah.api.StudySentence
-import apap.oneverandah.api.StudySentenceImageRequest
-import apap.oneverandah.api.StudySessionRequest
 import apap.oneverandah.api.StudySessionResponse
-import apap.oneverandah.api.StudyTranslateRequest
 import apap.oneverandah.api.sentenceImageUrls
 import apap.oneverandah.api.StudyStoryCharacter
-import apap.oneverandah.api.StudyStoryCharactersRequest
 import apap.oneverandah.api.StudyToken
 import apap.oneverandah.api.StudyTokenStatus
-import apap.oneverandah.api.StudyWordImageRequest
 import apap.oneverandah.api.StudyWordPlaygroundRequest
 import apap.oneverandah.api.StudyWriteCheckRequest
 import apap.oneverandah.api.StudyWordPlaygroundResponse
@@ -69,6 +68,7 @@ import apap.oneverandah.state.Toaster
 import kotlinx.browser.document
 import kotlinx.browser.window
 import kotlinx.coroutines.CompletableDeferred
+import kotlinx.coroutines.Job
 import kotlinx.coroutines.NonCancellable
 import kotlinx.coroutines.async
 import kotlinx.coroutines.awaitAll
@@ -145,6 +145,8 @@ fun StudyScreen(
     val studyExamInFlight = remember { mutableStateMapOf<String, Boolean>() }
     // messageId -> exam scene generation failed
     val studyExamFailed = remember { mutableStateMapOf<String, Boolean>() }
+    val studyBuildStateByMessageId = remember { mutableStateMapOf<String, StudyBuildState>() }
+    var studyBuildStreamJob by remember { mutableStateOf<Job?>(null) }
     // sourceMessageId (or session id fallback) -> persisted study row id
     val studyPersistedBySourceId = remember { mutableStateMapOf<String, String>() }
     var studySessionItems by remember { mutableStateOf<List<SavedStudySessionSummary>>(emptyList()) }
@@ -262,96 +264,6 @@ fun StudyScreen(
         }
     }
 
-    // Assigned once loadMissingStudyWordImages is defined (local fns cannot forward-ref).
-    var warmStudyWordImages: (messageId: String) -> Unit = {}
-
-    suspend fun dissectStudySentence(messageId: String, sentenceIndex: Int) {
-        val session = studyCache[messageId] ?: return
-        val sentence = session.sentences.getOrNull(sentenceIndex) ?: return
-        if (!sentenceNeedsDissect(sentence)) {
-            if (studyTarget?.id == messageId) {
-                studySentenceStatus[sentenceIndex] = StudySentenceLoadState.READY
-            }
-            return
-        }
-        if (studyTarget?.id == messageId) {
-            studySentenceStatus[sentenceIndex] = StudySentenceLoadState.LOADING
-        }
-        runCatching {
-            ChatApi.studyDissect(
-                StudyDissectSentenceRequest(
-                    text = session.text,
-                    sentenceText = sentence.text,
-                    tokens = sentence.tokens.map { it.text },
-                    textLanguageTag = session.textLanguageTag,
-                    languageTag = language.tag,
-                ),
-            )
-        }.onSuccess { response ->
-            val current = studyCache[messageId] ?: return@onSuccess
-            if (sentenceIndex !in current.sentences.indices) return@onSuccess
-            val existingSentence = current.sentences[sentenceIndex]
-            // Prefer already-persisted word visuals when re-dissecting the same texts.
-            val mergedTokens = response.tokens.mapIndexed { tokenIndex, token ->
-                val existing = existingSentence.tokens.getOrNull(tokenIndex)
-                if (
-                    existing != null &&
-                    existing.text == token.text &&
-                    !existing.imageUrl.isNullOrBlank()
-                ) {
-                    token.copy(
-                        imageId = existing.imageId ?: token.imageId,
-                        imageUrl = existing.imageUrl,
-                    )
-                } else {
-                    token
-                }
-            }
-            val updatedSentences = current.sentences.toMutableList()
-            updatedSentences[sentenceIndex] = StudySentence(
-                text = response.sentenceText.ifBlank { existingSentence.text },
-                tokens = mergedTokens,
-                // Keep Study-tab visuals across dissection merges.
-                imageId = existingSentence.imageId,
-                imageUrl = existingSentence.imageUrl,
-            )
-            val updated = current.copy(sentences = updatedSentences)
-            studyCache[messageId] = updated
-            persistStudySession(messageId, updated)
-            if (studyTarget?.id == messageId) {
-                studySession = updated
-                studySentenceStatus[sentenceIndex] = StudySentenceLoadState.READY
-            }
-            warmStudyWordImages(messageId)
-        }.onFailure {
-            if (studyTarget?.id == messageId) {
-                studySentenceStatus[sentenceIndex] = StudySentenceLoadState.ERROR
-            }
-        }
-    }
-
-    fun loadMissingStudyDissections(messageId: String, session: StudySessionResponse) {
-        val pendingIndices = session.sentences.indices.filter { index ->
-            studySentenceStatus[index] != StudySentenceLoadState.READY
-        }
-        if (pendingIndices.isEmpty()) {
-            warmStudyWordImages(messageId)
-            return
-        }
-        scope.launch {
-            val semaphore = Semaphore(permits = STUDY_DISSECT_PARALLELISM)
-            coroutineScope {
-                pendingIndices.map { index ->
-                    async {
-                        semaphore.withPermit {
-                            dissectStudySentence(messageId, index)
-                        }
-                    }
-                }.awaitAll()
-            }
-            warmStudyWordImages(messageId)
-        }
-    }
 
     fun studyImageKey(messageId: String, sentenceIndex: Int): String = "$messageId#$sentenceIndex"
 
@@ -368,18 +280,43 @@ fun StudyScreen(
         studyExamFailed.remove(messageId)
     }
 
+    fun hydrateStudyPlayScenarios(scenarios: List<StudyPlayScenario>): List<StudyPlayScenario> =
+        scenarios.map { scenario ->
+            if (scenario.messages.isNotEmpty()) {
+                scenario
+            } else {
+                scenario.copy(
+                    messages = listOf(
+                        StudyPlayChatMessage(
+                            speaker = StudyPlaySpeaker.OTHER,
+                            text = scenario.openingLine.orEmpty(),
+                            description = scenario.description,
+                            imageId = scenario.imageId,
+                            imageUrl = scenario.imageUrl,
+                        ),
+                    ),
+                )
+            }
+        }
+
     fun applyPlayScenarios(messageId: String, scenarios: List<StudyPlayScenario>) {
         val current = studyCache[messageId] ?: return
         if (scenarios.isEmpty()) return
-        // Never wipe an already-started conversation with a fresh generation.
-        if (current.playScenarios.isNotEmpty()) return
-        val updated = current.copy(playScenarios = scenarios)
+        val currentById = current.playScenarios.associateBy { it.id }
+        val merged = hydrateStudyPlayScenarios(scenarios).map { incoming ->
+            val existing = currentById[incoming.id] ?: return@map incoming
+            incoming.copy(
+                imageId = incoming.imageId?.takeIf { it.isNotBlank() } ?: existing.imageId,
+                imageUrl = incoming.imageUrl?.takeIf { it.isNotBlank() } ?: existing.imageUrl,
+                messages = if (existing.messages.size > incoming.messages.size) existing.messages else incoming.messages,
+            )
+        }
+        val updated = current.copy(playScenarios = merged)
         studyCache[messageId] = updated
         studyPlayFailed.remove(messageId)
         if (studyTarget?.id == messageId) {
             studySession = updated
         }
-        persistStudySession(messageId, updated)
     }
 
     fun updatePlayScenario(
@@ -401,32 +338,6 @@ fun StudyScreen(
             studySession = updated
         }
         persistStudySession(messageId, updated)
-    }
-
-    fun applyPlayScenarioImage(
-        messageId: String,
-        scenarioId: String,
-        imageId: String?,
-        imageUrl: String?,
-    ) {
-        val nextId = imageId?.trim()?.takeIf { it.isNotEmpty() }
-        val nextUrl = imageUrl?.trim()?.takeIf { it.isNotEmpty() }
-        updatePlayScenario(messageId, scenarioId) { scenario ->
-            // Never clobber a completed cover URL.
-            val coverId = scenario.imageId ?: nextId
-            val coverUrl = scenario.imageUrl?.takeIf { it.isNotBlank() } ?: nextUrl
-            val messages = scenario.messages.toMutableList()
-            if (messages.isNotEmpty()) {
-                val first = messages[0]
-                if (first.speaker == StudyPlaySpeaker.OTHER && first.imageUrl.isNullOrBlank()) {
-                    messages[0] = first.copy(
-                        imageId = first.imageId ?: nextId ?: coverId,
-                        imageUrl = nextUrl ?: coverUrl,
-                    )
-                }
-            }
-            scenario.copy(imageId = coverId, imageUrl = coverUrl, messages = messages)
-        }
     }
 
     fun applyPlayMessageImage(
@@ -457,71 +368,6 @@ fun StudyScreen(
         }
     }
 
-    suspend fun pollPlayImageUntilSettled(imageId: String): Pair<String?, Boolean> {
-        val key = imageId.trim()
-        if (key.isEmpty()) return null to true
-        var attempts = 0
-        var missingJobStreak = 0
-        while (attempts < STUDY_IMAGE_POLL_MAX_ATTEMPTS) {
-            val image = runCatching { ChatApi.studyImage(key) }.getOrNull()
-            if (image != null) {
-                missingJobStreak = 0
-                when (image.status) {
-                    StudyPlaygroundImageStatus.COMPLETED -> {
-                        val url = image.imageUrl?.trim()?.takeIf { it.isNotEmpty() }
-                        return url to (url == null)
-                    }
-                    StudyPlaygroundImageStatus.FAILED -> return null to true
-                    StudyPlaygroundImageStatus.PENDING,
-                    StudyPlaygroundImageStatus.GENERATING,
-                    -> Unit
-                }
-            } else {
-                missingJobStreak += 1
-                if (missingJobStreak >= STUDY_IMAGE_MISSING_JOB_LIMIT) {
-                    return null to true
-                }
-            }
-            attempts += 1
-            delay(STUDY_IMAGE_POLL_DELAY_MS)
-        }
-        return null to true
-    }
-
-    suspend fun pollMissingPlayImages(messageId: String, scenarios: List<StudyPlayScenario>) {
-        coroutineScope {
-            scenarios.map { scenario ->
-                async {
-                    // Cover / opening beat
-                    if (scenario.imageUrl.isNullOrBlank()) {
-                        val coverId = scenario.imageId?.trim().orEmpty()
-                        if (coverId.isNotEmpty()) {
-                            val (url, _) = pollPlayImageUntilSettled(coverId)
-                            if (!url.isNullOrBlank()) {
-                                applyPlayScenarioImage(messageId, scenario.id, coverId, url)
-                            }
-                        }
-                    }
-                    // Later turn images that still have an imageId but no URL
-                    val latest = studyCache[messageId]?.playScenarios
-                        ?.firstOrNull { it.id == scenario.id }
-                        ?: scenario
-                    latest.messages.forEachIndexed { index, message ->
-                        if (message.speaker != StudyPlaySpeaker.OTHER) return@forEachIndexed
-                        if (!message.imageUrl.isNullOrBlank()) return@forEachIndexed
-                        val msgImageId = message.imageId?.trim().orEmpty()
-                        if (msgImageId.isEmpty()) return@forEachIndexed
-                        // Opening cover already handled above.
-                        if (index == 0 && msgImageId == latest.imageId) return@forEachIndexed
-                        val (url, _) = pollPlayImageUntilSettled(msgImageId)
-                        if (!url.isNullOrBlank()) {
-                            applyPlayMessageImage(messageId, scenario.id, msgImageId, url)
-                        }
-                    }
-                }
-            }.awaitAll()
-        }
-    }
 
     fun applyStudyCharacters(messageId: String, characters: List<StudyStoryCharacter>) {
         val current = studyCache[messageId] ?: return
@@ -552,27 +398,8 @@ fun StudyScreen(
         if (studyTarget?.id == messageId) {
             studySession = updated
         }
-        persistStudySession(messageId, updated)
     }
 
-    fun applyStudyCharacterPortrait(messageId: String, characterId: String, imageId: String?, imageUrl: String?) {
-        val current = studyCache[messageId] ?: return
-        val index = current.characters.indexOfFirst { it.id == characterId }
-        if (index < 0) return
-        val character = current.characters[index]
-        if (!character.imageUrl.isNullOrBlank()) return
-        val nextId = imageId?.trim()?.takeIf { it.isNotEmpty() } ?: character.imageId
-        val nextUrl = imageUrl?.trim()?.takeIf { it.isNotEmpty() }
-        if (character.imageId == nextId && character.imageUrl == nextUrl) return
-        val updatedCharacters = current.characters.toMutableList()
-        updatedCharacters[index] = character.copy(imageId = nextId, imageUrl = nextUrl)
-        val updated = current.copy(characters = updatedCharacters)
-        studyCache[messageId] = updated
-        if (studyTarget?.id == messageId) {
-            studySession = updated
-        }
-        persistStudySession(messageId, updated)
-    }
 
     fun applyStudySentenceImage(
         messageId: String,
@@ -595,7 +422,6 @@ fun StudyScreen(
         if (studyTarget?.id == messageId) {
             studySession = updated
         }
-        persistStudySession(messageId, updated)
     }
 
     fun studyWordImageKey(messageId: String, sentenceIndex: Int, tokenIndex: Int): String =
@@ -627,477 +453,11 @@ fun StudyScreen(
         if (studyTarget?.id == messageId) {
             studySession = updated
         }
-        persistStudySession(messageId, updated)
     }
 
-    suspend fun ensureStudyWordImage(messageId: String, sentenceIndex: Int, tokenIndex: Int) {
-        val key = studyWordImageKey(messageId, sentenceIndex, tokenIndex)
-        if (studyWordImageInFlight[key] == true) return
-        val session = studyCache[messageId] ?: return
-        val token = session.sentences.getOrNull(sentenceIndex)?.tokens?.getOrNull(tokenIndex) ?: return
-        if (!token.isDissectable) return
-        if (!token.imageUrl.isNullOrBlank()) {
-            studyWordImageFailed.remove(key)
-            return
-        }
-        studyWordImageInFlight[key] = true
-        studyWordImageFailed.remove(key)
-        try {
-            var imageId = token.imageId?.trim().orEmpty()
-            if (imageId.isNotEmpty()) {
-                val existing = runCatching { ChatApi.studyImage(imageId) }.getOrNull()
-                when {
-                    existing == null -> {
-                        // Job lost (e.g. server restart) — start a fresh one.
-                        imageId = ""
-                    }
-                    existing.status == StudyPlaygroundImageStatus.COMPLETED &&
-                        !existing.imageUrl.isNullOrBlank() -> {
-                        applyStudyWordImage(messageId, sentenceIndex, tokenIndex, imageId, existing.imageUrl)
-                        return
-                    }
-                    existing.status == StudyPlaygroundImageStatus.FAILED -> {
-                        studyWordImageFailed[key] = true
-                        return
-                    }
-                    else -> Unit // PENDING / GENERATING — fall through to poll
-                }
-            }
-            if (imageId.isEmpty()) {
-                val latestToken = studyCache[messageId]
-                    ?.sentences?.getOrNull(sentenceIndex)
-                    ?.tokens?.getOrNull(tokenIndex)
-                    ?: token
-                val started = runCatching {
-                    ChatApi.studyWordImage(
-                        StudyWordImageRequest(
-                            word = latestToken.text,
-                            contextualMeaning = latestToken.contextualMeaning,
-                            exampleSentences = latestToken.exampleSentences,
-                        ),
-                    )
-                }.getOrNull()
-                if (started == null) {
-                    studyWordImageFailed[key] = true
-                    return
-                }
-                imageId = started.imageId
-                applyStudyWordImage(messageId, sentenceIndex, tokenIndex, imageId, null)
-            }
-            var attempts = 0
-            var missingJobStreak = 0
-            while (attempts < STUDY_IMAGE_POLL_MAX_ATTEMPTS) {
-                val latest = studyCache[messageId]
-                    ?.sentences?.getOrNull(sentenceIndex)
-                    ?.tokens?.getOrNull(tokenIndex)
-                if (!latest?.imageUrl.isNullOrBlank()) return
-                val image = runCatching { ChatApi.studyImage(imageId) }.getOrNull()
-                if (image != null) {
-                    missingJobStreak = 0
-                    when (image.status) {
-                        StudyPlaygroundImageStatus.COMPLETED -> {
-                            if (!image.imageUrl.isNullOrBlank()) {
-                                applyStudyWordImage(
-                                    messageId,
-                                    sentenceIndex,
-                                    tokenIndex,
-                                    imageId,
-                                    image.imageUrl,
-                                )
-                            } else {
-                                studyWordImageFailed[key] = true
-                            }
-                            return
-                        }
-                        StudyPlaygroundImageStatus.FAILED -> {
-                            studyWordImageFailed[key] = true
-                            return
-                        }
-                        StudyPlaygroundImageStatus.PENDING,
-                        StudyPlaygroundImageStatus.GENERATING,
-                        -> Unit
-                    }
-                } else {
-                    missingJobStreak += 1
-                    if (missingJobStreak >= STUDY_IMAGE_MISSING_JOB_LIMIT) {
-                        studyWordImageFailed[key] = true
-                        return
-                    }
-                }
-                attempts += 1
-                delay(STUDY_IMAGE_POLL_DELAY_MS)
-            }
-            studyWordImageFailed[key] = true
-        } finally {
-            studyWordImageInFlight.remove(key)
-        }
-    }
 
-    fun loadMissingStudyWordImages(messageId: String, session: StudySessionResponse) {
-        val pending = mutableListOf<Pair<Int, Int>>()
-        session.sentences.forEachIndexed { sentenceIndex, sentence ->
-            sentence.tokens.forEachIndexed { tokenIndex, token ->
-                if (
-                    token.isDissectable &&
-                    token.imageUrl.isNullOrBlank() &&
-                    studyWordImageFailed[studyWordImageKey(messageId, sentenceIndex, tokenIndex)] != true
-                ) {
-                    pending += sentenceIndex to tokenIndex
-                }
-            }
-        }
-        if (pending.isEmpty()) return
-        scope.launch {
-            val semaphore = Semaphore(permits = STUDY_IMAGE_PARALLELISM)
-            coroutineScope {
-                pending.map { (sentenceIndex, tokenIndex) ->
-                    async {
-                        semaphore.withPermit {
-                            ensureStudyWordImage(messageId, sentenceIndex, tokenIndex)
-                        }
-                    }
-                }.awaitAll()
-            }
-        }
-    }
-    warmStudyWordImages = { messageId ->
-        studyCache[messageId]?.let { loadMissingStudyWordImages(messageId, it) }
-    }
 
-    /**
-     * Ensures the study session has a designed cast and waits for portrait URLs
-     * (or portrait failure) so sentence panels can use named reference images.
-     * Returns the latest cast from the cache (may be empty if design failed).
-     */
-    suspend fun ensureStudyCharacters(messageId: String): List<StudyStoryCharacter> {
-        val session = studyCache[messageId] ?: return emptyList()
-        val existing = session.characters
-        // Prefer starting scenes once the main portrait is ready; secondary can lag.
-        if (existing.isNotEmpty() && studyCastReadyForScenes(existing)) return existing
 
-        // Another coroutine may already be designing/polling this cast.
-        if (studyCharactersInFlight[messageId] == true) {
-            var wait = 0
-            while (studyCharactersInFlight[messageId] == true && wait < STUDY_MAIN_PORTRAIT_WAIT_ATTEMPTS) {
-                delay(STUDY_IMAGE_POLL_DELAY_MS)
-                wait += 1
-                val latest = studyCache[messageId]?.characters.orEmpty()
-                if (latest.isNotEmpty() && studyCastReadyForScenes(latest)) return latest
-            }
-            return studyCache[messageId]?.characters.orEmpty()
-        }
-
-        studyCharactersInFlight[messageId] = true
-        try {
-            var cast = studyCache[messageId]?.characters.orEmpty()
-            if (cast.isEmpty()) {
-                val designed = runCatching {
-                    ChatApi.studyStoryCharacters(
-                        StudyStoryCharactersRequest(
-                            text = session.text,
-                            textLanguageTag = session.textLanguageTag,
-                        ),
-                    )
-                }.getOrNull()?.characters.orEmpty()
-                if (designed.isEmpty()) return emptyList()
-                applyStudyCharacters(messageId, designed)
-                cast = studyCache[messageId]?.characters.orEmpty()
-            }
-
-            // Poll portraits in parallel so a slow secondary does not block the main.
-            val pendingPortraits = cast.filter {
-                it.imageUrl.isNullOrBlank() && !it.imageId.isNullOrBlank()
-            }
-            if (pendingPortraits.isNotEmpty()) {
-                coroutineScope {
-                    pendingPortraits.map { character ->
-                        async {
-                            val imageId = character.imageId?.trim().orEmpty()
-                            if (imageId.isEmpty()) return@async
-                            val existingJob = runCatching { ChatApi.studyImage(imageId) }.getOrNull()
-                            when {
-                                existingJob == null -> return@async
-                                existingJob.status == StudyPlaygroundImageStatus.COMPLETED &&
-                                    !existingJob.imageUrl.isNullOrBlank() -> {
-                                    applyStudyCharacterPortrait(
-                                        messageId,
-                                        character.id,
-                                        imageId,
-                                        existingJob.imageUrl,
-                                    )
-                                    return@async
-                                }
-                                existingJob.status == StudyPlaygroundImageStatus.FAILED -> return@async
-                                else -> Unit
-                            }
-                            var attempts = 0
-                            var missingJobStreak = 0
-                            // Main portrait gets a longer wait; secondary is best-effort and shorter.
-                            val isMain = character.role.equals("main", ignoreCase = true) ||
-                                character.id.equals("main", ignoreCase = true)
-                            val portraitAttempts = if (isMain) {
-                                STUDY_MAIN_PORTRAIT_WAIT_ATTEMPTS
-                            } else {
-                                (STUDY_MAIN_PORTRAIT_WAIT_ATTEMPTS / 2).coerceAtLeast(12)
-                            }
-                            while (attempts < portraitAttempts) {
-                                val latestUrl = studyCache[messageId]?.characters
-                                    ?.firstOrNull { it.id == character.id }
-                                    ?.imageUrl
-                                if (!latestUrl.isNullOrBlank()) break
-                                val image = runCatching { ChatApi.studyImage(imageId) }.getOrNull()
-                                if (image != null) {
-                                    missingJobStreak = 0
-                                    when (image.status) {
-                                        StudyPlaygroundImageStatus.COMPLETED -> {
-                                            if (!image.imageUrl.isNullOrBlank()) {
-                                                applyStudyCharacterPortrait(
-                                                    messageId,
-                                                    character.id,
-                                                    imageId,
-                                                    image.imageUrl,
-                                                )
-                                            }
-                                            break
-                                        }
-                                        StudyPlaygroundImageStatus.FAILED -> break
-                                        StudyPlaygroundImageStatus.PENDING,
-                                        StudyPlaygroundImageStatus.GENERATING,
-                                        -> Unit
-                                    }
-                                } else {
-                                    missingJobStreak += 1
-                                    if (missingJobStreak >= STUDY_IMAGE_MISSING_JOB_LIMIT) break
-                                }
-                                attempts += 1
-                                delay(STUDY_IMAGE_POLL_DELAY_MS)
-                            }
-                        }
-                    }.awaitAll()
-                }
-            }
-            return studyCache[messageId]?.characters.orEmpty()
-        } finally {
-            studyCharactersInFlight.remove(messageId)
-        }
-    }
-
-    suspend fun ensureStudySentenceImage(messageId: String, sentenceIndex: Int) {
-        val key = studyImageKey(messageId, sentenceIndex)
-        if (studyImageInFlight[key] == true) return
-        val session = studyCache[messageId] ?: return
-        val sentence = session.sentences.getOrNull(sentenceIndex) ?: return
-        if (!sentence.imageUrl.isNullOrBlank()) {
-            studyImageFailed.remove(key)
-            return
-        }
-        studyImageInFlight[key] = true
-        studyImageFailed.remove(key)
-        try {
-            var imageId = sentence.imageId?.trim().orEmpty()
-            if (imageId.isNotEmpty()) {
-                val existing = runCatching { ChatApi.studyImage(imageId) }.getOrNull()
-                when {
-                    existing == null -> {
-                        // Job lost (e.g. server restart) — start a fresh one.
-                        imageId = ""
-                    }
-                    existing.status == StudyPlaygroundImageStatus.COMPLETED &&
-                        !existing.imageUrl.isNullOrBlank() -> {
-                        applyStudySentenceImage(messageId, sentenceIndex, imageId, existing.imageUrl)
-                        return
-                    }
-                    existing.status == StudyPlaygroundImageStatus.FAILED -> {
-                        // Previous job failed — drop it so retry can enqueue a new one.
-                        imageId = ""
-                    }
-                    else -> Unit // PENDING / GENERATING — fall through to poll
-                }
-            }
-            if (imageId.isEmpty()) {
-                val latestSession = studyCache[messageId] ?: session
-                val started = runCatching {
-                    ChatApi.studySentenceImage(
-                        StudySentenceImageRequest(
-                            sentenceText = sentence.text,
-                            fullText = latestSession.text,
-                            sentenceIndex = sentenceIndex,
-                            sentenceCount = latestSession.sentences.size,
-                            characters = latestSession.characters,
-                        ),
-                    )
-                }.getOrNull()
-                if (started == null) {
-                    studyImageFailed[key] = true
-                    return
-                }
-                imageId = started.imageId
-                applyStudySentenceImage(messageId, sentenceIndex, imageId, null)
-            }
-            var attempts = 0
-            var missingJobStreak = 0
-            while (attempts < STUDY_IMAGE_POLL_MAX_ATTEMPTS) {
-                // Session may have received the URL from another path.
-                val latest = studyCache[messageId]?.sentences?.getOrNull(sentenceIndex)
-                if (!latest?.imageUrl.isNullOrBlank()) return
-                val image = runCatching { ChatApi.studyImage(imageId) }.getOrNull()
-                if (image != null) {
-                    missingJobStreak = 0
-                    when (image.status) {
-                        StudyPlaygroundImageStatus.COMPLETED -> {
-                            if (!image.imageUrl.isNullOrBlank()) {
-                                applyStudySentenceImage(messageId, sentenceIndex, imageId, image.imageUrl)
-                            } else {
-                                studyImageFailed[key] = true
-                            }
-                            return
-                        }
-                        StudyPlaygroundImageStatus.FAILED -> {
-                            studyImageFailed[key] = true
-                            return
-                        }
-                        StudyPlaygroundImageStatus.PENDING,
-                        StudyPlaygroundImageStatus.GENERATING,
-                        -> Unit
-                    }
-                } else {
-                    missingJobStreak += 1
-                    if (missingJobStreak >= STUDY_IMAGE_MISSING_JOB_LIMIT) {
-                        // Job vanished from the in-memory store — do not spin for minutes.
-                        studyImageFailed[key] = true
-                        return
-                    }
-                }
-                attempts += 1
-                delay(STUDY_IMAGE_POLL_DELAY_MS)
-            }
-            studyImageFailed[key] = true
-        } finally {
-            studyImageInFlight.remove(key)
-        }
-    }
-
-    fun loadMissingStudyImages(messageId: String, session: StudySessionResponse) {
-        val pendingIndices = session.sentences.indices.filter { index ->
-            val sentence = session.sentences[index]
-            sentence.imageUrl.isNullOrBlank() &&
-                studyImageFailed[studyImageKey(messageId, index)] != true
-        }
-        if (pendingIndices.isEmpty()) return
-        scope.launch {
-            // Design + portrait references first so sentence panels share one cast.
-            ensureStudyCharacters(messageId)
-            val latest = studyCache[messageId] ?: return@launch
-            val indices = latest.sentences.indices.filter { index ->
-                val sentence = latest.sentences[index]
-                sentence.imageUrl.isNullOrBlank() &&
-                    studyImageFailed[studyImageKey(messageId, index)] != true
-            }
-            if (indices.isEmpty()) return@launch
-            val semaphore = Semaphore(permits = STUDY_IMAGE_PARALLELISM)
-            coroutineScope {
-                indices.map { index ->
-                    async {
-                        semaphore.withPermit {
-                            ensureStudySentenceImage(messageId, index)
-                        }
-                    }
-                }.awaitAll()
-            }
-        }
-    }
-
-    /**
-     * Ensures Play-tab scenarios (and cover images) are generated as soon as the
-     * study session is ready, then persisted so the Play tab opens pre-warmed.
-     */
-    fun loadMissingPlayScenarios(messageId: String, session: StudySessionResponse) {
-        if (studyPlayInFlight[messageId] == true) return
-        scope.launch {
-            if (studyPlayInFlight[messageId] == true) return@launch
-            studyPlayInFlight[messageId] = true
-            try {
-                val cached = studyCache[messageId] ?: session
-                val existing = cached.playScenarios
-                if (existing.isNotEmpty()) {
-                    studyPlayFailed.remove(messageId)
-                    // Older saves may only have scenario metadata; hydrate opening beats once.
-                    val hydrated = existing.map { scenario ->
-                        if (scenario.messages.isNotEmpty()) return@map scenario
-                        scenario.copy(
-                            messages = listOf(
-                                StudyPlayChatMessage(
-                                    speaker = StudyPlaySpeaker.OTHER,
-                                    text = scenario.openingLine.orEmpty(),
-                                    description = scenario.description,
-                                    imageId = scenario.imageId,
-                                    imageUrl = scenario.imageUrl,
-                                ),
-                            ),
-                        )
-                    }
-                    if (hydrated != existing) {
-                        val updated = cached.copy(playScenarios = hydrated)
-                        studyCache[messageId] = updated
-                        if (studyTarget?.id == messageId) {
-                            studySession = updated
-                        }
-                        persistStudySession(messageId, updated)
-                        pollMissingPlayImages(messageId, hydrated)
-                    } else {
-                        pollMissingPlayImages(messageId, existing)
-                    }
-                    return@launch
-                }
-                // Prefer character portraits as image references when available.
-                ensureStudyCharacters(messageId)
-                val latest = studyCache[messageId] ?: return@launch
-                if (latest.playScenarios.isNotEmpty()) {
-                    studyPlayFailed.remove(messageId)
-                    pollMissingPlayImages(messageId, latest.playScenarios)
-                    return@launch
-                }
-                val response = runCatching {
-                    ChatApi.studyPlayScenarios(
-                        StudyPlayScenariosRequest(
-                            text = latest.text,
-                            textLanguageTag = latest.textLanguageTag,
-                            languageTag = language.tag,
-                            characters = latest.characters,
-                        ),
-                    )
-                }.getOrNull()
-                if (response == null || response.scenarios.isEmpty()) {
-                    studyPlayFailed[messageId] = true
-                    return@launch
-                }
-                val scenarios = response.scenarios.map { scenario ->
-                    val opening = scenario.openingLine?.trim()?.takeIf { it.isNotEmpty() }
-                    val imageId = scenario.imageId?.trim()?.takeIf { it.isNotEmpty() }
-                    val imageUrl = scenario.imageUrl?.trim()?.takeIf { it.isNotEmpty() }
-                    val openingMessage = StudyPlayChatMessage(
-                        speaker = StudyPlaySpeaker.OTHER,
-                        text = opening.orEmpty(),
-                        description = scenario.description,
-                        imageId = imageId,
-                        imageUrl = imageUrl,
-                    )
-                    StudyPlayScenario(
-                        id = scenario.id,
-                        description = scenario.description,
-                        openingLine = opening,
-                        imageId = imageId,
-                        imageUrl = imageUrl,
-                        messages = listOf(openingMessage),
-                    )
-                }
-                applyPlayScenarios(messageId, scenarios)
-                pollMissingPlayImages(messageId, scenarios)
-            } finally {
-                studyPlayInFlight.remove(messageId)
-            }
-        }
-    }
 
     fun applyExamScene(messageId: String, scene: StudyExamScene) {
         val current = studyCache[messageId]
@@ -1107,86 +467,313 @@ fun StudyScreen(
         val updated = current.copy(examScene = scene)
         studyCache[messageId] = updated
         if (studyTarget?.id == messageId) studySession = updated
-        persistStudySession(messageId, updated)
     }
 
-    fun loadMissingExamScene(messageId: String, session: StudySessionResponse) {
-        if (session.examScene?.isTenRoundExam() == true) {
-            studyExamFailed.remove(messageId)
-            return
+
+    fun replaceStudySession(messageId: String, session: StudySessionResponse) {
+        studyCache[messageId] = session
+        if (studyTarget?.id == messageId) studySession = session
+    }
+
+    fun updateSavedStudySummary(saved: SavedStudySession) {
+        val incoming = SavedStudySessionSummary(
+            id = saved.id,
+            sourceMessageId = saved.sourceMessageId,
+            languageTag = saved.languageTag,
+            text = saved.text,
+            textLanguageTag = saved.textLanguageTag,
+            createdAt = saved.createdAt,
+            updatedAt = saved.updatedAt,
+            sentenceImageUrls = saved.session.sentenceImageUrls(),
+            name = saved.name,
+            examGrade = saved.examGrade,
+        )
+        val current = studySessionItems.firstOrNull { it.id == saved.id }
+            ?: communitySessionItems.firstOrNull { it.id == saved.id }
+            ?: activeStudySessionItem?.takeIf { it.id == saved.id }
+        val summary = mergeStudySessionSummary(current, incoming)
+        if (activeStudySessionOwned || studySessionItems.any { it.id == saved.id }) {
+            studySessionItems = (listOf(summary) + studySessionItems.filterNot { it.id == saved.id })
+                .sortedByDescending { it.updatedAt }
+        } else if (communitySessionItems.any { it.id == saved.id }) {
+            communitySessionItems = communitySessionItems.map { if (it.id == saved.id) summary else it }
         }
-        if (studyExamInFlight[messageId] == true) return
-        studyExamInFlight[messageId] = true
+        if (activeStudySessionItem?.id == saved.id || activeStudySessionOwned) {
+            activeStudySessionItem = summary
+        }
+    }
+
+    fun applyStudyBuildState(messageId: String, state: StudyBuildState) {
+        studyBuildStateByMessageId[messageId] = state
+        val prefix = "$messageId#"
+        studyImageInFlight.keys.filter { it.startsWith(prefix) }.forEach { studyImageInFlight.remove(it) }
+        studyImageFailed.keys.filter { it.startsWith(prefix) }.forEach { studyImageFailed.remove(it) }
+        studyWordImageInFlight.keys.filter { it.startsWith(prefix) }.forEach { studyWordImageInFlight.remove(it) }
+        studyWordImageFailed.keys.filter { it.startsWith(prefix) }.forEach { studyWordImageFailed.remove(it) }
+        studyCharactersInFlight.remove(messageId)
+        studyPlayInFlight.remove(messageId)
+        studyPlayFailed.remove(messageId)
+        studyExamInFlight.remove(messageId)
         studyExamFailed.remove(messageId)
-        scope.launch {
-            try {
-                ensureStudyCharacters(messageId)
-                val latest = studyCache[messageId] ?: session
-                if (latest.examScene?.isTenRoundExam() == true) {
-                    studyExamFailed.remove(messageId)
-                    return@launch
+
+        val session = studyCache[messageId]
+        studySentenceStatus.clear()
+        session?.sentences?.forEachIndexed { index, sentence ->
+            studySentenceStatus[index] = if (sentenceNeedsDissect(sentence)) {
+                StudySentenceLoadState.LOADING
+            } else {
+                StudySentenceLoadState.READY
+            }
+        }
+
+        state.inFlight.forEach { element ->
+            when (element.kind) {
+                StudyBuildElementKind.DISSECT -> element.sentenceIndex?.let {
+                    studySentenceStatus[it] = StudySentenceLoadState.LOADING
                 }
-                val scene = ChatApi.studyExamScene(
-                    StudyExamSceneRequest(
-                        session = latest.copy(examScene = null),
-                        languageTag = Localization.language.tag,
+                StudyBuildElementKind.WORD_IMAGE -> {
+                    val sentenceIndex = element.sentenceIndex
+                    val tokenIndex = element.tokenIndex
+                    if (sentenceIndex != null && tokenIndex != null) {
+                        studyWordImageInFlight[studyWordImageKey(messageId, sentenceIndex, tokenIndex)] = true
+                    }
+                }
+                StudyBuildElementKind.SENTENCE_IMAGE -> element.sentenceIndex?.let {
+                    studyImageInFlight[studyImageKey(messageId, it)] = true
+                }
+                StudyBuildElementKind.CHARACTERS,
+                StudyBuildElementKind.PORTRAIT,
+                -> studyCharactersInFlight[messageId] = true
+                StudyBuildElementKind.PLAY_SCENARIOS,
+                StudyBuildElementKind.PLAY_COVER,
+                -> studyPlayInFlight[messageId] = true
+                StudyBuildElementKind.EXAM -> studyExamInFlight[messageId] = true
+                StudyBuildElementKind.PREPARE,
+                StudyBuildElementKind.SKELETON,
+                StudyBuildElementKind.NAME,
+                -> Unit
+            }
+        }
+        state.failed.forEach { element ->
+            when (element.kind) {
+                StudyBuildElementKind.DISSECT -> element.sentenceIndex?.let {
+                    studySentenceStatus[it] = StudySentenceLoadState.ERROR
+                }
+                StudyBuildElementKind.WORD_IMAGE -> {
+                    val sentenceIndex = element.sentenceIndex
+                    val tokenIndex = element.tokenIndex
+                    if (sentenceIndex != null && tokenIndex != null) {
+                        studyWordImageFailed[studyWordImageKey(messageId, sentenceIndex, tokenIndex)] = true
+                    }
+                }
+                StudyBuildElementKind.SENTENCE_IMAGE -> element.sentenceIndex?.let {
+                    studyImageFailed[studyImageKey(messageId, it)] = true
+                }
+                StudyBuildElementKind.PLAY_SCENARIOS,
+                StudyBuildElementKind.PLAY_COVER,
+                StudyBuildElementKind.CHARACTERS,
+                StudyBuildElementKind.PORTRAIT,
+                -> studyPlayFailed[messageId] = true
+                StudyBuildElementKind.EXAM -> studyExamFailed[messageId] = true
+                StudyBuildElementKind.PREPARE,
+                StudyBuildElementKind.SKELETON,
+                -> if (session?.sentences.isNullOrEmpty() && studyTarget?.id == messageId) {
+                    studyError = strings.chatStudyError
+                }
+                StudyBuildElementKind.NAME -> Unit
+            }
+        }
+        if (studyTarget?.id == messageId) {
+            val hasSkeleton = !session?.sentences.isNullOrEmpty()
+            val terminal = state.status == StudyBuildStatus.COMPLETE || state.status == StudyBuildStatus.PARTIAL
+            studyLoading = !hasSkeleton && !terminal
+            if (terminal) studyLoading = false
+        }
+    }
+
+    fun applyStudyBuildEvent(messageId: String, event: StudyBuildEvent) {
+        when (event) {
+            is StudyBuildEvent.Snapshot -> {
+                val previous = studyCache[messageId]
+                val session = event.session.session
+                val scenarios = hydrateStudyPlayScenarios(session.playScenarios).map { incoming ->
+                    val existing = previous?.playScenarios?.firstOrNull { it.id == incoming.id }
+                    if (existing != null && existing.messages.size > incoming.messages.size) {
+                        incoming.copy(messages = existing.messages)
+                    } else {
+                        incoming
+                    }
+                }
+                replaceStudySession(
+                    messageId,
+                    session.copy(
+                        playScenarios = scenarios,
+                        practiceSentences = if (previous != null && previous.practiceSentences.size > session.practiceSentences.size) {
+                            previous.practiceSentences
+                        } else {
+                            session.practiceSentences
+                        },
                     ),
                 )
-                applyExamScene(messageId, scene)
-                studyExamFailed.remove(messageId)
-            } catch (_: Throwable) {
-                studyExamFailed[messageId] = true
-            } finally {
-                studyExamInFlight.remove(messageId)
+                studyPersistedBySourceId[messageId] = event.session.id
+                studyLanguageByMessageId[messageId] = event.session.languageTag
+                updateSavedStudySummary(event.session)
+                val buildState = event.session.build
+                if (buildState == null) {
+                    studyBuildStateByMessageId.remove(messageId)
+                    syncStudySentenceStatuses(event.session.session)
+                    if (studyTarget?.id == messageId) studyLoading = false
+                } else {
+                    applyStudyBuildState(messageId, buildState)
+                }
+            }
+            is StudyBuildEvent.Skeleton -> {
+                val current = studyCache[messageId]
+                replaceStudySession(
+                    messageId,
+                    event.session.copy(
+                        practiceSentences = current?.practiceSentences.orEmpty(),
+                        playScenarios = current?.playScenarios?.takeIf { it.isNotEmpty() }
+                            ?: event.session.playScenarios,
+                    ),
+                )
+                if (studyTarget?.id == messageId) studyLoading = false
+                studyBuildStateByMessageId[messageId]?.let { applyStudyBuildState(messageId, it) }
+            }
+            is StudyBuildEvent.SentenceDissected -> {
+                val current = studyCache[messageId] ?: return
+                val existing = current.sentences.getOrNull(event.index) ?: return
+                val tokens = event.sentence.tokens.mapIndexed { index, token ->
+                    val old = existing.tokens.getOrNull(index)
+                    if (old != null && old.text == token.text) {
+                        token.copy(imageId = old.imageId ?: token.imageId, imageUrl = old.imageUrl ?: token.imageUrl)
+                    } else {
+                        token
+                    }
+                }
+                val sentences = current.sentences.toMutableList()
+                sentences[event.index] = event.sentence.copy(
+                    tokens = tokens,
+                    imageId = existing.imageId ?: event.sentence.imageId,
+                    imageUrl = existing.imageUrl ?: event.sentence.imageUrl,
+                )
+                replaceStudySession(messageId, current.copy(sentences = sentences))
+                studySentenceStatus[event.index] = StudySentenceLoadState.READY
+            }
+            is StudyBuildEvent.WordImage -> applyStudyWordImage(
+                messageId,
+                event.sentenceIndex,
+                event.tokenIndex,
+                imageId = null,
+                imageUrl = event.imageUrl,
+            )
+            is StudyBuildEvent.SentenceImage -> applyStudySentenceImage(
+                messageId,
+                event.index,
+                imageId = null,
+                imageUrl = event.imageUrl,
+            )
+            is StudyBuildEvent.Characters -> applyStudyCharacters(messageId, event.characters)
+            is StudyBuildEvent.PlayScenarios -> applyPlayScenarios(messageId, event.scenarios)
+            is StudyBuildEvent.ExamScene -> applyExamScene(messageId, event.scene)
+            is StudyBuildEvent.Renamed -> {
+                val id = studyPersistedBySourceId[messageId] ?: return
+                studySessionItems = studySessionItems.map { if (it.id == id) it.copy(name = event.name) else it }
+                communitySessionItems = communitySessionItems.map { if (it.id == id) it.copy(name = event.name) else it }
+                if (activeStudySessionItem?.id == id) activeStudySessionItem = activeStudySessionItem?.copy(name = event.name)
+            }
+            is StudyBuildEvent.Build -> applyStudyBuildState(messageId, event.state)
+            StudyBuildEvent.Heartbeat -> Unit
+            StudyBuildEvent.Done -> {
+                if (studyTarget?.id == messageId) studyLoading = false
+                refreshStudySessions(silent = true)
+                if (!activeStudySessionOwned) loadCommunitySessions(reset = true)
             }
         }
     }
 
-    fun openStudy(message: ChatMessage, learnerLanguageTag: String = language.tag) {
+    fun subscribeToStudyBuild(messageId: String, saved: SavedStudySession) {
+        studyBuildStreamJob?.cancel()
+        studyBuildStreamJob = scope.launch {
+            try {
+                ChatApi.studySessionEvents(saved.id) { event ->
+                    if (studyTarget?.id == messageId && studySessionVisible) {
+                        applyStudyBuildEvent(messageId, event)
+                    }
+                }
+            } catch (cancelled: kotlinx.coroutines.CancellationException) {
+                throw cancelled
+            } catch (_: Throwable) {
+                if (studyTarget?.id == messageId) {
+                    studyError = strings.chatStudyError
+                    studyLoading = false
+                }
+            }
+        }
+    }
+
+    fun retryStudyBuildElements(messageId: String, elements: List<StudyBuildElement> = emptyList()) {
+        val sessionId = studyPersistedBySourceId[messageId] ?: return
+        scope.launch {
+            runCatching { ChatApi.retryStudyBuild(sessionId, elements) }
+                .onSuccess { applyStudyBuildState(messageId, it) }
+                .onFailure { if (studyTarget?.id == messageId) studyError = strings.chatStudyError }
+        }
+    }
+
+    fun openStudy(
+        message: ChatMessage,
+        learnerLanguageTag: String = language.tag,
+        buildMode: StudyBuildMode = StudyBuildMode.EXACT,
+        targetLanguageTag: String? = null,
+        sourceLanguageTag: String? = null,
+        existingSession: SavedStudySession? = null,
+    ) {
         val text = studyTextFromChatMessage(message)
         if (text.isEmpty()) return
+        val mode = buildMode
+        studyBuildStreamJob?.cancel()
+        studyBuildStreamJob = null
         studyTarget = message
         studySessionVisible = true
         studyError = null
         clearStudyImageTracking(message.id)
-        val cached = studyCache[message.id]
-        if (cached != null) {
-            studySession = cached
-            studyLoading = false
-            syncStudySentenceStatuses(cached)
-            loadMissingStudyDissections(message.id, cached)
-            loadMissingStudyImages(message.id, cached)
-            loadMissingStudyWordImages(message.id, cached)
-            loadMissingPlayScenarios(message.id, cached)
-            loadMissingExamScene(message.id, cached)
+        studyLanguageByMessageId[message.id] = learnerLanguageTag
+        studyStartExact = mode != StudyBuildMode.INTENT
+        if (existingSession != null) {
+            applyStudyBuildEvent(message.id, StudyBuildEvent.Snapshot(existingSession))
+            subscribeToStudyBuild(message.id, existingSession)
             return
         }
-        studyLanguageByMessageId[message.id] = learnerLanguageTag
+        activeStudySessionItem = null
+        activeStudySessionOwned = false
+        studyCache.remove(message.id)
+        studyBuildStateByMessageId.remove(message.id)
         studySession = null
         studySentenceStatus.clear()
         studyLoading = true
         scope.launch {
             runCatching {
-                ChatApi.study(
-                    StudySessionRequest(
+                ChatApi.createStudySession(
+                    StudyBuildRequest(
                         text = text,
                         languageTag = learnerLanguageTag,
                         sourceMessageId = message.id,
+                        mode = mode,
+                        targetLanguageTag = targetLanguageTag,
+                        sourceLanguageTag = sourceLanguageTag,
                     ),
                 )
-            }.onSuccess { session ->
-                studyCache[message.id] = session
-                persistStudySession(message.id, session)
+            }.onSuccess { saved ->
+                studyPersistedBySourceId[message.id] = saved.id
                 if (studyTarget?.id == message.id) {
-                    studySession = session
+                    activeStudySessionOwned = true
+                    applyStudyBuildEvent(message.id, StudyBuildEvent.Snapshot(saved))
                     studyError = null
-                    studyLoading = false
-                    syncStudySentenceStatuses(session)
-                    loadMissingStudyDissections(message.id, session)
-                    loadMissingStudyImages(message.id, session)
-                    loadMissingStudyWordImages(message.id, session)
-                    loadMissingPlayScenarios(message.id, session)
-                    loadMissingExamScene(message.id, session)
+                    if (studySessionVisible) {
+                        subscribeToStudyBuild(message.id, saved)
+                        if (sessionId.isNullOrBlank()) onOpenSession(saved.id)
+                    }
                 }
             }.onFailure {
                 if (studyTarget?.id == message.id) {
@@ -1199,19 +786,6 @@ fun StudyScreen(
 
     fun openSavedStudySession(item: SavedStudySession, fromCommunity: Boolean = false) {
         val key = if (fromCommunity) item.id else (item.sourceMessageId ?: item.id)
-        studyCache[key] = item.session
-        studyLanguageByMessageId[key] = item.languageTag
-        if (!fromCommunity) {
-            studyPersistedBySourceId[key] = item.id
-        }
-        openStudy(
-            ChatMessage(
-                id = key,
-                sender = ChatSender.AI,
-                text = item.session.text,
-                createdAt = item.createdAt,
-            ),
-        )
         activeStudySessionItem = studySessionItems.firstOrNull { it.id == item.id }
             ?: communitySessionItems.firstOrNull { it.id == item.id }
             ?: SavedStudySessionSummary(
@@ -1224,8 +798,21 @@ fun StudyScreen(
                 updatedAt = item.updatedAt,
                 sentenceImageUrls = item.session.sentenceImageUrls(),
                 name = item.name,
+                examGrade = item.examGrade,
             )
         activeStudySessionOwned = !fromCommunity && studySessionItems.any { it.id == item.id }
+        studyStartExact = true
+        openStudy(
+            ChatMessage(
+                id = key,
+                sender = ChatSender.AI,
+                text = item.session.text,
+                createdAt = item.createdAt,
+            ),
+            learnerLanguageTag = item.languageTag,
+            buildMode = StudyBuildMode.EXACT,
+            existingSession = item,
+        )
     }
 
     fun appendPracticeSentences(messageId: String, extras: List<StudyExampleSentence>) {
@@ -1254,32 +841,14 @@ fun StudyScreen(
             text = text,
             createdAt = Date.now().toLong(),
         )
-        studyTarget = message
-        studySession = null
-        studySentenceStatus.clear()
-        studySessionVisible = true
-        studyError = null
-        studyLoading = true
         val targetLanguageTag = Language.normalizeLearnerLanguageTag(rawLanguage)
-        scope.launch {
-            runCatching {
-                ChatApi.studyTranslate(
-                    StudyTranslateRequest(
-                        text = text,
-                        targetLanguageTag = targetLanguageTag,
-                        sourceLanguageTag = session?.textLanguageTag,
-                    ),
-                )
-            }.onSuccess { translation ->
-                val translatedText = translation.text.trim().ifEmpty { text }
-                openStudy(message.copy(text = translatedText))
-            }.onFailure {
-                if (studyTarget?.id == message.id) {
-                    studyError = strings.chatStudyError
-                    studyLoading = false
-                }
-            }
-        }
+        openStudy(
+            message,
+            learnerLanguageTag = language.tag,
+            buildMode = StudyBuildMode.TRANSLATE,
+            targetLanguageTag = targetLanguageTag,
+            sourceLanguageTag = session?.textLanguageTag,
+        )
     }
 
     fun startStudyFromText(raw: String?, exact: Boolean = true) {
@@ -1288,55 +857,20 @@ fun StudyScreen(
         activeStudySessionItem = null
         activeStudySessionOwned = false
         studyStartExact = exact
-        if (exact) {
-            openStudy(
-                ChatMessage(
-                    id = "study-${Date.now().toLong()}",
-                    sender = ChatSender.YOU,
-                    text = text,
-                    createdAt = Date.now().toLong(),
-                ),
-            )
-            return
-        }
-        val messageId = "study-${Date.now().toLong()}"
-        val createdAt = Date.now().toLong()
-        studyTarget = ChatMessage(
-            id = messageId,
-            sender = ChatSender.YOU,
-            text = text,
-            createdAt = createdAt,
+        openStudy(
+            ChatMessage(
+                id = "study-${Date.now().toLong()}",
+                sender = ChatSender.YOU,
+                text = text,
+                createdAt = Date.now().toLong(),
+            ),
+            buildMode = if (exact) StudyBuildMode.EXACT else StudyBuildMode.INTENT,
         )
-        studySessionVisible = true
-        studyError = null
-        studySession = null
-        studySentenceStatus.clear()
-        studyLoading = true
-        scope.launch {
-            runCatching {
-                ChatApi.studyIntent(StudySessionRequest(text = text, languageTag = language.tag))
-            }.onSuccess { intent ->
-                val studyText = intent.text.trim().ifEmpty { text }
-                if (studyTarget?.id != messageId || !studySessionVisible) return@onSuccess
-                studyStartExact = true
-                openStudy(
-                    ChatMessage(
-                        id = messageId,
-                        sender = ChatSender.YOU,
-                        text = studyText,
-                        createdAt = createdAt,
-                    ),
-                )
-            }.onFailure {
-                if (studyTarget?.id == messageId && studySessionVisible) {
-                    studyError = strings.chatStudyError
-                    studyLoading = false
-                }
-            }
-        }
     }
 
     fun closeStudy() {
+        studyBuildStreamJob?.cancel()
+        studyBuildStreamJob = null
         studySessionVisible = false
         activeStudySessionItem = null
         activeStudySessionOwned = false
@@ -1387,20 +921,36 @@ fun StudyScreen(
 
     fun retryStudySentence(sentenceIndex: Int) {
         val messageId = studyTarget?.id ?: return
-        scope.launch {
-            dissectStudySentence(messageId, sentenceIndex)
-        }
+        retryStudyBuildElements(
+            messageId,
+            listOf(StudyBuildElement(StudyBuildElementKind.DISSECT, sentenceIndex = sentenceIndex)),
+        )
     }
 
     fun retryStudySentenceImage(sentenceIndex: Int) {
         val messageId = studyTarget?.id ?: return
         val key = studyImageKey(messageId, sentenceIndex)
         if (studyImageInFlight[key] == true) return
-        studyImageFailed.remove(key)
-        scope.launch {
-            ensureStudyCharacters(messageId)
-            ensureStudySentenceImage(messageId, sentenceIndex)
-        }
+        retryStudyBuildElements(
+            messageId,
+            listOf(StudyBuildElement(StudyBuildElementKind.SENTENCE_IMAGE, sentenceIndex = sentenceIndex)),
+        )
+    }
+
+    fun retryStudyWordImage(sentenceIndex: Int, tokenIndex: Int) {
+        val messageId = studyTarget?.id ?: return
+        val key = studyWordImageKey(messageId, sentenceIndex, tokenIndex)
+        if (studyWordImageInFlight[key] == true) return
+        retryStudyBuildElements(
+            messageId,
+            listOf(
+                StudyBuildElement(
+                    StudyBuildElementKind.WORD_IMAGE,
+                    sentenceIndex = sentenceIndex,
+                    tokenIndex = tokenIndex,
+                ),
+            ),
+        )
     }
 
 
@@ -1521,25 +1071,35 @@ fun StudyScreen(
                 strings = strings,
                 onRetry = {
                     val target = studyTarget ?: return@StudySessionPane
-                    if (studyStartExact) {
-                        openStudy(target)
+                    if (!studyBuildStateByMessageId[target.id]?.failed.isNullOrEmpty()) {
+                        retryStudyBuildElements(target.id)
                     } else {
-                        startStudyFromText(target.text, exact = false)
+                        openStudy(
+                            target,
+                            buildMode = if (studyStartExact) StudyBuildMode.EXACT else StudyBuildMode.INTENT,
+                        )
                     }
                 },
                 onRetrySentence = ::retryStudySentence,
                 onRetryImage = ::retryStudySentenceImage,
+                onRetryWordImage = ::retryStudyWordImage,
                 onRetryPlay = {
                     val target = studyTarget ?: return@StudySessionPane
-                    val session = studyCache[target.id] ?: studySession ?: return@StudySessionPane
-                    studyPlayFailed.remove(target.id)
-                    loadMissingPlayScenarios(target.id, session)
+                    val failed = studyBuildStateByMessageId[target.id]?.failed.orEmpty()
+                        .filter {
+                            it.kind == StudyBuildElementKind.PLAY_SCENARIOS ||
+                                it.kind == StudyBuildElementKind.PLAY_COVER ||
+                                it.kind == StudyBuildElementKind.CHARACTERS ||
+                                it.kind == StudyBuildElementKind.PORTRAIT
+                        }
+                    retryStudyBuildElements(target.id, failed)
                 },
                 onRetryExam = {
                     val target = studyTarget ?: return@StudySessionPane
-                    val session = studyCache[target.id] ?: studySession ?: return@StudySessionPane
-                    studyExamFailed.remove(target.id)
-                    loadMissingExamScene(target.id, session)
+                    retryStudyBuildElements(
+                        target.id,
+                        listOf(StudyBuildElement(StudyBuildElementKind.EXAM)),
+                    )
                 },
                 onPlayScenarioUpdate = { scenarioId, transform ->
                     val targetId = studyTarget?.id ?: return@StudySessionPane
@@ -1552,17 +1112,6 @@ fun StudyScreen(
                 onPracticeSentences = { extras ->
                     val targetId = studyTarget?.id ?: return@StudySessionPane
                     appendPracticeSentences(targetId, extras)
-                },
-                onExamSceneGenerated = { targetId, scene ->
-                    if (studyTarget?.id != targetId) return@StudySessionPane
-                    val current = studyCache[targetId]
-                        ?: studySession?.takeIf { studyTarget?.id == targetId }
-                        ?: return@StudySessionPane
-                    if (current.examScene?.isTenRoundExam() == true) return@StudySessionPane
-                    val updated = current.copy(examScene = scene)
-                    studyCache[targetId] = updated
-                    if (studyTarget?.id == targetId) studySession = updated
-                    persistStudySession(targetId, updated)
                 },
                 onExamScoreFinished = { grade ->
                     if (!activeStudySessionOwned) return@StudySessionPane
@@ -2012,12 +1561,12 @@ private fun StudySessionPane(
     onRetry: () -> Unit,
     onRetrySentence: (Int) -> Unit,
     onRetryImage: (Int) -> Unit,
+    onRetryWordImage: (Int, Int) -> Unit,
     onRetryPlay: () -> Unit,
     onRetryExam: () -> Unit,
     onPlayScenarioUpdate: (String, (StudyPlayScenario) -> StudyPlayScenario) -> Unit,
     onPlayMessageImage: (scenarioId: String, imageId: String, imageUrl: String?) -> Unit,
     onPracticeSentences: (List<StudyExampleSentence>) -> Unit,
-    onExamSceneGenerated: (messageId: String, scene: StudyExamScene) -> Unit,
     onExamScoreFinished: (StudyExamGrade) -> Unit,
 ) {
     val progress = studyCreationProgress(
@@ -2069,11 +1618,11 @@ private fun StudySessionPane(
                         strings = strings,
                         onRetrySentence = onRetrySentence,
                         onRetryImage = onRetryImage,
+                        onRetryWordImage = onRetryWordImage,
                         onRetryPlay = onRetryPlay,
                         onPlayScenarioUpdate = onPlayScenarioUpdate,
                         onPlayMessageImage = onPlayMessageImage,
                         onPracticeSentences = onPracticeSentences,
-                        onExamSceneGenerated = onExamSceneGenerated,
                         onExamScoreFinished = onExamScoreFinished,
                     )
                 } else if (!progress.visible) {
@@ -2187,11 +1736,11 @@ private fun StudySessionContent(
     strings: UiStrings,
     onRetrySentence: (Int) -> Unit,
     onRetryImage: (Int) -> Unit,
+    onRetryWordImage: (Int, Int) -> Unit,
     onRetryPlay: () -> Unit,
     onPlayScenarioUpdate: (String, (StudyPlayScenario) -> StudyPlayScenario) -> Unit,
     onPlayMessageImage: (scenarioId: String, imageId: String, imageUrl: String?) -> Unit,
     onPracticeSentences: (List<StudyExampleSentence>) -> Unit,
-    onExamSceneGenerated: (messageId: String, scene: StudyExamScene) -> Unit,
     onExamScoreFinished: (StudyExamGrade) -> Unit,
 ) {
     val scope = rememberCoroutineScope()
@@ -2553,6 +2102,9 @@ private fun StudySessionContent(
                                 textLanguageTag = session.textLanguageTag,
                                 strings = strings,
                                 imageFailed = wordFailed,
+                                onRetryImage = {
+                                    selectedRef?.let { ref -> onRetryWordImage(ref.sentenceIndex, ref.tokenIndex) }
+                                },
                             )
                         }
                     }
@@ -5517,29 +5069,11 @@ private fun StudyTestTab(
 private const val SPEECH_BATCH_SIZE = 3
 private const val SPEECH_RETRY_MAX_ATTEMPTS = 4
 private const val SPEECH_RETRY_INITIAL_DELAY_MS = 2_500L
-/** Concurrent scene generations per study session (server handles provider load). */
-private const val STUDY_IMAGE_PARALLELISM = 4
 /** ~6 minutes: reference-to-image + optional text-only fallback can exceed 2 minutes. */
 private const val STUDY_IMAGE_POLL_MAX_ATTEMPTS = 180
 private const val STUDY_IMAGE_POLL_DELAY_MS = 1_500L
 /** Consecutive missing job polls before treating the imageId as lost. */
 private const val STUDY_IMAGE_MISSING_JOB_LIMIT = 5
-/**
- * How long to wait for the main character portrait before starting scene panels.
- * Scenes can proceed with description-only cast if portraits are slow.
- */
-private const val STUDY_MAIN_PORTRAIT_WAIT_ATTEMPTS = 40
-
-/** True when scenes can start: cast exists and main portrait is ready (or no main portrait job). */
-private fun studyCastReadyForScenes(characters: List<StudyStoryCharacter>): Boolean {
-    if (characters.isEmpty()) return false
-    val main = characters.firstOrNull {
-        it.role.equals("main", ignoreCase = true) || it.id.equals("main", ignoreCase = true)
-    } ?: characters.first()
-    if (!main.imageUrl.isNullOrBlank()) return true
-    // No portrait job enqueued — proceed with description-only.
-    return main.imageId.isNullOrBlank()
-}
 
 /**
  * Retries TTS calls on rate-limit / transient errors with short exponential backoff.
@@ -5576,6 +5110,7 @@ private fun StudyTokenDetail(
     textLanguageTag: String,
     strings: UiStrings,
     imageFailed: Boolean = false,
+    onRetryImage: () -> Unit = {},
 ) {
     val scope = rememberCoroutineScope()
     val exampleAudio = remember(token.text, textLanguageTag) { mutableStateMapOf<String, String>() }
@@ -5669,6 +5204,15 @@ private fun StudyTokenDetail(
                         Div(attrs = { classes(Styles.studyWordImagePlaceholder) }) {
                             MaterialSymbol("broken_image")
                             Span { Text(strings.chatStudyWordImageError) }
+                            Button(attrs = {
+                                classes(Styles.savedItemAction)
+                                attr("type", "button")
+                                attr("aria-label", strings.chatPlayRetry)
+                                onClick { onRetryImage() }
+                            }) {
+                                MaterialSymbol("refresh")
+                                Text(strings.chatPlayRetry)
+                            }
                         }
                     }
                 }
@@ -5879,8 +5423,6 @@ private data class StudySentenceAudio(
     val url: String,
     val words: List<SpeechWordTiming>,
 )
-
-private const val STUDY_DISSECT_PARALLELISM = 3
 
 /** Small pad so clipped words are not cut off mid-phoneme. */
 private const val WORD_AUDIO_END_PAD_MS = 40

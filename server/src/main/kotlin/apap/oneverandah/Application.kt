@@ -202,6 +202,7 @@ fun Application.module(
             chatSystem.savedMessagesService,
             chatSystem.studyService,
             chatSystem.studySessionsService,
+            chatSystem.studyBuildService,
         )
         asrRoutes(chatSystem.asrRelay)
         deviceRoutes(chatSystem.deviceService)

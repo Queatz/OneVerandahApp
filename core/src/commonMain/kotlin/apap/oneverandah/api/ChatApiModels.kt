@@ -983,6 +983,120 @@ data class RenameStudySessionRequest(val name: String = "") {
     }
 }
 
+@Serializable
+enum class StudyBuildMode { EXACT, INTENT, TRANSLATE }
+
+@Serializable
+data class StudyBuildRequest(
+    val text: String,
+    val languageTag: String,
+    val sourceMessageId: String? = null,
+    val mode: StudyBuildMode = StudyBuildMode.EXACT,
+    val targetLanguageTag: String? = null,
+    val sourceLanguageTag: String? = null,
+) {
+    fun normalizedOrNull(): StudyBuildRequest? {
+        val normalizedText = text.trim().takeIf { it.isNotEmpty() } ?: return null
+        val targetLanguage = targetLanguageTag?.trim()?.takeIf { it.isNotEmpty() }
+        if (mode == StudyBuildMode.TRANSLATE && targetLanguage == null) return null
+        return copy(
+            text = normalizedText,
+            languageTag = Language.normalizeLearnerLanguageTag(languageTag),
+            sourceMessageId = sourceMessageId?.trim()?.takeIf { it.isNotEmpty() },
+            targetLanguageTag = targetLanguage,
+            sourceLanguageTag = sourceLanguageTag?.trim()?.takeIf { it.isNotEmpty() },
+        )
+    }
+}
+
+@Serializable
+enum class StudyBuildElementKind {
+    PREPARE,
+    SKELETON,
+    NAME,
+    DISSECT,
+    WORD_IMAGE,
+    CHARACTERS,
+    PORTRAIT,
+    SENTENCE_IMAGE,
+    PLAY_SCENARIOS,
+    PLAY_COVER,
+    EXAM,
+}
+
+@Serializable
+data class StudyBuildElement(
+    val kind: StudyBuildElementKind,
+    val sentenceIndex: Int? = null,
+    val tokenIndex: Int? = null,
+    val characterId: String? = null,
+    val scenarioId: String? = null,
+) {
+    val key: String
+        get() = when (kind) {
+            StudyBuildElementKind.DISSECT -> "${kind.name}:${sentenceIndex ?: -1}"
+            StudyBuildElementKind.WORD_IMAGE -> "${kind.name}:${sentenceIndex ?: -1}:${tokenIndex ?: -1}"
+            StudyBuildElementKind.PORTRAIT -> "${kind.name}:${characterId.orEmpty()}"
+            StudyBuildElementKind.SENTENCE_IMAGE -> "${kind.name}:${sentenceIndex ?: -1}"
+            StudyBuildElementKind.PLAY_COVER -> "${kind.name}:${scenarioId.orEmpty()}"
+            else -> kind.name
+        }
+}
+
+@Serializable
+enum class StudyBuildStatus { PREPARING, BUILDING, COMPLETE, PARTIAL }
+
+@Serializable
+data class StudyBuildState(
+    val status: StudyBuildStatus,
+    val failed: List<StudyBuildElement> = emptyList(),
+    val inFlight: List<StudyBuildElement> = emptyList(),
+    val attempts: Map<String, Int> = emptyMap(),
+    val updatedAt: Long = 0,
+)
+
+@Serializable
+sealed interface StudyBuildEvent {
+    @Serializable
+    data class Snapshot(val session: SavedStudySession) : StudyBuildEvent
+
+    @Serializable
+    data class Skeleton(val session: StudySessionResponse) : StudyBuildEvent
+
+    @Serializable
+    data class SentenceDissected(val index: Int, val sentence: StudySentence) : StudyBuildEvent
+
+    @Serializable
+    data class WordImage(val sentenceIndex: Int, val tokenIndex: Int, val imageUrl: String) : StudyBuildEvent
+
+    @Serializable
+    data class SentenceImage(val index: Int, val imageUrl: String) : StudyBuildEvent
+
+    @Serializable
+    data class Characters(val characters: List<StudyStoryCharacter>) : StudyBuildEvent
+
+    @Serializable
+    data class PlayScenarios(val scenarios: List<StudyPlayScenario>) : StudyBuildEvent
+
+    @Serializable
+    data class ExamScene(val scene: StudyExamScene) : StudyBuildEvent
+
+    @Serializable
+    data class Renamed(val name: String) : StudyBuildEvent
+
+    @Serializable
+    data class Build(val state: StudyBuildState) : StudyBuildEvent
+
+    @Serializable
+    data object Heartbeat : StudyBuildEvent
+
+    @Serializable
+    data object Done : StudyBuildEvent
+}
+
+@Serializable
+data class StudyBuildRetryRequest(val elements: List<StudyBuildElement> = emptyList())
+
 /** A study session snapshot scoped to a device token. */
 @Serializable
 data class SavedStudySession(
@@ -996,6 +1110,7 @@ data class SavedStudySession(
     val updatedAt: Long,
     val name: String = "",
     val examGrade: StudyExamGrade? = null,
+    val build: StudyBuildState? = null,
 )
 
 @Serializable

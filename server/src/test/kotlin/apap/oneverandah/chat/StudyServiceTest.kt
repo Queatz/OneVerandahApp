@@ -1,6 +1,8 @@
 package apap.oneverandah.chat
 
 import apap.oneverandah.api.StudyDissectSentenceRequest
+import apap.oneverandah.api.StudyBuildMode
+import apap.oneverandah.api.StudyBuildRequest
 import apap.oneverandah.api.StudyExampleSentence
 import apap.oneverandah.api.StudyExamBeat
 import apap.oneverandah.api.StudyExamBeatKind
@@ -163,7 +165,12 @@ class StudyServiceTest {
                     ),
                     StudySentence(
                         text = "Encantado de conocerte.",
-                        tokens = listOf(StudyToken(text = "Encantado de conocerte.", status = StudyTokenStatus.PENDING)),
+                        tokens = listOf(
+                            StudyToken(
+                                text = "Encantado de conocerte.",
+                                status = StudyTokenStatus.PENDING
+                            )
+                        ),
                     ),
                 ),
             ),
@@ -1123,7 +1130,7 @@ class StudyServiceTest {
         while (
             scenarioImageIds.any { imageId ->
                 service.playgroundImage(imageId)?.status != StudyPlaygroundImageStatus.COMPLETED &&
-                    service.playgroundImage(imageId)?.status != StudyPlaygroundImageStatus.FAILED
+                        service.playgroundImage(imageId)?.status != StudyPlaygroundImageStatus.FAILED
             } && attempts < 40
         ) {
             delay(25)
@@ -1151,7 +1158,13 @@ class StudyServiceTest {
             sentences = listOf(
                 StudySentence(
                     text = "Xin chào.",
-                    tokens = listOf(StudyToken(text = "Xin", status = StudyTokenStatus.READY, literalMeaning = "Hello")),
+                    tokens = listOf(
+                        StudyToken(
+                            text = "Xin",
+                            status = StudyTokenStatus.READY,
+                            literalMeaning = "Hello"
+                        )
+                    ),
                 ),
             ),
             characters = listOf(
@@ -1313,8 +1326,12 @@ class StudyServiceTest {
 
         assertEquals(20, scene.beats.size)
         assertEquals(scene.beats.map { it.id }.distinct().size, scene.beats.size)
-        assertEquals((1..10).map { "listen-$it" }, scene.beats.filter { it.kind == StudyExamBeatKind.LISTEN }.map { it.id })
-        assertEquals((1..10).map { "Câu mới số $it." }, scene.beats.filter { it.kind == StudyExamBeatKind.LISTEN }.map { it.line })
+        assertEquals(
+            (1..10).map { "listen-$it" },
+            scene.beats.filter { it.kind == StudyExamBeatKind.LISTEN }.map { it.id })
+        assertEquals(
+            (1..10).map { "Câu mới số $it." },
+            scene.beats.filter { it.kind == StudyExamBeatKind.LISTEN }.map { it.line })
     }
 
     @Test
@@ -1676,6 +1693,95 @@ class StudyServiceTest {
         )
 
         assertEquals("Hello there.", response.text)
+    }
+
+    @Test
+    fun `prepare text applies exact intent and translation modes`() = runBlocking {
+        val ai = FakeStudyAiClient(composedText = "Prepared text.", translatedText = "Bonjour.")
+        val service = StudyService(ai)
+
+        assertEquals(
+            "Exact text.",
+            service.prepareText(StudyBuildRequest(text = " Exact text. ", languageTag = "en")),
+        )
+        assertEquals(
+            "Prepared text.",
+            service.prepareText(
+                StudyBuildRequest(text = "A few examples", languageTag = "en-US", mode = StudyBuildMode.INTENT),
+            ),
+        )
+        assertEquals("en", ai.lastIntentRequest?.languageTag)
+        assertEquals(
+            "Bonjour.",
+            service.prepareText(
+                StudyBuildRequest(
+                    text = "Hello.",
+                    languageTag = "en",
+                    mode = StudyBuildMode.TRANSLATE,
+                    targetLanguageTag = "fr-FR",
+                    sourceLanguageTag = "en-US",
+                ),
+            ),
+        )
+        assertEquals("fr", ai.lastTranslateRequest?.targetLanguageTag)
+        assertEquals("en-US", ai.lastTranslateRequest?.sourceLanguageTag)
+    }
+
+    @Test
+    fun `dissect only does not attach asynchronous word image jobs`() = runBlocking {
+        val imageCalls = java.util.concurrent.CopyOnWriteArrayList<String>()
+        val service = StudyService(
+            aiClient = FakeStudyAiClient(
+                dissect = StudySentence(
+                    text = "Xin",
+                    tokens = listOf(
+                        StudyToken(
+                            text = "Xin",
+                            status = StudyTokenStatus.READY,
+                            literalMeaning = "hello"
+                        )
+                    ),
+                ),
+            ),
+            imageGenerator = StudyPlaygroundImageGenerator { _, _ ->
+                imageCalls += "generated"
+                "https://img/word"
+            },
+            idGenerator = { "direct-image" },
+        )
+
+        val result = service.dissectOnly(
+            StudyDissectSentenceRequest(
+                text = "Xin",
+                sentenceText = "Xin",
+                tokens = listOf("Xin"),
+                textLanguageTag = "vi",
+                languageTag = "en",
+            ),
+        )
+
+        assertEquals("hello", result.tokens.single().literalMeaning)
+        assertEquals(null, result.tokens.single().imageId)
+        assertEquals(null, service.playgroundImage("direct-image"))
+        assertEquals(emptyList(), imageCalls)
+    }
+
+    @Test
+    fun `awaitable study image rendering retries without failed references`() = runBlocking {
+        val referenceCalls = mutableListOf<List<String>>()
+        val service = StudyService(
+            aiClient = FakeStudyAiClient(),
+            imageGenerator = StudyPlaygroundImageGenerator { _, references ->
+                referenceCalls += references
+                if (references.isNotEmpty()) error("reference rejected")
+                "https://img/rendered"
+            },
+        )
+
+        val url = service.renderStudyImage("prompt", listOf(" https://img/ref "), "test visual")
+
+        assertEquals("https://img/rendered", url)
+        assertEquals(listOf(listOf("https://img/ref"), emptyList()), referenceCalls)
     }
 }
 

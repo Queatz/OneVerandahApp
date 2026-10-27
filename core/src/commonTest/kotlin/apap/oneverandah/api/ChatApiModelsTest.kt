@@ -4,6 +4,7 @@ import kotlin.test.Test
 import kotlin.test.assertEquals
 import kotlin.test.assertIs
 import kotlin.test.assertNull
+import kotlin.test.assertTrue
 import kotlinx.serialization.json.Json
 
 class ChatApiModelsTest {
@@ -702,8 +703,64 @@ class ChatApiModelsTest {
         )
 
         assertNull(saved.examGrade)
+        assertNull(saved.build)
         assertNull(saved.session.examScene)
         assertNull(summary.examGrade)
+    }
+
+    @Test
+    fun `study build request trims fields and requires translation target`() {
+        val normalized = StudyBuildRequest(
+            text = "  Hello there.  ",
+            languageTag = "vi-VN",
+            sourceMessageId = "  message-1  ",
+            mode = StudyBuildMode.TRANSLATE,
+            targetLanguageTag = "  Klingon  ",
+            sourceLanguageTag = "  en-US  ",
+        ).normalizedOrNull()
+
+        assertEquals("Hello there.", normalized?.text)
+        assertEquals("vi", normalized?.languageTag)
+        assertEquals("message-1", normalized?.sourceMessageId)
+        assertEquals("Klingon", normalized?.targetLanguageTag)
+        assertEquals("en-US", normalized?.sourceLanguageTag)
+        assertNull(StudyBuildRequest(text = "  ", languageTag = "en").normalizedOrNull())
+        assertNull(
+            StudyBuildRequest(text = "Hello", languageTag = "en", mode = StudyBuildMode.TRANSLATE)
+                .normalizedOrNull(),
+        )
+        assertEquals(
+            "WORD_IMAGE:2:3",
+            StudyBuildElement(StudyBuildElementKind.WORD_IMAGE, sentenceIndex = 2, tokenIndex = 3).key,
+        )
+    }
+
+    @Test
+    fun `study build events round trip with type discriminator`() {
+        val eventJson = Json { classDiscriminator = "type" }
+        val snapshot = SavedStudySession(
+            id = "study-1",
+            languageTag = "en",
+            text = "Hello.",
+            textLanguageTag = "en",
+            session = StudySessionResponse(text = "Hello.", textLanguageTag = "en", sentences = emptyList()),
+            createdAt = 10L,
+            updatedAt = 20L,
+            build = StudyBuildState(status = StudyBuildStatus.BUILDING),
+        )
+        val events = listOf(
+            StudyBuildEvent.Snapshot(snapshot),
+            StudyBuildEvent.SentenceImage(index = 0, imageUrl = "https://img/hello"),
+            StudyBuildEvent.Build(StudyBuildState(status = StudyBuildStatus.PARTIAL)),
+            StudyBuildEvent.Heartbeat,
+            StudyBuildEvent.Done,
+        )
+
+        events.forEach { event ->
+            val encoded = eventJson.encodeToString<StudyBuildEvent>(event)
+            assertEquals(event, eventJson.decodeFromString<StudyBuildEvent>(encoded))
+            assertTrue(encoded.contains("\"type\""))
+        }
     }
 
     @Test

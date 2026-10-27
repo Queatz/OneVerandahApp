@@ -2,6 +2,7 @@ package apap.oneverandah.api
 
 import kotlin.test.Test
 import kotlin.test.assertEquals
+import kotlinx.serialization.json.Json
 
 class ChatApiTest {
     @Test
@@ -20,5 +21,18 @@ class ChatApiTest {
             "https://api.oneverandah.app/api/chat/study/sessions/community",
             chatApiUrl("/study/sessions/community"),
         )
+    }
+
+    @Test
+    fun `study build NDJSON event lines decode with the type discriminator`() {
+        val event: StudyBuildEvent = StudyBuildEvent.WordImage(
+            sentenceIndex = 2,
+            tokenIndex = 3,
+            imageUrl = "https://img/word",
+        )
+        val line = Json { classDiscriminator = "type" }
+            .encodeToString(StudyBuildEvent.serializer(), event)
+
+        assertEquals(event, ChatApi.decodeStudyBuildEventLine(line))
     }
 }

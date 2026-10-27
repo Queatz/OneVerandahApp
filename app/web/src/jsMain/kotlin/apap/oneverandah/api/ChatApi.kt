@@ -10,6 +10,7 @@ import io.ktor.client.request.parameter
 import io.ktor.client.request.post
 import io.ktor.client.request.put
 import io.ktor.client.request.preparePost
+import io.ktor.client.request.prepareGet
 import io.ktor.client.request.setBody
 import io.ktor.client.plugins.HttpRequestTimeoutException
 import io.ktor.client.plugins.HttpTimeout
@@ -23,6 +24,8 @@ import io.ktor.http.contentType
 import io.ktor.http.isSuccess
 import io.ktor.utils.io.readLine
 import kotlinx.coroutines.NonCancellable
+import kotlinx.coroutines.CancellationException
+import kotlinx.coroutines.delay
 import kotlinx.coroutines.sync.Semaphore
 import kotlinx.coroutines.withContext
 import kotlinx.coroutines.withTimeoutOrNull
@@ -36,6 +39,7 @@ object ChatApi {
     private const val STUDY_SESSION_READ_TIMEOUT_MILLIS = 60_000L
     private const val REQUEST_TIMEOUT_MESSAGE = "Chat request timed out"
     private const val STREAM_IDLE_TIMEOUT_MILLIS = 60_000L
+    private val STUDY_EVENT_RECONNECT_BACKOFF_MILLIS = listOf(1_000L, 2_000L, 5_000L, 10_000L)
 
     private val requestSlots = Semaphore(permits = 4)
     private val client by lazy {
@@ -383,6 +387,86 @@ object ChatApi {
         )
     }
 
+    suspend fun createStudySession(request: StudyBuildRequest): SavedStudySession {
+        val token = DeviceTokenStore.ensureToken()
+        return apiRequest(
+            request = {
+                client.post(chatApiUrl("/study/sessions/build")) {
+                    header(DEVICE_TOKEN_HEADER, token)
+                    contentType(ContentType.Application.Json)
+                    setBody(json.encodeToString(StudyBuildRequest.serializer(), request))
+                }
+            },
+            decode = { json.decodeFromString(SavedStudySession.serializer(), it) },
+        )
+    }
+
+    suspend fun retryStudyBuild(id: String, elements: List<StudyBuildElement> = emptyList()): StudyBuildState {
+        val token = DeviceTokenStore.ensureToken()
+        val request = StudyBuildRetryRequest(elements)
+        return apiRequest(
+            request = {
+                client.post(chatApiUrl("/study/sessions/$id/build/retry")) {
+                    header(DEVICE_TOKEN_HEADER, token)
+                    contentType(ContentType.Application.Json)
+                    setBody(json.encodeToString(StudyBuildRetryRequest.serializer(), request))
+                }
+            },
+            decode = { json.decodeFromString(StudyBuildState.serializer(), it) },
+        )
+    }
+
+    suspend fun studySessionEvents(
+        id: String,
+        onEvent: suspend (StudyBuildEvent) -> Unit,
+    ) {
+        val token = DeviceTokenStore.ensureToken()
+        var reconnectAttempt = 0
+        while (true) {
+            var done = false
+            try {
+                client.prepareGet(chatApiUrl("/study/sessions/$id/events")) {
+                    header(DEVICE_TOKEN_HEADER, token)
+                    timeout { requestTimeoutMillis = HttpTimeoutConfig.INFINITE_TIMEOUT_MS }
+                }.execute { response ->
+                    if (!response.status.isSuccess()) {
+                        val body = response.bodyAsText()
+                        throw ChatApiException(errorMessage(body, response.status.value), response.status.value)
+                    }
+                    val channel = response.bodyAsChannel()
+                    while (!channel.isClosedForRead) {
+                        val line = withTimeoutOrNull(STREAM_IDLE_TIMEOUT_MILLIS.milliseconds) {
+                            channel.readLine()
+                        } ?: throw ChatApiException("Study event stream idle timeout")
+                        if (line.isBlank()) continue
+                        val event = decodeStudyBuildEventLine(line)
+                        onEvent(event)
+                        reconnectAttempt = 0
+                        if (event == StudyBuildEvent.Done) {
+                            done = true
+                            break
+                        }
+                    }
+                }
+            } catch (cancelled: CancellationException) {
+                throw cancelled
+            } catch (error: ChatApiException) {
+                if (error.statusCode != 0) throw error
+            } catch (_: Exception) {
+                // Reconnect below; every connection begins with a fresh snapshot.
+            }
+            if (done) return
+            val backoff = STUDY_EVENT_RECONNECT_BACKOFF_MILLIS[
+                reconnectAttempt.coerceAtMost(STUDY_EVENT_RECONNECT_BACKOFF_MILLIS.lastIndex)
+            ]
+            delay(backoff.milliseconds)
+            reconnectAttempt += 1
+        }
+    }
+
+    internal fun decodeStudyBuildEventLine(line: String): StudyBuildEvent =
+        json.decodeFromString(StudyBuildEvent.serializer(), line)
+
     suspend fun listCommunityStudySessions(
         cursor: String? = null,
         limit: Int = 20,
@@ -499,6 +583,7 @@ object ChatApi {
     private fun errorMessage(body: String, status: Int): String =
         runCatching { json.decodeFromString(ChatErrorResponse.serializer(), body).error }
             .getOrElse { "Chat request failed ($status)" }
+
 }
 
 internal fun chatApiUrl(path: String = ""): String = "${ImageApi.apiBaseUrl}/api/chat$path"

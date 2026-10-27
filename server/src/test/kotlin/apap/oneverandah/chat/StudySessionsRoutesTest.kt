@@ -117,8 +117,7 @@ class StudySessionsRoutesTest {
         assertEquals(null, saved.examGrade)
 
         val ownerGrade = StudyExamGrade(4, 5, 3, "Stored by the server.", 100L)
-        val record = studySessionsRepository.findById(saved.id)!!
-        studySessionsRepository.upsert(record.copy(examGrade = ownerGrade))
+        studySessionsService.saveExamGrade(tokenA, saved.id, ownerGrade)
 
         val progressiveSave = client.post("/api/chat/study/sessions") {
             header(DEVICE_TOKEN_HEADER, tokenA)

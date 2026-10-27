@@ -9,6 +9,10 @@ import apap.oneverandah.api.RenameStudySessionRequest
 import apap.oneverandah.api.SpeechRequest
 import apap.oneverandah.api.SpeechResponse
 import apap.oneverandah.api.StudyDissectSentenceRequest
+import apap.oneverandah.api.StudyBuildEvent
+import apap.oneverandah.api.StudyBuildRequest
+import apap.oneverandah.api.StudyBuildRetryRequest
+import apap.oneverandah.api.StudyBuildStatus
 import apap.oneverandah.api.StudyExpressCheckRequest
 import apap.oneverandah.api.StudyExpressGenerateRequest
 import apap.oneverandah.api.StudyExamSceneRequest
@@ -29,6 +33,7 @@ import apap.oneverandah.chat.QwenAsrRelay
 import apap.oneverandah.chat.SavedMessagesService
 import apap.oneverandah.chat.SpeechService
 import apap.oneverandah.chat.StudyService
+import apap.oneverandah.chat.StudyBuildService
 import apap.oneverandah.chat.StudySessionsService
 import apap.oneverandah.chat.UnauthorizedDeviceException
 import io.ktor.http.ContentType
@@ -49,7 +54,15 @@ import io.ktor.server.routing.put
 import io.ktor.server.websocket.webSocket
 import java.util.Base64
 import kotlinx.coroutines.Dispatchers
+import kotlinx.coroutines.CoroutineStart
 import kotlinx.coroutines.NonCancellable
+import kotlinx.coroutines.channels.Channel
+import kotlinx.coroutines.cancel
+import kotlinx.coroutines.cancelAndJoin
+import kotlinx.coroutines.coroutineScope
+import kotlinx.coroutines.flow.collect
+import kotlinx.coroutines.launch
+import kotlinx.coroutines.withTimeoutOrNull
 import kotlinx.coroutines.withContext
 import kotlinx.serialization.json.Json
 
@@ -77,6 +90,7 @@ fun Route.chatRoutes(
     savedMessagesService: SavedMessagesService? = null,
     studyService: StudyService? = null,
     studySessionsService: StudySessionsService? = null,
+    studyBuildService: StudyBuildService? = null,
 ) {
     post("/api/chat") {
         val request = call.receive<ChatRequest>()
@@ -97,6 +111,7 @@ fun Route.chatRoutes(
                 appendLine(chatStreamJson.encodeToString(ChatResponse.serializer(), response))
                 flush()
             }
+
             val final = chatService.send(request) { partial ->
                 writeEvent(partial)
             }
@@ -127,10 +142,35 @@ fun Route.chatRoutes(
                 return@post
             }
             val token = call.request.header(DEVICE_TOKEN_HEADER)
-            val session = if (studySessionsService != null) {
-                studySessionsService.createFromStudyRequest(token, request) { studyService.skeleton(it) }
-            } else {
-                withContext(NonCancellable) { studyService.skeleton(request) }
+            val session = try {
+                when {
+                    studyBuildService != null -> {
+                        val saved = studyBuildService.create(
+                            token,
+                            StudyBuildRequest(
+                                text = request.text,
+                                languageTag = request.languageTag,
+                                sourceMessageId = request.sourceMessageId,
+                            ),
+                        )
+                        studyBuildService.awaitSkeleton(saved.id) ?: run {
+                            call.respond(
+                                HttpStatusCode.BadGateway,
+                                ChatErrorResponse("Study session skeleton generation failed"),
+                            )
+                            return@post
+                        }
+                    }
+
+                    studySessionsService != null -> {
+                        studySessionsService.createFromStudyRequest(token, request) { studyService.skeleton(it) }
+                    }
+
+                    else -> withContext(NonCancellable) { studyService.skeleton(request) }
+                }
+            } catch (_: UnauthorizedDeviceException) {
+                call.respond(HttpStatusCode.Unauthorized, ChatErrorResponse("Valid device token required"))
+                return@post
             }
             call.respondStudyPayload(session)
         }
@@ -147,7 +187,10 @@ fun Route.chatRoutes(
         post("/api/chat/study/translate") {
             val request = call.receive<StudyTranslateRequest>()
             if (request.normalizedOrNull() == null) {
-                call.respond(HttpStatusCode.BadRequest, ChatErrorResponse("Study translation requires text and a target language"))
+                call.respond(
+                    HttpStatusCode.BadRequest,
+                    ChatErrorResponse("Study translation requires text and a target language")
+                )
                 return@post
             }
             call.respond(studyService.translateStudyText(request))
@@ -352,6 +395,23 @@ fun Route.chatRoutes(
 
     // Static study-session paths before /{conversationId}.
     if (studySessionsService != null) {
+        if (studyBuildService != null) {
+            post("/api/chat/study/sessions/build") {
+                val token = call.request.header(DEVICE_TOKEN_HEADER)
+                val request = call.receiveStudyPayload<StudyBuildRequest>()
+                if (request.normalizedOrNull() == null) {
+                    call.respond(HttpStatusCode.BadRequest, ChatErrorResponse("Study build requires non-blank text"))
+                    return@post
+                }
+                try {
+                    val created = studyBuildService.create(token, request)
+                    call.respondStudyPayload(created, HttpStatusCode.Accepted)
+                } catch (_: UnauthorizedDeviceException) {
+                    call.respond(HttpStatusCode.Unauthorized, ChatErrorResponse("Valid device token required"))
+                }
+            }
+        }
+
         get("/api/chat/study/sessions/community") {
             val token = call.request.header(DEVICE_TOKEN_HEADER)
             val cursor = call.request.queryParameters["cursor"]
@@ -370,6 +430,87 @@ fun Route.chatRoutes(
                 call.respond(studySessionsService.list(token))
             } catch (_: UnauthorizedDeviceException) {
                 call.respond(HttpStatusCode.Unauthorized, ChatErrorResponse("Valid device token required"))
+            }
+        }
+
+        if (studyBuildService != null) {
+            get("/api/chat/study/sessions/{id}/events") {
+                val token = call.request.header(DEVICE_TOKEN_HEADER)
+                val id = call.parameters["id"]?.trim().orEmpty()
+                if (id.isEmpty()) {
+                    call.respond(HttpStatusCode.BadRequest, ChatErrorResponse("Study session id is required"))
+                    return@get
+                }
+                val accessible = try {
+                    studySessionsService.get(token, id)
+                } catch (_: UnauthorizedDeviceException) {
+                    call.respond(HttpStatusCode.Unauthorized, ChatErrorResponse("Valid device token required"))
+                    return@get
+                }
+                if (accessible == null) {
+                    call.respond(HttpStatusCode.NotFound, ChatErrorResponse("Study session not found"))
+                    return@get
+                }
+
+                call.response.headers.append(HttpHeaders.CacheControl, "no-cache")
+                call.response.headers.append("X-Accel-Buffering", "no")
+                val eventFlow = studyBuildService.events(id)
+                call.respondTextWriter(contentType = ndjsonContentType) {
+                    val output = this
+                    coroutineScope {
+                        val channel = Channel<StudyBuildEvent>(Channel.BUFFERED)
+                        val collector = launch(start = CoroutineStart.UNDISPATCHED) {
+                            eventFlow.collect { channel.send(it) }
+                        }
+
+                        suspend fun writeEvent(event: StudyBuildEvent) {
+                            output.appendLine(studyPayloadJson.encodeToString(StudyBuildEvent.serializer(), event))
+                            output.flush()
+                        }
+                        try {
+                            val snapshot = studyBuildService.ensureBuilding(id)
+                            writeEvent(StudyBuildEvent.Snapshot(snapshot ?: accessible))
+                            val terminal = snapshot?.build?.status == StudyBuildStatus.COMPLETE ||
+                                    snapshot?.build?.status == StudyBuildStatus.PARTIAL
+                            if (snapshot == null || terminal) {
+                                writeEvent(StudyBuildEvent.Done)
+                                return@coroutineScope
+                            }
+                            while (true) {
+                                val event = withTimeoutOrNull(STUDY_BUILD_HEARTBEAT_MILLIS) { channel.receive() }
+                                if (event == null) {
+                                    writeEvent(StudyBuildEvent.Heartbeat)
+                                } else {
+                                    writeEvent(event)
+                                    if (event == StudyBuildEvent.Done) return@coroutineScope
+                                }
+                            }
+                        } finally {
+                            collector.cancelAndJoin()
+                            channel.cancel()
+                        }
+                    }
+                }
+            }
+
+            post("/api/chat/study/sessions/{id}/build/retry") {
+                val token = call.request.header(DEVICE_TOKEN_HEADER)
+                val id = call.parameters["id"]?.trim().orEmpty()
+                if (id.isEmpty()) {
+                    call.respond(HttpStatusCode.BadRequest, ChatErrorResponse("Study session id is required"))
+                    return@post
+                }
+                val request = call.receiveStudyPayload<StudyBuildRetryRequest>()
+                try {
+                    val state = studyBuildService.retry(token, id, request)
+                    if (state == null) {
+                        call.respond(HttpStatusCode.NotFound, ChatErrorResponse("Study session not found"))
+                        return@post
+                    }
+                    call.respondStudyPayload(state)
+                } catch (_: UnauthorizedDeviceException) {
+                    call.respond(HttpStatusCode.Unauthorized, ChatErrorResponse("Valid device token required"))
+                }
             }
         }
 
@@ -514,10 +655,15 @@ private suspend inline fun <reified T> ApplicationCall.receiveStudyPayload(): T 
     return withContext(Dispatchers.Default) { studyPayloadJson.decodeFromString(text) }
 }
 
-private suspend inline fun <reified T> ApplicationCall.respondStudyPayload(payload: T) {
+private suspend inline fun <reified T> ApplicationCall.respondStudyPayload(
+    payload: T,
+    status: HttpStatusCode = HttpStatusCode.OK,
+) {
     val text = withContext(Dispatchers.Default) { studyPayloadJson.encodeToString(payload) }
-    respondText(text, ContentType.Application.Json)
+    respondText(text, ContentType.Application.Json, status)
 }
+
+private const val STUDY_BUILD_HEARTBEAT_MILLIS = 15_000L
 
 fun Route.asrRoutes(asrRelay: QwenAsrRelay) {
     webSocket("/api/chat/asr") {

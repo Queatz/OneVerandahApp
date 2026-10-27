@@ -1,6 +1,8 @@
 package apap.oneverandah.chat
 
 import apap.oneverandah.api.StudySessionResponse
+import apap.oneverandah.api.StudyBuildState
+import apap.oneverandah.api.StudyBuildRequest
 import apap.oneverandah.config.ArangoConfig
 import kotlinx.coroutines.Dispatchers
 import kotlinx.coroutines.withContext
@@ -22,6 +24,7 @@ import kotlinx.serialization.json.buildJsonArray
 import kotlinx.serialization.json.buildJsonObject
 import kotlinx.serialization.json.jsonArray
 import kotlinx.serialization.json.jsonObject
+import kotlinx.serialization.json.jsonPrimitive
 import kotlinx.serialization.json.put
 import java.util.Base64
 
@@ -177,6 +180,25 @@ class ArangoStudySessionsRepository private constructor(
             put("bindVars", buildJsonObject { put("limit", limit.coerceAtLeast(0)) })
         }
         return queryDocuments(body, "list recent study sessions")
+    }
+
+    override suspend fun listIncompleteBuilds(): List<String> {
+        val body = buildJsonObject {
+            put(
+                "query",
+                "FOR doc IN $collection FILTER doc.build.status IN [\"PREPARING\", \"BUILDING\"] RETURN doc._key",
+            )
+            put("bindVars", buildJsonObject {})
+        }
+        val response = client.post("$dbUrl/_api/cursor") {
+            authed()
+            contentType(ContentType.Application.Json)
+            setBody(json.encodeToString(JsonObject.serializer(), body))
+        }
+        val text = response.bodyAsText()
+        ensureSuccess(response, "list incomplete study builds")
+        return json.parseToJsonElement(text).jsonObject["result"]?.jsonArray.orEmpty()
+            .map { it.jsonPrimitive.content }
     }
 
     override suspend fun listExceptDevice(
@@ -392,6 +414,8 @@ private data class SavedStudySessionDocument(
     val updatedAt: Long,
     val name: String = "",
     val examGrade: apap.oneverandah.api.StudyExamGrade? = null,
+    val build: StudyBuildState? = null,
+    val buildRequest: StudyBuildRequest? = null,
 ) {
     fun toRecord() = SavedStudySessionRecord(
         id = _key,
@@ -405,6 +429,8 @@ private data class SavedStudySessionDocument(
         updatedAt = updatedAt,
         name = name,
         examGrade = examGrade,
+        build = build,
+        buildRequest = buildRequest,
     )
 
     companion object {
@@ -420,6 +446,8 @@ private data class SavedStudySessionDocument(
             updatedAt = record.updatedAt,
             name = record.name,
             examGrade = record.examGrade,
+            build = record.build,
+            buildRequest = record.buildRequest,
         )
     }
 }

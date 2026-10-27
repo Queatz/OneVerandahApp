@@ -60,9 +60,9 @@ data class OssConfig(
 ) {
     val enabled: Boolean
         get() = endpoint.isNotBlank() &&
-            accessKeyId.isNotBlank() &&
-            accessKeySecret.isNotBlank() &&
-            bucket.isNotBlank()
+                accessKeyId.isNotBlank() &&
+                accessKeySecret.isNotBlank() &&
+                bucket.isNotBlank()
 
     private val bareEndpoint: String
         get() = endpoint.removePrefix("https://").removePrefix("http://").trimEnd('/')
@@ -263,6 +263,9 @@ data class AppConfig(
     val adminPassword: String,
     /** HS256 secret used to mint never-expiring admin JWTs. */
     val adminJwtSecret: String,
+    val studyBuildTextWorkers: Int = 4,
+    val studyBuildImageWorkers: Int = 3,
+    val studyBuildMaxAttempts: Int = 3,
 ) {
     val isProduction: Boolean get() = env == AppEnv.PRODUCTION
 
@@ -407,6 +410,9 @@ data class AppConfig(
                 adminJwtSecret = source["ADMIN_JWT_SECRET"]
                     ?: source["ADMIN_PASSWORD"]
                     ?: "oneverandah-dev-jwt-secret",
+                studyBuildTextWorkers = source.int("STUDY_BUILD_TEXT_WORKERS", 4),
+                studyBuildImageWorkers = source.int("STUDY_BUILD_IMAGE_WORKERS", 3),
+                studyBuildMaxAttempts = source.int("STUDY_BUILD_MAX_ATTEMPTS", 3),
             )
         }
 
@@ -464,7 +470,7 @@ class EnvSource private constructor(private val values: Map<String, String>) {
                 var value = withoutExport.substring(eq + 1).trim()
                 if (value.length >= 2 &&
                     ((value.first() == '"' && value.last() == '"') ||
-                        (value.first() == '\'' && value.last() == '\''))
+                            (value.first() == '\'' && value.last() == '\''))
                 ) {
                     value = value.substring(1, value.length - 1)
                 }

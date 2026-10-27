@@ -5,6 +5,9 @@ import apap.oneverandah.api.SaveStudySessionRequest
 import apap.oneverandah.api.SavedStudySession
 import apap.oneverandah.api.SavedStudySessionSummary
 import apap.oneverandah.api.SavedStudySessionsResponse
+import apap.oneverandah.api.StudyBuildEvent
+import apap.oneverandah.api.StudyBuildRequest
+import apap.oneverandah.api.StudyBuildState
 import apap.oneverandah.api.StudyExamGrade
 import apap.oneverandah.api.StudySessionRequest
 import apap.oneverandah.api.StudySessionResponse
@@ -28,6 +31,8 @@ data class SavedStudySessionRecord(
     val updatedAt: Long,
     val name: String = "",
     val examGrade: StudyExamGrade? = null,
+    val build: StudyBuildState? = null,
+    val buildRequest: StudyBuildRequest? = null,
 ) {
     fun toApi(includeExamGrade: Boolean = true) = SavedStudySession(
         id = id,
@@ -40,6 +45,7 @@ data class SavedStudySessionRecord(
         updatedAt = updatedAt,
         name = name,
         examGrade = examGrade.takeIf { includeExamGrade },
+        build = build,
     )
 
     fun toSummaryApi() = SavedStudySessionSummary(
@@ -103,6 +109,7 @@ interface StudySessionsRepository {
     suspend fun delete(id: String): Boolean
     suspend fun deleteOldestBeyond(deviceTokenHash: String, keepNewest: Int)
     suspend fun listRecent(limit: Int = 40): List<SavedStudySessionRecord>
+    suspend fun listIncompleteBuilds(): List<String>
     suspend fun listExceptDevice(
         excludeDeviceTokenHash: String,
         limit: Int,
@@ -159,6 +166,16 @@ class InMemoryStudySessionsRepository : StudySessionsRepository {
             items.values.sortedByDescending { it.updatedAt }.take(limit.coerceAtLeast(0))
         }
 
+    override suspend fun listIncompleteBuilds(): List<String> =
+        mutex.withLock {
+            items.values
+                .filter {
+                    it.build?.status == apap.oneverandah.api.StudyBuildStatus.PREPARING ||
+                            it.build?.status == apap.oneverandah.api.StudyBuildStatus.BUILDING
+                }
+                .map { it.id }
+        }
+
     override suspend fun listExceptDevice(
         excludeDeviceTokenHash: String,
         limit: Int,
@@ -170,8 +187,8 @@ class InMemoryStudySessionsRepository : StudySessionsRepository {
                 .filter { it.deviceTokenHash != excludeDeviceTokenHash }
                 .filter { record ->
                     afterUpdatedAt == null ||
-                        record.updatedAt < afterUpdatedAt ||
-                        (record.updatedAt == afterUpdatedAt && afterId != null && record.id < afterId)
+                            record.updatedAt < afterUpdatedAt ||
+                            (record.updatedAt == afterUpdatedAt && afterId != null && record.id < afterId)
                 }
                 .sortedWith(
                     compareByDescending<SavedStudySessionRecord> { it.updatedAt }
@@ -187,8 +204,9 @@ class StudySessionsService(
     private val deviceService: DeviceService,
     private val clock: () -> Long = System::currentTimeMillis,
     private val idGenerator: () -> String = { UUID.randomUUID().toString() },
-    private val maxPerDevice: Int = DEFAULT_MAX_PER_DEVICE,
+    val maxPerDevice: Int = DEFAULT_MAX_PER_DEVICE,
     private val studyAiClient: StudyAiClient? = null,
+    val sessionStore: StudySessionStore = StudySessionStore(repository, clock = clock),
 ) {
     suspend fun list(rawDeviceToken: String?): SavedStudySessionsResponse {
         val device = requireDevice(rawDeviceToken)
@@ -201,14 +219,14 @@ class StudySessionsService(
         val device = requireDevice(rawDeviceToken)
         val key = id.trim()
         if (key.isEmpty()) return null
-        val record = repository.findById(key) ?: return null
+        val record = sessionStore.findById(key) ?: return null
         return record.toApi(includeExamGrade = record.deviceTokenHash == device.tokenHash)
     }
 
     suspend fun getOwned(rawDeviceToken: String?, id: String): SavedStudySession? {
         val device = requireDevice(rawDeviceToken)
         val key = id.trim().takeIf(String::isNotEmpty) ?: return null
-        val record = repository.findById(key) ?: return null
+        val record = sessionStore.findById(key) ?: return null
         if (record.deviceTokenHash != device.tokenHash) return null
         return record.toApi()
     }
@@ -220,9 +238,11 @@ class StudySessionsService(
     ): SavedStudySession? {
         val device = requireDevice(rawDeviceToken)
         val key = id.trim().takeIf(String::isNotEmpty) ?: return null
-        val record = repository.findById(key) ?: return null
-        if (record.deviceTokenHash != device.tokenHash) return null
-        return repository.upsert(record.copy(examGrade = grade, updatedAt = clock())).toApi()
+        val record = sessionStore.update(key, immediate = true) { stored ->
+            if (stored.deviceTokenHash != device.tokenHash) return@update null
+            stored.copy(examGrade = grade)
+        } ?: return null
+        return record.toApi()
     }
 
     suspend fun listCommunity(
@@ -285,10 +305,8 @@ class StudySessionsService(
             val now = clock()
             val existing = request.sourceMessageId?.let {
                 repository.findByDeviceAndSource(device.tokenHash, it)
-            }
-            val session = request.session.copy(
-                examScene = request.session.examScene ?: existing?.session?.examScene,
-            )
+            }?.let { stored -> sessionStore.findById(stored.id) ?: stored }
+            val session = request.session
             val fallbackName = existing?.name?.takeIf(String::isNotBlank) ?: fallbackSessionName(session.text)
             val record = SavedStudySessionRecord(
                 id = existing?.id ?: idGenerator(),
@@ -301,18 +319,30 @@ class StudySessionsService(
                 createdAt = existing?.createdAt ?: now,
                 updatedAt = now,
                 name = fallbackName,
-                examGrade = existing?.examGrade,
             )
-            val saved = repository.upsert(record)
+            val saved = if (existing == null) {
+                sessionStore.create(record)
+            } else {
+                sessionStore.update(existing.id, immediate = true) { stored ->
+                    StudySessionMerge.mergeClientSave(stored, record)
+                } ?: sessionStore.create(record.copy(id = idGenerator(), createdAt = now))
+            }
             repository.deleteOldestBeyond(device.tokenHash, maxPerDevice)
             if (existing?.name.isNullOrBlank()) {
                 val generatedName = generateSessionName(session.text, request.languageTag)
                 if (generatedName != saved.name) {
-                    val current = repository.findById(saved.id)
-                    val renamed = current
-                        ?.takeIf { it.deviceTokenHash == device.tokenHash && it.name == fallbackName }
-                        ?.let { repository.upsert(it.copy(name = generatedName)) }
-                    return@withContext (renamed ?: current ?: saved).toSummaryApi()
+                    val renamed = sessionStore.update(
+                        saved.id,
+                        reason = StudyBuildEvent.Renamed(generatedName),
+                        immediate = true,
+                    ) { current ->
+                        if (current.deviceTokenHash == device.tokenHash && current.name == fallbackName) {
+                            current.copy(name = generatedName)
+                        } else {
+                            null
+                        }
+                    }
+                    return@withContext (renamed ?: sessionStore.findById(saved.id) ?: saved).toSummaryApi()
                 }
             }
             saved.toSummaryApi()
@@ -330,19 +360,28 @@ class StudySessionsService(
      */
     suspend fun delete(rawDeviceToken: String?, id: String): Boolean {
         val device = requireDevice(rawDeviceToken)
-        val existing = repository.findById(id) ?: return false
+        val existing = sessionStore.findById(id) ?: return false
         if (existing.deviceTokenHash != device.tokenHash) return false
-        return repository.delete(id)
+        return sessionStore.delete(id)
     }
 
     /** Renames a session only when it belongs to the current device. */
     suspend fun rename(rawDeviceToken: String?, id: String, rawName: String): SavedStudySessionSummary? {
         val device = requireDevice(rawDeviceToken)
         val name = rawName.trim().takeIf { it.isNotEmpty() } ?: return null
-        val existing = repository.findById(id.trim()) ?: return null
-        if (existing.deviceTokenHash != device.tokenHash) return null
-        return repository.upsert(existing.copy(name = name, updatedAt = clock())).toSummaryApi()
+        val renamed = sessionStore.update(
+            id = id.trim(),
+            reason = StudyBuildEvent.Renamed(name),
+            immediate = true,
+        ) { existing ->
+            if (existing.deviceTokenHash != device.tokenHash) return@update null
+            existing.copy(name = name)
+        } ?: return null
+        return renamed.toSummaryApi()
     }
+
+    internal suspend fun generateName(text: String, languageTag: String): String =
+        generateSessionName(text, languageTag)
 
     private suspend fun generateSessionName(text: String, languageTag: String): String {
         val generated = try {

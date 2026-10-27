@@ -26,6 +26,7 @@ class ChatSystem(
     val deviceService: DeviceService,
     val savedMessagesService: SavedMessagesService,
     val studySessionsService: StudySessionsService,
+    val studyBuildService: StudyBuildService,
     val clonedVoicesService: ClonedVoicesService?,
     private val arangoHttpClient: HttpClient,
     private val longRunningHttpClient: HttpClient,
@@ -36,6 +37,7 @@ class ChatSystem(
     suspend fun startup() {
         if (voiceDesignEnabled) speechService.startup()
         asrRelay.startup()
+        studyBuildService.resumeAll()
     }
 
     fun shutdown() {
@@ -122,6 +124,26 @@ class ChatSystem(
                 null
             }
             val studyAiClient = DashScopeStudyAiClient(config.qwenChat, providerClient)
+            val studyService = StudyService(
+                aiClient = studyAiClient,
+                imageGenerator = playgroundImageGenerator,
+                scope = scope,
+            )
+            val studySessionStore = StudySessionStore(studySessionsRepository, scope = scope)
+            val studySessionsService = StudySessionsService(
+                repository = studySessionsRepository,
+                deviceService = deviceService,
+                studyAiClient = studyAiClient,
+                sessionStore = studySessionStore,
+            )
+            val studyBuildService = StudyBuildService(
+                repository = studySessionsRepository,
+                deviceService = deviceService,
+                sessionsService = studySessionsService,
+                studyService = studyService,
+                scope = scope,
+                config = config,
+            )
             return ChatSystem(
                 chatService = ChatService(
                     repository = repository,
@@ -140,22 +162,15 @@ class ChatSystem(
                         log.info("TTS speech cache enabled at {}", File(config.ttsCacheDir).absolutePath)
                     },
                 ),
-                studyService = StudyService(
-                    aiClient = studyAiClient,
-                    imageGenerator = playgroundImageGenerator,
-                    scope = scope,
-                ),
+                studyService = studyService,
                 asrRelay = QwenAsrRelay(config.qwenChat, asrClient, scope),
                 deviceService = deviceService,
                 savedMessagesService = SavedMessagesService(
                     repository = savedRepository,
                     deviceService = deviceService,
                 ),
-                studySessionsService = StudySessionsService(
-                    repository = studySessionsRepository,
-                    deviceService = deviceService,
-                    studyAiClient = studyAiClient,
-                ),
+                studySessionsService = studySessionsService,
+                studyBuildService = studyBuildService,
                 clonedVoicesService = clonedVoicesService,
                 arangoHttpClient = arangoClient,
                 longRunningHttpClient = providerClient,
