@@ -28,6 +28,7 @@ import apap.oneverandah.api.SaveStudySessionRequest
 import apap.oneverandah.api.SavedStudySession
 import apap.oneverandah.api.SavedStudySessionSummary
 import apap.oneverandah.api.SpeechRequest
+import apap.oneverandah.api.SpeechResponse
 import apap.oneverandah.api.SpeechTimingAligner
 import apap.oneverandah.api.SpeechWordTiming
 import apap.oneverandah.api.StudyExampleSentence
@@ -65,6 +66,7 @@ import apap.oneverandah.i18n.Localization
 import apap.oneverandah.i18n.UiStrings
 import apap.oneverandah.model.Language
 import apap.oneverandah.state.Toaster
+import apap.oneverandah.state.StudyAudioCache
 import kotlinx.browser.document
 import kotlinx.browser.window
 import kotlinx.coroutines.CompletableDeferred
@@ -1872,9 +1874,7 @@ private fun StudySessionContent(
         }
         scope.launch {
             val url = runCatching {
-                withSpeechRetry {
-                    ChatApi.speechDataUrl(SpeechRequest(tokenText, session.textLanguageTag))
-                }
+                loadStudySpeechDataUrl(SpeechRequest(tokenText, session.textLanguageTag))
             }.getOrNull() ?: return@launch
             tokenAudio[tokenKey] = url
             // Still selected on the same token after the async round-trip.
@@ -1892,11 +1892,9 @@ private fun StudySessionContent(
                     async {
                         if (sentenceAudio.containsKey(key)) return@async null
                         runCatching {
-                            val speech = withSpeechRetry {
-                                ChatApi.speech(SpeechRequest(text, session.textLanguageTag))
-                            }
+                            val speech = loadStudySpeech(SpeechRequest(text, session.textLanguageTag))
                             key to StudySentenceAudio(
-                                url = "data:${speech.contentType};base64,${speech.audioBase64}",
+                                url = StudyAudioCache.dataUrl(speech),
                                 words = speech.words,
                             )
                         }.getOrNull()
@@ -3523,9 +3521,7 @@ private fun StudyStoryTab(
                             continue
                         }
                         val url = runCatching {
-                            withSpeechRetry {
-                                ChatApi.speechDataUrl(SpeechRequest(text, languageTag))
-                            }
+                            loadStudySpeechDataUrl(SpeechRequest(text, languageTag))
                         }.getOrNull()
                         if (url != null) {
                             exampleAudio[audioKey] = url
@@ -3553,9 +3549,7 @@ private fun StudyStoryTab(
                         continue
                     }
                     val url = runCatching {
-                        withSpeechRetry {
-                            ChatApi.speechDataUrl(SpeechRequest(text, learnerLanguageTag))
-                        }
+                        loadStudySpeechDataUrl(SpeechRequest(text, learnerLanguageTag))
                     }.getOrNull()
                     if (url != null) {
                         meaningAudio[text] = url
@@ -4179,9 +4173,7 @@ private fun StudyListenTab(
         audioLoading[text] = true
         scope.launch {
             val result = runCatching {
-                withSpeechRetry {
-                    ChatApi.speechDataUrl(SpeechRequest(text, session.textLanguageTag))
-                }
+                loadStudySpeechDataUrl(SpeechRequest(text, session.textLanguageTag))
             }
             result.onSuccess { url ->
                 audioByText[text] = url
@@ -4934,9 +4926,7 @@ private fun StudyTestTab(
     suspend fun listenAudioUrl(key: String, line: String, languageTag: String): String {
         audioCache[key]?.let { return it }
         val request = audioRequests[key] ?: audioScope.async {
-            withSpeechRetry {
-                ChatApi.speechDataUrl(SpeechRequest(line, languageTag))
-            }.also { audioCache[key] = it }
+            loadStudySpeechDataUrl(SpeechRequest(line, languageTag)).also { audioCache[key] = it }
         }.also { created ->
             audioRequests[key] = created
             created.invokeOnCompletion {
@@ -5202,6 +5192,14 @@ private suspend fun <T> withSpeechRetry(
     }
 }
 
+private suspend fun loadStudySpeech(request: SpeechRequest): SpeechResponse =
+    StudyAudioCache.load(request) { speechRequest ->
+        withSpeechRetry { ChatApi.speech(speechRequest) }
+    }
+
+private suspend fun loadStudySpeechDataUrl(request: SpeechRequest): String =
+    StudyAudioCache.dataUrl(loadStudySpeech(request))
+
 @Composable
 private fun StudyTokenDetail(
     token: StudyToken,
@@ -5248,9 +5246,7 @@ private fun StudyTokenDetail(
         pendingExampleAudio[sentence] = true
         scope.launch {
             val url = runCatching {
-                withSpeechRetry {
-                    ChatApi.speechDataUrl(SpeechRequest(sentence, textLanguageTag))
-                }
+                loadStudySpeechDataUrl(SpeechRequest(sentence, textLanguageTag))
             }.getOrNull()
             if (url == null) {
                 clearExampleLoading(sentence)
