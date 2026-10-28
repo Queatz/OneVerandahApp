@@ -417,6 +417,8 @@ object Styles {
     const val studyExamStart = "study-exam-start"
     const val studySessionCardActions = "study-session-card-actions"
     const val studySessionSectionTitle = "study-session-section-title"
+    const val studyWordsTable = "study-words-table"
+    const val studyWordsWord = "study-words-word"
     const val studySessionRemoveBtn = "study-session-remove-btn"
     const val studySessionBody = "study-session-body"
     const val studySessionHint = "study-session-hint"
@@ -3282,6 +3284,25 @@ object Styles {
             font-size: 15px;
             font-weight: 700;
             color: var(--md-sys-color-on-surface);
+        }
+        .${studyWordsTable} {
+            width: 100%;
+            border-collapse: collapse;
+        }
+        .${studyWordsTable} th,
+        .${studyWordsTable} td {
+            padding: 9px 12px;
+            text-align: left;
+        }
+        .${studyWordsWord} {
+            padding: 4px 0;
+            border: 0;
+            background: transparent;
+            color: var(--md-sys-color-primary);
+            font: inherit;
+            font-weight: 600;
+            cursor: pointer;
+            text-align: left;
         }
         .${studySessionCard} {
             position: relative;

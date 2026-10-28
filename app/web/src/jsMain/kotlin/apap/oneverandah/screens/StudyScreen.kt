@@ -102,7 +102,13 @@ import org.jetbrains.compose.web.dom.Li
 import org.jetbrains.compose.web.dom.Ol
 import org.jetbrains.compose.web.dom.P
 import org.jetbrains.compose.web.dom.Span
+import org.jetbrains.compose.web.dom.Table
+import org.jetbrains.compose.web.dom.Tbody
+import org.jetbrains.compose.web.dom.Td
+import org.jetbrains.compose.web.dom.Th
+import org.jetbrains.compose.web.dom.Thead
 import org.jetbrains.compose.web.dom.Text
+import org.jetbrains.compose.web.dom.Tr
 import org.w3c.dom.Element
 import org.w3c.dom.HTMLAudioElement
 import org.w3c.dom.HTMLElement
@@ -1937,6 +1943,12 @@ private fun StudySessionContent(
         }) { Text(strings.chatStudyTab) }
         Button(attrs = {
             classes(Styles.chip)
+            if (mode == StudySessionMode.WORDS) classes(Styles.chipActive)
+            attr("type", "button")
+            onClick { mode = StudySessionMode.WORDS }
+        }) { Text(strings.chatWordsTab) }
+        Button(attrs = {
+            classes(Styles.chip)
             if (mode == StudySessionMode.LISTEN) classes(Styles.chipActive)
             attr("type", "button")
             onClick {
@@ -2148,6 +2160,16 @@ private fun StudySessionContent(
                     }
                 }
             }
+            StudySessionMode.WORDS -> {
+                StudyWordsTab(
+                    rows = studyVocabularyRows(session.sentences),
+                    strings = strings,
+                    onWordClick = { row ->
+                        selectedRef = StudyTokenRef(row.sentenceIndex, row.tokenIndex)
+                        playStudyToken(row.sentenceIndex, row.tokenIndex, row.word)
+                    },
+                )
+            }
             StudySessionMode.LISTEN -> {
                 StudyListenTab(
                     session = session,
@@ -2320,7 +2342,76 @@ private fun StudySentenceVisual(
     }
 }
 
-private enum class StudySessionMode { ALL, WATCH, STORY, STUDY, LISTEN, READ, WRITE, EXPRESS, PLAY, TEST }
+private enum class StudySessionMode { ALL, WATCH, STORY, STUDY, WORDS, LISTEN, READ, WRITE, EXPRESS, PLAY, TEST }
+
+internal data class StudyVocabularyRow(
+    val sentenceIndex: Int,
+    val tokenIndex: Int,
+    val word: String,
+    val meaning: String,
+)
+
+internal fun studyVocabularyRows(sentences: List<StudySentence>): List<StudyVocabularyRow> {
+    val seenWords = mutableSetOf<String>()
+    return buildList {
+        sentences.forEachIndexed { sentenceIndex, sentence ->
+            sentence.tokens.forEachIndexed { tokenIndex, token ->
+                val word = token.text.trim()
+                if (token.isDissectable && word.isNotEmpty() && seenWords.add(word.lowercase())) {
+                    add(
+                        StudyVocabularyRow(
+                            sentenceIndex = sentenceIndex,
+                            tokenIndex = tokenIndex,
+                            word = word,
+                            meaning = token.contextualMeaning.ifBlank { token.literalMeaning },
+                        ),
+                    )
+                }
+            }
+        }
+    }
+}
+
+@Composable
+private fun StudyWordsTab(
+    rows: List<StudyVocabularyRow>,
+    strings: UiStrings,
+    onWordClick: (StudyVocabularyRow) -> Unit,
+) {
+    if (rows.isEmpty()) {
+        Div(attrs = { classes(Styles.studyPreparingMeanings) }) {
+            MaterialSymbol("progress_activity")
+            Text(strings.chatStudyPreparingMeanings)
+        }
+        return
+    }
+
+    Table(attrs = {
+        classes(Styles.studyWordsTable)
+        attr("aria-label", strings.chatWordsTab)
+    }) {
+        Thead {
+            Tr {
+                Th { Text(strings.chatWordsWord) }
+                Th { Text(strings.chatWordsMeaning) }
+            }
+        }
+        Tbody {
+            rows.forEach { row ->
+                Tr {
+                    Th(attrs = { attr("scope", "row") }) {
+                        Button(attrs = {
+                            classes(Styles.studyWordsWord)
+                            attr("type", "button")
+                            onClick { onWordClick(row) }
+                        }) { Text(row.word) }
+                    }
+                    Td { Text(row.meaning) }
+                }
+            }
+        }
+    }
+}
 
 internal data class StudyExamAttemptState(
     val beatIndex: Int = 0,
@@ -2351,6 +2442,7 @@ private fun StudySessionMode.tabLabel(strings: UiStrings): String = when (this) 
     StudySessionMode.WATCH -> strings.chatWatchTab
     StudySessionMode.STORY -> strings.chatStoryTab
     StudySessionMode.STUDY -> strings.chatStudyTab
+    StudySessionMode.WORDS -> strings.chatWordsTab
     StudySessionMode.LISTEN -> strings.chatListenTab
     StudySessionMode.READ -> strings.chatReadTab
     StudySessionMode.WRITE -> strings.chatWriteTab
