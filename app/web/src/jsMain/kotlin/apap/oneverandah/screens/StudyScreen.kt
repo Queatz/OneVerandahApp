@@ -2254,7 +2254,8 @@ private fun StudySessionContent(
                     sceneError = examFailed,
                     savedGrade = savedExamGrade,
                     attempt = examAttempt,
-                    autoPlayListen = mode == StudySessionMode.TEST,
+                    autoPlayListen = true,
+                    autoFocus = mode == StudySessionMode.TEST,
                     onRetryScene = onRetryExam,
                     onDraftChange = { value -> examAttempt = examAttempt.copy(draft = value, error = null) },
                     onSubmitAnswer = ::answerExamBeat,
@@ -4913,6 +4914,7 @@ private fun StudyTestTab(
     savedGrade: StudyExamGrade?,
     attempt: StudyExamAttemptState,
     autoPlayListen: Boolean,
+    autoFocus: Boolean,
     onRetryScene: () -> Unit,
     onDraftChange: (String) -> Unit,
     onSubmitAnswer: (String?) -> Unit,
@@ -5072,6 +5074,8 @@ private fun StudyTestTab(
                                     property("height", "64px")
                                     property("min-height", "64px")
                                     property("border-radius", "50%")
+                                    property("margin", "0 auto")
+                                    property("flex", "none")
                                 }
                             }) { MaterialSymbol("person") }
                         }
@@ -5127,8 +5131,8 @@ private fun StudyTestTab(
                                 session.textLanguageTag
                             },
                             multiline = true,
-                            autoFocus = autoPlayListen,
-                            focusNonce = if (autoPlayListen) attempt.beatIndex + 1 else 0,
+                            autoFocus = autoFocus,
+                            focusNonce = if (autoFocus) attempt.beatIndex + 1 else 0,
                         )
                         Button(attrs = {
                             classes(Styles.chip)

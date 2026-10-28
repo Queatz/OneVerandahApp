@@ -692,16 +692,45 @@ class DashScopeStudyAiClient(
         appendLine("Study sentences (structures and vocabulary only — never copy a sentence as a listen line):")
         request.sentences.forEachIndexed { index, sentence ->
             appendLine("${index + 1}. ${sentence.text.trim()}")
-            sentence.tokens
-                .flatMap { token -> listOf(token.contextualMeaning, token.literalMeaning) }
-                .map(String::trim)
-                .filter(String::isNotEmpty)
-                .distinct()
-                .forEach { appendLine("   Meaning clue: $it") }
+            sentence.tokens.forEach { token ->
+                val word = token.text.trim()
+                if (word.isEmpty() || token.status == StudyTokenStatus.PLAIN) return@forEach
+                val meaning = listOf(token.contextualMeaning, token.literalMeaning)
+                    .map(String::trim)
+                    .filter(String::isNotEmpty)
+                    .distinct()
+                    .joinToString("; ")
+                appendLine(if (meaning.isEmpty()) "   Word: $word" else "   Word: $word — $meaning")
+                token.exampleSentences
+                    .map { it.text.trim() }
+                    .filter(String::isNotEmpty)
+                    .forEach { appendLine("      Example: $it") }
+            }
         }
+        appendLine()
+        appendLine("Allowed study vocabulary (the ONLY content words the learner has studied):")
+        examStudiedVocabulary(request.sentences).forEach { appendLine("- $it") }
         appendLine()
         appendLine("Full source text:")
         append(request.text)
+    }
+
+    /** Words from the main sentences plus every word of the per-word example sentences, deduplicated. */
+    private fun examStudiedVocabulary(sentences: List<StudySentence>): List<String> {
+        val words = LinkedHashMap<String, String>()
+        fun add(raw: String) {
+            val word = raw.trim()
+            if (word.isNotEmpty() && !looksLikePunctuationOnly(word)) words.putIfAbsent(word.lowercase(), word)
+        }
+        sentences.forEach { sentence ->
+            sentence.tokens.forEach { token ->
+                add(token.text)
+                token.exampleSentences.forEach { example ->
+                    example.text.split(Regex("[\\s.,!?;:。！？…、，\"“”()]+")).forEach(::add)
+                }
+            }
+        }
+        return words.values.toList()
     }
 
     override suspend fun evaluateExamBeat(request: StudyExamBeatJudgmentRequest): StudyExamJudgment {
@@ -1144,6 +1173,7 @@ class DashScopeStudyAiClient(
         - "outline" is exactly $STUDY_EXAM_ROUND_COUNT short action lines in the learner UI language ${languageName(activeLanguageTag)} ($activeLanguageTag), one per round, describing what the learner needs to do. Style: "Help Min order tea". Do not reveal hidden study-language lines.
         - "setting" is a short situation in the learner UI language.
         - Invent NEW spoken LISTEN lines in ${languageName(textLanguageTag)} ($textLanguageTag) that reuse the session's vocabulary and grammatical structures. Never paste, quote, or lightly reframe a study sentence. Never copy or quote the study sentences. Each listen line must be unique and must advance the conversation.
+        - VOCABULARY LIMIT (strict): every study-language LISTEN line, and every word the learner is asked to say in a SPEAK beat, may ONLY use words that appear in the supplied "Allowed study vocabulary" list, i.e. the main study sentences and the example sentences listed under each word. The learner has not studied any other words. The only exception is foundational grammar needed to build correct sentences (pronouns, articles, particles, classifiers, auxiliaries, prepositions, conjunctions, negation, question words, and basic forms of 'to be'). Never introduce any other new noun, verb, adjective, adverb, or name-of-thing. If the situation seems to need an unstudied word, change the situation instead. SPEAK cues and expectedMeaning must only require a reply the learner can build from the allowed vocabulary.
         - A SPEAK beat has no line field. Its prompt is that round's outline item, asking for a situated reply in the study language. expectedMeaning describes what a useful reply must communicate.
         - sourceSentence names the study sentence whose pattern this round tests. It is metadata only — it must not be copied into line.
         - Write prompts and expectedMeaning ONLY in the learner UI language ${languageName(activeLanguageTag)} ($activeLanguageTag).
