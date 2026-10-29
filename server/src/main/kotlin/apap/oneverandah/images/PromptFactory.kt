@@ -54,11 +54,24 @@ object PromptFactory {
      * Word / phrase visual. [intendedScene] is an English movie-still description;
      * the vocabulary string itself must never appear in this prompt.
      */
-    fun forWord(intendedScene: String): String {
+    fun forWord(
+        intendedScene: String,
+        textLanguageTag: String = "",
+        characterDescriptions: List<String> = emptyList(),
+    ): String {
         val scene = intendedScene.trim()
         return finish(
             buildString {
                 append("Create a single beautiful, realistic, expressive cinematic still that illustrates a vocabulary idea through a movie-like everyday scene. ")
+                if (textLanguageTag.isNotBlank()) {
+                    append("Source language tag: ${textLanguageTag.trim()}. When people appear, depict people with the ethnic appearance and cultural cues native to this language community; do not default to Western appearance. ")
+                }
+                val appearanceCues = characterDescriptions.map(String::trim).filter(String::isNotEmpty).distinct()
+                if (appearanceCues.isNotEmpty()) {
+                    append("Appearance cues from the session's character designs (not identity references; this example may feature different people): ")
+                    append(appearanceCues.joinToString("; "))
+                    append(". ")
+                }
                 if (scene.isNotEmpty()) {
                     append("Intended movie-like scene to depict: $scene. ")
                 } else {

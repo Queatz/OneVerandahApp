@@ -44,4 +44,14 @@ class StudyWordsTabTest {
             rows,
         )
     }
+
+    @Test
+    fun `example breakdown toggles closed and switches to a different example`() {
+        assertEquals("sentence-0-word-0-example-0", toggleStudyExampleBreakdown(null, "sentence-0-word-0-example-0"))
+        assertEquals(null, toggleStudyExampleBreakdown("sentence-0-word-0-example-0", "sentence-0-word-0-example-0"))
+        assertEquals("sentence-0-word-1-example-0", toggleStudyExampleBreakdown(
+            "sentence-0-word-0-example-0",
+            "sentence-0-word-1-example-0",
+        ))
+    }
 }

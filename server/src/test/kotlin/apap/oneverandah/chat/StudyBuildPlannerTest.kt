@@ -9,6 +9,7 @@ import apap.oneverandah.api.StudyBuildStatus
 import apap.oneverandah.api.StudyExamBeat
 import apap.oneverandah.api.StudyExamBeatKind
 import apap.oneverandah.api.StudyExamScene
+import apap.oneverandah.api.StudyExampleSentence
 import apap.oneverandah.api.StudySentence
 import apap.oneverandah.api.StudySessionResponse
 import apap.oneverandah.api.StudyStoryCharacter
@@ -163,6 +164,38 @@ class StudyBuildPlannerTest {
         val dependentWork = planner.plan(textWorkSettled).map { it.element.kind }.toSet()
         assertTrue(StudyBuildElementKind.WORD_IMAGE in dependentWork)
         assertTrue(StudyBuildElementKind.PORTRAIT in dependentWork)
+    }
+
+    @Test
+    fun `example dissection jobs have stable word keys and backfill completed sessions`() {
+        val exampleToken = StudyToken(
+            text = "လှ",
+            status = StudyTokenStatus.READY,
+            contextualMeaning = "very",
+            exampleSentences = listOf(
+                StudyExampleSentence("သူမက လှတယ်။", "She is very beautiful."),
+                StudyExampleSentence("လှလွန်းတယ်။", "It is very beautiful."),
+            ),
+        )
+        val currentSession = session(sentences = listOf(StudySentence("သင့်အပြုံးက လှတယ်။", listOf(exampleToken))))
+
+        val building = record(
+            state = StudyBuildState(status = StudyBuildStatus.BUILDING),
+            currentSession = currentSession,
+            name = "A smile",
+        )
+        assertEquals(
+            listOf("EXAMPLE_DISSECT:0:0"),
+            planner.plan(building).filter { it.element.kind == StudyBuildElementKind.EXAMPLE_DISSECT }
+                .map { it.element.key },
+        )
+
+        val completed = building.copy(build = StudyBuildState(status = StudyBuildStatus.COMPLETE))
+        assertEquals(
+            listOf("EXAMPLE_DISSECT:0:0"),
+            planner.plan(completed).filter { it.element.kind == StudyBuildElementKind.EXAMPLE_DISSECT }
+                .map { it.element.key },
+        )
     }
 
     private fun record(

@@ -130,6 +130,15 @@ class StudyBuildService(
                 )
             } ?: return null
         }
+        if (
+            (record.build?.status == StudyBuildStatus.COMPLETE || record.build?.status == StudyBuildStatus.PARTIAL) &&
+            planner.plan(record).any { it.element.kind == StudyBuildElementKind.EXAMPLE_DISSECT }
+        ) {
+            record = store.update(key, immediate = true) { current ->
+                val build = current.build ?: return@update null
+                current.copy(build = build.copy(status = StudyBuildStatus.BUILDING, updatedAt = clock()))
+            } ?: return null
+        }
         queue.start()
         planSession(key, lowPriority)
         return getSession(key)

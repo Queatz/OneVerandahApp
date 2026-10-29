@@ -315,6 +315,8 @@ class ChatApiModelsTest {
                 StudyExampleSentence(text = "  Xin chào bạn.  ", translation = "  Hello friend.  "),
                 StudyExampleSentence(text = "   ", translation = "x"),
             ),
+            textLanguageTag = " my ",
+            characters = listOf(StudyStoryCharacter("main", " Lan ", " main ", " young Burmese woman ")),
         ).normalizedOrNull()
         assertEquals(
             StudyWordImageRequest(
@@ -323,6 +325,8 @@ class ChatApiModelsTest {
                 exampleSentences = listOf(
                     StudyExampleSentence(text = "Xin chào bạn.", translation = "Hello friend."),
                 ),
+                textLanguageTag = "my",
+                characters = listOf(StudyStoryCharacter("main", "Lan", "main", "young Burmese woman")),
             ),
             normalized,
         )
@@ -330,6 +334,23 @@ class ChatApiModelsTest {
             null,
             StudyWordImageRequest(word = "   ", contextualMeaning = "x").normalizedOrNull(),
         )
+    }
+
+    @Test
+    fun `example sentence word glosses round trip through the study API model`() {
+        val example = StudyExampleSentence(
+            text = "သူမက လှတယ်။",
+            translation = "She is very beautiful.",
+            tokens = listOf(
+                StudyExampleToken("သူမ", "she", "she"),
+                StudyExampleToken("လှ", "very", "very"),
+            ),
+        )
+
+        assertEquals(example, json.decodeFromString<StudyExampleSentence>(json.encodeToString(example)))
+        assertEquals(StudyExampleSentence(example.text, example.translation), json.decodeFromString(
+            """{"text":"${example.text}","translation":"${example.translation}"}""",
+        ))
     }
 
 @Test

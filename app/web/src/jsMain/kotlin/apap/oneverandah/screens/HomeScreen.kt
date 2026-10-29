@@ -10,11 +10,13 @@ import androidx.compose.runtime.setValue
 import kotlinx.coroutines.delay
 import apap.oneverandah.Styles
 import apap.oneverandah.api.ChallengeApi
+import apap.oneverandah.api.ChatApi
 import apap.oneverandah.api.ImageApi
 import apap.oneverandah.api.ClubApi
 import apap.oneverandah.api.LocationApi
 import apap.oneverandah.api.MeetApi
 import apap.oneverandah.api.StoryApi
+import apap.oneverandah.api.SavedStudySessionSummary
 import apap.oneverandah.challenges.ChallengeCard
 import apap.oneverandah.components.BottomDialog
 import apap.oneverandah.components.ChatInput
@@ -41,6 +43,12 @@ import apap.oneverandah.stories.StoryLogic
 import kotlinx.browser.window
 import kotlinx.coroutines.async
 import kotlinx.coroutines.coroutineScope
+import org.jetbrains.compose.web.css.DisplayStyle
+import org.jetbrains.compose.web.css.FlexDirection
+import org.jetbrains.compose.web.css.display
+import org.jetbrains.compose.web.css.flexDirection
+import org.jetbrains.compose.web.css.gap
+import org.jetbrains.compose.web.css.px
 import org.jetbrains.compose.web.dom.Button
 import org.jetbrains.compose.web.dom.Div
 import org.jetbrains.compose.web.dom.H2
@@ -110,6 +118,7 @@ fun HomeScreen(
     onServiceSelected: (String) -> Unit,
     onChatRequested: (String) -> Unit,
     onOpenStudy: () -> Unit = {},
+    onOpenStudySession: (String) -> Unit = { onOpenStudy() },
     onOpenSaved: () -> Unit = {},
     onOpenPhrases: () -> Unit = {},
     onOpenStories: () -> Unit = {},
@@ -133,6 +142,7 @@ fun HomeScreen(
     var feedLoadingMore by remember { mutableStateOf(false) }
     var animatedPlaceholder by remember(language) { mutableStateOf(strings.searchPlaceholder) }
     var latestStories by remember { mutableStateOf<List<Story>>(emptyList()) }
+    var latestStudySessions by remember { mutableStateOf<List<SavedStudySessionSummary>>(emptyList()) }
     var latestChallenges by remember { mutableStateOf<List<ChallengeCard>>(emptyList()) }
     var latestLocations by remember { mutableStateOf<List<LocationCard>>(emptyList()) }
     var latestClubs by remember { mutableStateOf<List<ClubCard>>(emptyList()) }
@@ -142,11 +152,13 @@ fun HomeScreen(
     LaunchedEffect(Unit) {
         coroutineScope {
             val storiesDeferred = async { StoryApi.fetchStories() }
+            val studySessionsDeferred = async { ChatApi.listCommunityStudySessions(limit = HOME_LATEST_LIMIT) }
             val challengesDeferred = async { ChallengeApi.fetchFeed() }
             val locationsDeferred = async { LocationApi.fetchFeed() }
             val clubsDeferred = async { ClubApi.fetchFeed() }
             val meetsDeferred = async { MeetApi.fetchFeed() }
             latestStories = homeLatestPreview(StoryLogic.publishedNewestFirst(storiesDeferred.await()))
+            latestStudySessions = homeLatestPreview(studySessionsDeferred.await().items)
             latestChallenges = homeLatestPreview(challengesDeferred.await().challenges)
             latestLocations = homeLatestPreview(locationsDeferred.await().locations)
             latestClubs = homeLatestPreview(clubsDeferred.await().clubs)
@@ -257,6 +269,7 @@ fun HomeScreen(
         if (searchQuery.isBlank()) {
             HomeLatestExplore(
                 stories = latestStories,
+                studySessions = latestStudySessions,
                 challenges = latestChallenges,
                 locations = latestLocations,
                 clubs = latestClubs,
@@ -264,6 +277,8 @@ fun HomeScreen(
                 nowMs = nowMs,
                 strings = strings,
                 onOpenStory = onOpenStory,
+                onOpenStudy = onOpenStudy,
+                onOpenStudySession = onOpenStudySession,
                 onOpenChallenge = onOpenChallenge,
                 onOpenLocation = onOpenLocation,
                 onOpenClub = onOpenClub,
@@ -458,6 +473,7 @@ fun HomeScreen(
 @Composable
 private fun HomeLatestExplore(
     stories: List<Story>,
+    studySessions: List<SavedStudySessionSummary>,
     challenges: List<ChallengeCard>,
     locations: List<LocationCard>,
     clubs: List<ClubCard>,
@@ -470,12 +486,14 @@ private fun HomeLatestExplore(
     onOpenClub: (String) -> Unit,
     onOpenMeet: (String) -> Unit,
     onOpenStories: () -> Unit,
+    onOpenStudy: () -> Unit,
+    onOpenStudySession: (String) -> Unit,
     onOpenChallenges: () -> Unit,
     onOpenLocations: () -> Unit,
     onOpenClubs: () -> Unit,
     onOpenMeets: () -> Unit,
 ) {
-    if (stories.isEmpty() && challenges.isEmpty() && locations.isEmpty() && clubs.isEmpty() && meets.isEmpty()) return
+    if (stories.isEmpty() && studySessions.isEmpty() && challenges.isEmpty() && locations.isEmpty() && clubs.isEmpty() && meets.isEmpty()) return
 
     Div(attrs = { classes(Styles.homeExploreActions) }) {
         if (locations.isNotEmpty()) {
@@ -498,6 +516,30 @@ private fun HomeLatestExplore(
                 )
             }
             HomeLatestViewAll(strings.viewAll, onOpenClubs)
+        }
+        if (studySessions.isNotEmpty()) {
+            SectionTitle(strings.homeLatestStudySessions)
+            Div(
+                {
+                    style {
+                        display(DisplayStyle.Flex)
+                        flexDirection(FlexDirection.Column)
+                        gap(12.px)
+                    }
+                }
+            ) {
+                studySessions.forEach { item ->
+                    StudySessionCard(
+                        item = item,
+                        strings = strings,
+                        removable = false,
+                        onOpen = { onOpenStudySession(item.id) },
+                        onRemove = {},
+                        onRename = {},
+                    )
+                }
+                HomeLatestViewAll(strings.viewAll, onOpenStudy)
+            }
         }
         if (stories.isNotEmpty()) {
             SectionTitle(strings.homeLatestStories)

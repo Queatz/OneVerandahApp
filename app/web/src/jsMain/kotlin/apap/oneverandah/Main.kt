@@ -278,6 +278,7 @@ fun App() {
                     pendingStudyText = null
                     router.navigate("/study")
                 },
+                onOpenStudySession = { id -> router.navigate(studySessionPath(id)) },
                 onOpenSaved = {
                     pendingChatMessage = null
                     pendingChatPanel = ChatInitialPanel.Saved
@@ -310,6 +311,7 @@ fun App() {
                     pendingStudyText = null
                     router.navigate("/study")
                 },
+                onOpenStudySession = { id -> router.navigate(studySessionPath(id)) },
                 onOpenSaved = {
                     pendingChatMessage = null
                     pendingChatPanel = ChatInitialPanel.Saved

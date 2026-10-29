@@ -595,6 +595,7 @@ fun StudyScreen(
                 StudyBuildElementKind.PREPARE,
                 StudyBuildElementKind.SKELETON,
                 StudyBuildElementKind.NAME,
+                StudyBuildElementKind.EXAMPLE_DISSECT,
                 -> Unit
             }
         }
@@ -624,7 +625,9 @@ fun StudyScreen(
                 -> if (session?.sentences.isNullOrEmpty() && studyTarget?.id == messageId) {
                     studyError = strings.chatStudyError
                 }
-                StudyBuildElementKind.NAME -> Unit
+                StudyBuildElementKind.NAME,
+                StudyBuildElementKind.EXAMPLE_DISSECT,
+                -> Unit
             }
         }
         if (studyTarget?.id == messageId) {
@@ -1362,7 +1365,7 @@ private fun StudySessionsList(
 }
 
 @Composable
-private fun StudySessionCard(
+internal fun StudySessionCard(
     item: SavedStudySessionSummary,
     strings: UiStrings,
     removable: Boolean,
@@ -3433,6 +3436,7 @@ private fun StudyStoryTab(
     var stepIndex by remember(session.text) { mutableStateOf(0) }
     var lastAutoplayKey by remember(session.text) { mutableStateOf<String?>(null) }
     var replayNonce by remember(session.text) { mutableStateOf(0) }
+    var expandedExampleKey by remember(session.text) { mutableStateOf<String?>(null) }
     var storyElement by remember { mutableStateOf<HTMLElement?>(null) }
     var isFullscreen by remember { mutableStateOf(false) }
     val latestIsFullscreen by rememberUpdatedState(isFullscreen)
@@ -3582,6 +3586,8 @@ private fun StudyStoryTab(
             }
             val wordFailed = wordFailKey != null && wordImageFailed[wordFailKey] == true
             val example = step.exampleIndex?.let(token.exampleSentences::getOrNull)
+            val exampleKey = "${step.sentenceIndex}-${step.tokenIndex}-${step.exampleIndex}"
+            val isExampleBreakdownVisible = expandedExampleKey == exampleKey
             val sentenceClipUrl = sentenceAudio["sentence-${step.sentenceIndex}"]?.url
             val meaningTexts = collectStoryMeaningNarrationTexts(
                 literalMeaning = token.literalMeaning,
@@ -3686,8 +3692,6 @@ private fun StudyStoryTab(
                 )
                 if (example != null) {
                     Div(attrs = {
-                        onClick { replayStoryAudio() }
-
                         style {
                             display(DisplayStyle.Flex)
                             flexDirection(FlexDirection.Column)
@@ -3698,11 +3702,18 @@ private fun StudyStoryTab(
                             sentence = example.text,
                             word = token.text,
                             paragraphClass = Styles.studyStoryWord,
+                            expanded = isExampleBreakdownVisible,
+                            onToggleBreakdown = {
+                                expandedExampleKey = toggleStudyExampleBreakdown(expandedExampleKey, exampleKey)
+                            },
                         )
                         if (example.translation.isNotBlank()) {
                             P(attrs = { classes(Styles.studyStoryMeaning) }) {
                                 Text(example.translation)
                             }
+                        }
+                        if (isExampleBreakdownVisible && example.tokens.isNotEmpty()) {
+                            StudyExampleBreakdown(example, strings)
                         }
                     }
                 } else {
@@ -3917,14 +3928,31 @@ internal fun studyExampleHighlightRanges(sentence: String, word: String): List<I
     return ranges
 }
 
+internal fun toggleStudyExampleBreakdown(expandedKey: String?, selectedKey: String): String? =
+    if (expandedKey == selectedKey) null else selectedKey
+
 @Composable
 private fun StudyExampleSentenceText(
     sentence: String,
     word: String,
     paragraphClass: String? = null,
+    expanded: Boolean = false,
+    onToggleBreakdown: (() -> Unit)? = null,
 ) {
     P(attrs = {
         paragraphClass?.let { classes(it) }
+        if (onToggleBreakdown != null) {
+            attr("role", "button")
+            attr("tabindex", "0")
+            attr("aria-expanded", expanded.toString())
+            onClick { onToggleBreakdown() }
+            onKeyDown { event ->
+                if (event.key == "Enter" || event.key == " ") {
+                    event.preventDefault()
+                    onToggleBreakdown()
+                }
+            }
+        }
     }) {
         val ranges = studyExampleHighlightRanges(sentence, word)
         if (ranges.isEmpty()) {
@@ -3943,6 +3971,40 @@ private fun StudyExampleSentenceText(
         }
         if (cursor < sentence.length) {
             Text(sentence.substring(cursor))
+        }
+    }
+}
+
+@Composable
+private fun StudyExampleBreakdown(example: StudyExampleSentence, strings: UiStrings) {
+    Table(attrs = {
+        classes(Styles.studyWordsTable)
+        attr("aria-label", strings.chatWordsTab)
+    }) {
+        Thead {
+            Tr {
+                Th { Text(strings.chatWordsWord) }
+                Th { Text(strings.chatWordsMeaning) }
+            }
+        }
+        Tbody {
+            example.tokens.forEach { token ->
+                Tr {
+                    Td(attrs = { classes(Styles.studyWordsWord) }) { Text(token.text) }
+                    Td {
+                        P {
+                            B {
+                                Text(token.translation)
+                            }
+                        }
+                        if (token.contextualMeaning != token.translation) {
+                            P {
+                                Text(token.contextualMeaning)
+                            }
+                        }
+                    }
+                }
+            }
         }
     }
 }

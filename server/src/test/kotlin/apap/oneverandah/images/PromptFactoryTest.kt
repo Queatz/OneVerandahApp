@@ -28,6 +28,20 @@ class PromptFactoryTest {
     }
 
     @Test
+    fun forWord_usesLanguageAndSessionAppearanceCuesWithoutRequiringTheSamePeople() {
+        val prompt = PromptFactory.forWord(
+            intendedScene = "A woman smiles at her friend in a bright room",
+            textLanguageTag = "my",
+            characterDescriptions = listOf("young Burmese woman with dark hair"),
+        )
+
+        assertContains(prompt, "Source language tag: my")
+        assertContains(prompt, "ethnic appearance and cultural cues native to this language community")
+        assertContains(prompt, "young Burmese woman with dark hair")
+        assertContains(prompt, "this example may feature different people")
+    }
+
+    @Test
     fun forPlayground_usesAnEnglishIntendedSceneWithoutSourceWording() {
         val prompt = PromptFactory.forPlayground(
             intendedScene = "A neighbor waves from a sunlit apartment doorway",

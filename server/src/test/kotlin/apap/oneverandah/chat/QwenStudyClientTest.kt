@@ -2,6 +2,8 @@ package apap.oneverandah.chat
 
 import apap.oneverandah.api.StudyTranslateRequest
 import apap.oneverandah.api.StudyExamBeatKind
+import apap.oneverandah.api.StudyExampleSentence
+import apap.oneverandah.api.StudyExampleToken
 import apap.oneverandah.api.StudySentence
 import apap.oneverandah.api.StudyStoryCharacter
 import apap.oneverandah.config.QwenChatConfig
@@ -23,6 +25,81 @@ import kotlinx.serialization.json.jsonObject
 import kotlinx.serialization.json.jsonPrimitive
 
 class QwenStudyClientTest {
+    @Test
+    fun `dissect prompt requires examples to use the source context meaning`() = runBlocking {
+        val requestBodies = mutableListOf<String>()
+        val engine = MockEngine { request ->
+            requestBodies += (request.body as OutgoingContent.ByteArrayContent).bytes().decodeToString()
+            respond(
+                content = qwenChatResponse(
+                    """{"sentenceText":"သင့်အပြုံးက ရယ်စရာကောင်းလှတယ်","tokens":[{"text":"လှ","literalMeaning":"beautiful","register":"neutral","contextualMeaning":"very","nearSynonyms":[],"exampleSentences":[{"text":"သူမက လှတယ်။","translation":"She is beautiful."}]}]}""",
+                ),
+                status = HttpStatusCode.OK,
+                headers = headersOf(HttpHeaders.ContentType, "application/json"),
+            )
+        }
+        val client = HttpClient(engine)
+        val ai = DashScopeStudyAiClient(qwenConfig(), client)
+
+        ai.dissectSentence(
+            StudyDissectGenerationRequest(
+                text = "သင့်အပြုံးက ရယ်စရာကောင်းလှတယ်",
+                sentenceText = "သင့်အပြုံးက ရယ်စရာကောင်းလှတယ်",
+                tokens = listOf("လှ"),
+                textLanguageTag = "my",
+                languageTag = "en",
+            ),
+        )
+
+        assertContains(requestBodies.single(), "same contextual meaning")
+        client.close()
+    }
+
+    @Test
+    fun `example sentence dissection returns ordered contextual word glosses`() = runBlocking {
+        val requestBodies = mutableListOf<String>()
+        val engine = MockEngine { request ->
+            requestBodies += (request.body as OutgoingContent.ByteArrayContent).bytes().decodeToString()
+            respond(
+                content = qwenChatResponse(
+                    """{"sentences":[{"text":"သူမက လှတယ်။","tokens":[{"text":"သူမ","translation":"she","contextualMeaning":"she"},{"text":"က","translation":"subject marker","contextualMeaning":"marks the subject"},{"text":"လှ","translation":"very","contextualMeaning":"very"},{"text":"တယ်","translation":"is","contextualMeaning":"statement ending"}]}]}""",
+                ),
+                status = HttpStatusCode.OK,
+                headers = headersOf(HttpHeaders.ContentType, "application/json"),
+            )
+        }
+        val client = HttpClient(engine)
+        val ai = DashScopeStudyAiClient(qwenConfig(), client)
+
+        val examples = ai.dissectExampleSentences(
+            StudyExampleDissectGenerationRequest(
+                word = "လှ",
+                contextualMeaning = "very",
+                exampleSentences = listOf(StudyExampleSentence("သူမက လှတယ်။", "She is beautiful.")),
+                textLanguageTag = "my",
+                languageTag = "en",
+            ),
+        )
+
+        assertEquals(
+            listOf(
+                StudyExampleSentence(
+                    text = "သူမက လှတယ်။",
+                    translation = "She is beautiful.",
+                    tokens = listOf(
+                        StudyExampleToken("သူမ", "she", "she"),
+                        StudyExampleToken("က", "subject marker", "marks the subject"),
+                        StudyExampleToken("လှ", "very", "very"),
+                        StudyExampleToken("တယ်", "is", "statement ending"),
+                    ),
+                ),
+            ),
+            examples,
+        )
+        assertContains(requestBodies.single(), "same sense")
+        client.close()
+    }
+
     @Test
     fun `study translation parses text and includes source and target languages in the prompt`() = runBlocking {
         val requestBodies = mutableListOf<String>()

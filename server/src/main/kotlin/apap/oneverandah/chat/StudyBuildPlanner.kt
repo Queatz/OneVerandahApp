@@ -51,7 +51,9 @@ class StudyBuildPlanner(private val maxAttempts: Int = 3) {
 
     private fun pendingElements(record: SavedStudySessionRecord): List<StudyBuildElement> {
         val state = record.build ?: return emptyList()
-        if (state.status == StudyBuildStatus.COMPLETE || state.status == StudyBuildStatus.PARTIAL) return emptyList()
+        if (state.status == StudyBuildStatus.COMPLETE || state.status == StudyBuildStatus.PARTIAL) {
+            return pendingExampleDissections(record)
+        }
 
         if (record.session.sentences.isEmpty()) {
             if (state.status == StudyBuildStatus.PREPARING && record.buildRequest != null) {
@@ -92,6 +94,8 @@ class StudyBuildPlanner(private val maxAttempts: Int = 3) {
                 }
             }
         }
+
+        if (dissectionsSettled) elements += pendingExampleDissections(record)
 
         if (characters.isEmpty()) {
             elements += StudyBuildElement(StudyBuildElementKind.CHARACTERS)
@@ -155,6 +159,27 @@ class StudyBuildPlanner(private val maxAttempts: Int = 3) {
 
         return elements
     }
+
+    private fun pendingExampleDissections(record: SavedStudySessionRecord): List<StudyBuildElement> =
+        record.session.sentences.flatMapIndexed { sentenceIndex, sentence ->
+            sentence.tokens.mapIndexedNotNull { tokenIndex, token ->
+                val element = StudyBuildElement(
+                    StudyBuildElementKind.EXAMPLE_DISSECT,
+                    sentenceIndex = sentenceIndex,
+                    tokenIndex = tokenIndex,
+                )
+                if (
+                    token.isDissectable &&
+                    token.exampleSentences.isNotEmpty() &&
+                    token.exampleSentences.any { it.tokens.isEmpty() } &&
+                    !isFailed(record, element)
+                ) {
+                    element
+                } else {
+                    null
+                }
+            }
+        }
 
     private fun isFailed(record: SavedStudySessionRecord, element: StudyBuildElement): Boolean =
         element.key in failedKeys(record)

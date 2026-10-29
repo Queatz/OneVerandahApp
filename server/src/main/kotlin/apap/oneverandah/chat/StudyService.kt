@@ -15,6 +15,7 @@ import apap.oneverandah.api.STUDY_EXAM_BEAT_COUNT
 import apap.oneverandah.api.STUDY_EXAM_ROUND_COUNT
 import apap.oneverandah.api.isTenRoundExam
 import apap.oneverandah.api.StudyExampleSentence
+import apap.oneverandah.api.StudyExampleToken
 import apap.oneverandah.api.StudyExpressCheckRequest
 import apap.oneverandah.api.StudyExpressCheckResponse
 import apap.oneverandah.api.StudyExpressGenerateRequest
@@ -78,12 +79,21 @@ data class StudySceneGenerationRequest(
     val scenarioDescription: String = "",
     val spokenLine: String = "",
     val natural: Boolean? = null,
+    val textLanguageTag: String = "",
 )
 
 data class StudyDissectGenerationRequest(
     val text: String,
     val sentenceText: String,
     val tokens: List<String>,
+    val textLanguageTag: String,
+    val languageTag: String,
+)
+
+data class StudyExampleDissectGenerationRequest(
+    val word: String,
+    val contextualMeaning: String,
+    val exampleSentences: List<StudyExampleSentence>,
     val textLanguageTag: String,
     val languageTag: String,
 )
@@ -240,6 +250,20 @@ interface StudyAiClient {
 
     suspend fun generateSkeleton(request: StudyGenerationRequest): StudySessionResponse
     suspend fun dissectSentence(request: StudyDissectGenerationRequest): StudySentence
+    suspend fun dissectExampleSentences(
+        request: StudyExampleDissectGenerationRequest,
+    ): List<StudyExampleSentence> = request.exampleSentences.map { example ->
+        val meaning = example.translation.ifBlank { example.text }
+        example.copy(
+            tokens = listOf(
+                StudyExampleToken(
+                    text = example.text,
+                    translation = meaning,
+                    contextualMeaning = meaning,
+                ),
+            ),
+        )
+    }
     suspend fun evaluateWordUsage(request: StudyWordPlaygroundGenerationRequest): StudyWordPlaygroundJudgment
     suspend fun designStoryCharacters(request: StudyCharactersGenerationRequest): List<StudyCharacterDesign>
     suspend fun generatePlayScenarios(request: StudyPlayScenariosGenerationRequest): List<StudyPlayScenarioDesign>
@@ -350,7 +374,49 @@ class StudyService(
     /** Full dissection for one skeleton sentence; tokens must match the skeleton order/text. */
     suspend fun dissectSentence(rawRequest: StudyDissectSentenceRequest): StudyDissectSentenceResponse {
         val dissected = dissectOnly(rawRequest)
-        return dissected.copy(tokens = dissected.tokens.map { token -> attachWordImageJob(token) })
+        return dissected.copy(tokens = dissected.tokens.map { token ->
+            attachWordImageJob(token, textLanguageTag = rawRequest.textLanguageTag)
+        })
+    }
+
+    suspend fun dissectExampleSentences(
+        word: String,
+        contextualMeaning: String,
+        exampleSentences: List<StudyExampleSentence>,
+        textLanguageTag: String,
+        languageTag: String,
+    ): List<StudyExampleSentence> {
+        if (exampleSentences.isEmpty()) return emptyList()
+        val generated = aiClient.dissectExampleSentences(
+            StudyExampleDissectGenerationRequest(
+                word = word.trim(),
+                contextualMeaning = contextualMeaning.trim(),
+                exampleSentences = exampleSentences,
+                textLanguageTag = textLanguageTag,
+                languageTag = languageTag,
+            ),
+        )
+        require(generated.size == exampleSentences.size) {
+            "Dissected example sentences must match the requested example count"
+        }
+        return exampleSentences.mapIndexed { index, example ->
+            val dissected = generated[index]
+            require(dissected.text.trim() == example.text.trim()) {
+                "Dissected example sentence text must match the requested example"
+            }
+            require(dissected.tokens.isNotEmpty() && dissected.tokens.all {
+                it.text.isNotBlank() && it.translation.isNotBlank() && it.contextualMeaning.isNotBlank()
+            }) {
+                "Dissected example sentence must include contextual meanings for every token"
+            }
+            example.copy(tokens = dissected.tokens.map { token ->
+                StudyExampleToken(
+                    text = token.text.trim(),
+                    translation = token.translation.trim(),
+                    contextualMeaning = token.contextualMeaning.trim(),
+                )
+            })
+        }
     }
 
     /**
@@ -512,6 +578,8 @@ class StudyService(
                 word = request.word,
                 contextualMeaning = request.contextualMeaning,
                 exampleSentences = request.exampleSentences,
+                textLanguageTag = request.textLanguageTag,
+                characters = request.characters,
             ),
             referenceImageUrls = emptyList(),
             logLabel = "word visual",
@@ -519,15 +587,27 @@ class StudyService(
         return StudyWordImageResponse(imageId = imageId)
     }
 
-    suspend fun renderWordImage(token: StudyToken): String {
+    suspend fun renderWordImage(
+        token: StudyToken,
+        textLanguageTag: String = "",
+        characters: List<StudyStoryCharacter> = emptyList(),
+    ): String {
         val request = requireNotNull(
             StudyWordImageRequest(
                 word = token.text,
                 contextualMeaning = token.contextualMeaning,
                 exampleSentences = token.exampleSentences,
+                textLanguageTag = textLanguageTag,
+                characters = characters,
             ).normalizedOrNull(),
         ) { "Study word image requires non-blank word text" }
-        val prompt = wordImagePrompt(request.word, request.contextualMeaning, request.exampleSentences).invoke()
+        val prompt = wordImagePrompt(
+            request.word,
+            request.contextualMeaning,
+            request.exampleSentences,
+            request.textLanguageTag,
+            request.characters,
+        ).invoke()
         return renderStudyImage(
             prompt = prompt,
             referenceImageUrls = emptyList(),
@@ -1015,7 +1095,11 @@ class StudyService(
     }
 
     /** Attach a fresh async word-image job when the token is dissectable and has no URL yet. */
-    private fun attachWordImageJob(token: StudyToken): StudyToken {
+    private fun attachWordImageJob(
+        token: StudyToken,
+        textLanguageTag: String = "",
+        characters: List<StudyStoryCharacter> = emptyList(),
+    ): StudyToken {
         if (!token.isDissectable) {
             return token.copy(imageId = null, imageUrl = null)
         }
@@ -1035,6 +1119,8 @@ class StudyService(
                 word = token.text,
                 contextualMeaning = token.contextualMeaning,
                 exampleSentences = token.exampleSentences,
+                textLanguageTag = textLanguageTag,
+                characters = characters,
             ),
             referenceImageUrls = emptyList(),
             logLabel = "word visual",
@@ -1046,6 +1132,8 @@ class StudyService(
         word: String,
         contextualMeaning: String,
         exampleSentences: List<StudyExampleSentence>,
+        textLanguageTag: String = "",
+        characters: List<StudyStoryCharacter> = emptyList(),
     ): suspend () -> String = {
         val example = exampleSentences.firstOrNull { it.text.trim().isNotEmpty() }
         val scene = resolveIntendedScene(
@@ -1054,9 +1142,15 @@ class StudyService(
                 word = word,
                 contextualMeaning = contextualMeaning,
                 exampleTranslation = example?.translation.orEmpty(),
+                textLanguageTag = textLanguageTag,
+                characters = characters,
             ),
         )
-        wordVisualPrompt(intendedScene = scene)
+        wordVisualPrompt(
+            intendedScene = scene,
+            textLanguageTag = textLanguageTag,
+            characterDescriptions = characters.map { it.description },
+        )
     }
 
     private suspend fun resolveIntendedScene(request: StudySceneGenerationRequest): String {
@@ -1208,8 +1302,15 @@ internal fun playgroundComicPrompt(intendedScene: String, natural: Boolean): Str
 internal const val STUDY_STORY_ART_STYLE: String = PromptFactory.ART_STYLE
 
 /** Prompt for a single dissected word/phrase visual from an English intended scene. */
-internal fun wordVisualPrompt(intendedScene: String): String =
-    PromptFactory.forWord(intendedScene = intendedScene)
+internal fun wordVisualPrompt(
+    intendedScene: String,
+    textLanguageTag: String = "",
+    characterDescriptions: List<String> = emptyList(),
+): String = PromptFactory.forWord(
+    intendedScene = intendedScene,
+    textLanguageTag = textLanguageTag,
+    characterDescriptions = characterDescriptions,
+)
 
 /** Character reference portrait used as a named identity anchor for later scenes. */
 internal fun characterPortraitPrompt(character: StudyCharacterDesign): String =

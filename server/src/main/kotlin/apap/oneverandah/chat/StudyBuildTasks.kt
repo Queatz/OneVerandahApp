@@ -31,6 +31,7 @@ class StudyBuildTasks(
             StudyBuildElementKind.SKELETON -> buildSkeleton(record)
             StudyBuildElementKind.NAME -> generateName(record)
             StudyBuildElementKind.DISSECT -> dissect(record, task)
+            StudyBuildElementKind.EXAMPLE_DISSECT -> dissectExamples(record, task)
             StudyBuildElementKind.WORD_IMAGE -> renderWordImage(record, task)
             StudyBuildElementKind.CHARACTERS -> designCharacters(record)
             StudyBuildElementKind.PORTRAIT -> renderPortrait(record, task)
@@ -127,12 +128,47 @@ class StudyBuildTasks(
         }
     }
 
+    private suspend fun dissectExamples(record: SavedStudySessionRecord, task: StudyBuildTask) {
+        val sentenceIndex = requireNotNull(task.element.sentenceIndex)
+        val tokenIndex = requireNotNull(task.element.tokenIndex)
+        val token = record.session.sentences.getOrNull(sentenceIndex)?.tokens?.getOrNull(tokenIndex) ?: return
+        val examples = studyService.dissectExampleSentences(
+            word = token.text,
+            contextualMeaning = token.contextualMeaning,
+            exampleSentences = token.exampleSentences,
+            textLanguageTag = record.textLanguageTag,
+            languageTag = record.languageTag,
+        )
+        val updated = store.update(record.id) { current ->
+            val sentence = current.session.sentences.getOrNull(sentenceIndex) ?: return@update current
+            if (sentence.tokens.getOrNull(tokenIndex) == null) return@update current
+            current.copy(
+                session = current.session.copy(
+                    sentences = current.session.sentences.mapIndexed { index, currentSentence ->
+                        if (index != sentenceIndex) currentSentence else currentSentence.copy(
+                            tokens = currentSentence.tokens.mapIndexed { index, currentItem ->
+                                if (index == tokenIndex) currentItem.copy(exampleSentences = examples) else currentItem
+                            },
+                        )
+                    },
+                ),
+            )
+        } ?: return
+        updated.session.sentences.getOrNull(sentenceIndex)?.let { sentence ->
+            store.publish(record.id, StudyBuildEvent.SentenceDissected(sentenceIndex, sentence))
+        }
+    }
+
     private suspend fun renderWordImage(record: SavedStudySessionRecord, task: StudyBuildTask) {
         val sentenceIndex = requireNotNull(task.element.sentenceIndex)
         val tokenIndex = requireNotNull(task.element.tokenIndex)
         val token = record.session.sentences.getOrNull(sentenceIndex)?.tokens?.getOrNull(tokenIndex) ?: return
         if (!token.imageUrl.isNullOrBlank()) return
-        val url = studyService.renderWordImage(token)
+        val url = studyService.renderWordImage(
+            token = token,
+            textLanguageTag = record.textLanguageTag,
+            characters = record.session.characters,
+        )
         store.update(
             record.id,
             reason = StudyBuildEvent.WordImage(sentenceIndex, tokenIndex, url),
@@ -260,6 +296,12 @@ class StudyBuildTasks(
         StudyBuildElementKind.DISSECT -> {
             val sentence = task.element.sentenceIndex?.let(record.session.sentences::getOrNull)
             sentence != null && sentence.tokens.none { it.status == StudyTokenStatus.PENDING }
+        }
+
+        StudyBuildElementKind.EXAMPLE_DISSECT -> {
+            val token = record.session.sentences.getOrNull(task.element.sentenceIndex ?: -1)
+                ?.tokens?.getOrNull(task.element.tokenIndex ?: -1)
+            token != null && token.exampleSentences.all { it.tokens.isNotEmpty() }
         }
 
         StudyBuildElementKind.WORD_IMAGE -> {

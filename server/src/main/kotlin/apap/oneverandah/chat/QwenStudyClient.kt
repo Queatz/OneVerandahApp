@@ -3,6 +3,7 @@ package apap.oneverandah.chat
 import apap.oneverandah.api.STUDY_EXAM_BEAT_COUNT
 import apap.oneverandah.api.STUDY_EXAM_ROUND_COUNT
 import apap.oneverandah.api.StudyExampleSentence
+import apap.oneverandah.api.StudyExampleToken
 import apap.oneverandah.api.StudyExamBeat
 import apap.oneverandah.api.StudyExamBeatKind
 import apap.oneverandah.api.StudyExamScene
@@ -195,6 +196,47 @@ object QwenStudyDissectParser {
             .getOrElse { throw IllegalArgumentException("Qwen study dissect is not valid JSON", it) }
         return element as? JsonObject
             ?: throw IllegalArgumentException("Qwen study dissect root must be a JSON object")
+    }
+}
+
+/** Lenient parser for word-by-word dissection of a token's example sentences. */
+object QwenStudyExampleDissectParser {
+    private val json = Json { ignoreUnknownKeys = true; explicitNulls = false; isLenient = true }
+
+    fun parse(content: String): List<StudyExampleSentence> {
+        val root = parseRootObject(content)
+        val sentences = root["sentences"] as? JsonArray
+            ?: throw IllegalArgumentException("Qwen study example dissect missing sentences array")
+        return sentences.mapNotNull { element ->
+            val obj = element as? JsonObject ?: return@mapNotNull null
+            val text = obj.string("text")?.trim()?.takeIf(String::isNotEmpty)
+                ?: return@mapNotNull null
+            val tokenArray = obj["tokens"] as? JsonArray ?: return@mapNotNull null
+            val tokens = tokenArray.mapNotNull { tokenElement ->
+                val token = tokenElement as? JsonObject ?: return@mapNotNull null
+                val tokenText = token.string("text")?.trim()?.takeIf(String::isNotEmpty)
+                    ?: return@mapNotNull null
+                val translation = token.string("translation")?.trim()?.takeIf(String::isNotEmpty)
+                    ?: return@mapNotNull null
+                val contextualMeaning = token.string("contextualMeaning")?.trim()?.takeIf(String::isNotEmpty)
+                    ?: return@mapNotNull null
+                StudyExampleToken(
+                    text = tokenText,
+                    translation = translation,
+                    contextualMeaning = contextualMeaning,
+                )
+            }
+            if (tokens.isEmpty()) return@mapNotNull null
+            StudyExampleSentence(text = text, tokens = tokens)
+        }
+    }
+
+    private fun parseRootObject(content: String): JsonObject {
+        val normalized = stripJsonFences(content)
+        val element = runCatching { json.parseToJsonElement(normalized) }
+            .getOrElse { throw IllegalArgumentException("Qwen study example dissect is not valid JSON", it) }
+        return element as? JsonObject
+            ?: throw IllegalArgumentException("Qwen study example dissect root must be a JSON object")
     }
 }
 
@@ -393,6 +435,13 @@ class DashScopeStudyAiClient(
 
     override suspend fun designIntendedScene(request: StudySceneGenerationRequest): String {
         val userContent = buildString {
+            if (request.textLanguageTag.isNotBlank()) {
+                appendLine("Source language: ${languageName(request.textLanguageTag)} (${request.textLanguageTag})")
+                if (request.word.isNotBlank()) {
+                    appendLine("When depicting people in this word-example scene, match the ethnic and cultural appearance native to the source-language community.")
+                }
+                appendLine()
+            }
             if (request.word.isNotBlank()) {
                 appendLine("Vocabulary word (never copy this wording into the scene):")
                 appendLine(request.word)
@@ -439,7 +488,13 @@ class DashScopeStudyAiClient(
                 appendLine()
             }
             if (request.characters.isNotEmpty()) {
-                appendLine("Named cast (describe appearance in English; do not write names on anything in the scene):")
+                appendLine(
+                    if (request.word.isNotBlank()) {
+                        "Character appearance cues from the session (the example may feature different people; names are not required):"
+                    } else {
+                        "Named cast (describe appearance in English; do not write names on anything in the scene):"
+                    },
+                )
                 request.characters.forEach { character ->
                     append("- ${character.role} ${character.name}")
                     if (character.description.isNotBlank()) append(": ${character.description}")
@@ -493,6 +548,43 @@ class DashScopeStudyAiClient(
             enableThinking = true,
         )
         return QwenStudyDissectParser.parse(content)
+    }
+
+    override suspend fun dissectExampleSentences(
+        request: StudyExampleDissectGenerationRequest,
+    ): List<StudyExampleSentence> {
+        val userContent = buildString {
+            appendLine("Study/source language: ${languageName(request.textLanguageTag)} (${request.textLanguageTag})")
+            appendLine("Learner UI language: ${languageName(request.languageTag)} (${request.languageTag})")
+            appendLine("Target word: ${request.word}")
+            appendLine("The target word's contextual meaning in the original study sentence: ${request.contextualMeaning}")
+            appendLine()
+            appendLine("Example sentences, in order (preserve each sentence exactly):")
+            request.exampleSentences.forEachIndexed { index, example ->
+                appendLine("${index + 1}. ${example.text}")
+            }
+        }
+        val content = complete(
+            systemPrompt = exampleDissectSystemPrompt(
+                activeLanguageTag = request.languageTag,
+                textLanguageTag = request.textLanguageTag,
+            ),
+            userContent = userContent,
+            label = "study example dissect",
+            model = config.chatHeavyModel,
+            enableThinking = true,
+        )
+        val dissected = QwenStudyExampleDissectParser.parse(content)
+        require(dissected.size == request.exampleSentences.size) {
+            "Qwen study example dissect must return every requested sentence"
+        }
+        return request.exampleSentences.mapIndexed { index, example ->
+            val generated = dissected[index]
+            require(generated.text.trim() == example.text.trim()) {
+                "Qwen study example dissect changed the sentence text"
+            }
+            example.copy(tokens = generated.tokens)
+        }
     }
 
     override suspend fun evaluateWordUsage(
@@ -1109,7 +1201,23 @@ class DashScopeStudyAiClient(
         - register should be a short label such as neutral, formal, informal, colloquial, literary, slang, polite, or an equivalent in the learner's active language.
         - nearSynonyms: provide 2–5 near synonyms or close alternatives when natural; otherwise an empty array is allowed only for punctuation.
         - exampleSentences: for every dissectable word/phrase provide exactly 3 short, natural example objects. Each object MUST include "text" written in the source language (tag '$textLanguageTag') and "translation" written in the learner's active language '$activeLanguageTag'. Never leave translation blank for a non-empty example. Do not put plain strings in exampleSentences.
+        - Each example sentence for a word MUST use the same contextual meaning that the word has in the supplied source sentence. Use the word in that exact sense, not merely its literal/dictionary meaning; for example, when a word means "very" in context, its examples must use "very," not a different sense such as "beautiful." Translate each example according to that same sense.
         - Do not invent content unrelated to the sentence. Do not wrap the JSON in markdown.
+    """.trimIndent()
+
+    private fun exampleDissectSystemPrompt(activeLanguageTag: String, textLanguageTag: String): String = """
+        You provide a precise word-by-word breakdown of example sentences for a language learner.
+        Always return one JSON object and no markdown. The schema is exactly:
+        {"sentences":[{"text":"the exact supplied sentence","tokens":[{"text":"word or phrase","translation":"short translation","contextualMeaning":"meaning in this sentence"}]}]}
+        Rules:
+        - Return exactly one sentence object for every supplied example, in the same order, preserving each sentence's exact text.
+        - Tokenize every example in source-language order into words or meaningful fixed phrases; omit punctuation-only tokens.
+        - For each token, preserve its exact source-language text and provide both "translation" and "contextualMeaning" in the learner's active language '$activeLanguageTag'. Never leave either field blank.
+        - Translate each word according to its role and meaning in that specific example sentence, not its most common dictionary sense.
+        - The examples were written for the target word's contextual meaning; ensure any occurrence of that word uses the same sense. Do not switch it to a literal or unrelated sense.
+        - Do not add nested examples, explanations outside the fields, or words not present in the sentence.
+        - The source language is '$textLanguageTag'. Do not translate the sentence itself in place of the token-by-token breakdown.
+        - Do not wrap the JSON in markdown. Do not add extra keys.
     """.trimIndent()
 
     private fun playgroundSystemPrompt(activeLanguageTag: String, textLanguageTag: String): String = """

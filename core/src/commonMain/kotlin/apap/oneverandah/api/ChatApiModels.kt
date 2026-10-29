@@ -373,9 +373,17 @@ data class StudySentence(
  * the learner's active UI language.
  */
 @Serializable
+data class StudyExampleToken(
+    val text: String,
+    val translation: String = "",
+    val contextualMeaning: String = "",
+)
+
+@Serializable
 data class StudyExampleSentence(
     val text: String,
     val translation: String = "",
+    val tokens: List<StudyExampleToken> = emptyList(),
 )
 
 /**
@@ -599,6 +607,8 @@ data class StudyWordImageRequest(
     val word: String,
     val contextualMeaning: String = "",
     val exampleSentences: List<StudyExampleSentence> = emptyList(),
+    val textLanguageTag: String = "",
+    val characters: List<StudyStoryCharacter> = emptyList(),
 ) {
     fun normalizedOrNull(): StudyWordImageRequest? {
         val normalizedWord = word.trim().takeIf { it.isNotEmpty() } ?: return null
@@ -607,9 +617,15 @@ data class StudyWordImageRequest(
             contextualMeaning = contextualMeaning.trim(),
             exampleSentences = exampleSentences.mapNotNull { example ->
                 val text = example.text.trim().takeIf { it.isNotEmpty() } ?: return@mapNotNull null
-                StudyExampleSentence(
-                    text = text,
-                    translation = example.translation.trim(),
+                example.copy(text = text, translation = example.translation.trim())
+            },
+            textLanguageTag = textLanguageTag.trim().takeIf(String::isNotEmpty)
+                ?.let(Language::normalizeContentTag).orEmpty(),
+            characters = characters.map { character ->
+                character.copy(
+                    name = character.name.trim(),
+                    role = character.role.trim(),
+                    description = character.description.trim(),
                 )
             },
         )
@@ -1015,6 +1031,7 @@ enum class StudyBuildElementKind {
     SKELETON,
     NAME,
     DISSECT,
+    EXAMPLE_DISSECT,
     WORD_IMAGE,
     CHARACTERS,
     PORTRAIT,
@@ -1035,6 +1052,7 @@ data class StudyBuildElement(
     val key: String
         get() = when (kind) {
             StudyBuildElementKind.DISSECT -> "${kind.name}:${sentenceIndex ?: -1}"
+            StudyBuildElementKind.EXAMPLE_DISSECT,
             StudyBuildElementKind.WORD_IMAGE -> "${kind.name}:${sentenceIndex ?: -1}:${tokenIndex ?: -1}"
             StudyBuildElementKind.PORTRAIT -> "${kind.name}:${characterId.orEmpty()}"
             StudyBuildElementKind.SENTENCE_IMAGE -> "${kind.name}:${sentenceIndex ?: -1}"
