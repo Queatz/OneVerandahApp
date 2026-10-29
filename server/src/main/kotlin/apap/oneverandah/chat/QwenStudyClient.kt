@@ -339,6 +339,7 @@ class DashScopeStudyAiClient(
             systemPrompt = extractStudyTextSystemPrompt(request.languageTag),
             userContent = userContent,
             label = "study extract",
+            enableThinking = true,
         )
         return QwenStudyExtractParser.parse(content)
     }
@@ -354,6 +355,7 @@ class DashScopeStudyAiClient(
             userContent = userContent,
             label = "study intent",
             temperature = 0.6,
+            enableThinking = true,
         )
         return QwenStudyExtractParser.parse(content)
     }
@@ -371,6 +373,7 @@ class DashScopeStudyAiClient(
             """.trimIndent(),
             userContent = request.text,
             label = "study translate",
+            enableThinking = true,
         )
         return QwenStudyExtractParser.parse(content)
     }
@@ -383,6 +386,7 @@ class DashScopeStudyAiClient(
             userContent = text.trim(),
             label = "study session name",
             temperature = 0.4,
+            enableThinking = true,
         )
         return QwenStudySessionNameParser.parse(content)
     }
@@ -450,6 +454,7 @@ class DashScopeStudyAiClient(
             userContent = userContent,
             label = "study intended scene",
             temperature = 0.6,
+            enableThinking = true,
         )
         return QwenStudySceneParser.parse(content)
     }
@@ -460,6 +465,7 @@ class DashScopeStudyAiClient(
             userContent = request.text,
             label = "study skeleton",
             model = config.chatHeavyModel,
+            enableThinking = true,
         )
         return QwenStudySkeletonParser.parse(content)
     }
@@ -484,6 +490,7 @@ class DashScopeStudyAiClient(
             userContent = userContent,
             label = "study dissect",
             model = config.chatHeavyModel,
+            enableThinking = true,
         )
         return QwenStudyDissectParser.parse(content)
     }
@@ -652,6 +659,7 @@ class DashScopeStudyAiClient(
             userContent = examSceneMaterials(request),
             label = "study exam scene",
             temperature = 0.5,
+            enableThinking = true,
         )
         val scene = runCatching { QwenStudyExamSceneParser.parse(content) }
             .onFailure { error ->
@@ -865,6 +873,7 @@ class DashScopeStudyAiClient(
             userContent = userContent,
             label = "study express generate",
             temperature = 0.7,
+            enableThinking = true,
         )
         return QwenStudyExpressGenerateParser.parse(content)
     }
