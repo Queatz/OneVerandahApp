@@ -3426,6 +3426,7 @@ private fun StudyStoryTab(
     playStudyToken: (sentenceIndex: Int, tokenIndex: Int, tokenText: String) -> Unit,
     onFinished: () -> Unit,
 ) {
+    val scope = rememberCoroutineScope()
     val wordSteps = remember(session) { collectStoryWordSteps(session) }
     val sentenceCount = session.sentences.size
     var phase by remember(session.text) {
@@ -3445,6 +3446,18 @@ private fun StudyStoryTab(
     val meaningAudio = remember(session.text) { mutableStateMapOf<String, String>() }
     val exampleAudio = remember(session.text) { mutableStateMapOf<String, String>() }
     val learnerLanguageTag = Localization.language.tag
+
+    fun speakExampleToken(text: String) {
+        val spokenText = text.trim()
+        if (spokenText.isEmpty()) return
+        val cacheKey = "${session.textLanguageTag}|$spokenText"
+        scope.launch {
+            val url = exampleAudio[cacheKey] ?: runCatching {
+                loadStudySpeechDataUrl(SpeechRequest(spokenText, session.textLanguageTag))
+            }.getOrNull()?.also { exampleAudio[cacheKey] = it } ?: return@launch
+            playAudio(url)
+        }
+    }
 
     fun advanceStory() {
         // Start each next story step from the top, wrapping to the first card at the end.
@@ -3713,7 +3726,7 @@ private fun StudyStoryTab(
                             }
                         }
                         if (isExampleBreakdownVisible && example.tokens.isNotEmpty()) {
-                            StudyExampleBreakdown(example, strings)
+                            StudyExampleBreakdown(example, strings, ::speakExampleToken)
                         }
                     }
                 } else {
@@ -3976,7 +3989,11 @@ private fun StudyExampleSentenceText(
 }
 
 @Composable
-private fun StudyExampleBreakdown(example: StudyExampleSentence, strings: UiStrings) {
+private fun StudyExampleBreakdown(
+    example: StudyExampleSentence,
+    strings: UiStrings,
+    onWordClick: (String) -> Unit,
+) {
     Table(attrs = {
         classes(Styles.studyWordsTable)
         attr("aria-label", strings.chatWordsTab)
@@ -3990,7 +4007,13 @@ private fun StudyExampleBreakdown(example: StudyExampleSentence, strings: UiStri
         Tbody {
             example.tokens.forEach { token ->
                 Tr {
-                    Td(attrs = { classes(Styles.studyWordsWord) }) { Text(token.text) }
+                    Td {
+                        Button(attrs = {
+                            classes(Styles.studyWordsWord)
+                            attr("type", "button")
+                            onClick { onWordClick(token.text) }
+                        }) { Text(token.text) }
+                    }
                     Td {
                         P {
                             B {
