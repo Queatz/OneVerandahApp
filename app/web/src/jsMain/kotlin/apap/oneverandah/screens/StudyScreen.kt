@@ -1071,10 +1071,7 @@ fun StudyScreen(
         appBarAction = if (studySessionVisible) {
             {
                 activeStudySessionItem?.examGrade?.let { grade ->
-                    val summary = studyExamGradeSummary(
-                        grade.overall,
-                        studyExamLevelLabel(grade.overall, strings),
-                    )
+                    val summary = "${grade.overall}/5"
                     Span(attrs = {
                         classes(Styles.studySessionHeaderExamGradeBadge)
                         attr("aria-label", "${strings.chatTestGradeLabel}: $summary")

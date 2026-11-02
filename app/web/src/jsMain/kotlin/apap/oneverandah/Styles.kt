@@ -3705,6 +3705,8 @@ object Styles {
         .${studyStoryShell}.${studyStoryCardFullscreen},
         .${studyStoryShell}:fullscreen,
         .${studyStoryShell}:-webkit-full-screen {
+            display: flex;
+            flex-direction: column;
             position: fixed;
             inset: 0;
             z-index: 70;
@@ -3712,13 +3714,17 @@ object Styles {
             height: 100%;
             box-sizing: border-box;
             padding: 12px 12px 16px;
-            overflow: auto;
+            overflow: hidden;
             background: var(--md-sys-color-surface);
         }
         .${studyStoryShell}.${studyStoryCardFullscreen} .${studyStoryCard},
         .${studyStoryShell}:fullscreen .${studyStoryCard},
         .${studyStoryShell}:-webkit-full-screen .${studyStoryCard} {
-            min-height: 100%;
+            flex: 1;
+            min-height: 0;
+            height: 100%;
+            max-height: 100%;
+            overflow: auto;
             border-radius: 0;
             box-sizing: border-box;
         }
@@ -3766,7 +3772,7 @@ object Styles {
             margin: 0;
             text-align: center;
             font-size: 34px;
-            line-height: 1.2;
+            line-height: 1.5;
             font-weight: 750;
             letter-spacing: -0.02em;
             color: var(--md-sys-color-on-surface);
