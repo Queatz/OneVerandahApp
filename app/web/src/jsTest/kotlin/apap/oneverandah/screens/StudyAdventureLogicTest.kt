@@ -107,4 +107,11 @@ class StudyAdventureLogicTest {
             StudyAdventureProgress(completedLevels = 2, levelIndex = 3, updatedAt = 300),
         ))
     }
+
+    @Test
+    fun `stage intro formats level and 1-based stage count correctly`() {
+        assertEquals("Level 1 • Stage 1 / 19", adventureStageIntro("Level 1", 1, 19))
+        assertEquals("Level 2 • Stage 3 / 5", adventureStageIntro("Level 2", 3, 5))
+        assertEquals("Level 3 • Stage 1 / 1", adventureStageIntro("Level 3", 0, 0))
+    }
 }

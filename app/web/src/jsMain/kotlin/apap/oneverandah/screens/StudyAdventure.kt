@@ -176,6 +176,12 @@ internal fun mergeAdventureProgress(
     }.copy(completedLevels = maxOf(old.completedLevels, new.completedLevels))
 }
 
+internal fun adventureStageIntro(levelLabel: String, stageIndex: Int, totalStages: Int): String {
+    val total = totalStages.coerceAtLeast(1)
+    val stage = stageIndex.coerceIn(1, total)
+    return "$levelLabel • Stage $stage / $total"
+}
+
 private enum class AdventureScreen { OVERWORLD, INTRO, PLAYING, STAGE_CLEAR, SENTENCE_CLEAR, LEVEL_COMPLETE, COMPLETE }
 
 @Composable
@@ -507,8 +513,11 @@ internal fun StudyAdventureTab(
             AdventureScreen.INTRO -> {
                 val levelIndex = activeLevelIndex ?: 0
                 val sentence = currentSentence
+                val totalStages = currentLevel?.sentences?.size ?: 1
                 Div(attrs = { classes(Styles.studyAdventureCard, Styles.studyAdventureIntro) }) {
-                    P(attrs = { classes(Styles.studyAdventureStage) }) { Text(copy.level(levelIndex + 1)) }
+                    P(attrs = { classes(Styles.studyAdventureStage) }) {
+                        Text(adventureStageIntro(copy.level(levelIndex + 1), sentenceIndex + 1, totalStages))
+                    }
                     if (sentence != null) {
                         P(attrs = { classes(Styles.studyAdventurePromptSentence) }) { Text(sentence.text) }
                     }

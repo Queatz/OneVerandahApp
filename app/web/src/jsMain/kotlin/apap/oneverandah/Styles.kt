@@ -3727,19 +3727,18 @@ object Styles {
             color: #fff;
             box-shadow: 0 16px 42px rgba(8, 8, 20, .28);
         }
-        .study-adventure-shell.study-adventure-fullscreen,
-        .study-adventure-shell:fullscreen,
-        .study-adventure-shell:-webkit-full-screen {
+        .study-adventure-shell.study-adventure-fullscreen {
             position: fixed;
             inset: 0;
             z-index: 70;
             width: 100%;
             height: 100vh;
             height: 100dvh;
+            max-height: 100dvh;
             min-height: 0;
             box-sizing: border-box;
             padding: 14px max(14px, env(safe-area-inset-right)) max(14px, env(safe-area-inset-bottom)) max(14px, env(safe-area-inset-left));
-            overflow: auto;
+            overflow: hidden;
             border-radius: 0;
         }
         .study-adventure-header {
@@ -3949,9 +3948,6 @@ object Styles {
         .study-adventure-word:active { transform: scale(.92); }
         .study-adventure-word-correct {
             color: #bbf7d0;
-            // border-radius: 16px;
-            // background: rgba(34,197,94,.22);
-            // box-shadow: 0 0 24px rgba(74,222,128,.5);
             animation: adventure-correct-pop 360ms ease both;
         }
         .study-adventure-word-text {
@@ -3986,7 +3982,7 @@ object Styles {
         }
         .study-adventure-prompt-word {
             margin: 0;
-            font-size: clamp(24px, 5vw, 38px);
+            font-size: clamp(18px, 2vw, 38px);
             font-weight: 800;
             text-align: center;
         }
@@ -4053,6 +4049,32 @@ object Styles {
             .study-adventure-level { min-height: 105px; padding: 11px; }
             .study-adventure-play { min-height: 330px; padding: 16px 10px; }
         }
+        .study-adventure-shell.study-adventure-fullscreen .study-adventure-words {
+            display: flex;
+            flex-wrap: wrap;
+            align-content: flex-start;
+            align-items: flex-start;
+            justify-content: center;
+            gap: clamp(8px, 1.8vw, 14px);
+            flex: 1 1 0;
+            min-height: 0;
+            margin: 0;
+            padding: 4px 2px 8px;
+            overflow-y: auto;
+            overflow-x: hidden;
+            overscroll-behavior: contain;
+            -webkit-overflow-scrolling: touch;
+            height: 0;
+            flex-grow: 1;
+        }
+        .study-adventure-shell.study-adventure-fullscreen .study-adventure-prompt {
+            flex-shrink: 0;
+            margin-top: auto;
+            margin-bottom: 0;
+            width: min(100%, 560px);
+            padding: 14px 18px;
+            box-sizing: border-box;
+        }
         """.trimIndent() + """
         .${studyStoryCard} {
             display: flex;
@@ -4079,9 +4101,7 @@ object Styles {
             margin-left: auto;
             padding: 9px;
         }
-        .${studyStoryShell}.${studyStoryCardFullscreen},
-        .${studyStoryShell}:fullscreen,
-        .${studyStoryShell}:-webkit-full-screen {
+        .${studyStoryShell}.${studyStoryCardFullscreen} {
             display: flex;
             flex-direction: column;
             position: fixed;
@@ -4094,9 +4114,7 @@ object Styles {
             overflow: auto;
             background: var(--md-sys-color-surface);
         }
-        .${studyStoryShell}.${studyStoryCardFullscreen} .${studyStoryCard},
-        .${studyStoryShell}:fullscreen .${studyStoryCard},
-        .${studyStoryShell}:-webkit-full-screen .${studyStoryCard} {
+        .${studyStoryShell}.${studyStoryCardFullscreen} .${studyStoryCard} {
             flex: 1;
             min-height: 0;
             height: 100%;
@@ -4322,9 +4340,7 @@ object Styles {
         .${studyWatchFullscreen} {
             padding: 9px;
         }
-        .${studyWatchPlayer}.${studyWatchPlayerFullscreen},
-        .${studyWatchPlayer}:fullscreen,
-        .${studyWatchPlayer}:-webkit-full-screen {
+        .${studyWatchPlayer}.${studyWatchPlayerFullscreen} {
             position: fixed;
             inset: 0;
             z-index: 70;
@@ -4337,9 +4353,7 @@ object Styles {
             padding: 12px 0 16px;
             box-shadow: none;
         }
-        .${studyWatchPlayer}.${studyWatchPlayerFullscreen} .${studyWatchStage},
-        .${studyWatchPlayer}:fullscreen .${studyWatchStage},
-        .${studyWatchPlayer}:-webkit-full-screen .${studyWatchStage} {
+        .${studyWatchPlayer}.${studyWatchPlayerFullscreen} .${studyWatchStage} {
             flex: 1 1 auto;
             aspect-ratio: auto;
             min-height: 0;
