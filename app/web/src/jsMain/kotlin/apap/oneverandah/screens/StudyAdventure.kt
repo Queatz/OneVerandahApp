@@ -89,7 +89,7 @@ internal fun buildAdventureLevels(session: StudySessionResponse): List<Adventure
 private fun adventureWordFromToken(token: StudyToken): AdventureWord? {
     if (token.status != StudyTokenStatus.READY) return null
     val target = token.text.trim().takeIf(String::isNotEmpty) ?: return null
-    val source = token.contextualMeaning.trim().ifEmpty { token.literalMeaning.trim() }
+    val source = listOf(token.literalMeaning.trim(), token.contextualMeaning.trim()).joinToString("; ")
         .takeIf(String::isNotEmpty) ?: return null
     return AdventureWord(targetText = target, sourceText = source)
 }
@@ -101,7 +101,7 @@ private fun adventureExampleSentence(
     val text = example.text.trim().takeIf(String::isNotEmpty) ?: return null
     val words = example.tokens.mapNotNull { token ->
         val target = token.text.trim().takeIf(String::isNotEmpty) ?: return@mapNotNull null
-        val source = token.contextualMeaning.trim().ifEmpty { token.translation.trim() }
+        val source = listOf(token.translation.trim(), token.contextualMeaning.trim()).joinToString("; ")
             .takeIf(String::isNotEmpty) ?: return@mapNotNull null
         AdventureWord(targetText = target, sourceText = source)
     }

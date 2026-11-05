@@ -3949,9 +3949,9 @@ object Styles {
         .study-adventure-word:active { transform: scale(.92); }
         .study-adventure-word-correct {
             color: #bbf7d0;
-            border-radius: 16px;
-            background: rgba(34,197,94,.22);
-            box-shadow: 0 0 24px rgba(74,222,128,.5);
+            // border-radius: 16px;
+            // background: rgba(34,197,94,.22);
+            // box-shadow: 0 0 24px rgba(74,222,128,.5);
             animation: adventure-correct-pop 360ms ease both;
         }
         .study-adventure-word-text {
