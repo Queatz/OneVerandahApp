@@ -1,6 +1,7 @@
 package apap.oneverandah.chat
 
 import apap.oneverandah.api.SaveStudySessionRequest
+import apap.oneverandah.api.StudyAdventureProgress
 import apap.oneverandah.api.StudyExamGrade
 import apap.oneverandah.api.StudyExamScene
 import apap.oneverandah.api.StudyExampleSentence
@@ -496,6 +497,57 @@ class StudySessionsServiceTest {
         val thirdToken = deviceService.issueToken().deviceToken
         assertNull(service.get(thirdToken, initial.id)?.examGrade)
         assertNull(service.listCommunity(thirdToken).items.single().examGrade)
+    }
+
+    @Test
+    fun `adventure progress is device scoped and survives progressive saves`() = runBlocking {
+        val repository = InMemoryStudySessionsRepository()
+        val deviceService = DeviceService(
+            repository = InMemoryDeviceRepository(),
+            tokenGenerator = sequenceTokenGenerator(),
+        )
+        val service = StudySessionsService(repository = repository, deviceService = deviceService)
+        val ownerToken = deviceService.issueToken().deviceToken
+        val visitorToken = deviceService.issueToken().deviceToken
+        val saved = service.save(
+            ownerToken,
+            SaveStudySessionRequest(
+                sourceMessageId = "adventure-session",
+                languageTag = "en",
+                session = sampleSession("Xin chào."),
+            ),
+        )
+        val ownerProgress = StudyAdventureProgress(
+            completedLevels = 1,
+            levelIndex = 1,
+            sentenceIndex = 0,
+            stage = 1,
+            updatedAt = 200L,
+        )
+        val visitorProgress = ownerProgress.copy(levelIndex = 0, completedLevels = 0, updatedAt = 201L)
+
+        assertEquals(ownerProgress, service.saveAdventureProgress(ownerToken, saved.id, ownerProgress))
+        assertEquals(visitorProgress, service.saveAdventureProgress(visitorToken, saved.id, visitorProgress))
+        assertEquals(ownerProgress, service.get(ownerToken, saved.id)?.adventureProgress)
+        assertEquals(visitorProgress, service.get(visitorToken, saved.id)?.adventureProgress)
+
+        service.saveAdventureProgress(ownerToken, saved.id, ownerProgress.copy(completedLevels = 0, updatedAt = 300L))
+        assertEquals(ownerProgress, service.get(ownerToken, saved.id)?.adventureProgress)
+
+        service.save(
+            ownerToken,
+            SaveStudySessionRequest(
+                sourceMessageId = "adventure-session",
+                languageTag = "en",
+                session = sampleSession("Xin chào.").copy(
+                    sentences = sampleSession("Xin chào. Cảm ơn.").sentences,
+                ),
+            ),
+        )
+
+        assertEquals(ownerProgress, service.get(ownerToken, saved.id)?.adventureProgress)
+        assertEquals(visitorProgress, service.get(visitorToken, saved.id)?.adventureProgress)
+        assertNull(service.get(deviceService.issueToken().deviceToken, saved.id)?.adventureProgress)
     }
 
     @Test

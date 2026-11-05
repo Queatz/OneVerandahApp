@@ -5,6 +5,7 @@ import apap.oneverandah.api.SavedStudySession
 import apap.oneverandah.api.SavedStudySessionSummary
 import apap.oneverandah.api.SavedStudySessionsResponse
 import apap.oneverandah.api.SaveStudySessionRequest
+import apap.oneverandah.api.StudyAdventureProgress
 import apap.oneverandah.api.StudyExamGrade
 import apap.oneverandah.api.StudyExamScene
 import apap.oneverandah.api.StudyExamSceneRequest
@@ -118,6 +119,50 @@ class StudySessionsRoutesTest {
 
         val ownerGrade = StudyExamGrade(4, 5, 3, "Stored by the server.", 100L)
         studySessionsService.saveExamGrade(tokenA, saved.id, ownerGrade)
+
+        val unauthorizedAdventureSave = client.put("/api/chat/study/sessions/${saved.id}/adventure") {
+            contentType(ContentType.Application.Json)
+            setBody("""{"completedLevels":1,"levelIndex":1,"sentenceIndex":0,"stage":1,"updatedAt":200}""")
+        }
+        assertEquals(HttpStatusCode.Unauthorized, unauthorizedAdventureSave.status)
+
+        val invalidAdventureSave = client.put("/api/chat/study/sessions/${saved.id}/adventure") {
+            header(DEVICE_TOKEN_HEADER, tokenA)
+            contentType(ContentType.Application.Json)
+            setBody("""{"completedLevels":-1,"levelIndex":0,"sentenceIndex":0,"stage":1,"updatedAt":200}""")
+        }
+        assertEquals(HttpStatusCode.BadRequest, invalidAdventureSave.status)
+
+        val ownerAdventureProgress = StudyAdventureProgress(1, 1, 0, 1, 200L)
+        val savedAdventureProgress = client.put("/api/chat/study/sessions/${saved.id}/adventure") {
+            header(DEVICE_TOKEN_HEADER, tokenA)
+            contentType(ContentType.Application.Json)
+            setBody(json.encodeToString(StudyAdventureProgress.serializer(), ownerAdventureProgress))
+        }
+        assertEquals(HttpStatusCode.OK, savedAdventureProgress.status)
+        assertEquals(ownerAdventureProgress, json.decodeFromString(StudyAdventureProgress.serializer(), savedAdventureProgress.bodyAsText()))
+
+        val missingAdventure = client.put("/api/chat/study/sessions/missing-id/adventure") {
+            header(DEVICE_TOKEN_HEADER, tokenA)
+            contentType(ContentType.Application.Json)
+            setBody(json.encodeToString(StudyAdventureProgress.serializer(), ownerAdventureProgress))
+        }
+        assertEquals(HttpStatusCode.NotFound, missingAdventure.status)
+
+        val visitorAdventureProgress = ownerAdventureProgress.copy(completedLevels = 0, levelIndex = 0, updatedAt = 201L)
+        val savedVisitorProgress = client.put("/api/chat/study/sessions/${saved.id}/adventure") {
+            header(DEVICE_TOKEN_HEADER, tokenB)
+            contentType(ContentType.Application.Json)
+            setBody(json.encodeToString(StudyAdventureProgress.serializer(), visitorAdventureProgress))
+        }
+        assertEquals(HttpStatusCode.OK, savedVisitorProgress.status)
+        val visitorSnapshot = client.get("/api/chat/study/sessions/${saved.id}") {
+            header(DEVICE_TOKEN_HEADER, tokenB)
+        }
+        assertEquals(
+            visitorAdventureProgress,
+            json.decodeFromString(SavedStudySession.serializer(), visitorSnapshot.bodyAsText()).adventureProgress,
+        )
 
         val progressiveSave = client.post("/api/chat/study/sessions") {
             header(DEVICE_TOKEN_HEADER, tokenA)

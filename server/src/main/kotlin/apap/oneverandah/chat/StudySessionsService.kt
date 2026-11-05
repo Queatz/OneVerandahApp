@@ -9,6 +9,7 @@ import apap.oneverandah.api.StudyBuildEvent
 import apap.oneverandah.api.StudyBuildRequest
 import apap.oneverandah.api.StudyBuildState
 import apap.oneverandah.api.StudyExamGrade
+import apap.oneverandah.api.StudyAdventureProgress
 import apap.oneverandah.api.StudySessionRequest
 import apap.oneverandah.api.StudySessionResponse
 import apap.oneverandah.api.sentenceImageUrls
@@ -32,13 +33,21 @@ data class SavedStudySessionRecord(
     val name: String = "",
     val examGrade: StudyExamGrade? = null,
     val visitorExamGrades: Map<String, StudyExamGrade> = emptyMap(),
+    val adventureProgress: StudyAdventureProgress? = null,
+    val visitorAdventureProgress: Map<String, StudyAdventureProgress> = emptyMap(),
     val build: StudyBuildState? = null,
     val buildRequest: StudyBuildRequest? = null,
 ) {
     fun examGradeFor(deviceTokenHash: String): StudyExamGrade? =
         if (this.deviceTokenHash == deviceTokenHash) examGrade else visitorExamGrades[deviceTokenHash]
 
-    fun toApi(viewerExamGrade: StudyExamGrade? = examGrade) = SavedStudySession(
+    fun adventureProgressFor(deviceTokenHash: String): StudyAdventureProgress? =
+        if (this.deviceTokenHash == deviceTokenHash) adventureProgress else visitorAdventureProgress[deviceTokenHash]
+
+    fun toApi(
+        viewerExamGrade: StudyExamGrade? = examGrade,
+        viewerAdventureProgress: StudyAdventureProgress? = adventureProgress,
+    ) = SavedStudySession(
         id = id,
         sourceMessageId = sourceMessageId,
         languageTag = languageTag,
@@ -50,6 +59,7 @@ data class SavedStudySessionRecord(
         name = name,
         examGrade = viewerExamGrade,
         build = build,
+        adventureProgress = viewerAdventureProgress,
     )
 
     fun toSummaryApi() = SavedStudySessionSummary(
@@ -224,7 +234,10 @@ class StudySessionsService(
         val key = id.trim()
         if (key.isEmpty()) return null
         val record = sessionStore.findById(key) ?: return null
-        return record.toApi(viewerExamGrade = record.examGradeFor(device.tokenHash))
+        return record.toApi(
+            viewerExamGrade = record.examGradeFor(device.tokenHash),
+            viewerAdventureProgress = record.adventureProgressFor(device.tokenHash),
+        )
     }
 
     suspend fun getOwned(rawDeviceToken: String?, id: String): SavedStudySession? {
@@ -249,7 +262,47 @@ class StudySessionsService(
                 stored.copy(visitorExamGrades = stored.visitorExamGrades + (device.tokenHash to grade))
             }
         } ?: return null
-        return record.toApi(viewerExamGrade = record.examGradeFor(device.tokenHash))
+        return record.toApi(
+            viewerExamGrade = record.examGradeFor(device.tokenHash),
+            viewerAdventureProgress = record.adventureProgressFor(device.tokenHash),
+        )
+    }
+
+    suspend fun saveAdventureProgress(
+        rawDeviceToken: String?,
+        id: String,
+        progress: StudyAdventureProgress,
+    ): StudyAdventureProgress? {
+        val device = requireDevice(rawDeviceToken)
+        val key = id.trim().takeIf(String::isNotEmpty) ?: return null
+        val normalized = progress.normalizedOrNull() ?: return null
+        val record = sessionStore.update(key, immediate = true) { stored ->
+            if (stored.deviceTokenHash == device.tokenHash) {
+                stored.copy(adventureProgress = mergeAdventureProgress(stored.adventureProgress, normalized))
+            } else {
+                val current = stored.visitorAdventureProgress[device.tokenHash]
+                stored.copy(
+                    visitorAdventureProgress = stored.visitorAdventureProgress +
+                            (device.tokenHash to mergeAdventureProgress(current, normalized)),
+                )
+            }
+        } ?: return null
+        return record.adventureProgressFor(device.tokenHash)
+    }
+
+    private fun mergeAdventureProgress(
+        current: StudyAdventureProgress?,
+        incoming: StudyAdventureProgress,
+    ): StudyAdventureProgress {
+        if (current == null) return incoming
+        val completedLevels = maxOf(current.completedLevels, incoming.completedLevels)
+        val selected = when {
+            incoming.completedLevels > current.completedLevels -> incoming
+            incoming.completedLevels < current.completedLevels -> current
+            incoming.updatedAt >= current.updatedAt -> incoming
+            else -> current
+        }
+        return selected.copy(completedLevels = completedLevels)
     }
 
     suspend fun listCommunity(

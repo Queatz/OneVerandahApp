@@ -23,6 +23,7 @@ import apap.oneverandah.api.StudyBuildMode
 import apap.oneverandah.api.StudyBuildRequest
 import apap.oneverandah.api.StudyBuildState
 import apap.oneverandah.api.StudyBuildStatus
+import apap.oneverandah.api.StudyAdventureProgress
 import apap.oneverandah.api.LanguageStudyMiniApp
 import apap.oneverandah.api.SaveStudySessionRequest
 import apap.oneverandah.api.SavedStudySession
@@ -158,6 +159,7 @@ fun StudyScreen(
     // messageId -> exam scene generation failed
     val studyExamFailed = remember { mutableStateMapOf<String, Boolean>() }
     val studyBuildStateByMessageId = remember { mutableStateMapOf<String, StudyBuildState>() }
+    val studyAdventureProgressBySessionId = remember { mutableStateMapOf<String, StudyAdventureProgress>() }
     var studyBuildStreamJob by remember { mutableStateOf<Job?>(null) }
     // sourceMessageId (or session id fallback) -> persisted study row id
     val studyPersistedBySourceId = remember { mutableStateMapOf<String, String>() }
@@ -643,6 +645,22 @@ fun StudyScreen(
             is StudyBuildEvent.Snapshot -> {
                 val previous = studyCache[messageId]
                 val session = event.session.session
+                val oldAdventureProgress = studyAdventureProgressBySessionId[event.session.id]
+                    ?: studyAdventureProgressBySessionId[messageId]
+                val adventureProgress = mergeAdventureProgress(oldAdventureProgress, event.session.adventureProgress)
+                if (adventureProgress != null) {
+                    studyAdventureProgressBySessionId[event.session.id] = adventureProgress
+                    if (event.session.adventureProgress == null) {
+                        scope.launch {
+                            runCatching { ChatApi.saveStudyAdventureProgress(event.session.id, adventureProgress) }
+                                .getOrNull()?.let { persisted ->
+                                    studyAdventureProgressBySessionId[event.session.id] =
+                                        mergeAdventureProgress(studyAdventureProgressBySessionId[event.session.id], persisted)
+                                            ?: persisted
+                                }
+                        }
+                    }
+                }
                 val scenarios = hydrateStudyPlayScenarios(session.playScenarios).map { incoming ->
                     val existing = previous?.playScenarios?.firstOrNull { it.id == incoming.id }
                     if (existing != null && existing.messages.size > incoming.messages.size) {
@@ -836,6 +854,14 @@ fun StudyScreen(
 
     fun openSavedStudySession(item: SavedStudySession, fromCommunity: Boolean = false) {
         val key = if (fromCommunity) item.id else (item.sourceMessageId ?: item.id)
+        val restoredProgress = mergeAdventureProgress(studyAdventureProgressBySessionId[item.id], item.adventureProgress)
+        if (restoredProgress != null) {
+            studyAdventureProgressBySessionId[item.id] = restoredProgress
+            studyAdventureProgressBySessionId[key] = mergeAdventureProgress(
+                studyAdventureProgressBySessionId[key],
+                restoredProgress,
+            ) ?: restoredProgress
+        }
         activeStudySessionItem = studySessionItems.firstOrNull { it.id == item.id }
             ?: communitySessionItems.firstOrNull { it.id == item.id }
             ?: SavedStudySessionSummary(
@@ -1106,6 +1132,28 @@ fun StudyScreen(
                 examScoreSessionId = activeStudySessionItem?.id
                     ?: studyTarget?.id?.let { studyPersistedBySourceId[it] },
                 savedExamGrade = activeStudySessionItem?.examGrade,
+                adventureProgress = activeStudySessionItem?.id?.let { studyAdventureProgressBySessionId[it] }
+                    ?: studyTarget?.id?.let { targetId ->
+                        studyPersistedBySourceId[targetId]?.let { studyAdventureProgressBySessionId[it] }
+                            ?: studyAdventureProgressBySessionId[targetId]
+                    },
+                onAdventureProgress = { incoming ->
+                    val targetId = studyTarget?.id ?: return@StudySessionPane
+                    val savedId = activeStudySessionItem?.id ?: studyPersistedBySourceId[targetId]
+                    val key = savedId ?: targetId
+                    val merged = mergeAdventureProgress(studyAdventureProgressBySessionId[key], incoming) ?: incoming
+                    studyAdventureProgressBySessionId[key] = merged
+                    if (savedId != null) {
+                        scope.launch {
+                            runCatching { ChatApi.saveStudyAdventureProgress(savedId, merged) }
+                                .getOrNull()?.let { persisted ->
+                                    studyAdventureProgressBySessionId[savedId] =
+                                        mergeAdventureProgress(studyAdventureProgressBySessionId[savedId], persisted)
+                                            ?: persisted
+                                }
+                        }
+                    }
+                },
                 imageFailed = studyImageFailed.toMap(),
                 wordImageFailed = studyWordImageFailed.toMap(),
                 charactersLoading = studyTarget?.id?.let { studyCharactersInFlight[it] == true } == true,
@@ -1601,6 +1649,8 @@ private fun StudySessionPane(
     messageId: String?,
     examScoreSessionId: String?,
     savedExamGrade: StudyExamGrade?,
+    adventureProgress: StudyAdventureProgress?,
+    onAdventureProgress: (StudyAdventureProgress) -> Unit,
     imageFailed: Map<String, Boolean>,
     wordImageFailed: Map<String, Boolean>,
     charactersLoading: Boolean,
@@ -1663,6 +1713,8 @@ private fun StudySessionPane(
                         charactersLoading = charactersLoading,
                         examScoreSessionId = examScoreSessionId,
                         savedExamGrade = savedExamGrade,
+                        adventureProgress = adventureProgress,
+                        onAdventureProgress = onAdventureProgress,
                         imageFailed = imageFailed,
                         wordImageFailed = wordImageFailed,
                         playLoading = playLoading,
@@ -1780,6 +1832,8 @@ private fun StudySessionContent(
     charactersLoading: Boolean,
     examScoreSessionId: String?,
     savedExamGrade: StudyExamGrade?,
+    adventureProgress: StudyAdventureProgress?,
+    onAdventureProgress: (StudyAdventureProgress) -> Unit,
     imageFailed: Map<String, Boolean>,
     wordImageFailed: Map<String, Boolean>,
     playLoading: Boolean,
@@ -1937,6 +1991,15 @@ private fun StudySessionContent(
         }) { Text(strings.chatStoryTab) }
         Button(attrs = {
             classes(Styles.chip)
+            if (mode == StudySessionMode.ADVENTURE) classes(Styles.chipActive)
+            attr("type", "button")
+            onClick {
+                mode = StudySessionMode.ADVENTURE
+                selectedRef = null
+            }
+        }) { Text(strings.chatAdventure.tab) }
+        Button(attrs = {
+            classes(Styles.chip)
             if (mode == StudySessionMode.STUDY) classes(Styles.chipActive)
             attr("type", "button")
             onClick { mode = StudySessionMode.STUDY }
@@ -2047,6 +2110,14 @@ private fun StudySessionContent(
                             mode = StudySessionMode.STUDY
                         }
                     },
+                )
+            }
+            StudySessionMode.ADVENTURE -> {
+                StudyAdventureTab(
+                    session = session,
+                    progress = adventureProgress,
+                    onAdventureProgress = onAdventureProgress,
+                    strings = strings,
                 )
             }
             StudySessionMode.STUDY -> {
@@ -2342,7 +2413,7 @@ private fun StudySentenceVisual(
     }
 }
 
-private enum class StudySessionMode { ALL, WATCH, STORY, STUDY, WORDS, LISTEN, READ, WRITE, EXPRESS, PLAY, TEST }
+private enum class StudySessionMode { ALL, WATCH, STORY, ADVENTURE, STUDY, WORDS, LISTEN, READ, WRITE, EXPRESS, PLAY, TEST }
 
 internal data class StudyVocabularyRow(
     val sentenceIndex: Int,
@@ -2441,6 +2512,7 @@ private fun StudySessionMode.tabLabel(strings: UiStrings): String = when (this) 
     StudySessionMode.ALL -> strings.chatAllTab
     StudySessionMode.WATCH -> strings.chatWatchTab
     StudySessionMode.STORY -> strings.chatStoryTab
+    StudySessionMode.ADVENTURE -> strings.chatAdventure.tab
     StudySessionMode.STUDY -> strings.chatStudyTab
     StudySessionMode.WORDS -> strings.chatWordsTab
     StudySessionMode.LISTEN -> strings.chatListenTab
@@ -2558,7 +2630,7 @@ private fun preloadWatchImages(
     }
 }
 
-private fun currentFullscreenElement(): Element? {
+internal fun currentFullscreenElement(): Element? {
     val doc = document.asDynamic()
     return (
         doc.fullscreenElement
@@ -2568,7 +2640,7 @@ private fun currentFullscreenElement(): Element? {
         ) as? Element
 }
 
-private fun requestWatchFullscreen(element: Element) {
+internal fun requestWatchFullscreen(element: Element) {
     val el = element.asDynamic()
     val request = el.requestFullscreen
         ?: el.webkitRequestFullscreen
@@ -2579,7 +2651,7 @@ private fun requestWatchFullscreen(element: Element) {
     request.call(element)
 }
 
-private fun exitWatchFullscreen() {
+internal fun exitWatchFullscreen() {
     if (currentFullscreenElement() == null) return
     val doc = document.asDynamic()
     val exit = doc.exitFullscreen
@@ -5375,7 +5447,7 @@ private suspend fun loadStudySpeech(request: SpeechRequest): SpeechResponse =
         withSpeechRetry { ChatApi.speech(speechRequest) }
     }
 
-private suspend fun loadStudySpeechDataUrl(request: SpeechRequest): String =
+internal suspend fun loadStudySpeechDataUrl(request: SpeechRequest): String =
     StudyAudioCache.dataUrl(loadStudySpeech(request))
 
 @Composable
@@ -5734,6 +5806,7 @@ private fun clearStudyAudioHandlers(element: HTMLAudioElement) {
     element.asDynamic().onloadedmetadata = null
     element.asDynamic().oncanplay = null
     element.asDynamic().onended = null
+    element.asDynamic().onerror = null
     element.asDynamic().onpause = null
     element.asDynamic().onplay = null
 }
@@ -5761,7 +5834,7 @@ private fun startStudyAudioPlayback(element: HTMLAudioElement, url: String) {
     if (element.readyState >= 2) tryPlayStudyAudio(element)
 }
 
-private fun stopActiveStudyAudio(clearPlaylist: Boolean = true) {
+internal fun stopActiveStudyAudio(clearPlaylist: Boolean = true) {
     activeStudyAudio?.let { current ->
         clearStudyAudioHandlers(current)
         runCatching { current.pause() }
@@ -5790,6 +5863,14 @@ private fun bindStudyAudioPlaybackState(
         }
     }
     element.asDynamic().onended = {
+        if (activeStudyAudio === element) {
+            studyAudioPlayingUrl = null
+            if (onEnded != null) {
+                onEnded()
+            }
+        }
+    }
+    element.asDynamic().onerror = {
         if (activeStudyAudio === element) {
             studyAudioPlayingUrl = null
             if (onEnded != null) {
@@ -5880,7 +5961,7 @@ private fun loadWatchAudioAt(
     }
 }
 
-internal fun playAudio(url: String, restart: Boolean = false) {
+internal fun playAudio(url: String, restart: Boolean = false, onEnded: (() -> Unit)? = null) {
     val current = activeStudyAudio
     // Toggle: tapping the same sentence again pauses instead of restarting.
     if (
@@ -5900,7 +5981,7 @@ internal fun playAudio(url: String, restart: Boolean = false) {
     activeStudyAudio = element
     activeStudyAudioUrl = url
     studyAudioPlayingUrl = url
-    bindStudyAudioPlaybackState(element, url)
+    bindStudyAudioPlaybackState(element, url, onEnded)
     startStudyAudioPlayback(element, url)
 }
 

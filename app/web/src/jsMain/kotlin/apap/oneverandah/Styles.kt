@@ -485,6 +485,43 @@ object Styles {
     const val studyPlaygroundSendBusy = "study-playground-send-busy"
     const val studyPreparingMeanings = "study-preparing-meanings"
     const val studyStoryShell = "study-story-shell"
+    const val studyAdventureShell = "study-adventure-shell"
+    const val studyAdventureFullscreen = "study-adventure-fullscreen"
+    const val studyAdventureHeader = "study-adventure-header"
+    const val studyAdventureIconButton = "study-adventure-icon-button"
+    const val studyAdventureTitle = "study-adventure-title"
+    const val studyAdventureHint = "study-adventure-hint"
+    const val studyAdventureEmpty = "study-adventure-empty"
+    const val studyAdventureGrid = "study-adventure-grid"
+    const val studyAdventureLevel = "study-adventure-level"
+    const val studyAdventureLocked = "study-adventure-locked"
+    const val studyAdventureLevelNumber = "study-adventure-level-number"
+    const val studyAdventureLevelStatus = "study-adventure-level-status"
+    const val studyAdventureCard = "study-adventure-card"
+    const val studyAdventureIntro = "study-adventure-intro"
+    const val studyAdventureStage = "study-adventure-stage"
+    const val studyAdventurePromptSentence = "study-adventure-prompt-sentence"
+    const val studyAdventurePrimary = "study-adventure-primary"
+    const val studyAdventurePlay = "study-adventure-play"
+    const val studyAdventureBackdrop = "study-adventure-backdrop"
+    const val studyAdventureTop = "study-adventure-top"
+    const val studyAdventureProgressTrack = "study-adventure-progress-track"
+    const val studyAdventureProgressFill = "study-adventure-progress-fill"
+    const val studyAdventureWords = "study-adventure-words"
+    const val studyAdventureWord = "study-adventure-word"
+    const val studyAdventureWordCorrect = "study-adventure-word-correct"
+    const val studyAdventureWordText = "study-adventure-word-text"
+    const val studyAdventureHealth = "study-adventure-health"
+    const val studyAdventureHealthSegment = "study-adventure-health-segment"
+    const val studyAdventureHealthFilled = "study-adventure-health-filled"
+    const val studyAdventurePrompt = "study-adventure-prompt"
+    const val studyAdventurePromptWord = "study-adventure-prompt-word"
+    const val studyAdventureTimer = "study-adventure-timer"
+    const val studyAdventureTimerFill = "study-adventure-timer-fill"
+    const val studyAdventureCorrect = "study-adventure-correct"
+    const val studyAdventureCorrectMark = "study-adventure-correct-mark"
+    const val studyAdventureMessage = "study-adventure-message"
+    const val studyAdventureMessageTitle = "study-adventure-message-title"
     const val studyStoryCard = "study-story-card"
     const val studyStoryCardFullscreen = "study-story-card-fullscreen"
     const val studyStoryHeader = "study-story-header"
@@ -3677,6 +3714,346 @@ object Styles {
             font-size: 13px;
             color: var(--md-sys-color-on-surface-variant);
         }
+        """.trimIndent() + """
+        .study-adventure-shell {
+            display: flex;
+            flex-direction: column;
+            gap: 16px;
+            min-height: 420px;
+            padding: 16px;
+            overflow: hidden;
+            border-radius: 24px;
+            background: radial-gradient(circle at 50% 0%, #4f46e5 0, #18172d 48%, #10111b 100%);
+            color: #fff;
+            box-shadow: 0 16px 42px rgba(8, 8, 20, .28);
+        }
+        .study-adventure-shell.study-adventure-fullscreen,
+        .study-adventure-shell:fullscreen,
+        .study-adventure-shell:-webkit-full-screen {
+            position: fixed;
+            inset: 0;
+            z-index: 70;
+            width: 100%;
+            height: 100vh;
+            height: 100dvh;
+            min-height: 0;
+            box-sizing: border-box;
+            padding: 14px max(14px, env(safe-area-inset-right)) max(14px, env(safe-area-inset-bottom)) max(14px, env(safe-area-inset-left));
+            overflow: auto;
+            border-radius: 0;
+        }
+        .study-adventure-header {
+            display: flex;
+            align-items: center;
+            gap: 10px;
+            min-height: 42px;
+        }
+        .study-adventure-title {
+            flex: 1;
+            font-size: 17px;
+            font-weight: 800;
+            letter-spacing: .03em;
+        }
+        .study-adventure-icon-button {
+            display: grid;
+            place-items: center;
+            min-width: 40px;
+            min-height: 40px;
+            padding: 0 10px;
+            border: 1px solid rgba(255,255,255,.2);
+            border-radius: 14px;
+            background: rgba(255,255,255,.1);
+            color: #fff;
+            font: inherit;
+            font-size: 20px;
+            cursor: pointer;
+            transition: transform 140ms ease, background 140ms ease;
+        }
+        .study-adventure-icon-button:active { transform: scale(.94); }
+        .study-adventure-icon-button:hover { background: rgba(255,255,255,.18); }
+        .study-adventure-hint {
+            margin: 0;
+            color: rgba(255,255,255,.7);
+            font-size: 13px;
+            line-height: 1.5;
+            text-align: center;
+        }
+        .study-adventure-empty {
+            display: grid;
+            flex: 1;
+            place-items: center;
+            color: rgba(255,255,255,.72);
+        }
+        .study-adventure-grid {
+            display: grid;
+            grid-template-columns: repeat(auto-fill, minmax(min(150px, 42vw), 1fr));
+            gap: 12px;
+            overflow: auto;
+            padding: 2px 2px 8px;
+        }
+        .study-adventure-level {
+            display: flex;
+            position: relative;
+            align-items: flex-start;
+            justify-content: space-between;
+            min-height: 128px;
+            padding: 14px;
+            overflow: hidden;
+            border: 1px solid rgba(255,255,255,.24);
+            border-radius: 20px;
+            background-color: #363553;
+            background-position: center;
+            background-size: cover;
+            color: #fff;
+            text-align: left;
+            cursor: pointer;
+            box-shadow: 0 8px 24px rgba(0,0,0,.22);
+            transition: transform 160ms ease, border-color 160ms ease, filter 160ms ease;
+            animation: adventure-pop 280ms ease both;
+        }
+        .study-adventure-level:hover { transform: translateY(-3px); border-color: rgba(255,255,255,.62); }
+        .study-adventure-locked { filter: grayscale(.7) brightness(.62); cursor: not-allowed; }
+        .study-adventure-level-number {
+            font-size: 18px;
+            font-weight: 900;
+            text-shadow: 0 2px 10px rgba(0,0,0,.8);
+        }
+        .study-adventure-level-status {
+            display: grid;
+            place-items: center;
+            width: 34px;
+            height: 34px;
+            border-radius: 50%;
+            background: rgba(8,8,20,.48);
+            font-size: 19px;
+            font-weight: 800;
+            text-shadow: 0 1px 5px rgba(0,0,0,.8);
+        }
+        .study-adventure-card {
+            display: flex;
+            flex: 1;
+            flex-direction: column;
+            align-items: center;
+            justify-content: center;
+            gap: 18px;
+            min-height: 280px;
+            padding: 24px;
+            border: 1px solid rgba(255,255,255,.15);
+            border-radius: 24px;
+            background: rgba(255,255,255,.08);
+            text-align: center;
+            backdrop-filter: blur(12px);
+            animation: adventure-slide-in 300ms ease both;
+        }
+        .study-adventure-prompt-sentence {
+            max-width: 900px;
+            margin: 0;
+            font-size: clamp(24px, 5vw, 46px);
+            font-weight: 800;
+            line-height: 1.25;
+        }
+        .study-adventure-stage {
+            margin: 0;
+            color: #c4b5fd;
+            font-size: 12px;
+            font-weight: 800;
+            letter-spacing: .12em;
+            text-transform: uppercase;
+        }
+        .study-adventure-primary {
+            min-height: 48px;
+            padding: 0 24px;
+            border: 0;
+            border-radius: 16px;
+            background: linear-gradient(135deg, #a78bfa, #6366f1);
+            color: #fff;
+            font: inherit;
+            font-size: 16px;
+            font-weight: 800;
+            cursor: pointer;
+            box-shadow: 0 8px 24px rgba(99,102,241,.34);
+            transition: transform 150ms ease, filter 150ms ease;
+        }
+        .study-adventure-primary:hover { transform: translateY(-2px); filter: brightness(1.08); }
+        .study-adventure-primary:disabled { opacity: .48; cursor: wait; transform: none; }
+        .study-adventure-play {
+            display: flex;
+            position: relative;
+            isolation: isolate;
+            flex: 1;
+            flex-direction: column;
+            justify-content: space-between;
+            gap: 24px;
+            min-height: 360px;
+            padding: clamp(16px, 4vw, 32px);
+            overflow: hidden;
+            border: 1px solid rgba(255,255,255,.15);
+            border-radius: 24px;
+            background-color: #17172a;
+            color: #fff;
+        }
+        .study-adventure-backdrop {
+            position: absolute;
+            z-index: -1;
+            inset: -24px;
+            background-position: center;
+            background-size: cover;
+            background-repeat: no-repeat;
+            filter: blur(6px) brightness(.45) saturate(1.1);
+            transform: scale(1.06);
+            pointer-events: none;
+        }
+        .study-adventure-top {
+            display: flex;
+            flex-direction: column;
+            gap: 10px;
+        }
+        .study-adventure-progress-track,
+        .study-adventure-timer {
+            width: 100%;
+            height: 9px;
+            overflow: hidden;
+            border-radius: 999px;
+            background: rgba(255,255,255,.2);
+        }
+        .study-adventure-progress-fill {
+            height: 100%;
+            border-radius: inherit;
+            background: linear-gradient(90deg, #34d399, #a3e635);
+            transition: width 180ms ease;
+        }
+        .study-adventure-words {
+            display: flex;
+            flex-wrap: wrap;
+            align-items: center;
+            justify-content: center;
+            gap: clamp(8px, 2vw, 16px);
+            margin: auto 0;
+        }
+        .study-adventure-word {
+            display: flex;
+            flex-direction: column;
+            align-items: center;
+            gap: 8px;
+            max-width: 100%;
+            padding: 6px 6px 10px;
+            border: 0;
+            border-radius: 14px;
+            background: transparent;
+            color: #fff;
+            font: inherit;
+            cursor: pointer;
+            transition: transform 120ms ease, color 120ms ease;
+            animation: adventure-pop 250ms ease both;
+        }
+        .study-adventure-word:active { transform: scale(.92); }
+        .study-adventure-word-correct {
+            color: #bbf7d0;
+            border-radius: 16px;
+            background: rgba(34,197,94,.22);
+            box-shadow: 0 0 24px rgba(74,222,128,.5);
+            animation: adventure-correct-pop 360ms ease both;
+        }
+        .study-adventure-word-text {
+            font-size: clamp(23px, 5vw, 42px);
+            font-weight: 800;
+            line-height: 1.2;
+            overflow-wrap: anywhere;
+            text-shadow: 0 2px 12px rgba(0,0,0,.48);
+        }
+        .study-adventure-health { display: flex; gap: 3px; }
+        .study-adventure-health-segment {
+            display: block;
+            width: 13px;
+            height: 5px;
+            border-radius: 999px;
+            background: rgba(255,255,255,.2);
+        }
+        .study-adventure-health-filled { background: #a3e635; box-shadow: 0 0 8px rgba(163,230,53,.7); }
+        .study-adventure-prompt {
+            display: flex;
+            flex-direction: column;
+            align-items: center;
+            gap: 9px;
+            width: min(100%, 560px);
+            margin: 0 auto;
+            padding: 18px;
+            border: 1px solid rgba(255,255,255,.2);
+            border-radius: 20px;
+            background: rgba(12,12,25,.58);
+            backdrop-filter: blur(10px);
+            animation: adventure-slide-in 200ms ease both;
+        }
+        .study-adventure-prompt-word {
+            margin: 0;
+            font-size: clamp(24px, 5vw, 38px);
+            font-weight: 800;
+            text-align: center;
+        }
+        .study-adventure-timer-fill {
+            height: 100%;
+            border-radius: inherit;
+            background: linear-gradient(90deg, #fb7185, #fbbf24);
+            transition: width 100ms linear;
+        }
+        .study-adventure-correct {
+            display: flex;
+            align-items: center;
+            justify-content: center;
+            gap: 12px;
+            min-height: calc(clamp(24px, 5vw, 38px) * 1.2 + 18px);
+            color: #bbf7d0;
+            font-size: clamp(24px, 5vw, 38px);
+            font-weight: 900;
+            animation: adventure-burst 420ms ease both;
+        }
+        .study-adventure-correct-mark {
+            display: inline-flex;
+            align-items: center;
+            justify-content: center;
+            width: 1.1em;
+            height: 1.1em;
+            font-size: .9em;
+            border-radius: 50%;
+            background: #22c55e;
+            color: #052e16;
+        }
+        .study-adventure-message { min-height: 240px; }
+        .study-adventure-message-title {
+            margin: 0;
+            font-size: clamp(28px, 5vw, 50px);
+            font-weight: 900;
+            line-height: 1.15;
+            animation: adventure-burst 420ms ease both;
+        }
+        @keyframes adventure-pop {
+            from { opacity: 0; transform: scale(.92); }
+            to { opacity: 1; transform: scale(1); }
+        }
+        @keyframes adventure-shake {
+            20%, 60% { transform: translateX(-5px); }
+            40%, 80% { transform: translateX(5px); }
+        }
+        @keyframes adventure-slide-in {
+            from { opacity: 0; transform: translateY(12px); }
+            to { opacity: 1; transform: translateY(0); }
+        }
+        @keyframes adventure-burst {
+            0% { opacity: 0; transform: scale(.72); }
+            70% { opacity: 1; transform: scale(1.08); }
+            100% { transform: scale(1); }
+        }
+        @keyframes adventure-correct-pop {
+            0% { transform: scale(.88); }
+            65% { transform: scale(1.08); }
+            100% { transform: scale(1); }
+        }
+        @media (max-width: 560px) {
+            .study-adventure-shell { min-height: 340px; padding: 12px; }
+            .study-adventure-level { min-height: 105px; padding: 11px; }
+            .study-adventure-play { min-height: 330px; padding: 16px 10px; }
+        }
+        """.trimIndent() + """
         .${studyStoryCard} {
             display: flex;
             flex-direction: column;
@@ -3711,10 +4088,10 @@ object Styles {
             inset: 0;
             z-index: 70;
             width: 100%;
-            height: 100%;
+            height: 100vh;
             box-sizing: border-box;
             padding: 12px 12px 16px;
-            overflow: hidden;
+            overflow: auto;
             background: var(--md-sys-color-surface);
         }
         .${studyStoryShell}.${studyStoryCardFullscreen} .${studyStoryCard},

@@ -295,6 +295,22 @@ data class StudyExamGrade(
 )
 
 @Serializable
+data class StudyAdventureProgress(
+    val completedLevels: Int = 0,
+    val levelIndex: Int = 0,
+    val sentenceIndex: Int = 0,
+    val stage: Int = 1,
+    val updatedAt: Long = 0,
+) {
+    fun normalizedOrNull(): StudyAdventureProgress? {
+        if (completedLevels < 0 || levelIndex < 0 || sentenceIndex < 0 || stage !in 1..2 || updatedAt < 0) {
+            return null
+        }
+        return this
+    }
+}
+
+@Serializable
 data class StudyExamSceneRequest(
     val session: StudySessionResponse,
     val languageTag: String,
@@ -1129,6 +1145,7 @@ data class SavedStudySession(
     val name: String = "",
     val examGrade: StudyExamGrade? = null,
     val build: StudyBuildState? = null,
+    val adventureProgress: StudyAdventureProgress? = null,
 )
 
 @Serializable

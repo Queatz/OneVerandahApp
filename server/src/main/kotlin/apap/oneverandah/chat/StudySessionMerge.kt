@@ -31,6 +31,8 @@ object StudySessionMerge {
             name = stored.name.ifBlank { incoming.name },
             examGrade = if (sameLanguage) stored.examGrade ?: incoming.examGrade else incoming.examGrade,
             visitorExamGrades = stored.visitorExamGrades,
+            adventureProgress = if (sameBuildContext) stored.adventureProgress else null,
+            visitorAdventureProgress = if (sameBuildContext) stored.visitorAdventureProgress else emptyMap(),
             build = if (sameBuildContext) stored.build ?: incoming.build else incoming.build,
             buildRequest = if (sameBuildContext) stored.buildRequest
                 ?: incoming.buildRequest else incoming.buildRequest,
