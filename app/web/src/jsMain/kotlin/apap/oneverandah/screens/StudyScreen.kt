@@ -2021,6 +2021,15 @@ private fun StudySessionContent(
         }) { Text(strings.chatListenTab) }
         Button(attrs = {
             classes(Styles.chip)
+            if (mode == StudySessionMode.SPEAK) classes(Styles.chipActive)
+            attr("type", "button")
+            onClick {
+                mode = StudySessionMode.SPEAK
+                selectedRef = null
+            }
+        }) { Text(strings.chatSpeakTab) }
+        Button(attrs = {
+            classes(Styles.chip)
             if (mode == StudySessionMode.READ) classes(Styles.chipActive)
             attr("type", "button")
             onClick {
@@ -2087,6 +2096,7 @@ private fun StudySessionContent(
                     strings = strings,
                     onRetryImage = onRetryImage,
                     autoStart = mode != StudySessionMode.ALL,
+                    keyboardEnabled = mode == StudySessionMode.WATCH,
                 )
             }
             StudySessionMode.STORY -> {
@@ -2247,6 +2257,14 @@ private fun StudySessionContent(
                     anyLoading = anyLoading,
                     strings = strings,
                     autoFocus = mode != StudySessionMode.ALL,
+                    onPracticeSentences = onPracticeSentences,
+                )
+            }
+            StudySessionMode.SPEAK -> {
+                StudySpeakTab(
+                    session = session,
+                    anyLoading = anyLoading,
+                    strings = strings,
                     onPracticeSentences = onPracticeSentences,
                 )
             }
@@ -2413,7 +2431,60 @@ private fun StudySentenceVisual(
     }
 }
 
-private enum class StudySessionMode { ALL, WATCH, STORY, ADVENTURE, STUDY, WORDS, LISTEN, READ, WRITE, EXPRESS, PLAY, TEST }
+private enum class StudySessionMode { ALL, WATCH, STORY, ADVENTURE, STUDY, WORDS, LISTEN, SPEAK, READ, WRITE, EXPRESS, PLAY, TEST }
+
+internal enum class StudySpeakPhase { READY, LISTENING, SPEAKING, REVIEW }
+
+internal data class StudySpeakProgress(
+    val phase: StudySpeakPhase = StudySpeakPhase.READY,
+    val roundIndex: Int = 0,
+)
+
+internal const val STUDY_SPEAK_ROUNDS = 3
+
+internal fun startStudySpeak(progress: StudySpeakProgress): StudySpeakProgress =
+    if (progress.phase == StudySpeakPhase.READY) {
+        progress.copy(phase = StudySpeakPhase.LISTENING, roundIndex = 0)
+    } else {
+        progress
+    }
+
+internal fun finishStudySpeakListen(progress: StudySpeakProgress): StudySpeakProgress =
+    if (progress.phase == StudySpeakPhase.LISTENING) {
+        progress.copy(phase = StudySpeakPhase.SPEAKING)
+    } else {
+        progress
+    }
+
+internal fun finishStudySpeakRecording(progress: StudySpeakProgress): StudySpeakProgress =
+    if (progress.phase != StudySpeakPhase.SPEAKING) {
+        progress
+    } else if (progress.roundIndex < STUDY_SPEAK_ROUNDS - 1) {
+        progress.copy(phase = StudySpeakPhase.LISTENING, roundIndex = progress.roundIndex + 1)
+    } else {
+        progress.copy(phase = StudySpeakPhase.REVIEW)
+    }
+
+internal fun studySpeakReviewPlaylist(targetAudioUrl: String, recordingUrls: List<String>): List<String> =
+    recordingUrls.flatMap { recordingUrl -> listOf(targetAudioUrl, recordingUrl) }
+
+internal fun resetStudySpeak(progress: StudySpeakProgress): StudySpeakProgress =
+    progress.copy(phase = StudySpeakPhase.READY, roundIndex = 0)
+
+internal fun studySpeakPlayingAttemptIndex(
+    targetAudioUrl: String?,
+    recordingUrls: List<String>,
+    playlistUrls: List<String>,
+    playlistIndex: Int,
+    isPlaying: Boolean,
+): Int? {
+    if (!isPlaying || targetAudioUrl == null || playlistIndex !in playlistUrls.indices) return null
+    val reviewPlaylist = studySpeakReviewPlaylist(targetAudioUrl, recordingUrls)
+    if (playlistUrls == reviewPlaylist) return playlistIndex / 2
+    return recordingUrls.indexOfFirst { recordingUrl ->
+        playlistUrls == listOf(targetAudioUrl, recordingUrl)
+    }.takeIf { attemptIndex -> attemptIndex >= 0 && playlistIndex in 0..1 }
+}
 
 internal data class StudyVocabularyRow(
     val sentenceIndex: Int,
@@ -2538,6 +2609,7 @@ private fun StudySessionMode.tabLabel(strings: UiStrings): String = when (this) 
     StudySessionMode.STUDY -> strings.chatStudyTab
     StudySessionMode.WORDS -> strings.chatWordsTab
     StudySessionMode.LISTEN -> strings.chatListenTab
+    StudySessionMode.SPEAK -> strings.chatSpeakTab
     StudySessionMode.READ -> strings.chatReadTab
     StudySessionMode.WRITE -> strings.chatWriteTab
     StudySessionMode.EXPRESS -> strings.chatExpressTab
@@ -3119,6 +3191,7 @@ private fun StudyWatchTab(
     strings: UiStrings,
     onRetryImage: (Int) -> Unit,
     autoStart: Boolean = true,
+    keyboardEnabled: Boolean = true,
 ) {
     val measuredDurations = remember(session.text) { mutableStateMapOf<String, Int>() }
     var sceneIndex by remember(session.text) { mutableStateOf(0) }
@@ -3132,6 +3205,7 @@ private fun StudyWatchTab(
     var playerElement by remember { mutableStateOf<HTMLElement?>(null) }
     var isFullscreen by remember { mutableStateOf(false) }
     val latestIsFullscreen by rememberUpdatedState(isFullscreen)
+    val latestKeyboardEnabled by rememberUpdatedState(keyboardEnabled)
     val latestPlayerElement by rememberUpdatedState(playerElement)
 
     val clips = session.sentences.mapIndexedNotNull { index, _ ->
@@ -3196,7 +3270,7 @@ private fun StudyWatchTab(
     DisposableEffect(Unit) {
         val onKey: (Event) -> Unit = { event ->
             val key = event.asDynamic().key as? String
-            if (key == " " || key == "Spacebar") {
+            if ((key == " " || key == "Spacebar") && latestKeyboardEnabled) {
                 val target = event.target as? HTMLElement
                 if (!watchKeyboardTargetIsEditable(target)) {
                     event.preventDefault()
@@ -4582,6 +4656,460 @@ private fun StudyListenTab(
                 Text(strings.chatExpressEmpty)
             }
         }
+    }
+}
+
+@Composable
+private fun StudySpeakTab(
+    session: StudySessionResponse,
+    anyLoading: Boolean,
+    strings: UiStrings,
+    onPracticeSentences: (List<StudyExampleSentence>) -> Unit,
+) {
+    val scope = rememberCoroutineScope()
+    val languageTag = Localization.language.tag
+    val sessionExamples = remember(session) { collectExpressPracticeSentences(session) }
+    val vocabulary = remember(session) { collectExpressVocabulary(session) }
+    var queue by remember(session.text) { mutableStateOf(sessionExamples.shuffledPracticeSentences()) }
+    var completedItems by remember(session.text) { mutableStateOf(emptySet<Int>()) }
+    var activeCardKey by remember(session.text) { mutableStateOf<String?>(null) }
+    var generating by remember(session.text) { mutableStateOf(false) }
+    var generateError by remember(session.text) { mutableStateOf<String?>(null) }
+
+    val meaningsStillLoading = anyLoading || session.sentences.any { sentence ->
+        sentence.tokens.any { it.status == StudyTokenStatus.PENDING }
+    }
+
+    LaunchedEffect(sessionExamples) {
+        if (sessionExamples.isEmpty()) return@LaunchedEffect
+        val existingKeys = queue.map {
+            "${it.translation.trim().lowercase()}|${it.text.trim().lowercase()}"
+        }.toMutableSet()
+        val additions = sessionExamples.filter { example ->
+            val key = "${example.translation.trim().lowercase()}|${example.text.trim().lowercase()}"
+            existingKeys.add(key)
+        }
+        if (additions.isNotEmpty()) queue = queue + additions.shuffledPracticeSentences()
+    }
+
+    fun generateMore() {
+        if (generating) return
+        generating = true
+        generateError = null
+        scope.launch {
+            runCatching {
+                ChatApi.studyExpressGenerate(
+                    StudyExpressGenerateRequest(
+                        text = session.text,
+                        textLanguageTag = session.textLanguageTag,
+                        languageTag = languageTag,
+                        vocabulary = vocabulary,
+                        previousSentences = queue.map { it.text }.filter { it.isNotBlank() },
+                    ),
+                )
+            }.onSuccess { response ->
+                val fresh = response.sentences.mapNotNull { item ->
+                    val text = item.text.trim().takeIf { it.isNotEmpty() } ?: return@mapNotNull null
+                    val translation = item.translation.trim().takeIf { it.isNotEmpty() }
+                        ?: return@mapNotNull null
+                    StudyExampleSentence(text = text, translation = translation)
+                }
+                if (fresh.isNotEmpty()) {
+                    queue = queue + fresh.shuffledPracticeSentences()
+                    onPracticeSentences(fresh)
+                } else {
+                    generateError = strings.chatExpressFeedbackError
+                }
+            }.onFailure {
+                generateError = strings.chatExpressFeedbackError
+            }
+            generating = false
+        }
+    }
+
+    val completedCount = completedItems.count { it in queue.indices }
+    LaunchedEffect(session.text, queue.size, completedCount, meaningsStillLoading, generating, generateError) {
+        if (
+            !meaningsStillLoading && !generating && generateError == null &&
+            (queue.isEmpty() || completedCount == queue.size)
+        ) {
+            generateMore()
+        }
+    }
+
+    Span(attrs = { classes(Styles.studySessionHint) }) { Text(strings.chatSpeakHint) }
+    queue.forEachIndexed { index, item ->
+        val cardKey = "$index|${item.translation}|${item.text}"
+        key(index, item.text, item.translation) {
+            StudySpeakPracticeCard(
+                item = item,
+                itemIndex = index,
+                sessionText = session.text,
+                textLanguageTag = session.textLanguageTag,
+                strings = strings,
+                canStart = activeCardKey == null || activeCardKey == cardKey,
+                onActiveChange = { active ->
+                    activeCardKey = if (active) cardKey else activeCardKey.takeUnless { it == cardKey }
+                },
+                onComplete = { completedItems = completedItems + index },
+            )
+        }
+    }
+    when {
+        generating -> {
+            Div(attrs = { classes(Styles.studyPreparingMeanings) }) {
+                MaterialSymbol("progress_activity")
+                Text(strings.chatExpressGenerating)
+            }
+        }
+        queue.isEmpty() && meaningsStillLoading -> {
+            Div(attrs = { classes(Styles.studyPreparingMeanings) }) {
+                MaterialSymbol("progress_activity")
+                Text(strings.chatExpressLoading)
+            }
+        }
+        generateError != null -> {
+            Div(attrs = { classes(Styles.studyWriteBlock) }) {
+                P(attrs = {
+                    classes(Styles.studyWriteFeedback)
+                    attr("role", "status")
+                }) { Text(generateError!!) }
+                Button(attrs = {
+                    classes(Styles.chip)
+                    attr("type", "button")
+                    onClick {
+                        generateError = null
+                        generateMore()
+                    }
+                }) { Text(strings.chatPlayRetry) }
+            }
+        }
+        queue.isEmpty() -> {
+            Div(attrs = { classes(Styles.studyPreparingMeanings) }) {
+                MaterialSymbol("progress_activity")
+                Text(strings.chatExpressEmpty)
+            }
+        }
+    }
+}
+
+@Composable
+private fun StudySpeakPracticeCard(
+    item: StudyExampleSentence,
+    itemIndex: Int,
+    sessionText: String,
+    textLanguageTag: String,
+    strings: UiStrings,
+    canStart: Boolean,
+    onActiveChange: (Boolean) -> Unit,
+    onComplete: () -> Unit,
+) {
+    val scope = rememberCoroutineScope()
+    var progress by remember(sessionText, itemIndex, item.text) { mutableStateOf(StudySpeakProgress()) }
+    var attempts by remember(sessionText, itemIndex, item.text) { mutableStateOf(emptyList<String>()) }
+    var targetAudioUrl by remember(sessionText, itemIndex, item.text) { mutableStateOf<String?>(null) }
+    var error by remember(sessionText, itemIndex, item.text) { mutableStateOf<String?>(null) }
+    var starting by remember(sessionText, itemIndex, item.text) { mutableStateOf(false) }
+    val streamRef = remember { mutableStateOf<dynamic>(null) }
+    val recorderRef = remember { mutableStateOf<dynamic>(null) }
+    val disposed = remember { mutableStateOf(false) }
+    val ownedRecordingUrls = remember { mutableListOf<String>() }
+    val latestPhase = rememberUpdatedState(progress.phase)
+    val playingAttemptIndex = studySpeakPlayingAttemptIndex(
+        targetAudioUrl = targetAudioUrl,
+        recordingUrls = attempts,
+        playlistUrls = studyAudioPlaylistUrls,
+        playlistIndex = studyAudioPlaylistIndex,
+        isPlaying = studyAudioPlaylistActive && studyAudioPlayingUrl != null,
+    )
+
+    fun releaseStream() {
+        releaseStudySpeakStream(streamRef.value)
+        streamRef.value = null
+    }
+
+    fun failPractice() {
+        val recorder = recorderRef.value
+        if (recorder != null) {
+            recorder.ondataavailable = null
+            recorder.onstop = null
+            if (recorder.state == "recording") runCatching { recorder.stop() }
+        }
+        recorderRef.value = null
+        releaseStream()
+        stopActiveStudyAudio()
+        ownedRecordingUrls.forEach { url -> window.asDynamic().URL.revokeObjectURL(url) }
+        ownedRecordingUrls.clear()
+        attempts = emptyList()
+        progress = StudySpeakProgress()
+        starting = false
+        error = strings.chatSpeakError
+        onActiveChange(false)
+    }
+
+    fun beginRecording() {
+        if (disposed.value || progress.phase != StudySpeakPhase.LISTENING) return
+        val activeStream = streamRef.value ?: run {
+            failPractice()
+            return
+        }
+        try {
+            val chunks = js("[]")
+            val recorder = js("new MediaRecorder(activeStream)")
+            recorder.ondataavailable = { event: dynamic ->
+                if (event.data != null && event.data.size > 0) chunks.push(event.data)
+            }
+            recorder.onstop = {
+                recorder.ondataavailable = null
+                recorder.onstop = null
+                if (!disposed.value) {
+                    val result = runCatching {
+                        val blob = js("new Blob(chunks, { type: recorder.mimeType || 'audio/webm' })")
+                        window.asDynamic().URL.createObjectURL(blob) as String
+                    }
+                    result.onSuccess { recordingUrl ->
+                        ownedRecordingUrls += recordingUrl
+                        attempts = attempts + recordingUrl
+                        recorderRef.value = null
+                        val nextProgress = finishStudySpeakRecording(progress)
+                        progress = nextProgress
+                        if (nextProgress.phase == StudySpeakPhase.REVIEW) {
+                            releaseStream()
+                            onActiveChange(false)
+                            onComplete()
+                            targetAudioUrl?.let { targetUrl ->
+                                playAudioSequence(studySpeakReviewPlaylist(targetUrl, attempts))
+                            }
+                        } else {
+                            val nextAudioUrl = targetAudioUrl
+                            if (nextAudioUrl == null) {
+                                failPractice()
+                            } else {
+                                playAudio(nextAudioUrl, restart = true) { beginRecording() }
+                            }
+                        }
+                    }.onFailure { failPractice() }
+                }
+            }
+            recorderRef.value = recorder
+            recorder.start()
+            progress = finishStudySpeakListen(progress)
+        } catch (_: Throwable) {
+            failPractice()
+        }
+    }
+
+    fun finishRecording() {
+        val recorder = recorderRef.value ?: return
+        if (progress.phase == StudySpeakPhase.SPEAKING && recorder.state == "recording") {
+            runCatching { recorder.stop() }.onFailure { failPractice() }
+        }
+    }
+
+    fun restartPractice() {
+        val recorder = recorderRef.value
+        if (recorder != null) {
+            recorder.ondataavailable = null
+            recorder.onstop = null
+            if (recorder.state == "recording") runCatching { recorder.stop() }
+        }
+        recorderRef.value = null
+        releaseStream()
+        stopActiveStudyAudio()
+        ownedRecordingUrls.forEach { url -> window.asDynamic().URL.revokeObjectURL(url) }
+        ownedRecordingUrls.clear()
+        attempts = emptyList()
+        targetAudioUrl = null
+        progress = resetStudySpeak(progress)
+        starting = false
+        error = null
+        onActiveChange(false)
+    }
+
+    fun startPractice() {
+        if (!canStart || starting || progress.phase != StudySpeakPhase.READY) return
+        onActiveChange(true)
+        starting = true
+        error = null
+        val mediaDevices = window.navigator.asDynamic().mediaDevices
+        if (mediaDevices == null) {
+            failPractice()
+            return
+        }
+        val request = try {
+            mediaDevices.getUserMedia(js("({audio:{echoCancellation:true,noiseSuppression:true},video:false})"))
+        } catch (_: Throwable) {
+            failPractice()
+            return
+        }
+        request.then(
+            { stream: dynamic ->
+                if (disposed.value) {
+                    releaseStudySpeakStream(stream)
+                    return@then null
+                }
+                streamRef.value = stream
+                scope.launch {
+                    val audioUrl = runCatching {
+                        loadStudySpeechDataUrl(SpeechRequest(item.text, textLanguageTag))
+                    }.getOrNull()
+                    if (disposed.value) return@launch
+                    if (audioUrl == null) {
+                        failPractice()
+                    } else {
+                        targetAudioUrl = audioUrl
+                        progress = startStudySpeak(progress)
+                        starting = false
+                        playAudio(audioUrl, restart = true) { beginRecording() }
+                    }
+                }
+                null
+            },
+            { _: dynamic ->
+                if (!disposed.value) failPractice()
+                null
+            },
+        )
+    }
+
+    val latestFinishRecording = rememberUpdatedState { finishRecording() }
+    DisposableEffect(Unit) {
+        val onKey: (Event) -> Unit = { event ->
+            val key = event.asDynamic().key as? String
+            if ((key == " " || key == "Spacebar") && latestPhase.value == StudySpeakPhase.SPEAKING) {
+                val target = event.target as? HTMLElement
+                if (!watchKeyboardTargetIsEditable(target)) {
+                    event.preventDefault()
+                    latestFinishRecording.value()
+                }
+            }
+        }
+        window.addEventListener("keydown", onKey)
+        onDispose {
+            disposed.value = true
+            window.removeEventListener("keydown", onKey)
+            val recorder = recorderRef.value
+            if (recorder != null) {
+                recorder.ondataavailable = null
+                recorder.onstop = null
+                if (recorder.state == "recording") runCatching { recorder.stop() }
+            }
+            recorderRef.value = null
+            releaseStream()
+            ownedRecordingUrls.forEach { url -> window.asDynamic().URL.revokeObjectURL(url) }
+            ownedRecordingUrls.clear()
+            stopActiveStudyAudio()
+        }
+    }
+
+    Div(attrs = { classes(Styles.studySpeakBlock) }) {
+        P(attrs = { classes(Styles.studySpeakPrompt) }) {
+            Text(item.translation.ifBlank { item.text })
+        }
+        if (progress.phase == StudySpeakPhase.READY) {
+            Button(attrs = {
+                classes(Styles.btnPrimary)
+                attr("type", "button")
+                if (!canStart || starting) attr("disabled", "")
+                onClick { startPractice() }
+            }) {
+                MaterialSymbol(if (starting) "progress_activity" else "play_arrow")
+                Text(strings.chatSpeakStart)
+            }
+        } else if (progress.phase == StudySpeakPhase.REVIEW) {
+            Div(attrs = { classes(Styles.studySpeakActions) }) {
+                Button(attrs = {
+                    classes(Styles.btnPrimary)
+                    attr("type", "button")
+                    onClick { restartPractice() }
+                }) {
+                    MaterialSymbol("replay")
+                    Text(strings.chatSpeakRestart)
+                }
+            }
+            P(attrs = { classes(Styles.studySpeakPrompt) }) { Text(item.text) }
+            Div(attrs = { classes(Styles.studySpeakAttempts) }) {
+                attempts.forEachIndexed { attemptIndex, recordingUrl ->
+                    val isPlaying = playingAttemptIndex == attemptIndex
+                    Button(attrs = {
+                        classes(Styles.studySpeakAttemptButton)
+                        attr("type", "button")
+                        attr(
+                            "aria-label",
+                            if (isPlaying) strings.chatSpeakStopAttempt(attemptIndex + 1)
+                            else strings.chatSpeakPlayAttempt(attemptIndex + 1),
+                        )
+                        onClick {
+                            if (isPlaying) {
+                                stopActiveStudyAudio()
+                            } else {
+                                targetAudioUrl?.let { targetUrl ->
+                                    playAudioSequence(listOf(targetUrl, recordingUrl))
+                                }
+                            }
+                        }
+                    }) {
+                        MaterialSymbol(if (isPlaying) "stop_circle" else "play_circle")
+                        Text(
+                            if (isPlaying) strings.chatSpeakStopAttempt(attemptIndex + 1)
+                            else strings.chatSpeakPlayAttempt(attemptIndex + 1),
+                        )
+                    }
+                }
+            }
+        } else {
+            Div(attrs = {
+                classes(Styles.studySpeakPhases)
+                attr("aria-live", "polite")
+            }) {
+                val listening = progress.phase == StudySpeakPhase.LISTENING
+                val speaking = progress.phase == StudySpeakPhase.SPEAKING
+                Span(attrs = {
+                    classes(Styles.studySpeakPhase)
+                    if (listening) classes(Styles.studySpeakPhaseActive)
+                    attr("aria-pressed", listening.toString())
+                }) {
+                    MaterialSymbol("hearing")
+                    Text(strings.chatSpeakListen)
+                }
+                Span(attrs = {
+                    classes(Styles.studySpeakPhase)
+                    if (speaking) classes(Styles.studySpeakPhaseActive)
+                    attr("aria-pressed", speaking.toString())
+                }) {
+                    MaterialSymbol("mic")
+                    Text(strings.chatSpeakSpeak)
+                }
+                Span(attrs = { classes(Styles.studySpeakRound) }) {
+                    Text(strings.chatSpeakRound(progress.roundIndex + 1, STUDY_SPEAK_ROUNDS))
+                }
+            }
+            if (progress.phase == StudySpeakPhase.SPEAKING) {
+                Div(attrs = { classes(Styles.studySpeakActions) }) {
+                    Button(attrs = {
+                        classes(Styles.btnPrimary)
+                        attr("type", "button")
+                        onClick { finishRecording() }
+                    }) {
+                        MaterialSymbol("stop_circle")
+                        Text(strings.chatSpeakFinish)
+                    }
+                }
+            }
+        }
+        if (error != null) {
+            P(attrs = {
+                classes(Styles.studyWriteFeedback)
+                attr("role", "alert")
+            }) { Text(error!!) }
+        }
+    }
+}
+
+private fun releaseStudySpeakStream(stream: dynamic) {
+    if (stream == null) return
+    runCatching {
+        stream.getTracks().forEach { track: dynamic -> track.stop() }
     }
 }
 
@@ -6073,7 +6601,7 @@ internal fun playAudio(url: String, restart: Boolean = false, onEnded: (() -> Un
  * Plays sentence clips back-to-back (used by the Read tab full-text control).
  * Tapping again while the playlist is playing stops playback.
  */
-private fun playAudioSequence(urls: List<String>, toggleIfPlaying: Boolean = false) {
+internal fun playAudioSequence(urls: List<String>, toggleIfPlaying: Boolean = false) {
     if (urls.isEmpty()) return
     val current = activeStudyAudio
     if (

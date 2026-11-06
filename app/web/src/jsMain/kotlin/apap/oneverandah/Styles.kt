@@ -448,6 +448,15 @@ object Styles {
     const val studyWriteChecking = "study-write-checking"
     const val studyPracticeInputRow = "study-practice-input-row"
     const val studyPracticeRevealButton = "study-practice-reveal-button"
+    const val studySpeakBlock = "study-speak-block"
+    const val studySpeakPrompt = "study-speak-prompt"
+    const val studySpeakPhases = "study-speak-phases"
+    const val studySpeakPhase = "study-speak-phase"
+    const val studySpeakPhaseActive = "study-speak-phase-active"
+    const val studySpeakRound = "study-speak-round"
+    const val studySpeakActions = "study-speak-actions"
+    const val studySpeakAttempts = "study-speak-attempts"
+    const val studySpeakAttemptButton = "study-speak-attempt-button"
     const val studyPlayBlock = "study-play-block"
     const val studyPlayDescription = "study-play-description"
     const val studyPlayLine = "study-play-line"
@@ -3563,6 +3572,77 @@ object Styles {
             font-size: 18px;
             line-height: 1.45;
             font-weight: 600;
+        }
+        .${studySpeakBlock} {
+            display: flex;
+            flex-direction: column;
+            gap: 12px;
+            padding: 12px;
+            border-radius: 16px;
+            background: color-mix(in srgb, var(--md-sys-color-primary) 5%, var(--md-sys-color-surface));
+        }
+        .${studySpeakPrompt} {
+            margin: 0;
+            font-size: 18px;
+            line-height: 1.45;
+            font-weight: 600;
+        }
+        .${studySpeakPhases} {
+            display: flex;
+            flex-wrap: wrap;
+            align-items: center;
+            gap: 8px;
+        }
+        .${studySpeakPhase} {
+            display: inline-flex;
+            align-items: center;
+            gap: 6px;
+            padding: 6px 12px;
+            border: 1px solid var(--md-sys-color-outline);
+            border-radius: 999px;
+            color: var(--md-sys-color-on-surface-variant);
+            background: var(--md-sys-color-surface);
+            font-size: 13px;
+            font-weight: 600;
+        }
+        .${studySpeakPhaseActive} {
+            border-color: var(--md-sys-color-primary);
+            color: var(--md-sys-color-on-primary-container);
+            background: var(--md-sys-color-primary-container);
+        }
+        .${studySpeakRound} {
+            color: var(--md-sys-color-on-surface-variant);
+            font-size: 13px;
+            font-variant-numeric: tabular-nums;
+        }
+        .${studySpeakActions} {
+            display: flex;
+            flex-wrap: wrap;
+            gap: 8px;
+        }
+        .${studySpeakAttempts} {
+            display: flex;
+            flex-wrap: wrap;
+            gap: 8px;
+        }
+        .${studySpeakAttemptButton} {
+            display: inline-flex;
+            align-items: center;
+            gap: 6px;
+            min-height: 40px;
+            padding: 8px 12px;
+            border: 1px solid var(--md-sys-color-outline);
+            border-radius: 999px;
+            background: var(--md-sys-color-surface);
+            color: var(--md-sys-color-primary);
+            cursor: pointer;
+        }
+        .${studySpeakAttemptButton}:hover {
+            background: color-mix(in srgb, var(--md-sys-color-primary) 8%, var(--md-sys-color-surface));
+        }
+        .${studySpeakAttemptButton}:focus-visible {
+            outline: 2px solid var(--md-sys-color-primary);
+            outline-offset: 2px;
         }
         .${studyWriteCorrect} {
             display: inline-flex;
