@@ -446,6 +446,8 @@ object Styles {
     const val studyWriteCorrect = "study-write-correct"
     const val studyWriteFeedback = "study-write-feedback"
     const val studyWriteChecking = "study-write-checking"
+    const val studyPracticeInputRow = "study-practice-input-row"
+    const val studyPracticeRevealButton = "study-practice-reveal-button"
     const val studyPlayBlock = "study-play-block"
     const val studyPlayDescription = "study-play-description"
     const val studyPlayLine = "study-play-line"
@@ -3525,6 +3527,37 @@ object Styles {
             border-radius: 16px;
             background: color-mix(in srgb, var(--md-sys-color-primary) 5%, var(--md-sys-color-surface));
         }
+        .${studyPracticeInputRow} {
+            display: flex;
+            align-items: stretch;
+            gap: 8px;
+        }
+        .${studyPracticeInputRow} > :first-child {
+            flex: 1;
+            min-width: 0;
+        }
+        .${studyPracticeRevealButton} {
+            display: grid;
+            flex: 0 0 44px;
+            place-items: center;
+            min-height: 44px;
+            padding: 0;
+            border: 1px solid var(--md-sys-color-outline);
+            border-radius: 14px;
+            background: var(--md-sys-color-surface);
+            color: var(--md-sys-color-primary);
+            cursor: pointer;
+        }
+        .${studyPracticeRevealButton}:hover {
+            background: color-mix(in srgb, var(--md-sys-color-primary) 8%, var(--md-sys-color-surface));
+        }
+        .${studyPracticeRevealButton}:focus-visible {
+            outline: 2px solid var(--md-sys-color-primary);
+            outline-offset: 2px;
+        }
+        .${studyPracticeRevealButton} .${materialSymbols} {
+            font-size: 20px;
+        }
         .${studyWritePrompt} {
             margin: 0;
             font-size: 18px;
@@ -3845,11 +3878,29 @@ object Styles {
             animation: adventure-slide-in 300ms ease both;
         }
         .study-adventure-prompt-sentence {
+            display: block;
+            width: 100%;
             max-width: 900px;
             margin: 0;
+            padding: 0;
+            border: 0;
+            background: transparent;
+            color: inherit;
+            font: inherit;
             font-size: clamp(24px, 5vw, 46px);
             font-weight: 800;
             line-height: 1.25;
+            text-align: center;
+            cursor: pointer;
+        }
+        .study-adventure-prompt-sentence:disabled {
+            opacity: .6;
+            cursor: wait;
+        }
+        .study-adventure-prompt-sentence:focus-visible {
+            outline: 2px solid rgba(255,255,255,.8);
+            outline-offset: 8px;
+            border-radius: 4px;
         }
         .study-adventure-stage {
             margin: 0;

@@ -398,6 +398,13 @@ internal fun StudyAdventureTab(
         audioReady = true
     }
 
+    LaunchedEffect(screen, currentSentence?.text, audioReady) {
+        if (screen != AdventureScreen.INTRO || !audioReady) return@LaunchedEffect
+        currentSentence?.text?.let { text ->
+            audio[text]?.let { playAudio(it, restart = true) }
+        }
+    }
+
     LaunchedEffect(screen, stage, promptIndex, health, sentenceIndex, activeLevelIndex, celebratingIndex) {
         if (screen != AdventureScreen.PLAYING || promptIndex == null || celebratingIndex != null) return@LaunchedEffect
         val targetIndex = promptIndex ?: return@LaunchedEffect
@@ -518,7 +525,13 @@ internal fun StudyAdventureTab(
                         Text(adventureStageIntro(copy.level(levelIndex + 1), sentenceIndex + 1, totalStages))
                     }
                     if (sentence != null) {
-                        P(attrs = { classes(Styles.studyAdventurePromptSentence) }) { Text(sentence.text) }
+                        Button(attrs = {
+                            classes(Styles.studyAdventurePromptSentence)
+                            attr("type", "button")
+                            attr("aria-label", strings.chatStudyPlaySentence)
+                            if (!audioReady) attr("disabled", "")
+                            onClick { audio[sentence.text]?.let { playAudio(it, restart = true) } }
+                        }) { Text(sentence.text) }
                     }
                     if (!audioReady) {
                         P(attrs = { classes(Styles.studyAdventureHint) }) {

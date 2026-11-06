@@ -38,11 +38,18 @@ class StudyWordsTabTest {
 
         assertEquals(
             listOf(
-                StudyVocabularyRow(0, 0, "Hola", "greeting"),
-                StudyVocabularyRow(0, 3, "mundo", "world"),
+                StudyVocabularyRow(0, 0, "Hola", "greeting", "hello"),
+                StudyVocabularyRow(0, 3, "mundo", "world", "world"),
             ),
             rows,
         )
+    }
+
+    @Test
+    fun `vocabulary meaning lines prefer literal and include a distinct contextual meaning`() {
+        assertEquals(listOf("to leave", "to go away"), studyVocabularyMeaningLines("to leave", "to go away"))
+        assertEquals(listOf("hello"), studyVocabularyMeaningLines("hello", "hello"))
+        assertEquals(listOf("greeting"), studyVocabularyMeaningLines("", "greeting"))
     }
 
     @Test

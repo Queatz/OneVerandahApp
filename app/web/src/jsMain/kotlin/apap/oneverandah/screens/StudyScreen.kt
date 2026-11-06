@@ -2420,7 +2420,18 @@ internal data class StudyVocabularyRow(
     val tokenIndex: Int,
     val word: String,
     val meaning: String,
+    val literalMeaning: String,
 )
+
+internal fun studyVocabularyMeaningLines(literalMeaning: String, contextualMeaning: String): List<String> {
+    val literal = literalMeaning.trim()
+    val contextual = contextualMeaning.trim()
+    val primary = literal.ifBlank { contextual }
+    return listOfNotNull(
+        primary.takeIf(String::isNotBlank),
+        contextual.takeIf { it.isNotBlank() && it != primary },
+    )
+}
 
 internal fun studyVocabularyRows(sentences: List<StudySentence>): List<StudyVocabularyRow> {
     val seenWords = mutableSetOf<String>()
@@ -2435,6 +2446,7 @@ internal fun studyVocabularyRows(sentences: List<StudySentence>): List<StudyVoca
                             tokenIndex = tokenIndex,
                             word = word,
                             meaning = token.contextualMeaning.ifBlank { token.literalMeaning },
+                            literalMeaning = token.literalMeaning,
                         ),
                     )
                 }
@@ -2477,7 +2489,17 @@ private fun StudyWordsTab(
                             onClick { onWordClick(row) }
                         }) { Text(row.word) }
                     }
-                    Td { Text(row.meaning) }
+                    Td {
+                        studyVocabularyMeaningLines(row.literalMeaning, row.meaning).forEachIndexed { index, meaning ->
+                            P {
+                                if (index == 0) {
+                                    B { Text(meaning) }
+                                } else {
+                                    Text(meaning)
+                                }
+                            }
+                        }
+                    }
                 }
             }
         }
@@ -4286,10 +4308,23 @@ private fun StudyExpressPracticeCard(
     onCorrect: () -> Unit,
 ) {
     val scope = rememberCoroutineScope()
+    val exampleAudio = remember(sessionText, textLanguageTag) { mutableStateMapOf<String, String>() }
     var draft by remember(sessionText, itemIndex, item.text, item.translation) { mutableStateOf("") }
     var checking by remember(sessionText, itemIndex, item.text, item.translation) { mutableStateOf(false) }
     var feedback by remember(sessionText, itemIndex, item.text, item.translation) { mutableStateOf<String?>(null) }
     var correct by remember(sessionText, itemIndex, item.text, item.translation) { mutableStateOf(false) }
+
+    fun speakTargetSentence() {
+        val spokenText = item.text.trim()
+        if (spokenText.isEmpty()) return
+        val cacheKey = "$textLanguageTag|$spokenText"
+        scope.launch {
+            val url = exampleAudio[cacheKey] ?: runCatching {
+                loadStudySpeechDataUrl(SpeechRequest(spokenText, textLanguageTag))
+            }.getOrNull()?.also { exampleAudio[cacheKey] = it } ?: return@launch
+            playAudio(url, restart = true)
+        }
+    }
 
     fun check(value: String?) {
         val candidate = value?.trim().orEmpty()
@@ -4340,18 +4375,25 @@ private fun StudyExpressPracticeCard(
                 Span { Text(strings.chatExpressCorrect) }
             }
         } else {
-            ChatInput(
-                value = draft,
-                onValueChange = {
-                    draft = it
-                    if (feedback != null) feedback = null
-                },
-                onSend = { check(it) },
-                placeholder = strings.chatExpressPlaceholder,
-                languageTag = textLanguageTag,
-                multiline = item.translation.length > 48,
-                autoFocus = autoFocus,
-            )
+            Div(attrs = { classes(Styles.studyPracticeInputRow) }) {
+                ChatInput(
+                    value = draft,
+                    onValueChange = {
+                        draft = it
+                        if (feedback != null) feedback = null
+                    },
+                    onSend = { check(it) },
+                    placeholder = strings.chatExpressPlaceholder,
+                    languageTag = textLanguageTag,
+                    multiline = item.translation.length > 48,
+                    autoFocus = autoFocus,
+                )
+                StudyPracticeRevealButton(strings) {
+                    draft = item.text
+                    feedback = null
+                    speakTargetSentence()
+                }
+            }
             when {
                 checking -> {
                     Div(attrs = {
@@ -4565,12 +4607,22 @@ private fun StudyListenPracticeCard(
     var feedback by remember(sessionText, itemIndex, item.text) { mutableStateOf<String?>(null) }
     var correct by remember(sessionText, itemIndex, item.text) { mutableStateOf(false) }
     var focusNonce by remember(sessionText, itemIndex, item.text) { mutableStateOf(0) }
+    var playWhenReady by remember(sessionText, itemIndex, item.text) { mutableStateOf(false) }
     val audioReady = audioUrl != null
     val playing = audioUrl?.let(::isStudyAudioPlaying) == true
     val playLabel = when {
         correct -> item.text
         playing -> strings.chatStudyPauseSentence
         else -> strings.chatStudyPlaySentence
+    }
+
+    LaunchedEffect(audioUrl, audioFailed, playWhenReady) {
+        if (audioFailed) {
+            playWhenReady = false
+        } else if (playWhenReady && audioUrl != null) {
+            playWhenReady = false
+            playAudio(audioUrl, restart = true)
+        }
     }
 
     fun check(value: String?) {
@@ -4653,20 +4705,39 @@ private fun StudyListenPracticeCard(
                 Span { Text(strings.chatExpressCorrect) }
             }
         } else {
-            ChatInput(
-                value = draft,
-                onValueChange = {
-                    draft = it
-                    if (feedback != null) feedback = null
-                },
-                onSend = { check(it) },
-                placeholder = strings.chatListenPlaceholder,
-                languageTag = languageTag,
-                multiline = item.translation.length > 48,
-                autoFocus = autoFocus,
-                highlighted = played,
-                focusNonce = focusNonce,
-            )
+            Div(attrs = { classes(Styles.studyPracticeInputRow) }) {
+                ChatInput(
+                    value = draft,
+                    onValueChange = {
+                        draft = it
+                        if (feedback != null) feedback = null
+                    },
+                    onSend = { check(it) },
+                    placeholder = strings.chatListenPlaceholder,
+                    languageTag = languageTag,
+                    multiline = item.translation.length > 48,
+                    autoFocus = autoFocus,
+                    highlighted = played,
+                    focusNonce = focusNonce,
+                )
+                StudyPracticeRevealButton(strings) {
+                    draft = item.translation.ifBlank { item.text }
+                    feedback = null
+                    played = true
+                    focusNonce += 1
+                    if (audioUrl != null) {
+                        playWhenReady = false
+                        playAudio(audioUrl, restart = true)
+                    } else if (audioLoading) {
+                        playWhenReady = true
+                    } else {
+                        playWhenReady = false
+                        onRequestAudio { url ->
+                            playAudio(url, restart = true)
+                        }
+                    }
+                }
+            }
             when {
                 checking -> {
                     Div(attrs = {
@@ -4685,6 +4756,19 @@ private fun StudyListenPracticeCard(
                 }
             }
         }
+    }
+}
+
+@Composable
+private fun StudyPracticeRevealButton(strings: UiStrings, onClick: () -> Unit) {
+    Button(attrs = {
+        classes(Styles.studyPracticeRevealButton)
+        attr("type", "button")
+        attr("aria-label", strings.chatPracticeReveal)
+        attr("title", strings.chatPracticeReveal)
+        onClick { onClick() }
+    }) {
+        MaterialSymbol("visibility")
     }
 }
 
