@@ -480,7 +480,6 @@ internal fun StudyAdventureTab(
 
         when (screen) {
             AdventureScreen.OVERWORLD -> {
-                P(attrs = { classes(Styles.studyAdventureHint) }) { Text(copy.overworldHint) }
                 if (levels.isEmpty()) {
                     Div(attrs = { classes(Styles.studyAdventureEmpty) }) { Text(copy.preparing) }
                 } else {

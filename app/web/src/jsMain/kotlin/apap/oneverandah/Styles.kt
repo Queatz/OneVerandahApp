@@ -4047,7 +4047,7 @@ object Styles {
         @media (max-width: 560px) {
             .study-adventure-shell { min-height: 340px; padding: 12px; }
             .study-adventure-level { min-height: 105px; padding: 11px; }
-            .study-adventure-play { min-height: 330px; padding: 16px 10px; }
+            .study-adventure-play { min-height: 330px; padding: 16px; }
         }
         .study-adventure-shell.study-adventure-fullscreen .study-adventure-words {
             display: flex;

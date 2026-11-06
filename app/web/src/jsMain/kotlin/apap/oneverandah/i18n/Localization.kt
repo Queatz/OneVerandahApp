@@ -38,7 +38,6 @@ class StudyTestStrings(
 
 class StudyAdventureStrings(
     val tab: String,
-    val overworldHint: String,
     val level: (number: Int) -> String,
     val locked: String,
     val preparing: String,
@@ -1079,7 +1078,6 @@ private val English = UiStrings(
     ),
     chatAdventure = StudyAdventureStrings(
         tab = "Adventure",
-        overworldHint = "Explore the photo map. Finish each level to unlock the next.",
         level = { number -> "Level $number" },
         locked = "Locked",
         preparing = "Levels appear when word meanings are ready.",
@@ -1751,7 +1749,6 @@ private val Vietnamese = UiStrings(
     ),
     chatAdventure = StudyAdventureStrings(
         tab = "Phiêu lưu",
-        overworldHint = "Khám phá bản đồ ảnh. Hoàn thành từng màn để mở màn tiếp theo.",
         level = { number -> "Màn $number" },
         locked = "Đã khóa",
         preparing = "Các màn sẽ hiện khi nghĩa của từ đã sẵn sàng.",
@@ -2422,7 +2419,6 @@ private val Chinese = UiStrings(
     ),
     chatAdventure = StudyAdventureStrings(
         tab = "冒险",
-        overworldHint = "探索照片地图。完成每一关即可解锁下一关。",
         level = { number -> "第 $number 关" },
         locked = "已锁定",
         preparing = "词义准备好后，关卡就会显示。",
@@ -3093,7 +3089,6 @@ private val Japanese = UiStrings(
     ),
     chatAdventure = StudyAdventureStrings(
         tab = "アドベンチャー",
-        overworldHint = "写真のマップを探索しよう。各レベルをクリアすると次が開きます。",
         level = { number -> "レベル $number" },
         locked = "ロック中",
         preparing = "単語の意味が準備できるとレベルが表示されます。",
@@ -3764,7 +3759,6 @@ private val Korean = UiStrings(
     ),
     chatAdventure = StudyAdventureStrings(
         tab = "모험",
-        overworldHint = "사진 지도를 탐험하세요. 각 레벨을 완료하면 다음 레벨이 열립니다.",
         level = { number -> "레벨 $number" },
         locked = "잠김",
         preparing = "단어 뜻이 준비되면 레벨이 표시됩니다.",
@@ -4435,7 +4429,6 @@ private val Russian = UiStrings(
     ),
     chatAdventure = StudyAdventureStrings(
         tab = "Приключение",
-        overworldHint = "Исследуйте карту с фотографиями. Пройдите уровень, чтобы открыть следующий.",
         level = { number -> "Уровень $number" },
         locked = "Закрыто",
         preparing = "Уровни появятся, когда будут готовы значения слов.",
@@ -5107,7 +5100,6 @@ private val Spanish = UiStrings(
     ),
     chatAdventure = StudyAdventureStrings(
         tab = "Aventura",
-        overworldHint = "Explora el mapa de fotos. Completa cada nivel para desbloquear el siguiente.",
         level = { number -> "Nivel $number" },
         locked = "Bloqueado",
         preparing = "Los niveles aparecerán cuando los significados estén listos.",
@@ -5779,7 +5771,6 @@ private val German = UiStrings(
     ),
     chatAdventure = StudyAdventureStrings(
         tab = "Abenteuer",
-        overworldHint = "Erkunde die Fotokarte. Schließe jedes Level ab, um das nächste freizuschalten.",
         level = { number -> "Level $number" },
         locked = "Gesperrt",
         preparing = "Level erscheinen, sobald die Wortbedeutungen bereit sind.",
@@ -6451,7 +6442,6 @@ private val Burmese = UiStrings(
     ),
     chatAdventure = StudyAdventureStrings(
         tab = "စွန့်စားခန်း",
-        overworldHint = "ဓာတ်ပုံမြေပုံကို စူးစမ်းပါ။ နောက်တစ်ဆင့်ကို ဖွင့်ရန် အဆင့်တိုင်းကို ���ြီးအောင်လုပ်ပါ။",
         level = { number -> "အဆင့် $number" },
         locked = "သော့ခတ်ထားသည်",
         preparing = "စကားလုံးအဓိပ္ပာယ်များ အဆင်သင့်ဖြစ်လျှင် အဆင့်များ ပေါ်လာပါမည်။",
