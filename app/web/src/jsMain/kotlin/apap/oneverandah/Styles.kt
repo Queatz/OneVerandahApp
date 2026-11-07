@@ -437,6 +437,10 @@ object Styles {
     const val studyCreationProgressStepLabel = "study-creation-progress-step-label"
     const val studyCreationProgressStepCount = "study-creation-progress-step-count"
     const val studyModeTabs = "study-mode-tabs"
+    const val studySearchToggle = "study-search-toggle"
+    const val studySearchPanel = "study-search-panel"
+    const val studySearchFields = "study-search-fields"
+    const val studySearchField = "study-search-field"
     const val studyReadBlock = "study-read-block"
     const val studyReadSentence = "study-read-sentence"
     const val studyReadBreak = "study-read-break"
@@ -3505,7 +3509,57 @@ object Styles {
         .${studyModeTabs} {
             display: flex;
             flex-wrap: wrap;
+            align-items: center;
             gap: 8px;
+        }
+        .${studySearchToggle} {
+            display: grid;
+            flex: 0 0 40px;
+            margin-left: auto;
+            place-items: center;
+            width: 40px;
+            height: 40px;
+            padding: 0;
+            border: 1px solid var(--md-sys-color-outline);
+            border-radius: 999px;
+            background: var(--md-sys-color-surface);
+            color: var(--md-sys-color-on-surface-variant);
+            cursor: pointer;
+        }
+        .${studySearchToggle}.${chipActive} {
+            border-color: var(--md-sys-color-primary);
+            background: color-mix(in srgb, var(--md-sys-color-primary) 12%, var(--md-sys-color-surface));
+            color: var(--md-sys-color-primary);
+        }
+        .${studySearchToggle}:focus-visible {
+            outline: 2px solid var(--md-sys-color-primary);
+            outline-offset: 2px;
+        }
+        .${studySearchToggle} .${materialSymbols} { font-size: 20px; }
+        .${studySearchPanel} {
+            margin: 12px 0;
+            padding: 14px;
+            border: 1px solid var(--md-sys-color-outline);
+            border-radius: 16px;
+            background: var(--md-sys-color-surface);
+        }
+        .${studySearchFields} {
+            display: grid;
+            grid-template-columns: repeat(auto-fit, minmax(180px, 1fr));
+            gap: 12px;
+        }
+        .${studySearchField} {
+            display: flex;
+            flex-direction: column;
+            gap: 6px;
+            min-width: 0;
+            color: var(--md-sys-color-on-surface-variant);
+            font-size: 13px;
+            font-weight: 600;
+        }
+        .${studySearchField} .${textInput} {
+            padding: 12px;
+            border-radius: 12px;
         }
         .${studyReadPlay} {
             align-self: stretch;

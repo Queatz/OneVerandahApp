@@ -87,6 +87,8 @@ import kotlinx.coroutines.sync.withPermit
 import kotlinx.coroutines.withContext
 import org.jetbrains.compose.web.attributes.InputType
 import org.jetbrains.compose.web.attributes.autoFocus
+import org.jetbrains.compose.web.attributes.placeholder
+import org.jetbrains.compose.web.attributes.selected
 import org.jetbrains.compose.web.css.DisplayStyle
 import org.jetbrains.compose.web.css.FlexDirection
 import org.jetbrains.compose.web.css.cssRem
@@ -102,6 +104,8 @@ import org.jetbrains.compose.web.dom.Label
 import org.jetbrains.compose.web.dom.Li
 import org.jetbrains.compose.web.dom.Ol
 import org.jetbrains.compose.web.dom.P
+import org.jetbrains.compose.web.dom.Option
+import org.jetbrains.compose.web.dom.Select
 import org.jetbrains.compose.web.dom.Span
 import org.jetbrains.compose.web.dom.Table
 import org.jetbrains.compose.web.dom.Tbody
@@ -115,6 +119,7 @@ import org.w3c.dom.HTMLAudioElement
 import org.w3c.dom.HTMLElement
 import org.w3c.dom.HTMLImageElement
 import org.w3c.dom.HTMLInputElement
+import org.w3c.dom.HTMLSelectElement
 import org.w3c.dom.events.Event
 import kotlin.js.Date
 
@@ -1282,7 +1287,16 @@ private fun StudySessionsList(
     var exact by remember { mutableStateOf(false) }
     var pendingRemove by remember { mutableStateOf<SavedStudySessionSummary?>(null) }
     var filter by remember { mutableStateOf(StudySessionsFilter.ALL) }
+    var searchOpen by remember { mutableStateOf(false) }
+    var searchQuery by remember { mutableStateOf("") }
+    var sourceLanguageTag by remember { mutableStateOf("") }
+    var targetLanguageTag by remember { mutableStateOf("") }
     val loadMoreCommunity by rememberUpdatedState(onLoadMoreCommunity)
+    val searchLanguageTags = (items + communityItems)
+        .flatMap { listOf(it.textLanguageTag, it.languageTag) }
+        .map(Language::normalizeContentTag)
+        .distinct()
+        .sorted()
 
     Div(attrs = { classes(Styles.savedPanelBody) }) {
         P(attrs = { classes(Styles.homePrompt, Styles.homePromptLarge) }) {
@@ -1334,8 +1348,81 @@ private fun StudySessionsList(
                 attr("aria-pressed", (filter == StudySessionsFilter.COMMUNITY).toString())
                 onClick { filter = StudySessionsFilter.COMMUNITY }
             }) { Text(strings.chatStudySessionsCommunity) }
+            Button(attrs = {
+                classes(Styles.studySearchToggle)
+                if (searchOpen || searchQuery.isNotBlank() || sourceLanguageTag.isNotBlank() || targetLanguageTag.isNotBlank()) {
+                    classes(Styles.chipActive)
+                }
+                attr("type", "button")
+                attr("aria-label", strings.chatStudySearchAria)
+                attr("aria-expanded", searchOpen.toString())
+                onClick { searchOpen = !searchOpen }
+            }) {
+                MaterialSymbol("search")
+            }
         }
-        val visibleItems = studySessionsForFilter(items, communityItems, filter)
+        if (searchOpen) {
+            Div(attrs = { classes(Styles.studySearchPanel) }) {
+                Div(attrs = { classes(Styles.studySearchFields) }) {
+                    Label(attrs = { classes(Styles.studySearchField) }) {
+                        Span { Text(strings.chatStudySearchTitle) }
+                        Input(type = InputType.Text) {
+                            classes(Styles.textInput)
+                            attr("type", "search")
+                            attr("aria-label", strings.chatStudySearchPlaceholder)
+                            placeholder(strings.chatStudySearchPlaceholder)
+                            value(searchQuery)
+                            onInput { searchQuery = it.value }
+                        }
+                    }
+                    Label(attrs = { classes(Styles.studySearchField) }) {
+                        Span { Text(strings.chatStudySearchSource) }
+                        Select(attrs = {
+                            classes(Styles.textInput)
+                            onChange {
+                                val element = it.nativeEvent.target as? HTMLSelectElement
+                                sourceLanguageTag = element?.value.orEmpty()
+                            }
+                        }) {
+                            Option("", attrs = { if (sourceLanguageTag.isBlank()) selected() }) {
+                                Text(strings.chatStudySearchAllLanguages)
+                            }
+                            searchLanguageTags.forEach { tag ->
+                                Option(tag, attrs = { if (sourceLanguageTag == tag) selected() }) {
+                                    Text(Language.entries.firstOrNull { it.tag == tag }?.displayName ?: tag)
+                                }
+                            }
+                        }
+                    }
+                    Label(attrs = { classes(Styles.studySearchField) }) {
+                        Span { Text(strings.chatStudySearchTarget) }
+                        Select(attrs = {
+                            classes(Styles.textInput)
+                            onChange {
+                                val element = it.nativeEvent.target as? HTMLSelectElement
+                                targetLanguageTag = element?.value.orEmpty()
+                            }
+                        }) {
+                            Option("", attrs = { if (targetLanguageTag.isBlank()) selected() }) {
+                                Text(strings.chatStudySearchAllLanguages)
+                            }
+                            searchLanguageTags.forEach { tag ->
+                                Option(tag, attrs = { if (targetLanguageTag == tag) selected() }) {
+                                    Text(Language.entries.firstOrNull { it.tag == tag }?.displayName ?: tag)
+                                }
+                            }
+                        }
+                    }
+                }
+            }
+        }
+        val visibleItems = studySessionsForSearch(
+            entries = studySessionsForFilter(items, communityItems, filter),
+            query = searchQuery,
+            sourceLanguageTag = sourceLanguageTag,
+            targetLanguageTag = targetLanguageTag,
+        )
+        val hasActiveSearch = searchQuery.isNotBlank() || sourceLanguageTag.isNotBlank() || targetLanguageTag.isNotBlank()
         val visibleLoading = when (filter) {
             StudySessionsFilter.ALL -> visibleItems.isEmpty() && (loading || communityLoading)
             StudySessionsFilter.MINE -> loading && visibleItems.isEmpty()
@@ -1350,13 +1437,19 @@ private fun StudySessionsList(
             }
             visibleItems.isEmpty() -> {
                 Div(attrs = { classes(Styles.savedPanelEmpty) }) {
-                    MaterialSymbol(if (filter == StudySessionsFilter.COMMUNITY) "groups" else "menu_book")
+                    MaterialSymbol(
+                        when {
+                            hasActiveSearch -> "search_off"
+                            filter == StudySessionsFilter.COMMUNITY -> "groups"
+                            else -> "menu_book"
+                        },
+                    )
                     P {
                         Text(
-                            if (filter == StudySessionsFilter.COMMUNITY) {
-                                strings.chatStudySessionsCommunityEmpty
-                            } else {
-                                strings.chatStudySessionsEmpty
+                            when {
+                                hasActiveSearch -> strings.chatStudySearchNoResults
+                                filter == StudySessionsFilter.COMMUNITY -> strings.chatStudySessionsCommunityEmpty
+                                else -> strings.chatStudySessionsEmpty
                             },
                         )
                     }
@@ -3111,6 +3204,26 @@ internal fun studySessionsForFilter(
         val seen = mine.map { it.id }.toHashSet()
         mine.map { StudySessionListEntry(it, removable = true) } +
             community.filter { seen.add(it.id) }.map { StudySessionListEntry(it, removable = false) }
+    }
+}
+
+internal fun studySessionsForSearch(
+    entries: List<StudySessionListEntry>,
+    query: String,
+    sourceLanguageTag: String,
+    targetLanguageTag: String,
+): List<StudySessionListEntry> {
+    val normalizedQuery = query.trim()
+    val normalizedSourceTag = sourceLanguageTag.trim().takeIf(String::isNotEmpty)
+        ?.let(Language::normalizeContentTag)
+    val normalizedTargetTag = targetLanguageTag.trim().takeIf(String::isNotEmpty)
+        ?.let(Language::normalizeContentTag)
+    return entries.filter { entry ->
+        val item = entry.item
+        (normalizedQuery.isEmpty() || item.name.contains(normalizedQuery, ignoreCase = true) ||
+            item.text.contains(normalizedQuery, ignoreCase = true)) &&
+            (normalizedSourceTag == null || Language.normalizeContentTag(item.languageTag) == normalizedSourceTag) &&
+            (normalizedTargetTag == null || Language.normalizeContentTag(item.textLanguageTag) == normalizedTargetTag)
     }
 }
 

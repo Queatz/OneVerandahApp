@@ -122,6 +122,56 @@ class StudySessionsListTest {
     }
 
     @Test
+    fun `search matches session names`() {
+        val named = sampleSaved("named", "Some unrelated text").copy(name = "Coffee phrases")
+        val other = sampleSaved("other", "Another text")
+
+        assertEquals(listOf("named"), searchSessions(listOf(named, other), query = "coffee").map { it.item.id })
+    }
+
+    @Test
+    fun `search matches session text case insensitively`() {
+        val item = sampleSaved("text", "A greeting in Vietnamese")
+
+        assertEquals(listOf("text"), searchSessions(listOf(item), query = "VIETNAMESE").map { it.item.id })
+    }
+
+    @Test
+    fun `source and target language filters normalize language tags`() {
+        val matching = sampleSaved("matching", "Hello").copy(textLanguageTag = "vi-VN", languageTag = "en-US")
+        val otherSource = sampleSaved("source", "Hello").copy(textLanguageTag = "zh", languageTag = "en")
+        val otherTarget = sampleSaved("target", "Hello").copy(textLanguageTag = "vi", languageTag = "ja")
+        val entries = listOf(matching, otherSource, otherTarget)
+
+        assertEquals(listOf("matching", "source"), searchSessions(entries, sourceLanguageTag = "en").map { it.item.id })
+        assertEquals(listOf("matching", "target"), searchSessions(entries, targetLanguageTag = "vi").map { it.item.id })
+    }
+
+    @Test
+    fun `search combines text and language filters`() {
+        val matching = sampleSaved("matching", "Order coffee").copy(textLanguageTag = "vi", languageTag = "en")
+        val wrongSource = matching.copy(id = "wrong-source", textLanguageTag = "zh")
+        val wrongText = matching.copy(id = "wrong-text", text = "Order tea")
+
+        assertEquals(
+            listOf("matching"),
+            searchSessions(
+                listOf(matching, wrongSource, wrongText),
+                query = "COFFEE",
+                sourceLanguageTag = "en",
+                targetLanguageTag = "vi",
+            ).map { it.item.id },
+        )
+    }
+
+    @Test
+    fun `blank search returns all entries`() {
+        val entries = listOf(sampleSaved("one", "First"), sampleSaved("two", "Second"))
+
+        assertEquals(listOf("one", "two"), searchSessions(entries, query = "  ").map { it.item.id })
+    }
+
+    @Test
     fun `study session path is shareable by id`() {
         assertEquals("/study/abc-123", studySessionPath("abc-123"))
         assertEquals("/study/abc-123", studySessionPath(" abc-123 "))
@@ -357,5 +407,17 @@ class StudySessionsListTest {
         textLanguageTag = "en",
         createdAt = 1L,
         updatedAt = 1L,
+    )
+
+    private fun searchSessions(
+        items: List<SavedStudySessionSummary>,
+        query: String = "",
+        sourceLanguageTag: String = "",
+        targetLanguageTag: String = "",
+    ) = studySessionsForSearch(
+        entries = items.map { StudySessionListEntry(it, removable = true) },
+        query = query,
+        sourceLanguageTag = sourceLanguageTag,
+        targetLanguageTag = targetLanguageTag,
     )
 }
