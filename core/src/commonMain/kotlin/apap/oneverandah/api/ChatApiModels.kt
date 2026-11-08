@@ -380,6 +380,8 @@ data class StudySentence(
      * regenerate the image for this sentence.
      */
     val imageUrl: String? = null,
+    /** Full sentence translation in the learner's active UI language. */
+    val translation: String = "",
 )
 
 /**
@@ -471,6 +473,7 @@ data class StudyDissectSentenceRequest(
 data class StudyDissectSentenceResponse(
     val sentenceText: String,
     val tokens: List<StudyToken>,
+    val translation: String = "",
 )
 
 /**

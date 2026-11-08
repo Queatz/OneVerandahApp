@@ -113,15 +113,19 @@ class StudyBuildTasks(
                 token.copy(imageId = previous.imageId, imageUrl = previous.imageUrl)
             }
         }
+        val dissectedSentence = sentence.copy(translation = result.translation, tokens = mergedTokens)
         store.update(
             record.id,
-            reason = StudyBuildEvent.SentenceDissected(sentenceIndex, sentence.copy(tokens = mergedTokens))
+            reason = StudyBuildEvent.SentenceDissected(sentenceIndex, dissectedSentence)
         ) {
             if (it.session.sentences.getOrNull(sentenceIndex) == null) return@update it
             it.copy(
                 session = it.session.copy(
                     sentences = it.session.sentences.mapIndexed { index, current ->
-                        if (index == sentenceIndex) current.copy(tokens = mergedTokens) else current
+                        if (index == sentenceIndex) current.copy(
+                            translation = result.translation,
+                            tokens = mergedTokens,
+                        ) else current
                     },
                 ),
             )

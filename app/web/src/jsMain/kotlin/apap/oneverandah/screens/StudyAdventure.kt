@@ -54,6 +54,7 @@ internal data class AdventureSentence(
     val sourceText: String,
     val words: List<AdventureWord>,
     val imageUrl: String? = null,
+    val translation: String = "",
 )
 
 internal data class AdventureLevel(
@@ -73,6 +74,7 @@ internal fun buildAdventureLevels(session: StudySessionResponse): List<Adventure
             sourceText = mainWords.joinToString(" ") { it.sourceText },
             words = mainWords,
             imageUrl = mainSentence.imageUrl,
+            translation = mainSentence.translation.trim(),
         )
         val examples = linkedMapOf<String, AdventureSentence>()
         mainSentence.tokens
@@ -89,7 +91,10 @@ internal fun buildAdventureLevels(session: StudySessionResponse): List<Adventure
 private fun adventureWordFromToken(token: StudyToken): AdventureWord? {
     if (token.status != StudyTokenStatus.READY) return null
     val target = token.text.trim().takeIf(String::isNotEmpty) ?: return null
-    val source = listOf(token.literalMeaning.trim(), token.contextualMeaning.trim()).joinToString("; ")
+    val source = listOf(token.literalMeaning.trim(), token.contextualMeaning.trim())
+        .filter(String::isNotBlank)
+        .distinct()
+        .joinToString("; ")
         .takeIf(String::isNotEmpty) ?: return null
     return AdventureWord(targetText = target, sourceText = source)
 }
@@ -101,7 +106,10 @@ private fun adventureExampleSentence(
     val text = example.text.trim().takeIf(String::isNotEmpty) ?: return null
     val words = example.tokens.mapNotNull { token ->
         val target = token.text.trim().takeIf(String::isNotEmpty) ?: return@mapNotNull null
-        val source = listOf(token.translation.trim(), token.contextualMeaning.trim()).joinToString("; ")
+        val source = listOf(token.translation.trim(), token.contextualMeaning.trim())
+            .filter(String::isNotBlank)
+            .distinct()
+            .joinToString("; ")
             .takeIf(String::isNotEmpty) ?: return@mapNotNull null
         AdventureWord(targetText = target, sourceText = source)
     }
@@ -111,6 +119,7 @@ private fun adventureExampleSentence(
         sourceText = words.joinToString(" ") { it.sourceText },
         words = words,
         imageUrl = imageUrl,
+        translation = example.translation.trim(),
     )
 }
 
@@ -182,7 +191,7 @@ internal fun adventureStageIntro(levelLabel: String, stageIndex: Int, totalStage
     return "$levelLabel • Stage $stage / $total"
 }
 
-private enum class AdventureScreen { OVERWORLD, INTRO, PLAYING, STAGE_CLEAR, SENTENCE_CLEAR, LEVEL_COMPLETE, COMPLETE }
+private enum class AdventureScreen { OVERWORLD, INTRO, PLAYING, STAGE_REVIEW, STAGE_CLEAR, SENTENCE_CLEAR, LEVEL_COMPLETE, COMPLETE }
 
 @Composable
 internal fun StudyAdventureTab(
@@ -321,13 +330,7 @@ internal fun StudyAdventureTab(
 
     fun continueAfterCorrectAnswer(prompt: Int) {
         if (health.all { it >= ADVENTURE_MAX_HEALTH }) {
-            if (stage == 1) {
-                AdventureSfx.stageClear()
-                screen = AdventureScreen.STAGE_CLEAR
-            } else {
-                AdventureSfx.stageClear()
-                screen = AdventureScreen.SENTENCE_CLEAR
-            }
+            screen = AdventureScreen.STAGE_REVIEW
             promptIndex = null
         } else {
             promptIndex = pickAdventurePrompt(health, prompt)
@@ -532,6 +535,9 @@ internal fun StudyAdventureTab(
                             if (!audioReady) attr("disabled", "")
                             onClick { audio[sentence.text]?.let { playAudio(it, restart = true) } }
                         }) { Text(sentence.text) }
+                        sentence.translation.takeIf(String::isNotBlank)?.let { translation ->
+                            P(attrs = { classes(Styles.studyAdventureTranslation) }) { Text(translation) }
+                        }
                     }
                     if (!audioReady) {
                         P(attrs = { classes(Styles.studyAdventureHint) }) {
@@ -618,6 +624,37 @@ internal fun StudyAdventureTab(
                                 }
                             }
                         }
+                    }
+                }
+            }
+            AdventureScreen.STAGE_REVIEW -> {
+                val sentence = currentSentence
+                if (sentence != null) {
+                    Div(attrs = { classes(Styles.studyAdventureCard, Styles.studyAdventureMessage, Styles.studyAdventureReview) }) {
+                        P(attrs = { classes(Styles.studyAdventureReviewSentence) }) {
+                            var cursor = 0
+                            sentence.words.forEach { word ->
+                                val wordStart = sentence.text.indexOf(word.targetText, cursor)
+                                if (wordStart >= cursor) {
+                                    if (wordStart > cursor) Text(sentence.text.substring(cursor, wordStart))
+                                    Button(attrs = {
+                                        classes(Styles.studyAdventureReviewWord)
+                                        attr("type", "button")
+                                        onClick { speakTargetWord(word) }
+                                    }) { Text(word.targetText) }
+                                    cursor = wordStart + word.targetText.length
+                                }
+                            }
+                            if (cursor < sentence.text.length) Text(sentence.text.substring(cursor))
+                        }
+                        Button(attrs = {
+                            classes(Styles.studyAdventurePrimary)
+                            attr("type", "button")
+                            onClick {
+                                AdventureSfx.stageClear()
+                                screen = if (stage == 1) AdventureScreen.STAGE_CLEAR else AdventureScreen.SENTENCE_CLEAR
+                            }
+                        }) { Text(copy.resume) }
                     }
                 }
             }

@@ -20,7 +20,7 @@ class StudyAdventureLogicTest {
             text = "Children are playing.",
             translation = "Children are playing.",
             tokens = listOf(
-                StudyExampleToken("Children", contextualMeaning = "kids"),
+                StudyExampleToken("Children", translation = "kids", contextualMeaning = "kids"),
                 StudyExampleToken("are", translation = "are"),
                 StudyExampleToken("playing", contextualMeaning = "playing a game"),
             ),
@@ -32,10 +32,11 @@ class StudyAdventureLogicTest {
                 StudySentence(
                     text = "In the park, children play.",
                     imageUrl = "https://example.test/park.jpg",
+                    translation = "Children are playing in the garden.",
                     tokens = listOf(
                         StudyToken("In", literalMeaning = "in", contextualMeaning = "inside"),
                         StudyToken("the", status = StudyTokenStatus.PLAIN),
-                        StudyToken("park", contextualMeaning = "garden", exampleSentences = listOf(example, example)),
+                        StudyToken("park", literalMeaning = "garden", contextualMeaning = "garden", exampleSentences = listOf(example, example)),
                         StudyToken("later", status = StudyTokenStatus.PENDING, contextualMeaning = "after"),
                         StudyToken("play", status = StudyTokenStatus.READY),
                     ),
@@ -52,9 +53,30 @@ class StudyAdventureLogicTest {
         assertEquals(1, levels.size)
         assertEquals("https://example.test/park.jpg", levels.single().imageUrl)
         assertEquals(listOf("In", "park"), levels.single().sentence.words.map { it.targetText })
-        assertEquals(listOf("inside", "garden"), levels.single().sentence.words.map { it.sourceText })
+        assertEquals(listOf("in; inside", "garden"), levels.single().sentence.words.map { it.sourceText })
+        assertEquals("Children are playing in the garden.", levels.single().sentence.translation)
         assertEquals(listOf("In the park, children play.", "Children are playing."), levels.single().sentences.map { it.text })
         assertEquals(listOf("kids", "are", "playing a game"), levels.single().sentences.last().words.map { it.sourceText })
+        assertEquals("Children are playing.", levels.single().sentences.last().translation)
+    }
+
+    @Test
+    fun `main sentence without a translation does not use joined word glosses`() {
+        val session = StudySessionResponse(
+            text = "In the park.",
+            textLanguageTag = "en",
+            sentences = listOf(
+                StudySentence(
+                    text = "In the park.",
+                    tokens = listOf(
+                        StudyToken("In", contextualMeaning = "inside"),
+                        StudyToken("park", contextualMeaning = "garden"),
+                    ),
+                ),
+            ),
+        )
+
+        assertEquals("", buildAdventureLevels(session).single().sentence.translation)
     }
 
     @Test

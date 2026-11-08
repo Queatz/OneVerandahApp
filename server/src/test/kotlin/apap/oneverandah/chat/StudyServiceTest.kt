@@ -463,6 +463,7 @@ class StudyServiceTest {
             ```json
             {
               "sentenceText": "Tôi học.",
+              "translation": "I am studying.",
               "tokens": [
                 {
                   "text": "Tôi",
@@ -497,6 +498,7 @@ class StudyServiceTest {
         )
 
         assertEquals("Tôi học.", result.text)
+        assertEquals("I am studying.", result.translation)
         assertEquals(3, result.tokens.size)
         assertEquals(StudyTokenStatus.READY, result.tokens[0].status)
         assertEquals(3, result.tokens[0].exampleSentences.size)
@@ -510,6 +512,15 @@ class StudyServiceTest {
             result.tokens[1].exampleSentences,
         )
         assertEquals(StudyTokenStatus.PLAIN, result.tokens.last().status)
+    }
+
+    @Test
+    fun `dissect parser accepts sentence translation aliases`() {
+        val result = QwenStudyDissectParser.parse(
+            """{"sentenceText":"Xin chào.","fullSentenceTranslation":"Hello.","tokens":[{"text":"Xin","literalMeaning":"hello"}]}""",
+        )
+
+        assertEquals("Hello.", result.translation)
     }
 
     @Test
@@ -1764,6 +1775,57 @@ class StudyServiceTest {
         assertEquals(null, result.tokens.single().imageId)
         assertEquals(null, service.playgroundImage("direct-image"))
         assertEquals(emptyList(), imageCalls)
+    }
+
+    @Test
+    fun `dissect only translates the full sentence when dissect output omits it`() = runBlocking {
+        val ai = FakeStudyAiClient(
+            dissect = StudySentence(
+                text = "Xin chào.",
+                tokens = listOf(StudyToken(text = "Xin", status = StudyTokenStatus.READY, literalMeaning = "hello")),
+            ),
+            translatedText = "Hello.",
+        )
+
+        val result = StudyService(ai).dissectOnly(
+            StudyDissectSentenceRequest(
+                text = "Xin chào.",
+                sentenceText = "Xin chào.",
+                tokens = listOf("Xin"),
+                textLanguageTag = "vi",
+                languageTag = "en",
+            ),
+        )
+
+        assertEquals("Hello.", result.translation)
+        assertEquals("Xin chào.", ai.lastTranslateRequest?.text)
+        assertEquals("en", ai.lastTranslateRequest?.targetLanguageTag)
+        assertEquals("vi", ai.lastTranslateRequest?.sourceLanguageTag)
+    }
+
+    @Test
+    fun `dissect only keeps a translation returned with the dissection`() = runBlocking {
+        val ai = FakeStudyAiClient(
+            dissect = StudySentence(
+                text = "Xin chào.",
+                tokens = listOf(StudyToken(text = "Xin", status = StudyTokenStatus.READY, literalMeaning = "hello")),
+                translation = "Hi there.",
+            ),
+            translatedText = "Should not replace this.",
+        )
+
+        val result = StudyService(ai).dissectOnly(
+            StudyDissectSentenceRequest(
+                text = "Xin chào.",
+                sentenceText = "Xin chào.",
+                tokens = listOf("Xin"),
+                textLanguageTag = "vi",
+                languageTag = "en",
+            ),
+        )
+
+        assertEquals("Hi there.", result.translation)
+        assertEquals(null, ai.lastTranslateRequest)
     }
 
     @Test

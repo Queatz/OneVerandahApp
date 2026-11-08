@@ -516,6 +516,10 @@ object Styles {
     const val studyAdventureIntro = "study-adventure-intro"
     const val studyAdventureStage = "study-adventure-stage"
     const val studyAdventurePromptSentence = "study-adventure-prompt-sentence"
+    const val studyAdventureTranslation = "study-adventure-translation"
+    const val studyAdventureReview = "study-adventure-review"
+    const val studyAdventureReviewSentence = "study-adventure-review-sentence"
+    const val studyAdventureReviewWord = "study-adventure-review-word"
     const val studyAdventurePrimary = "study-adventure-primary"
     const val studyAdventurePlay = "study-adventure-play"
     const val studyAdventureBackdrop = "study-adventure-backdrop"
@@ -4036,6 +4040,34 @@ object Styles {
             outline-offset: 8px;
             border-radius: 4px;
         }
+        .study-adventure-translation {
+            margin: -8px 0 0;
+            color: rgba(255,255,255,.76);
+            font-size: clamp(14px, 2.4vw, 20px);
+            line-height: 1.4;
+            animation: adventure-slide-in 350ms ease 2s backwards;
+        }
+        .study-adventure-review { gap: 24px; }
+        .study-adventure-review-sentence {
+            max-width: 900px;
+            margin: 0;
+            font-size: clamp(24px, 5vw, 46px);
+            font-weight: 800;
+            line-height: 1.35;
+        }
+        .study-adventure-review-word {
+            display: inline;
+            padding: 0 2px;
+            border: 0;
+            border-radius: 4px;
+            background: transparent;
+            color: inherit;
+            font: inherit;
+            cursor: pointer;
+            text-decoration: underline dotted rgba(255,255,255,.45);
+            text-underline-offset: 5px;
+        }
+        .study-adventure-review-word:hover { color: #c4b5fd; }
         .study-adventure-stage {
             margin: 0;
             color: #c4b5fd;

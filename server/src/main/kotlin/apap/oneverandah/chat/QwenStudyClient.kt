@@ -159,7 +159,20 @@ object QwenStudyDissectParser {
         require(tokens.isNotEmpty()) {
             "Qwen study dissect must include at least one valid token"
         }
-        return StudySentence(text = sentenceText, tokens = tokens)
+        val translation = sequenceOf(
+            "translation",
+            "sentenceTranslation",
+            "fullSentenceTranslation",
+            "sentence_translation",
+            "full_sentence_translation",
+        ).mapNotNull { key ->
+            root.string(key)?.trim()?.takeIf(String::isNotEmpty)
+        }.firstOrNull().orEmpty()
+        return StudySentence(
+            text = sentenceText,
+            tokens = tokens,
+            translation = translation,
+        )
     }
 
     private fun parseDissectToken(element: JsonElement): StudyToken? {
@@ -1191,8 +1204,9 @@ class DashScopeStudyAiClient(
         You are a precise language-study assistant for One Verandah residents.
         Dissect ONE sentence only. The user provides the full source text (context), the sentence, and an ordered token list.
         Always return one JSON object and no markdown. The schema is exactly:
-        {"sentenceText":"the sentence","tokens":[{"text":"token","literalMeaning":"...","register":"...","contextualMeaning":"...","nearSynonyms":["..."],"exampleSentences":[{"text":"...","translation":"..."},{"text":"...","translation":"..."},{"text":"...","translation":"..."}]}]}
+        {"sentenceText":"the sentence","translation":"the full sentence translation","tokens":[{"text":"token","literalMeaning":"...","register":"...","contextualMeaning":"...","nearSynonyms":["..."],"exampleSentences":[{"text":"...","translation":"..."},{"text":"...","translation":"..."},{"text":"...","translation":"..."}]}]}
         Rules:
+        - Translate the ENTIRE sentence naturally into the learner's active language '$activeLanguageTag'; put that complete translation in "translation". Do not concatenate individual word glosses.
         - Return tokens for EVERY provided token text, in the SAME order, with EXACTLY the same "text" values. Do not merge, split, drop, or reorder tokens.
         - "tokens" MUST be an array of objects only. Never put strings in the tokens array.
         - For pure punctuation or non-lexical tokens, leave literalMeaning, register, contextualMeaning as empty strings and nearSynonyms/exampleSentences as empty arrays.

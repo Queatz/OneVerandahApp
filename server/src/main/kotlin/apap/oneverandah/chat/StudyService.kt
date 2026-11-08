@@ -365,9 +365,19 @@ class StudyService(
             ),
         )
         val sentence = generated.normalizedDissected(expectedTokens = request.tokens)
+        val translation = sentence.translation.ifBlank {
+            aiClient.translateStudyText(
+                StudyTranslateRequest(
+                    text = sentence.text,
+                    targetLanguageTag = request.languageTag,
+                    sourceLanguageTag = request.textLanguageTag,
+                ),
+            ).trim()
+        }
         return StudyDissectSentenceResponse(
             sentenceText = sentence.text,
             tokens = sentence.tokens,
+            translation = translation,
         )
     }
 
@@ -1935,7 +1945,7 @@ internal fun StudySentence.normalizedDissected(expectedTokens: List<String>): St
         "Dissected tokens must match skeleton order and text"
     }
 
-    return StudySentence(text = sentenceText, tokens = aligned)
+    return StudySentence(text = sentenceText, tokens = aligned, translation = translation.trim())
 }
 
 private fun StudyToken.hasDissectionContent(): Boolean =
