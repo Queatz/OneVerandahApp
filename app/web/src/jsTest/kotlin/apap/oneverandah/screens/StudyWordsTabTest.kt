@@ -60,5 +60,8 @@ class StudyWordsTabTest {
             "sentence-0-word-0-example-0",
             "sentence-0-word-1-example-0",
         ))
+        assertEquals("Hola-0", toggleStudyExampleBreakdown(null, "Hola-0"))
+        assertEquals(null, toggleStudyExampleBreakdown("Hola-0", "Hola-0"))
+        assertEquals("Hola-1", toggleStudyExampleBreakdown("Hola-0", "Hola-1"))
     }
 }

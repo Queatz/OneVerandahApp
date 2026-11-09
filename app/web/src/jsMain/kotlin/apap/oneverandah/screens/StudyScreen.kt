@@ -1955,8 +1955,13 @@ private fun StudySessionContent(
     var mode by remember(session.text) { mutableStateOf(StudySessionMode.ALL) }
     var highlightedWord by remember(session.text) { mutableStateOf<String?>(null) }
     var examAttempt by remember(session.text) { mutableStateOf(StudyExamAttemptState()) }
-    val speechItems = remember(session.text, session.textLanguageTag, session.sentences.map { it.text }) {
-        session.sentences.mapIndexed { index, sentence -> "sentence-$index" to sentence.text }
+    val practiceSentencesForSpeech = remember(session.text, session.textLanguageTag) {
+        collectExpressPracticeSentences(session).map { it.text }
+    }
+    val speechItems = remember(session.text, session.textLanguageTag, session.sentences.map { it.text }, practiceSentencesForSpeech) {
+        val mainItems = session.sentences.mapIndexed { index, sentence -> "sentence-$index" to sentence.text }
+        val exampleItems = practiceSentencesForSpeech.mapIndexed { index, text -> "example-$index" to text }
+        mainItems + exampleItems
     }
     val anyLoading = sentenceStatus.values.any { it == StudySentenceLoadState.LOADING }
 
@@ -2415,6 +2420,22 @@ private fun StudySessionContent(
                             }
                         }
                     }
+                    // Example sentences from the main sentence dissection.
+                    collectExpressPracticeSentences(session).forEachIndexed { exampleIndex, example ->
+                        val exampleKey = "example-$exampleIndex"
+                        val exampleAudioUrl = sentenceAudio[exampleKey]?.url
+                        Div(attrs = { classes(Styles.languageSentence, Styles.studyReadSentence) }) {
+                            Button(attrs = {
+                                classes(Styles.languageToken)
+                                attr("type", "button")
+                                onClick {
+                                    exampleAudioUrl?.let { playAudio(it) }
+                                }
+                            }) {
+                                Text(example.text)
+                            }
+                        }
+                    }
                 }
             }
             StudySessionMode.WRITE -> {
@@ -2426,6 +2447,16 @@ private fun StudySessionContent(
                         textLanguageTag = session.textLanguageTag,
                         strings = strings,
                         autoFocus = mode != StudySessionMode.ALL,
+                    )
+                }
+                // Example sentences from the main sentence dissection.
+                collectExpressPracticeSentences(session).forEachIndexed { exampleIndex, example ->
+                    StudyWriteSentenceCard(
+                        sentenceIndex = session.sentences.size + exampleIndex,
+                        sentenceText = example.text,
+                        textLanguageTag = session.textLanguageTag,
+                        strings = strings,
+                        autoFocus = false,
                     )
                 }
             }
@@ -6184,8 +6215,21 @@ private fun StudyTokenDetail(
     onRetryImage: () -> Unit = {},
 ) {
     val scope = rememberCoroutineScope()
+    var expandedExampleKey by remember(token.text, textLanguageTag) { mutableStateOf<String?>(null) }
     val exampleAudio = remember(token.text, textLanguageTag) { mutableStateMapOf<String, String>() }
     val pendingExampleAudio = remember(token.text, textLanguageTag) { mutableStateMapOf<String, Boolean>() }
+
+    fun speakExampleToken(text: String) {
+        val spokenText = text.trim()
+        if (spokenText.isEmpty()) return
+        val cacheKey = "$textLanguageTag|$spokenText"
+        scope.launch {
+            val url = exampleAudio[cacheKey] ?: runCatching {
+                loadStudySpeechDataUrl(SpeechRequest(spokenText, textLanguageTag))
+            }.getOrNull()?.also { exampleAudio[cacheKey] = it } ?: return@launch
+            playAudio(url)
+        }
+    }
 
     fun clearExampleLoading(sentence: String) {
         pendingExampleAudio.remove(sentence)
@@ -6286,7 +6330,9 @@ private fun StudyTokenDetail(
                     }
                 }
                 if (token.exampleSentences.isNotEmpty()) {
-                    token.exampleSentences.forEach { example ->
+                    token.exampleSentences.forEachIndexed { exampleIndex, example ->
+                        val exampleKey = "${token.text}-$exampleIndex"
+                        val isExampleBreakdownVisible = expandedExampleKey == exampleKey
                         Div(attrs = {
                             classes(Styles.studyExampleSentence)
                             val sentence = example.text.trim()
@@ -6294,17 +6340,24 @@ private fun StudyTokenDetail(
                                 classes(Styles.studyExampleSentenceLoading)
                                 attr("aria-busy", "true")
                             }
-                            onClick { playExampleSentence(example.text) }
+                            onClick {
+                                playExampleSentence(example.text)
+                                expandedExampleKey = toggleStudyExampleBreakdown(expandedExampleKey, exampleKey)
+                            }
                         }) {
                             StudyExampleSentenceText(
                                 sentence = example.text,
                                 word = token.text,
+                                expanded = isExampleBreakdownVisible,
                             )
                             if (example.translation.isNotBlank()) {
                                 P(attrs = { classes(Styles.studyExampleTranslation) }) {
                                     Text(example.translation)
                                 }
                             }
+                        }
+                        if (isExampleBreakdownVisible && example.tokens.isNotEmpty()) {
+                            StudyExampleBreakdown(example, strings, ::speakExampleToken)
                         }
                     }
                 }
