@@ -4389,10 +4389,83 @@ internal fun mergePracticeSentences(
         val meaning = translation.ifEmpty { text }
         val key = "${meaning.lowercase()}|${text.lowercase()}"
         if (!seen.add(key)) return@forEach
-        result += StudyExampleSentence(text = text, translation = meaning)
+        result += example.copy(text = text, translation = meaning)
     }
     return result
 }
+
+internal fun studyPracticeHintText(
+    example: StudyExampleSentence,
+    vocabulary: List<StudyToken> = emptyList(),
+): String {
+    val exampleMeanings = example.tokens.mapNotNull { token ->
+        if (token.text.none(Char::isLetterOrDigit)) return@mapNotNull null
+        studyPracticeCombinedMeaning(token.translation, token.contextualMeaning)
+    }
+    val meanings = exampleMeanings.ifEmpty {
+        studyPracticeVocabularyHintMeanings(example.text, vocabulary)
+    }
+    return meanings.joinToString(" • ")
+}
+
+private data class StudyPracticeHintMatch(
+    val startIndex: Int,
+    val endIndex: Int,
+    val meaning: String,
+)
+
+private fun studyPracticeVocabularyHintMeanings(
+    sentence: String,
+    vocabulary: List<StudyToken>,
+): List<String> {
+    val allowUnboundedMatches = sentence.none(Char::isWhitespace) && sentence.any { char ->
+        char in '\u0e00'..'\u0e7f' ||
+            char in '\u1000'..'\u109f' ||
+            char in '\u3040'..'\u30ff' ||
+            char in '\u3400'..'\u9fff' ||
+            char in '\uac00'..'\ud7af'
+    }
+    val matches = vocabulary.flatMap { token ->
+        val word = token.text.trim().takeIf(String::isNotEmpty) ?: return@flatMap emptyList()
+        if (token.status == StudyTokenStatus.PLAIN) return@flatMap emptyList()
+        val meaning = studyPracticeCombinedMeaning(token.literalMeaning, token.contextualMeaning)
+            ?: return@flatMap emptyList()
+        val wordMatches = mutableListOf<StudyPracticeHintMatch>()
+        var searchFrom = 0
+        while (searchFrom < sentence.length) {
+            val startIndex = sentence.indexOf(word, searchFrom, ignoreCase = true)
+            if (startIndex < 0) break
+            val endIndex = startIndex + word.length
+            val hasBoundaries = (startIndex == 0 || !sentence[startIndex - 1].isLetterOrDigit()) &&
+                (endIndex == sentence.length || !sentence[endIndex].isLetterOrDigit())
+            if (allowUnboundedMatches || hasBoundaries) {
+                wordMatches += StudyPracticeHintMatch(startIndex, endIndex, meaning)
+            }
+            searchFrom = startIndex + 1
+        }
+        wordMatches
+    }
+
+    val selectedMeanings = mutableListOf<String>()
+    var cursor = 0
+    matches.sortedWith(
+        compareBy<StudyPracticeHintMatch> { it.startIndex }
+            .thenByDescending { it.endIndex - it.startIndex },
+    ).forEach { match ->
+        if (match.startIndex >= cursor) {
+            selectedMeanings += match.meaning
+            cursor = match.endIndex
+        }
+    }
+    return selectedMeanings
+}
+
+private fun studyPracticeCombinedMeaning(literal: String, contextual: String): String? =
+    listOf(literal.trim(), contextual.trim())
+        .filter(String::isNotEmpty)
+        .distinctBy(String::lowercase)
+        .joinToString("; ")
+        .takeIf(String::isNotEmpty)
 
 private fun List<StudyExampleSentence>.shuffledPracticeSentences(): List<StudyExampleSentence> =
     if (size < 2) this else shuffled()
@@ -4417,6 +4490,7 @@ private fun StudyExpressTab(
     val languageTag = Localization.language.tag
     val sessionExamples = remember(session) { collectExpressPracticeSentences(session) }
     val vocabulary = remember(session) { collectExpressVocabulary(session) }
+    val hintVocabulary = remember(session) { session.sentences.flatMap { it.tokens } }
 
     var queue by remember(session.text) { mutableStateOf(sessionExamples.shuffledPracticeSentences()) }
     var correctItems by remember(session.text) { mutableStateOf(emptySet<Int>()) }
@@ -4496,6 +4570,7 @@ private fun StudyExpressTab(
             textLanguageTag = session.textLanguageTag,
             languageTag = languageTag,
             strings = strings,
+            hintVocabulary = hintVocabulary,
             autoFocus = autoFocus && index == 0,
             onCorrect = { correctItems = correctItems + index },
         )
@@ -4546,11 +4621,14 @@ private fun StudyExpressPracticeCard(
     textLanguageTag: String,
     languageTag: String,
     strings: UiStrings,
+    hintVocabulary: List<StudyToken>,
     autoFocus: Boolean,
     onCorrect: () -> Unit,
 ) {
     val scope = rememberCoroutineScope()
     val exampleAudio = remember(sessionText, textLanguageTag) { mutableStateMapOf<String, String>() }
+    var hintVisible by remember(sessionText, itemIndex, item.text) { mutableStateOf(false) }
+    val hintText = remember(item, hintVocabulary) { studyPracticeHintText(item, hintVocabulary) }
     var draft by remember(sessionText, itemIndex, item.text, item.translation) { mutableStateOf("") }
     var checking by remember(sessionText, itemIndex, item.text, item.translation) { mutableStateOf(false) }
     var feedback by remember(sessionText, itemIndex, item.text, item.translation) { mutableStateOf<String?>(null) }
@@ -4617,6 +4695,9 @@ private fun StudyExpressPracticeCard(
                 Span { Text(strings.chatExpressCorrect) }
             }
         } else {
+            if (hintVisible && hintText.isNotEmpty()) {
+                P(attrs = { classes(Styles.studyPracticeHint) }) { Text(hintText) }
+            }
             Div(attrs = { classes(Styles.studyPracticeInputRow) }) {
                 ChatInput(
                     value = draft,
@@ -4634,6 +4715,9 @@ private fun StudyExpressPracticeCard(
                     draft = item.text
                     feedback = null
                     speakTargetSentence()
+                }
+                if (hintText.isNotEmpty()) {
+                    StudyPracticeHintButton(strings, hintVisible) { hintVisible = !hintVisible }
                 }
             }
             when {
@@ -4669,6 +4753,7 @@ private fun StudyListenTab(
     val languageTag = Localization.language.tag
     val sessionExamples = remember(session) { collectExpressPracticeSentences(session) }
     val vocabulary = remember(session) { collectExpressVocabulary(session) }
+    val hintVocabulary = remember(session) { session.sentences.flatMap { it.tokens } }
     val audioByText = remember(session.text) { mutableStateMapOf<String, String>() }
     val audioLoading = remember(session.text) { mutableStateMapOf<String, Boolean>() }
     val audioFailed = remember(session.text) { mutableStateMapOf<String, Boolean>() }
@@ -4783,6 +4868,7 @@ private fun StudyListenTab(
                 audioFailed = audioFailed[audioText] == true,
                 languageTag = languageTag,
                 strings = strings,
+                hintVocabulary = hintVocabulary,
                 autoFocus = autoFocus && index == 0,
                 onRequestAudio = { onReady -> loadAudio(audioText, onReady) },
                 onCorrect = { correctItems = correctItems + index },
@@ -4838,6 +4924,7 @@ private fun StudySpeakTab(
     val languageTag = Localization.language.tag
     val sessionExamples = remember(session) { collectExpressPracticeSentences(session) }
     val vocabulary = remember(session) { collectExpressVocabulary(session) }
+    val hintVocabulary = remember(session) { session.sentences.flatMap { it.tokens } }
     var queue by remember(session.text) { mutableStateOf(sessionExamples.shuffledPracticeSentences()) }
     var completedItems by remember(session.text) { mutableStateOf(emptySet<Int>()) }
     var activeCardKey by remember(session.text) { mutableStateOf<String?>(null) }
@@ -4915,6 +5002,7 @@ private fun StudySpeakTab(
                 sessionText = session.text,
                 textLanguageTag = session.textLanguageTag,
                 strings = strings,
+                hintVocabulary = hintVocabulary,
                 canStart = activeCardKey == null || activeCardKey == cardKey,
                 onActiveChange = { active ->
                     activeCardKey = if (active) cardKey else activeCardKey.takeUnless { it == cardKey }
@@ -4968,12 +5056,15 @@ private fun StudySpeakPracticeCard(
     sessionText: String,
     textLanguageTag: String,
     strings: UiStrings,
+    hintVocabulary: List<StudyToken>,
     canStart: Boolean,
     onActiveChange: (Boolean) -> Unit,
     onComplete: () -> Unit,
 ) {
     val scope = rememberCoroutineScope()
     var progress by remember(sessionText, itemIndex, item.text) { mutableStateOf(StudySpeakProgress()) }
+    var hintVisible by remember(sessionText, itemIndex, item.text) { mutableStateOf(false) }
+    val hintText = remember(item, hintVocabulary) { studyPracticeHintText(item, hintVocabulary) }
     var attempts by remember(sessionText, itemIndex, item.text) { mutableStateOf(emptyList<String>()) }
     var targetAudioUrl by remember(sessionText, itemIndex, item.text) { mutableStateOf<String?>(null) }
     var error by remember(sessionText, itemIndex, item.text) { mutableStateOf<String?>(null) }
@@ -5175,14 +5266,22 @@ private fun StudySpeakPracticeCard(
             Text(item.translation.ifBlank { item.text })
         }
         if (progress.phase == StudySpeakPhase.READY) {
-            Button(attrs = {
-                classes(Styles.btnPrimary)
-                attr("type", "button")
-                if (!canStart || starting) attr("disabled", "")
-                onClick { startPractice() }
-            }) {
-                MaterialSymbol(if (starting) "progress_activity" else "play_arrow")
-                Text(strings.chatSpeakStart)
+            if (hintVisible && hintText.isNotEmpty()) {
+                P(attrs = { classes(Styles.studyPracticeHint) }) { Text(hintText) }
+            }
+            Div(attrs = { classes(Styles.studySpeakActions) }) {
+                Button(attrs = {
+                    classes(Styles.btnPrimary)
+                    attr("type", "button")
+                    if (!canStart || starting) attr("disabled", "")
+                    onClick { startPractice() }
+                }) {
+                    MaterialSymbol(if (starting) "progress_activity" else "play_arrow")
+                    Text(strings.chatSpeakStart)
+                }
+                if (hintText.isNotEmpty()) {
+                    StudyPracticeHintButton(strings, hintVisible) { hintVisible = !hintVisible }
+                }
             }
         } else if (progress.phase == StudySpeakPhase.REVIEW) {
             Div(attrs = { classes(Styles.studySpeakActions) }) {
@@ -5292,12 +5391,15 @@ private fun StudyListenPracticeCard(
     audioFailed: Boolean,
     languageTag: String,
     strings: UiStrings,
+    hintVocabulary: List<StudyToken>,
     autoFocus: Boolean,
     onRequestAudio: (onReady: (String) -> Unit) -> Unit,
     onCorrect: () -> Unit,
 ) {
     val scope = rememberCoroutineScope()
     var played by remember(sessionText, itemIndex, item.text) { mutableStateOf(false) }
+    var hintVisible by remember(sessionText, itemIndex, item.text) { mutableStateOf(false) }
+    val hintText = remember(item, hintVocabulary) { studyPracticeHintText(item, hintVocabulary) }
     var draft by remember(sessionText, itemIndex, item.text) { mutableStateOf("") }
     var checking by remember(sessionText, itemIndex, item.text) { mutableStateOf(false) }
     var feedback by remember(sessionText, itemIndex, item.text) { mutableStateOf<String?>(null) }
@@ -5401,6 +5503,9 @@ private fun StudyListenPracticeCard(
                 Span { Text(strings.chatExpressCorrect) }
             }
         } else {
+            if (hintVisible && hintText.isNotEmpty()) {
+                P(attrs = { classes(Styles.studyPracticeHint) }) { Text(hintText) }
+            }
             Div(attrs = { classes(Styles.studyPracticeInputRow) }) {
                 ChatInput(
                     value = draft,
@@ -5432,6 +5537,9 @@ private fun StudyListenPracticeCard(
                             playAudio(url, restart = true)
                         }
                     }
+                }
+                if (hintText.isNotEmpty()) {
+                    StudyPracticeHintButton(strings, hintVisible) { hintVisible = !hintVisible }
                 }
             }
             when {
@@ -5465,6 +5573,24 @@ private fun StudyPracticeRevealButton(strings: UiStrings, onClick: () -> Unit) {
         onClick { onClick() }
     }) {
         MaterialSymbol("visibility")
+    }
+}
+
+@Composable
+private fun StudyPracticeHintButton(
+    strings: UiStrings,
+    hintVisible: Boolean,
+    onClick: () -> Unit,
+) {
+    Button(attrs = {
+        classes(Styles.studyPracticeRevealButton)
+        attr("type", "button")
+        attr("aria-label", strings.chatPracticeHint)
+        attr("title", strings.chatPracticeHint)
+        attr("aria-pressed", hintVisible.toString())
+        onClick { onClick() }
+    }) {
+        MaterialSymbol("lightbulb")
     }
 }
 

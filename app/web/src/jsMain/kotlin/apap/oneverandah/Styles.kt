@@ -453,6 +453,7 @@ object Styles {
     const val studyWriteChecking = "study-write-checking"
     const val studyPracticeInputRow = "study-practice-input-row"
     const val studyPracticeRevealButton = "study-practice-reveal-button"
+    const val studyPracticeHint = "study-practice-hint"
     const val studySpeakBlock = "study-speak-block"
     const val studySpeakPrompt = "study-speak-prompt"
     const val studySpeakPhases = "study-speak-phases"
@@ -3613,6 +3614,12 @@ object Styles {
         .${studyPracticeInputRow} > :first-child {
             flex: 1;
             min-width: 0;
+        }
+        .${studyPracticeHint} {
+            margin: -4px 0 0;
+            color: var(--md-sys-color-on-surface-variant);
+            font-size: 12px;
+            line-height: 1.4;
         }
         .${studyPracticeRevealButton} {
             display: grid;

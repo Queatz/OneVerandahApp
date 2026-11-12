@@ -5,6 +5,7 @@ import apap.oneverandah.api.ChatSender
 import apap.oneverandah.api.LanguageStudyMiniApp
 import apap.oneverandah.api.LanguageStudyToken
 import apap.oneverandah.api.StudyExampleSentence
+import apap.oneverandah.api.StudyExampleToken
 import apap.oneverandah.api.StudySentence
 import apap.oneverandah.api.StudySessionResponse
 import apap.oneverandah.api.StudyToken
@@ -83,6 +84,82 @@ class ChatScreenStudyExampleTest {
             collectExpressPracticeSentences(session),
         )
         assertEquals(listOf("Xin chào"), collectExpressVocabulary(session))
+    }
+
+    @Test
+    fun `practice hint joins literal and contextual glosses in example token order`() {
+        val example = StudyExampleSentence(
+            text = "I go",
+            tokens = listOf(
+                StudyExampleToken("I", "I", "the speaker"),
+                StudyExampleToken("go", "move", "leave"),
+            ),
+        )
+
+        assertEquals("I; the speaker • move; leave", studyPracticeHintText(example))
+    }
+
+    @Test
+    fun `practice hint skips punctuation and blank or duplicate glosses`() {
+        val example = StudyExampleSentence(
+            text = "Hello!",
+            tokens = listOf(
+                StudyExampleToken("!", "exclamation mark", ""),
+                StudyExampleToken("Hello", " hello ", "HELLO"),
+                StudyExampleToken("friend", "", "  "),
+            ),
+        )
+
+        assertEquals("hello", studyPracticeHintText(example))
+    }
+
+    @Test
+    fun `practice hint falls back to vocabulary in target sentence order`() {
+        val example = StudyExampleSentence(text = "Tôi đi học.")
+        val vocabulary = listOf(
+            StudyToken("học", literalMeaning = "study"),
+            StudyToken("đi", literalMeaning = "go", contextualMeaning = "move"),
+            StudyToken(".", status = StudyTokenStatus.PLAIN),
+            StudyToken("Tôi", literalMeaning = "I", contextualMeaning = "the speaker"),
+        )
+
+        assertEquals(
+            "I; the speaker • go; move • study",
+            studyPracticeHintText(example, vocabulary),
+        )
+    }
+
+    @Test
+    fun `practice hint prefers longer overlapping vocabulary match`() {
+        val example = StudyExampleSentence(text = "đi học")
+        val vocabulary = listOf(
+            StudyToken("đi", literalMeaning = "go"),
+            StudyToken("đi học", literalMeaning = "attend school"),
+        )
+
+        assertEquals("attend school", studyPracticeHintText(example, vocabulary))
+    }
+
+    @Test
+    fun `practice hint does not match part of an unspaced Latin word`() {
+        val example = StudyExampleSentence(text = "hello")
+        val vocabulary = listOf(StudyToken("he", literalMeaning = "he"))
+
+        assertEquals("", studyPracticeHintText(example, vocabulary))
+    }
+
+    @Test
+    fun `merging practice sentences preserves dissected tokens`() {
+        val example = StudyExampleSentence(
+            text = " Hello! ",
+            translation = " Greeting ",
+            tokens = listOf(StudyExampleToken("Hello", "hello", "a greeting")),
+        )
+
+        assertEquals(
+            listOf(example.copy(text = "Hello!", translation = "Greeting")),
+            mergePracticeSentences(listOf(example), emptyList()),
+        )
     }
 
     @Test
