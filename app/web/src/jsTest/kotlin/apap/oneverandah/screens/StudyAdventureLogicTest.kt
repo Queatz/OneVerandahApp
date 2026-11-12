@@ -93,18 +93,71 @@ class StudyAdventureLogicTest {
             AdventureWord("playing", "playing"),
             AdventureWord("play", "play"),
         )
-        assertEquals(listOf(1, 0, 0), applyAdventureClick(listOf(0, 0, 0), words, 0, 0, 1))
-        assertEquals(listOf(0, 0, 0), applyAdventureClick(listOf(1, 0, 0), words, 0, 1, 1))
-        assertEquals(listOf(2, 0, 0), applyAdventureClick(listOf(1, 0, 0), words, 0, 2, 1))
-        assertEquals(listOf(7, 0, 0), applyAdventureClick(listOf(7, 0, 0), words, 0, 0, 1))
-        assertEquals(listOf(1, 0, 0), applyAdventureClick(listOf(0, 0, 0), words, 0, 2, 2))
+        val initialStreaks = listOf(0, 0, 0)
+        assertEquals(listOf(1, 0, 0), applyAdventureClick(listOf(0, 0, 0), initialStreaks, words, 0, 0, 1).health)
+        assertEquals(listOf(0, 0, 0), applyAdventureClick(listOf(1, 0, 0), initialStreaks, words, 0, 1, 1).health)
+        assertEquals(listOf(1, 0, 0), applyAdventureClick(listOf(0, 0, 0), initialStreaks, words, 0, 2, 2).health)
+        assertEquals(listOf(7, 0, 0), applyAdventureClick(listOf(7, 0, 0), initialStreaks, words, 0, 0, 1).health)
+    }
+
+    @Test
+    fun `three consecutive correct clicks master the word`() {
+        val words = listOf(AdventureWord("play", "jouer"))
+        var result = AdventureClickResult(listOf(0), listOf(0))
+
+        repeat(2) {
+            result = applyAdventureClick(result.health, result.streaks, words, 0, 0, 1)
+        }
+        assertEquals(listOf(2), result.health)
+        assertEquals(listOf(2), result.streaks)
+        assertNull(result.streakMasteredIndex)
+
+        result = applyAdventureClick(result.health, result.streaks, words, 0, 0, 1)
+
+        assertEquals(listOf(ADVENTURE_MAX_HEALTH), result.health)
+        assertEquals(listOf(3), result.streaks)
+        assertEquals(0, result.streakMasteredIndex)
+    }
+
+    @Test
+    fun `a miss resets only the prompted word streak`() {
+        val words = listOf(AdventureWord("play", "jouer"), AdventureWord("run", "courir"))
+        var result = AdventureClickResult(listOf(0, 0), listOf(0, 0))
+        result = applyAdventureClick(result.health, result.streaks, words, 0, 0, 1)
+        result = applyAdventureClick(result.health, result.streaks, words, 0, 0, 1)
+        result = applyAdventureClick(result.health, result.streaks, words, 0, 1, 1)
+
+        assertEquals(listOf(1, 0), result.health)
+        assertEquals(listOf(0, 0), result.streaks)
+        assertNull(result.streakMasteredIndex)
+    }
+
+    @Test
+    fun `streak continues while other words are prompted`() {
+        val words = listOf(AdventureWord("play", "jouer"), AdventureWord("run", "courir"))
+        var result = AdventureClickResult(listOf(0, 0), listOf(0, 0))
+        result = applyAdventureClick(result.health, result.streaks, words, 0, 0, 1)
+        result = applyAdventureClick(result.health, result.streaks, words, 1, 1, 1)
+        result = applyAdventureClick(result.health, result.streaks, words, 0, 0, 1)
+
+        assertEquals(listOf(2, 1), result.health)
+        assertEquals(listOf(2, 1), result.streaks)
+        assertNull(result.streakMasteredIndex)
     }
 
     @Test
     fun `timeouts lose one health and never go below zero`() {
-        assertEquals(listOf(0, 2), applyAdventureTimeout(listOf(0, 3), 0))
-        assertEquals(listOf(0, 2), applyAdventureTimeout(listOf(0, 3), 1))
-        assertEquals(listOf(0, 3), applyAdventureTimeout(listOf(0, 3), 8))
+        assertEquals(listOf(0, 2), applyAdventureTimeout(listOf(0, 3), listOf(0, 0), 0).health)
+        assertEquals(listOf(0, 2), applyAdventureTimeout(listOf(0, 3), listOf(0, 0), 1).health)
+        assertEquals(listOf(0, 3), applyAdventureTimeout(listOf(0, 3), listOf(0, 0), 8).health)
+    }
+
+    @Test
+    fun `timeout resets only the timed out word streak`() {
+        val timedOut = applyAdventureTimeout(listOf(2, 1), listOf(2, 1), 0)
+
+        assertEquals(listOf(1, 1), timedOut.health)
+        assertEquals(listOf(0, 1), timedOut.streaks)
     }
 
     @Test

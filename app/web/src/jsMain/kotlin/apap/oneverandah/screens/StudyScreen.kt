@@ -2171,6 +2171,30 @@ private fun StudySessionContent(
                 selectedRef = null
             }
         }) { Text(strings.chatTestTab) }
+        Button(attrs = {
+            classes(Styles.chip, Styles.studyWorksheetPrint)
+            attr("type", "button")
+            onClick {
+                val worksheet = buildStudyWorksheetHtml(
+                    session = session,
+                    labels = StudyWorksheetLabels(
+                        title = strings.chatWorksheetTitle,
+                        instructions = strings.chatWorksheetInstructions,
+                        vocabulary = strings.chatWorksheetVocabulary,
+                        phrases = strings.chatWorksheetPhrases,
+                        answerKey = strings.chatWorksheetAnswerKey,
+                    ),
+                )
+                if (worksheet == null) {
+                    Toaster.show(strings.chatWorksheetEmpty)
+                } else if (!openStudyWorksheet(worksheet)) {
+                    Toaster.show(strings.chatWorksheetPopupBlocked)
+                }
+            }
+        }) {
+            MaterialSymbol("print")
+            Text(strings.chatWorksheetPrint)
+        }
     }
 
     val modesToRender = if (mode == StudySessionMode.ALL) {

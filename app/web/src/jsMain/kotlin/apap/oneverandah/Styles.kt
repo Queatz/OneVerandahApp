@@ -437,6 +437,7 @@ object Styles {
     const val studyCreationProgressStepLabel = "study-creation-progress-step-label"
     const val studyCreationProgressStepCount = "study-creation-progress-step-count"
     const val studyModeTabs = "study-mode-tabs"
+    const val studyWorksheetPrint = "study-worksheet-print"
     const val studySearchToggle = "study-search-toggle"
     const val studySearchPanel = "study-search-panel"
     const val studySearchFields = "study-search-fields"
@@ -531,6 +532,7 @@ object Styles {
     const val studyAdventureWordCorrect = "study-adventure-word-correct"
     const val studyAdventureWordText = "study-adventure-word-text"
     const val studyAdventureHealth = "study-adventure-health"
+    const val studyAdventureHealthMastered = "study-adventure-health-mastered"
     const val studyAdventureHealthSegment = "study-adventure-health-segment"
     const val studyAdventureHealthFilled = "study-adventure-health-filled"
     const val studyAdventurePrompt = "study-adventure-prompt"
@@ -3516,6 +3518,15 @@ object Styles {
             align-items: center;
             gap: 8px;
         }
+        .${studyWorksheetPrint} {
+            display: inline-flex;
+            align-items: center;
+            gap: 6px;
+        }
+        .${studyWorksheetPrint} .${materialSymbols} {
+            font-size: 16px;
+            line-height: 1;
+        }
         .${studySearchToggle} {
             display: grid;
             flex: 0 0 40px;
@@ -4183,6 +4194,15 @@ object Styles {
             background: rgba(255,255,255,.2);
         }
         .study-adventure-health-filled { background: #a3e635; box-shadow: 0 0 8px rgba(163,230,53,.7); }
+        .study-adventure-health-mastered .study-adventure-health-segment {
+            animation: adventure-health-mastered 700ms ease-in-out both;
+        }
+        .study-adventure-health-mastered .study-adventure-health-segment:nth-child(2) { animation-delay: 35ms; }
+        .study-adventure-health-mastered .study-adventure-health-segment:nth-child(3) { animation-delay: 70ms; }
+        .study-adventure-health-mastered .study-adventure-health-segment:nth-child(4) { animation-delay: 105ms; }
+        .study-adventure-health-mastered .study-adventure-health-segment:nth-child(5) { animation-delay: 140ms; }
+        .study-adventure-health-mastered .study-adventure-health-segment:nth-child(6) { animation-delay: 175ms; }
+        .study-adventure-health-mastered .study-adventure-health-segment:nth-child(7) { animation-delay: 210ms; }
         .study-adventure-prompt {
             display: flex;
             flex-direction: column;
@@ -4260,6 +4280,10 @@ object Styles {
             0% { transform: scale(.88); }
             65% { transform: scale(1.08); }
             100% { transform: scale(1); }
+        }
+        @keyframes adventure-health-mastered {
+            0%, 100% { background-color: #a3e635; box-shadow: 0 0 8px rgba(163,230,53,.7); }
+            45% { background-color: #fde047; box-shadow: 0 0 14px rgba(253,224,71,.95); }
         }
         @media (max-width: 560px) {
             .study-adventure-shell { min-height: 340px; padding: 12px; }

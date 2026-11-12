@@ -43,6 +43,13 @@ import kotlin.js.Date
 import kotlin.random.Random
 
 internal const val ADVENTURE_MAX_HEALTH = 7
+internal const val ADVENTURE_CORRECT_STREAK_TO_MASTER = 3
+
+internal data class AdventureClickResult(
+    val health: List<Int>,
+    val streaks: List<Int>,
+    val streakMasteredIndex: Int? = null,
+)
 
 internal data class AdventureWord(
     val targetText: String,
@@ -139,29 +146,42 @@ internal fun pickAdventurePrompt(
 
 internal fun applyAdventureClick(
     health: List<Int>,
+    streaks: List<Int>,
     words: List<AdventureWord>,
     promptIndex: Int,
     clickedIndex: Int,
     stage: Int,
-): List<Int> {
-    if (promptIndex !in health.indices || clickedIndex !in words.indices || words.size != health.size) return health
+): AdventureClickResult {
+    if (promptIndex !in health.indices || clickedIndex !in words.indices || words.size != health.size || streaks.size != health.size) {
+        return AdventureClickResult(health, streaks)
+    }
     val promptText = if (stage == 1) words[promptIndex].targetText else words[promptIndex].sourceText
     val clickedText = if (stage == 1) words[clickedIndex].targetText else words[clickedIndex].sourceText
     val correct = promptText == clickedText
-    return health.toMutableList().also { updated ->
-        val affectedIndex = if (correct) promptIndex else promptIndex
-        updated[affectedIndex] = if (correct) {
-            (updated[affectedIndex] + 1).coerceAtMost(ADVENTURE_MAX_HEALTH)
-        } else {
-            (updated[affectedIndex] - 1).coerceAtLeast(0)
+    val updatedHealth = health.toMutableList()
+    val updatedStreaks = streaks.toMutableList()
+    if (correct) {
+        val consecutiveCorrect = (updatedStreaks[promptIndex] + 1).coerceAtMost(ADVENTURE_CORRECT_STREAK_TO_MASTER)
+        updatedStreaks[promptIndex] = consecutiveCorrect
+        if (consecutiveCorrect == ADVENTURE_CORRECT_STREAK_TO_MASTER) {
+            updatedHealth[promptIndex] = ADVENTURE_MAX_HEALTH
+            return AdventureClickResult(updatedHealth, updatedStreaks, promptIndex)
         }
+        updatedHealth[promptIndex] = (updatedHealth[promptIndex] + 1).coerceAtMost(ADVENTURE_MAX_HEALTH)
+    } else {
+        updatedHealth[promptIndex] = (updatedHealth[promptIndex] - 1).coerceAtLeast(0)
+        updatedStreaks[promptIndex] = 0
     }
+    return AdventureClickResult(updatedHealth, updatedStreaks)
 }
 
-internal fun applyAdventureTimeout(health: List<Int>, wordIndex: Int): List<Int> =
-    health.toMutableList().also { updated ->
-        if (wordIndex in updated.indices) updated[wordIndex] = (updated[wordIndex] - 1).coerceAtLeast(0)
-    }
+internal fun applyAdventureTimeout(health: List<Int>, streaks: List<Int>, wordIndex: Int): AdventureClickResult {
+    if (health.size != streaks.size || wordIndex !in health.indices) return AdventureClickResult(health, streaks)
+    return AdventureClickResult(
+        health = health.toMutableList().also { it[wordIndex] = (it[wordIndex] - 1).coerceAtLeast(0) },
+        streaks = streaks.toMutableList().also { it[wordIndex] = 0 },
+    )
+}
 
 internal fun adventureUnlockedLevels(progress: StudyAdventureProgress?, levelCount: Int): Set<Int> {
     if (levelCount <= 0) return emptySet()
@@ -209,8 +229,10 @@ internal fun StudyAdventureTab(
     var sentenceIndex by remember(session.text) { mutableStateOf(0) }
     var stage by remember(session.text) { mutableStateOf(1) }
     var health by remember(session.text) { mutableStateOf(emptyList<Int>()) }
+    var streaks by remember(session.text) { mutableStateOf(emptyList<Int>()) }
     var promptIndex by remember(session.text) { mutableStateOf<Int?>(null) }
     var celebratingIndex by remember(session.text) { mutableStateOf<Int?>(null) }
+    var streakCelebratingIndex by remember(session.text) { mutableStateOf<Int?>(null) }
     var celebrationJob by remember(session.text) { mutableStateOf<Job?>(null) }
     var remainingMs by remember(session.text) { mutableStateOf(15_000) }
     var loadingAudioCount by remember(session.text) { mutableStateOf(0) }
@@ -246,6 +268,7 @@ internal fun StudyAdventureTab(
         celebrationJob?.cancel()
         celebrationJob = null
         celebratingIndex = null
+        streakCelebratingIndex = null
     }
 
     fun selectLevel(levelIndex: Int) {
@@ -259,6 +282,7 @@ internal fun StudyAdventureTab(
         sentenceIndex = if (shouldResume) progress.sentenceIndex.coerceIn(0, levels[levelIndex].sentences.lastIndex) else 0
         stage = if (shouldResume) progress.stage.coerceIn(1, 2) else 1
         health = emptyList()
+        streaks = emptyList()
         promptIndex = null
         audioReady = false
     }
@@ -277,6 +301,8 @@ internal fun StudyAdventureTab(
         val sentence = levels.getOrNull(levelIndex)?.sentences?.getOrNull(sentenceIndex) ?: return
         AdventureSfx.click()
         health = List(sentence.words.size) { 0 }
+        streaks = List(sentence.words.size) { 0 }
+        streakCelebratingIndex = null
         promptIndex = pickAdventurePrompt(health)
         remainingMs = adventureTimerMs(0)
         screen = AdventureScreen.PLAYING
@@ -291,6 +317,8 @@ internal fun StudyAdventureTab(
         val sentence = currentSentence ?: return
         stage = 2
         health = List(sentence.words.size) { 0 }
+        streaks = List(sentence.words.size) { 0 }
+        streakCelebratingIndex = null
         promptIndex = pickAdventurePrompt(health)
         remainingMs = adventureTimerMs(0)
         screen = AdventureScreen.PLAYING
@@ -348,13 +376,22 @@ internal fun StudyAdventureTab(
         val clickedWord = sentence.words.getOrNull(clickedIndex) ?: return
         val correct = (if (stage == 1) clickedWord.targetText else clickedWord.sourceText) ==
                 (if (stage == 1) sentence.words[prompt].targetText else sentence.words[prompt].sourceText)
-        health = applyAdventureClick(health, sentence.words, prompt, clickedIndex, stage)
+        val result = applyAdventureClick(health, streaks, sentence.words, prompt, clickedIndex, stage)
+        health = result.health
+        streaks = result.streaks
         if (correct) {
             celebratingIndex = clickedIndex
+            result.streakMasteredIndex?.let { masteredIndex ->
+                streakCelebratingIndex = masteredIndex
+            }
             val audioEnded = CompletableDeferred<Unit>()
             val celebrationStartedAt = Date.now()
             val audioStarted = speakTargetWord(clickedWord) { audioEnded.complete(Unit) }
-            AdventureSfx.correct(health.getOrElse(prompt) { 0 })
+            if (result.streakMasteredIndex != null) {
+                AdventureSfx.wordMastered()
+            } else {
+                AdventureSfx.correct(health.getOrElse(prompt) { 0 })
+            }
             celebrationJob = scope.launch {
                 if (audioStarted) withTimeoutOrNull(4_000) { audioEnded.await() }
                 val minimumDisplayMs = 600 - (Date.now() - celebrationStartedAt).toLong()
@@ -408,7 +445,14 @@ internal fun StudyAdventureTab(
         }
     }
 
-    LaunchedEffect(screen, stage, promptIndex, health, sentenceIndex, activeLevelIndex, celebratingIndex) {
+    LaunchedEffect(streakCelebratingIndex) {
+        if (streakCelebratingIndex != null) {
+            delay(1_000)
+            streakCelebratingIndex = null
+        }
+    }
+
+    LaunchedEffect(screen, stage, promptIndex, health, streaks, sentenceIndex, activeLevelIndex, celebratingIndex) {
         if (screen != AdventureScreen.PLAYING || promptIndex == null || celebratingIndex != null) return@LaunchedEffect
         val targetIndex = promptIndex ?: return@LaunchedEffect
         remainingMs = adventureTimerMs(health.getOrElse(targetIndex) { 0 })
@@ -417,7 +461,9 @@ internal fun StudyAdventureTab(
             remainingMs = (remainingMs - 100).coerceAtLeast(0)
         }
         val sentence = currentSentence ?: return@LaunchedEffect
-        health = applyAdventureTimeout(health, targetIndex)
+        val timeoutResult = applyAdventureTimeout(health, streaks, targetIndex)
+        health = timeoutResult.health
+        streaks = timeoutResult.streaks
         AdventureSfx.timeout()
         remainingMs = adventureTimerMs(health[targetIndex])
         promptIndex = targetIndex
@@ -592,7 +638,10 @@ internal fun StudyAdventureTab(
                                     onClick { answerWord(index) }
                                 }) {
                                     Span(attrs = { classes(Styles.studyAdventureWordText) }) { Text(shownWord) }
-                                    Span(attrs = { classes(Styles.studyAdventureHealth) }) {
+                                    Span(attrs = {
+                                        classes(Styles.studyAdventureHealth)
+                                        if (index == streakCelebratingIndex) classes(Styles.studyAdventureHealthMastered)
+                                    }) {
                                         repeat(ADVENTURE_MAX_HEALTH) { segment ->
                                             Span(attrs = {
                                                 classes(Styles.studyAdventureHealthSegment)
@@ -691,12 +740,12 @@ private fun adventureMessage(title: String, action: String, onAction: () -> Unit
 private object AdventureSfx {
     private var context: dynamic = null
 
-    private fun tone(frequency: Double, durationMs: Int, volume: Double = 0.09) {
+    private fun tone(frequency: Double, durationMs: Int, volume: Double = 0.09, startDelayMs: Int = 0) {
         runCatching {
             if (context == null) context = newAdventureAudioContext()
             val oscillator = context.createOscillator()
             val gain = context.createGain()
-            val now = context.currentTime as Double
+            val now = (context.currentTime as Double) + startDelayMs / 1000.0
             oscillator.type = "sine"
             oscillator.frequency.setValueAtTime(frequency, now)
             gain.gain.setValueAtTime(volume, now)
@@ -712,6 +761,11 @@ private object AdventureSfx {
     fun correct(health: Int) = tone(520.0 + health.coerceIn(0, ADVENTURE_MAX_HEALTH) * 65.0, 110)
     fun wrong() = tone(170.0, 180, 0.08)
     fun timeout() = tone(120.0, 250, 0.1)
+    fun wordMastered() {
+        tone(660.0, 120, startDelayMs = 0)
+        tone(880.0, 140, startDelayMs = 100)
+        tone(1_100.0, 220, startDelayMs = 210)
+    }
     fun stageClear() {
         tone(620.0, 120)
         tone(830.0, 180)
