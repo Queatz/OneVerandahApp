@@ -52,13 +52,14 @@ class StudyRecallLogicTest {
     }
 
     @Test
-    fun `timeout scores as incorrect and advances after revealing the answer`() {
+    fun `timeout stays on the revealed answer until next advances`() {
         val deckSize = 2
         val prompted = startStudyRecall(StudyRecallProgress())
         val timedOut = timeoutStudyRecall(prompted)
 
         assertEquals(StudyRecallPhase.REVEAL, timedOut.phase)
         assertTrue(timedOut.timedOut)
+        assertEquals(0, timedOut.cardIndex)
         assertEquals(0, timedOut.correct)
         assertEquals(1, timedOut.answered)
         assertEquals(

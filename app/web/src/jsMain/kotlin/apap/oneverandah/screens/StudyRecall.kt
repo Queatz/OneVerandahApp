@@ -7,6 +7,7 @@ import androidx.compose.runtime.getValue
 import androidx.compose.runtime.mutableStateMapOf
 import androidx.compose.runtime.mutableStateOf
 import androidx.compose.runtime.remember
+import androidx.compose.runtime.rememberUpdatedState
 import androidx.compose.runtime.setValue
 import apap.oneverandah.Styles
 import apap.oneverandah.api.SpeechRequest
@@ -14,16 +15,19 @@ import apap.oneverandah.api.StudyExampleSentence
 import apap.oneverandah.api.StudySessionResponse
 import apap.oneverandah.api.StudyTokenStatus
 import apap.oneverandah.i18n.UiStrings
+import kotlinx.browser.document
+import kotlinx.browser.window
 import kotlinx.coroutines.CancellationException
-import kotlinx.coroutines.CompletableDeferred
 import kotlinx.coroutines.delay
-import kotlinx.coroutines.withTimeoutOrNull
+import org.jetbrains.compose.web.attributes.ref
 import org.jetbrains.compose.web.dom.Button
 import org.jetbrains.compose.web.dom.Div
 import org.jetbrains.compose.web.dom.Img
 import org.jetbrains.compose.web.dom.P
 import org.jetbrains.compose.web.dom.Span
 import org.jetbrains.compose.web.dom.Text
+import org.w3c.dom.HTMLElement
+import org.w3c.dom.events.Event
 import kotlin.random.Random
 
 internal enum class StudyRecallCardKind { WORD, PHRASE }
@@ -141,6 +145,10 @@ internal fun StudyRecallTab(
     var progress by remember(session.text, deck, shuffleNonce) { mutableStateOf(StudyRecallProgress()) }
     var remainingMs by remember(session.text, deck, shuffleNonce) { mutableStateOf(0) }
     val audio = remember(session.text, session.textLanguageTag) { mutableStateMapOf<String, String>() }
+    var recallElement by remember { mutableStateOf<HTMLElement?>(null) }
+    var isFullscreen by remember { mutableStateOf(false) }
+    val latestFullscreen by rememberUpdatedState(isFullscreen)
+    val latestElement by rememberUpdatedState(recallElement)
     val currentCard = deck.getOrNull(progress.cardIndex)
     val recallStrings = strings.chatAdventure.recall
     val hasPendingWords = session.sentences.any { sentence -> sentence.tokens.any { it.status == StudyTokenStatus.PENDING } }
@@ -168,123 +176,164 @@ internal fun StudyRecallTab(
             null
         }
         if (audioUrl != null) {
-            if (progress.timedOut) {
-                val ended = CompletableDeferred<Unit>()
-                playAudio(audioUrl, restart = true) { ended.complete(Unit) }
-                val playedToEnd = withTimeoutOrNull(15_000) {
-                    ended.await()
-                    true
-                } ?: false
-                if (!playedToEnd) delay(1_000)
-            } else {
-                playAudio(audioUrl, restart = true)
-            }
-        } else if (progress.timedOut) {
-            delay(2_000)
-        }
-        if (progress.timedOut && progress.phase == StudyRecallPhase.REVEAL) {
-            progress = advanceTimedOutStudyRecall(progress, deck.size)
+            playAudio(audioUrl, restart = true)
         }
     }
 
     DisposableEffect(Unit) {
-        onDispose { stopActiveStudyAudio() }
-    }
-
-    if (anyLoading || hasPendingWords) {
-        Div(attrs = { classes(Styles.studyPreparingMeanings) }) {
-            Span { Text(recallStrings.preparing) }
-        }
-        return
-    }
-    if (deck.isEmpty()) {
-        Div(attrs = { classes(Styles.studyRecallBlock) }) {
-            P { Text(recallStrings.empty) }
-        }
-        return
-    }
-
-    Div(attrs = { classes(Styles.studyRecallBlock) }) {
-        when (progress.phase) {
-            StudyRecallPhase.READY -> {
-                val firstCard = deck.first()
-                P(attrs = { classes(Styles.studyRecallPrompt) }) {
-                    Text(if (firstCard.kind == StudyRecallCardKind.WORD) recallStrings.wordHint else recallStrings.phraseHint)
-                }
-                Button(attrs = {
-                    classes(Styles.studyRecallButton)
-                    attr("type", "button")
-                    onClick { progress = startStudyRecall(progress) }
-                }) { Text(recallStrings.start) }
+        val onKey: (Event) -> Unit = { event ->
+            val key = event.asDynamic().key as? String
+            if ((key == "Escape" || key == "Esc") && latestFullscreen) {
+                isFullscreen = false
+                exitWatchFullscreen()
             }
-            StudyRecallPhase.PROMPT, StudyRecallPhase.REVEAL -> {
-                val card = currentCard ?: return@Div
-                P(attrs = { classes(Styles.studyRecallProgress) }) {
-                    Text(recallStrings.progress(progress.cardIndex + 1, deck.size))
+        }
+        val onFullscreen: (Event) -> Unit = {
+            val current = currentFullscreenElement()
+            val element = latestElement
+            when {
+                element != null && current === element -> isFullscreen = true
+                latestFullscreen && current == null -> isFullscreen = false
+            }
+        }
+        window.addEventListener("keydown", onKey)
+        document.addEventListener("fullscreenchange", onFullscreen)
+        document.addEventListener("webkitfullscreenchange", onFullscreen)
+        onDispose {
+            window.removeEventListener("keydown", onKey)
+            document.removeEventListener("fullscreenchange", onFullscreen)
+            document.removeEventListener("webkitfullscreenchange", onFullscreen)
+            if (latestElement != null && currentFullscreenElement() === latestElement) exitWatchFullscreen()
+            stopActiveStudyAudio()
+        }
+    }
+
+    Div(attrs = {
+        classes(Styles.studyRecallShell)
+        if (isFullscreen) classes(Styles.studyRecallFullscreen)
+        ref { element ->
+            recallElement = element
+            onDispose { if (recallElement === element) recallElement = null }
+        }
+    }) {
+        Div(attrs = { classes(Styles.studyRecallHeader) }) {
+            Span(attrs = { classes(Styles.studyRecallTitle) }) { Text(recallStrings.tab) }
+            Button(attrs = {
+                classes(Styles.studyRecallIconButton)
+                attr("type", "button")
+                attr("aria-label", if (isFullscreen) strings.chatWatchExitFullscreen else strings.chatWatchFullscreen)
+                attr("aria-pressed", isFullscreen.toString())
+                onClick {
+                    if (isFullscreen) {
+                        isFullscreen = false
+                        exitWatchFullscreen()
+                    } else {
+                        recallElement?.let(::requestWatchFullscreen)
+                    }
                 }
-                P(attrs = { classes(Styles.studyRecallPrompt) }) {
-                    Text(if (card.kind == StudyRecallCardKind.WORD) recallStrings.wordHint else recallStrings.phraseHint)
+            }) { Text(if (isFullscreen) "⤢" else "⛶") }
+        }
+
+        when {
+            anyLoading || hasPendingWords -> {
+                Div(attrs = { classes(Styles.studyPreparingMeanings) }) {
+                    Span { Text(recallStrings.preparing) }
                 }
-                if (card.kind == StudyRecallCardKind.WORD) {
-                    card.sentenceIndex?.let { sentenceIndex ->
-                        card.tokenIndex?.let { tokenIndex ->
-                            session.sentences.getOrNull(sentenceIndex)?.tokens?.getOrNull(tokenIndex)?.imageUrl
-                                ?.takeIf(String::isNotBlank)?.let { imageUrl ->
-                                    Img(src = imageUrl, alt = strings.chatStudyWordImageAlt, attrs = {
-                                        classes(Styles.studyRecallImage)
-                                    })
+            }
+            deck.isEmpty() -> {
+                Div(attrs = { classes(Styles.studyRecallBlock) }) {
+                    P { Text(recallStrings.empty) }
+                }
+            }
+            else -> Div(attrs = { classes(Styles.studyRecallBlock) }) {
+                when (progress.phase) {
+                    StudyRecallPhase.READY -> {
+                        val firstCard = deck.first()
+                        P(attrs = { classes(Styles.studyRecallPrompt) }) {
+                            Text(if (firstCard.kind == StudyRecallCardKind.WORD) recallStrings.wordHint else recallStrings.phraseHint)
+                        }
+                        Button(attrs = {
+                            classes(Styles.studyRecallButton)
+                            attr("type", "button")
+                            onClick { progress = startStudyRecall(progress) }
+                        }) { Text(recallStrings.start) }
+                    }
+                    StudyRecallPhase.PROMPT, StudyRecallPhase.REVEAL -> {
+                        val card = currentCard ?: return@Div
+                        P(attrs = { classes(Styles.studyRecallProgress) }) {
+                            Text(recallStrings.progress(progress.cardIndex + 1, deck.size))
+                        }
+                        P(attrs = { classes(Styles.studyRecallPrompt) }) {
+                            Text(if (card.kind == StudyRecallCardKind.WORD) recallStrings.wordHint else recallStrings.phraseHint)
+                        }
+                        if (card.kind == StudyRecallCardKind.WORD) {
+                            card.sentenceIndex?.let { sentenceIndex ->
+                                card.tokenIndex?.let { tokenIndex ->
+                                    session.sentences.getOrNull(sentenceIndex)?.tokens?.getOrNull(tokenIndex)?.imageUrl
+                                        ?.takeIf(String::isNotBlank)?.let { imageUrl ->
+                                            Img(src = imageUrl, alt = strings.chatStudyWordImageAlt, attrs = {
+                                                classes(Styles.studyRecallImage)
+                                            })
+                                        }
                                 }
-                        }
-                    }
-                }
-                P(attrs = { classes(Styles.studyRecallSource) }) { Text(card.prompt) }
-                if (progress.phase == StudyRecallPhase.PROMPT) {
-                    P(attrs = { classes(Styles.studyRecallTimer) }) {
-                        Text(recallStrings.timeLeft((remainingMs + 999) / 1_000))
-                    }
-                    Button(attrs = {
-                        classes(Styles.studyRecallButton)
-                        attr("type", "button")
-                        onClick { progress = revealStudyRecallAnswer(progress) }
-                    }) { Text(recallStrings.reveal) }
-                } else {
-                    if (progress.timedOut) {
-                        P(attrs = { classes(Styles.studyRecallTimeUp) }) { Text(recallStrings.timeUp) }
-                    }
-                    P(attrs = { classes(Styles.studyRecallAnswerLabel) }) { Text(recallStrings.answerLabel) }
-                    P(attrs = { classes(Styles.studyRecallAnswer) }) { Text(card.answer) }
-                    if (!progress.timedOut) {
-                        Div(attrs = { classes(Styles.studyRecallActions) }) {
-                            Button(attrs = {
-                                classes(Styles.studyRecallButton, Styles.studyRecallIncorrect)
-                                attr("type", "button")
-                                onClick { progress = gradeStudyRecall(progress, deck.size, correct = false) }
-                            }) {
-                                Span { Text("✕") }
-                                Text(recallStrings.incorrect)
-                            }
-                            Button(attrs = {
-                                classes(Styles.studyRecallButton, Styles.studyRecallCorrect)
-                                attr("type", "button")
-                                onClick { progress = gradeStudyRecall(progress, deck.size, correct = true) }
-                            }) {
-                                Span { Text("✓") }
-                                Text(recallStrings.correct)
                             }
                         }
+                        P(attrs = { classes(Styles.studyRecallSource) }) { Text(card.prompt) }
+                        if (progress.phase == StudyRecallPhase.PROMPT) {
+                            P(attrs = { classes(Styles.studyRecallTimer) }) {
+                                Text(recallStrings.timeLeft((remainingMs + 999) / 1_000))
+                            }
+                            Button(attrs = {
+                                classes(Styles.studyRecallButton)
+                                attr("type", "button")
+                                onClick { progress = revealStudyRecallAnswer(progress) }
+                            }) { Text(recallStrings.reveal) }
+                        } else {
+                            if (progress.timedOut) {
+                                P(attrs = { classes(Styles.studyRecallTimeUp) }) { Text(recallStrings.timeUp) }
+                            }
+                            P(attrs = { classes(Styles.studyRecallAnswerLabel) }) { Text(recallStrings.answerLabel) }
+                            P(attrs = { classes(Styles.studyRecallAnswer) }) { Text(card.answer) }
+                            if (progress.timedOut) {
+                                Button(attrs = {
+                                    classes(Styles.studyRecallButton)
+                                    attr("type", "button")
+                                    onClick { progress = advanceTimedOutStudyRecall(progress, deck.size) }
+                                }) { Text(recallStrings.next) }
+                            } else {
+                                Div(attrs = { classes(Styles.studyRecallActions) }) {
+                                    Button(attrs = {
+                                        classes(Styles.studyRecallButton, Styles.studyRecallIncorrect)
+                                        attr("type", "button")
+                                        onClick { progress = gradeStudyRecall(progress, deck.size, correct = false) }
+                                    }) {
+                                        Span { Text("✕") }
+                                        Text(recallStrings.incorrect)
+                                    }
+                                    Button(attrs = {
+                                        classes(Styles.studyRecallButton, Styles.studyRecallCorrect)
+                                        attr("type", "button")
+                                        onClick { progress = gradeStudyRecall(progress, deck.size, correct = true) }
+                                    }) {
+                                        Span { Text("✓") }
+                                        Text(recallStrings.correct)
+                                    }
+                                }
+                            }
+                        }
+                    }
+                    StudyRecallPhase.COMPLETE -> {
+                        P(attrs = { classes(Styles.studyRecallPrompt) }) { Text(recallStrings.finished) }
+                        P(attrs = { classes(Styles.studyRecallScore) }) {
+                            Text(recallStrings.score(progress.correct, deck.size))
+                        }
+                        Button(attrs = {
+                            classes(Styles.studyRecallButton)
+                            attr("type", "button")
+                            onClick { shuffleNonce += 1 }
+                        }) { Text(recallStrings.retake) }
                     }
                 }
-            }
-            StudyRecallPhase.COMPLETE -> {
-                P(attrs = { classes(Styles.studyRecallPrompt) }) { Text(recallStrings.finished) }
-                P(attrs = { classes(Styles.studyRecallScore) }) {
-                    Text(recallStrings.score(progress.correct, deck.size))
-                }
-                Button(attrs = {
-                    classes(Styles.studyRecallButton)
-                    attr("type", "button")
-                    onClick { shuffleNonce += 1 }
-                }) { Text(recallStrings.retake) }
             }
         }
     }

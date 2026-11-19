@@ -463,6 +463,11 @@ object Styles {
     const val studySpeakActions = "study-speak-actions"
     const val studySpeakAttempts = "study-speak-attempts"
     const val studySpeakAttemptButton = "study-speak-attempt-button"
+    const val studyRecallShell = "study-recall-shell"
+    const val studyRecallFullscreen = "study-recall-fullscreen"
+    const val studyRecallHeader = "study-recall-header"
+    const val studyRecallIconButton = "study-recall-icon-button"
+    const val studyRecallTitle = "study-recall-title"
     const val studyRecallBlock = "study-recall-block"
     const val studyRecallImage = "study-recall-image"
     const val studyRecallPrompt = "study-recall-prompt"
@@ -3734,6 +3739,61 @@ object Styles {
             outline: 2px solid var(--md-sys-color-primary);
             outline-offset: 2px;
         }
+        .${studyRecallShell} {
+            display: flex;
+            flex-direction: column;
+            gap: 16px;
+            min-height: 300px;
+            padding: 16px;
+            overflow: hidden;
+            border-radius: 24px;
+            background: radial-gradient(circle at 50% 0%, #4f46e5 0, #18172d 48%, #10111b 100%);
+            color: #fff;
+            box-shadow: 0 16px 42px rgba(8, 8, 20, .28);
+        }
+        .${studyRecallFullscreen} {
+            position: fixed;
+            inset: 0;
+            z-index: 70;
+            width: 100%;
+            height: 100vh;
+            height: 100dvh;
+            max-height: 100dvh;
+            min-height: 0;
+            box-sizing: border-box;
+            padding: 14px max(14px, env(safe-area-inset-right)) max(14px, env(safe-area-inset-bottom)) max(14px, env(safe-area-inset-left));
+            overflow: auto;
+            border-radius: 0;
+        }
+        .${studyRecallHeader} {
+            display: flex;
+            align-items: center;
+            gap: 10px;
+            min-height: 42px;
+        }
+        .${studyRecallTitle} {
+            flex: 1;
+            font-size: 17px;
+            font-weight: 800;
+            letter-spacing: .03em;
+        }
+        .${studyRecallIconButton} {
+            display: grid;
+            place-items: center;
+            min-width: 40px;
+            min-height: 40px;
+            padding: 0 10px;
+            border: 1px solid rgba(255,255,255,.2);
+            border-radius: 14px;
+            background: rgba(255,255,255,.1);
+            color: #fff;
+            font: inherit;
+            font-size: 20px;
+            cursor: pointer;
+            transition: transform 140ms ease, background 140ms ease;
+        }
+        .${studyRecallIconButton}:active { transform: scale(.94); }
+        .${studyRecallIconButton}:hover { background: rgba(255,255,255,.18); }
         .${studyRecallBlock} {
             display: flex;
             flex-direction: column;
@@ -3744,6 +3804,15 @@ object Styles {
             border-radius: 18px;
             background: color-mix(in srgb, var(--md-sys-color-primary) 5%, var(--md-sys-color-surface));
             text-align: center;
+        }
+        .${studyRecallFullscreen} .${studyRecallBlock} {
+            flex: 1;
+            justify-content: center;
+            width: min(100%, 760px);
+            min-height: 0;
+            align-self: center;
+            box-sizing: border-box;
+            overflow: auto;
         }
         .${studyRecallImage} {
             width: min(100%, 320px);
