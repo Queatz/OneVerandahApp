@@ -463,6 +463,20 @@ object Styles {
     const val studySpeakActions = "study-speak-actions"
     const val studySpeakAttempts = "study-speak-attempts"
     const val studySpeakAttemptButton = "study-speak-attempt-button"
+    const val studyRecallBlock = "study-recall-block"
+    const val studyRecallImage = "study-recall-image"
+    const val studyRecallPrompt = "study-recall-prompt"
+    const val studyRecallSource = "study-recall-source"
+    const val studyRecallTimer = "study-recall-timer"
+    const val studyRecallAnswerLabel = "study-recall-answer-label"
+    const val studyRecallAnswer = "study-recall-answer"
+    const val studyRecallActions = "study-recall-actions"
+    const val studyRecallButton = "study-recall-button"
+    const val studyRecallCorrect = "study-recall-correct"
+    const val studyRecallIncorrect = "study-recall-incorrect"
+    const val studyRecallTimeUp = "study-recall-time-up"
+    const val studyRecallProgress = "study-recall-progress"
+    const val studyRecallScore = "study-recall-score"
     const val studyPlayBlock = "study-play-block"
     const val studyPlayDescription = "study-play-description"
     const val studyPlayLine = "study-play-line"
@@ -3719,6 +3733,93 @@ object Styles {
         .${studySpeakAttemptButton}:focus-visible {
             outline: 2px solid var(--md-sys-color-primary);
             outline-offset: 2px;
+        }
+        .${studyRecallBlock} {
+            display: flex;
+            flex-direction: column;
+            align-items: center;
+            gap: 12px;
+            padding: 16px;
+            border: 1px solid var(--md-sys-color-outline-variant);
+            border-radius: 18px;
+            background: color-mix(in srgb, var(--md-sys-color-primary) 5%, var(--md-sys-color-surface));
+            text-align: center;
+        }
+        .${studyRecallImage} {
+            width: min(100%, 320px);
+            max-height: 260px;
+            object-fit: cover;
+            border-radius: 14px;
+        }
+        .${studyRecallPrompt}, .${studyRecallSource}, .${studyRecallAnswer}, .${studyRecallScore} {
+            margin: 0;
+        }
+        .${studyRecallPrompt} {
+            color: var(--md-sys-color-on-surface-variant);
+            font-size: 15px;
+            line-height: 1.45;
+        }
+        .${studyRecallSource}, .${studyRecallAnswer} {
+            font-size: 24px;
+            line-height: 1.4;
+            font-weight: 700;
+        }
+        .${studyRecallTimer}, .${studyRecallAnswerLabel}, .${studyRecallProgress} {
+            margin: 0;
+            color: var(--md-sys-color-on-surface-variant);
+            font-size: 14px;
+            font-variant-numeric: tabular-nums;
+        }
+        .${studyRecallTimer} {
+            color: var(--md-sys-color-primary);
+            font-size: 22px;
+            font-weight: 700;
+        }
+        .${studyRecallActions} {
+            display: flex;
+            flex-wrap: wrap;
+            justify-content: center;
+            gap: 10px;
+        }
+        .${studyRecallButton} {
+            display: inline-flex;
+            align-items: center;
+            justify-content: center;
+            gap: 8px;
+            min-height: 44px;
+            padding: 9px 16px;
+            border: 1px solid var(--md-sys-color-outline);
+            border-radius: 999px;
+            background: var(--md-sys-color-surface);
+            color: var(--md-sys-color-primary);
+            font: inherit;
+            font-weight: 700;
+            cursor: pointer;
+        }
+        .${studyRecallButton}:focus-visible {
+            outline: 2px solid var(--md-sys-color-primary);
+            outline-offset: 2px;
+        }
+        .${studyRecallCorrect} {
+            border-color: color-mix(in srgb, #2e7d32 45%, var(--md-sys-color-outline));
+            background: color-mix(in srgb, #2e7d32 14%, var(--md-sys-color-surface));
+            color: #1b5e20;
+        }
+        .${studyRecallIncorrect}, .${studyRecallTimeUp} {
+            border-color: color-mix(in srgb, #c62828 38%, var(--md-sys-color-outline));
+            background: color-mix(in srgb, #c62828 12%, var(--md-sys-color-surface));
+            color: #b71c1c;
+        }
+        .${studyRecallTimeUp} {
+            margin: 0;
+            padding: 7px 12px;
+            border: 1px solid color-mix(in srgb, #c62828 38%, var(--md-sys-color-outline));
+            border-radius: 999px;
+            font-weight: 700;
+        }
+        .${studyRecallScore} {
+            font-size: 22px;
+            font-weight: 700;
         }
         .${studyWriteCorrect} {
             display: inline-flex;

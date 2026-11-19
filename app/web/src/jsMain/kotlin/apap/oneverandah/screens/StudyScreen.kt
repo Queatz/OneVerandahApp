@@ -2128,6 +2128,15 @@ private fun StudySessionContent(
         }) { Text(strings.chatSpeakTab) }
         Button(attrs = {
             classes(Styles.chip)
+            if (mode == StudySessionMode.RECALL) classes(Styles.chipActive)
+            attr("type", "button")
+            onClick {
+                mode = StudySessionMode.RECALL
+                selectedRef = null
+            }
+        }) { Text(strings.chatAdventure.recall.tab) }
+        Button(attrs = {
+            classes(Styles.chip)
             if (mode == StudySessionMode.READ) classes(Styles.chipActive)
             attr("type", "button")
             onClick {
@@ -2390,6 +2399,13 @@ private fun StudySessionContent(
                     onPracticeSentences = onPracticeSentences,
                 )
             }
+            StudySessionMode.RECALL -> {
+                StudyRecallTab(
+                    session = session,
+                    anyLoading = anyLoading,
+                    strings = strings,
+                )
+            }
             StudySessionMode.READ -> {
                 val readClipUrls = speechItems.mapNotNull { (key, _) -> sentenceAudio[key]?.url }
                 val readAudioReady = speechItems.isNotEmpty() && readClipUrls.size == speechItems.size
@@ -2579,7 +2595,7 @@ private fun StudySentenceVisual(
     }
 }
 
-private enum class StudySessionMode { ALL, WATCH, STORY, ADVENTURE, STUDY, WORDS, LISTEN, SPEAK, READ, WRITE, EXPRESS, PLAY, TEST }
+private enum class StudySessionMode { ALL, WATCH, STORY, ADVENTURE, STUDY, WORDS, LISTEN, SPEAK, RECALL, READ, WRITE, EXPRESS, PLAY, TEST }
 
 internal enum class StudySpeakPhase { READY, LISTENING, SPEAKING, REVIEW }
 
@@ -2758,6 +2774,7 @@ private fun StudySessionMode.tabLabel(strings: UiStrings): String = when (this) 
     StudySessionMode.WORDS -> strings.chatWordsTab
     StudySessionMode.LISTEN -> strings.chatListenTab
     StudySessionMode.SPEAK -> strings.chatSpeakTab
+    StudySessionMode.RECALL -> strings.chatAdventure.recall.tab
     StudySessionMode.READ -> strings.chatReadTab
     StudySessionMode.WRITE -> strings.chatWriteTab
     StudySessionMode.EXPRESS -> strings.chatExpressTab
