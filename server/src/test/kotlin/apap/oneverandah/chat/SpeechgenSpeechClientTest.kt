@@ -218,6 +218,39 @@ class SpeechgenSpeechClientTest {
     }
 
     @Test
+    fun `missing subtitle cues fall back to the text endpoint`() = runBlocking {
+        val audio = byteArrayOf(4, 5, 6)
+        val posted = mutableListOf<String>()
+        val client = HttpClient(MockEngine { request ->
+            if (request.method == HttpMethod.Post) {
+                posted += request.url.parameters["r"].orEmpty()
+                when (request.url.parameters["r"]) {
+                    "api/subs" -> respond(
+                        content = """{"status":-1,"error":"No subtitle cues were found."}""",
+                        headers = headersOf(HttpHeaders.ContentType, "application/json"),
+                    )
+                    "api/text" -> respond(
+                        content = """{"status":1,"file":"https://audio.example.test/cues.mp3"}""",
+                        headers = headersOf(HttpHeaders.ContentType, "application/json"),
+                    )
+                    else -> error("Unexpected Speechgen route ${request.url}")
+                }
+            } else {
+                respond(audio, headers = headersOf(HttpHeaders.ContentType, "audio/mpeg"))
+            }
+        })
+
+        val result = SpeechgenSpeechClient(config(), client).synthesize(
+            SpeechRequest(text = "မင်္ဂလာပါ", languageTag = "my"),
+            "ignored-qwen-voice",
+        )
+
+        assertEquals(listOf("api/subs", "api/text"), posted)
+        assertContentEquals(audio, result.bytes)
+        client.close()
+    }
+
+    @Test
     fun `word timings parse millisecond cuts and SRT cues`() {
         val fromCuts = speechgenWordTimings(
             "Hello world",

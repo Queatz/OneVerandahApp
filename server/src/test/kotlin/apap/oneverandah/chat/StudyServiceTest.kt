@@ -2,6 +2,7 @@ package apap.oneverandah.chat
 
 import apap.oneverandah.api.StudyDissectSentenceRequest
 import apap.oneverandah.api.StudyBuildMode
+import apap.oneverandah.api.StudyChunk
 import apap.oneverandah.api.StudyBuildRequest
 import apap.oneverandah.api.StudyExampleSentence
 import apap.oneverandah.api.StudyExamBeat
@@ -1845,6 +1846,26 @@ class StudyServiceTest {
         assertEquals("https://img/rendered", url)
         assertEquals(listOf(listOf("https://img/ref"), emptyList()), referenceCalls)
     }
+
+    @Test
+    fun `chunk generation falls back to word spans when the model fails`() = runBlocking {
+        val (chunks, suffixes) = StudyService(FakeStudyAiClient(chunkFailure = true)).chunkSentence(
+            sentenceText = "I really like coffee.",
+            tokens = listOf(
+                StudyToken("I", StudyTokenStatus.READY),
+                StudyToken("really", StudyTokenStatus.READY),
+                StudyToken("like", StudyTokenStatus.READY),
+                StudyToken("coffee", StudyTokenStatus.READY),
+                StudyToken(".", StudyTokenStatus.PLAIN),
+            ),
+            textLanguageTag = "en",
+            languageTag = "en",
+        )
+
+        assertEquals(listOf(0, 1, 2, 3), chunks.flatMap { it.wordIndices })
+        assertTrue(chunks.size in 2..4)
+        assertEquals(chunks.size, suffixes.size)
+    }
 }
 
 internal class FakeStudyAiClient(
@@ -1908,6 +1929,7 @@ internal class FakeStudyAiClient(
     private val examScene: StudyExamScene = fakeExamScene(),
     private val examJudgment: StudyExamJudgment = StudyExamJudgment(points = 2, feedback = "Clear answer."),
     private val examSceneFailure: Boolean = false,
+    private val chunkFailure: Boolean = false,
 ) : StudyAiClient {
     var lastExtractRequest: StudyGenerationRequest? = null
     var lastIntentRequest: StudyGenerationRequest? = null
@@ -1966,6 +1988,11 @@ internal class FakeStudyAiClient(
     override suspend fun dissectSentence(request: StudyDissectGenerationRequest): StudySentence {
         lastDissectRequest = request
         return dissect
+    }
+
+    override suspend fun chunkSentence(request: StudyChunkGenerationRequest): List<StudyChunk> {
+        if (chunkFailure) error("Qwen study chunks timed out")
+        return emptyList()
     }
 
     override suspend fun evaluateWordUsage(

@@ -130,7 +130,7 @@ class QwenAsrRelayTest {
     ) = QwenChatConfig(
         chatEndpoint = "https://example.test/chat",
         chatModel = "qwen3.8-flash",
-        chatHeavyModel = "qwen3.8-max",
+        chatHeavyModel = "qwen4-max",
         ttsEndpoint = "wss://example.test/tts",
         ttsModel = "qwen-audio-3.0-tts-flash",
         ttsVoice = "longanhuan_v3.6",

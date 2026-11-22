@@ -604,8 +604,7 @@ class DashScopeStudyAiClient(
             systemPrompt = chunkSystemPrompt(request.languageTag),
             userContent = userContent,
             label = "study chunks",
-            model = config.chatHeavyModel,
-            enableThinking = true,
+            enableThinking = false,
         )
         return QwenStudyChunkParser.parse(content)
     }

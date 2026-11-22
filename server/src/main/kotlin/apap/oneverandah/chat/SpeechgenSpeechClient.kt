@@ -111,7 +111,9 @@ class SpeechgenSpeechClient(
 
     private fun SpeechgenException.isMissingSubtitles(): Boolean {
         val normalized = message?.lowercase().orEmpty()
-        return "no subs" in normalized || "no subtitles" in normalized
+        return "no subs" in normalized ||
+                "no subtitle" in normalized ||
+                "subtitle cue" in normalized
     }
 
     private suspend fun awaitReady(initial: JsonObject): JsonObject {

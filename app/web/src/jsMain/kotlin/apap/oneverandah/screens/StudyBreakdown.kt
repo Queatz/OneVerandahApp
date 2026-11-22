@@ -14,9 +14,12 @@ import apap.oneverandah.api.SpeechRequest
 import apap.oneverandah.api.StudyBreakdownProgress
 import apap.oneverandah.api.StudyBreakdownSentenceProgress
 import apap.oneverandah.api.StudyChunk
+import apap.oneverandah.api.StudySentence
 import apap.oneverandah.api.StudySessionResponse
 import apap.oneverandah.api.advanceStudyBreakdownBackchain
 import apap.oneverandah.api.advanceStudyBreakdownShadow
+import apap.oneverandah.api.alignStudyChunks
+import apap.oneverandah.api.studyBreakdownSuffixes
 import apap.oneverandah.components.BottomDialog
 import apap.oneverandah.components.MaterialSymbol
 import apap.oneverandah.i18n.UiStrings
@@ -46,8 +49,10 @@ internal fun StudyBreakdown(
     onDismiss: () -> Unit,
 ) {
     val sentence = session.sentences.getOrNull(sentenceIndex) ?: return
-    val chunks = sentence.chunks
-    val suffixes = sentence.breakdownSuffixes
+    val chunks = sentence.breakdownChunks()
+    val suffixes = sentence.breakdownSuffixes.ifEmpty {
+        studyBreakdownSuffixes(sentence.text, sentence.tokens.map { it.text }, chunks)
+    }
     val scope = rememberCoroutineScope()
     val audioUrls = remember(session.textLanguageTag, sentence.text) { mutableStateMapOf<String, String>() }
     var drillProgress by remember(sentenceIndex) {
@@ -138,7 +143,7 @@ internal fun StudyBreakdown(
                     drillProgress.completed -> BreakdownAction(label = strings.close, onClick = onDismiss)
                     drillProgress.step == 1 -> BreakdownAction(
                         label = strings.chatStudyBreakdownGotIt,
-                        enabled = chunks.isNotEmpty() && sentence.breakdownAudioReady,
+                        enabled = chunks.isNotEmpty(),
                         onClick = { saveProgress(drillProgress.copy(step = 2, backchainRound = 0)) },
                     )
                     drillProgress.step == 2 -> BreakdownAction(
@@ -170,15 +175,6 @@ internal fun StudyBreakdown(
         },
     ) {
         Div(attrs = { classes(Styles.studyBreakdownSheet) }) {
-            Div(attrs = { classes(Styles.studyBreakdownActions) }) {
-                Span { Text(strings.chatStudyBreakdown) }
-                Button(attrs = {
-                    classes(Styles.studyBreakdownButton)
-                    attr("type", "button")
-                    attr("aria-label", strings.close)
-                    onClick { onDismiss() }
-                }) { MaterialSymbol("close") }
-            }
             Div(attrs = { classes(Styles.studyBreakdownSteps) }) {
                 stepLabels.forEachIndexed { index, label ->
                     Span(attrs = {
@@ -199,7 +195,7 @@ internal fun StudyBreakdown(
                     }
                 }
                 drillProgress.step == 1 -> {
-                    if (chunks.isEmpty() || !sentence.breakdownAudioReady) {
+                    if (chunks.isEmpty()) {
                         P(attrs = { classes(Styles.studyBreakdownPrompt) }) {
                             Text(strings.chatStudyBreakdownLoading)
                         }
@@ -328,4 +324,17 @@ private fun buildSuffix(chunks: List<StudyChunk>, round: Int): String {
     if (chunks.isEmpty()) return ""
     val start = (chunks.lastIndex - round).coerceIn(0, chunks.lastIndex)
     return chunks.drop(start).joinToString(" ") { it.text.trim() }
+}
+
+/** Server chunks are preferred; word spans are enough to start the drill while generation is still running. */
+private fun StudySentence.breakdownChunks(): List<StudyChunk> {
+    if (chunks.isNotEmpty()) return chunks
+    return alignStudyChunks(text, tokens.map { it.text }, emptyList()).map { chunk ->
+        val gloss = chunk.wordIndices.mapNotNull { index ->
+            tokens.getOrNull(index)?.let { token ->
+                token.contextualMeaning.ifBlank { token.literalMeaning }.takeIf(String::isNotBlank)
+            }
+        }.joinToString(" ")
+        chunk.copy(gloss = gloss)
+    }
 }

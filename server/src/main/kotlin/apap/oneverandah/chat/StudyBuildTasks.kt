@@ -13,6 +13,7 @@ import apap.oneverandah.api.StudySessionRequest
 import apap.oneverandah.api.StudyTokenStatus
 import apap.oneverandah.api.isTenRoundExam
 import apap.oneverandah.model.Language
+import org.slf4j.LoggerFactory
 
 fun interface StudyBuildTaskExecutor {
     suspend fun execute(task: StudyBuildTask)
@@ -24,6 +25,7 @@ class StudyBuildTasks(
     private val studySessionsService: StudySessionsService,
     private val speechService: SpeechService? = null,
 ) : StudyBuildTaskExecutor {
+    private val log = LoggerFactory.getLogger(StudyBuildTasks::class.java)
     override suspend fun execute(task: StudyBuildTask) {
         val record = store.findById(task.sessionId) ?: return
         if (isComplete(record, task)) return
@@ -173,11 +175,21 @@ class StudyBuildTasks(
             store.publish(record.id, StudyBuildEvent.SentenceDissected(sentenceIndex, latest))
         }
 
-        speechService?.let { speech ->
-            (chunks.map { it.text } + suffixes).filter(String::isNotBlank).distinct().forEach { text ->
-                speech.synthesize(SpeechRequest(text = text, languageTag = record.textLanguageTag))
+        val audioReady = runCatching {
+            speechService?.let { speech ->
+                (chunks.map { it.text } + suffixes).filter(String::isNotBlank).distinct().forEach { text ->
+                    speech.synthesize(SpeechRequest(text = text, languageTag = record.textLanguageTag))
+                }
             }
-        }
+        }.onFailure { error ->
+            log.warn(
+                "Breakdown audio warmup failed for session {} sentence {}: {}",
+                record.id,
+                sentenceIndex,
+                error.message,
+            )
+        }.isSuccess
+        if (!audioReady) return
         val audioSaved = store.update(record.id) { current ->
             current.copy(
                 session = current.session.copy(
@@ -363,7 +375,7 @@ class StudyBuildTasks(
         }
 
         StudyBuildElementKind.CHUNKS -> record.session.sentences
-            .getOrNull(task.element.sentenceIndex ?: -1)?.breakdownAudioReady == true
+            .getOrNull(task.element.sentenceIndex ?: -1)?.chunks?.isNotEmpty() == true
 
         StudyBuildElementKind.EXAMPLE_DISSECT -> {
             val token = record.session.sentences.getOrNull(task.element.sentenceIndex ?: -1)

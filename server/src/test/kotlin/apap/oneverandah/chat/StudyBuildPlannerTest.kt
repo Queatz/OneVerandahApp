@@ -52,7 +52,12 @@ class StudyBuildPlannerTest {
             ),
         )
         assertEquals(
-            setOf(StudyBuildElementKind.NAME, StudyBuildElementKind.DISSECT, StudyBuildElementKind.CHARACTERS),
+            setOf(
+                StudyBuildElementKind.NAME,
+                StudyBuildElementKind.DISSECT,
+                StudyBuildElementKind.CHARACTERS,
+                StudyBuildElementKind.CHUNKS,
+            ),
             planner.plan(skeleton).map { it.element.kind }.toSet(),
         )
 
@@ -150,7 +155,7 @@ class StudyBuildPlannerTest {
 
         val pendingKinds = planner.plan(partiallyDissected).map { it.element.kind }.toSet()
         assertTrue(StudyBuildElementKind.DISSECT in pendingKinds)
-        assertTrue(StudyBuildElementKind.CHUNKS !in pendingKinds)
+        assertTrue(StudyBuildElementKind.CHUNKS in pendingKinds)
         assertTrue(StudyBuildElementKind.CHARACTERS in pendingKinds)
         assertTrue(StudyBuildElementKind.WORD_IMAGE !in pendingKinds)
 

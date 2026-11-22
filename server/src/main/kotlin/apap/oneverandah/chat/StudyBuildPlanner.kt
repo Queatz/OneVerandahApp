@@ -64,6 +64,7 @@ class StudyBuildPlanner(private val maxAttempts: Int = 3) {
 
         val elements = mutableListOf<StudyBuildElement>()
         if (record.name.isBlank()) elements += StudyBuildElement(StudyBuildElementKind.NAME)
+        elements += pendingChunkBuilds(record)
 
         val dissectionsSettled = record.session.sentences.indices.all { index ->
             val sentence = record.session.sentences[index]
@@ -96,7 +97,6 @@ class StudyBuildPlanner(private val maxAttempts: Int = 3) {
         }
 
         if (dissectionsSettled) elements += pendingExampleDissections(record)
-        if (dissectionsSettled) elements += pendingChunkBuilds(record)
 
         if (characters.isEmpty()) {
             elements += StudyBuildElement(StudyBuildElementKind.CHARACTERS)
@@ -184,7 +184,7 @@ class StudyBuildPlanner(private val maxAttempts: Int = 3) {
 
     private fun pendingChunkBuilds(record: SavedStudySessionRecord): List<StudyBuildElement> =
         record.session.sentences.mapIndexedNotNull { sentenceIndex, sentence ->
-            if (sentence.breakdownAudioReady) {
+            if (sentence.chunks.isNotEmpty()) {
                 null
             } else {
                 StudyBuildElement(StudyBuildElementKind.CHUNKS, sentenceIndex = sentenceIndex)

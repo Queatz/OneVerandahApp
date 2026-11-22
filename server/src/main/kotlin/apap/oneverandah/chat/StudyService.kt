@@ -401,14 +401,19 @@ class StudyService(
         languageTag: String,
     ): Pair<List<StudyChunk>, List<String>> {
         val tokenTexts = tokens.map { it.text }
-        val generated = aiClient.chunkSentence(
-            StudyChunkGenerationRequest(
-                sentenceText = sentenceText,
-                tokens = tokenTexts,
-                textLanguageTag = textLanguageTag,
-                languageTag = languageTag,
-            ),
-        )
+        val generated = runCatching {
+            aiClient.chunkSentence(
+                StudyChunkGenerationRequest(
+                    sentenceText = sentenceText,
+                    tokens = tokenTexts,
+                    textLanguageTag = textLanguageTag,
+                    languageTag = languageTag,
+                ),
+            )
+        }.getOrElse { error ->
+            log.warn("Study chunk generation failed; using word-aligned fallback: {}", error.message)
+            emptyList()
+        }
         val chunks = alignStudyChunks(sentenceText, tokenTexts, generated).map { chunk ->
             val fallbackGloss = chunk.wordIndices.mapNotNull { index ->
                 tokens.getOrNull(index)?.let { token ->
