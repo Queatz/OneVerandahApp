@@ -644,7 +644,7 @@ class DashScopeStudyAiClient(
             appendLine("Learner UI language: ${languageName(request.languageTag)} (${request.languageTag})")
             appendLine("Sentence context (use only to identify each token's sense):")
             appendLine(request.sentenceText)
-            appendLine("For each token, write the lead-up situation or conversation that made the speaker need that word.")
+            appendLine("For each token, write a situation that naturally prompts a high-impact 1–4 word imperative or exclamation using that token. Show only the setup, never the reply.")
             appendLine("Target tokens (tokenIndex is the index in the original sentence token list):")
             request.tokens.forEach { token ->
                 appendLine("tokenIndex: ${token.tokenIndex}")
@@ -1337,17 +1337,18 @@ class DashScopeStudyAiClient(
     """.trimIndent()
 
     private fun wordRecallScenarioSystemPrompt(activeLanguageTag: String): String = """
-        You create one short lead-up situation or conversation for each word in a language-learning lesson.
-        The cue is what happened just before the speaker needed this word — a scene and/or a brief exchange that creates the communicative pressure to say it. Stop before the word is spoken.
+        You create one short situation for each word in a language-learning lesson. Each situation must make a natural, high-impact 1–4 word imperative or exclamation containing the target word the obvious thing to say.
+        The cue shows what is happening and asks what the learner would say; stop before writing the reply. For example, a car rushing toward a child creates a reason to shout, but never include the shout itself in the cue.
         Return ONLY one JSON object with this exact schema:
-        {"scenarios":[{"tokenIndex":0,"scenario":"short lead-up situation or conversation"}]}
+        {"scenarios":[{"tokenIndex":0,"scenario":"short situation that prompts an imperative or exclamation"}]}
         Rules:
         - Return exactly one entry for every requested tokenIndex, with no duplicates or extra indices.
         - Write each scenario in the learner UI language '$activeLanguageTag'. Keep it short and concrete.
-        - For a lexical word, write the lead-up situation and/or conversation that made the speaker need this word. Show people, place, and what was just said or done; do not describe the word itself.
-        - Never write the target form, its translation, definition, synonym, or a sentence that gives the answer away. Do not quote the study sentence.
+        - Privately ensure the obvious natural reply is an imperative or exclamation of 1–4 words in the study/source language, contains the exact target form, and fits its supplied sense. The reply is for the learner to produce after seeing the cue; never include it in the scenario.
+        - Make the target word desirable or highly impactful in that moment. Show the concrete event or exchange and ask what the learner would say; do not describe the word itself or write a generic situation that could prompt any word.
+        - Never write the target form, its translation, definition, synonym, or the intended reply. Do not quote the study sentence or give the answer away indirectly.
         - Do not say that the learner "needs" a word, name the part of speech, or explain the meaning. The situation must stand on its own.
-        - For grammatical particles or function words, write a lead-up conversation that needs that grammatical function or relation. Do not invent a survival or physical need for a particle.
+        - For grammatical particles or function words, the short natural reply must use the target form for its grammatical function. Use a fitting interaction; do not invent a survival or physical need unrelated to the particle.
         - Use source sentence and meanings only to choose the right sense; do not reveal or explain them in the cue.
         - Do not wrap JSON in markdown or add keys beyond scenarios, tokenIndex, and scenario.
     """.trimIndent()

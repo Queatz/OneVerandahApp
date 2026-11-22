@@ -494,11 +494,17 @@ object Styles {
     const val studyVisualizeHint = "study-visualize-hint"
     const val studyVisualizePrimary = "study-visualize-primary"
     const val studyVisualizeStage = "study-visualize-stage"
+    const val studyVisualizeImageLayer = "study-visualize-image-layer"
+    const val studyVisualizeImageDriftX = "study-visualize-image-drift-x"
+    const val studyVisualizeImageDriftY = "study-visualize-image-drift-y"
     const val studyVisualizeBackground = "study-visualize-background"
+    const val studyVisualizeBackgroundOutgoing = "study-visualize-background-outgoing"
     const val studyVisualizeVignette = "study-visualize-vignette"
     const val studyVisualizeSceneLoading = "study-visualize-scene-loading"
     const val studyVisualizeChoice = "study-visualize-choice"
     const val studyVisualizeChoiceLeaving = "study-visualize-choice-leaving"
+    const val studyVisualizeChoiceCorrect = "study-visualize-choice-correct"
+    const val studyVisualizeChoiceText = "study-visualize-choice-text"
     const val studyVisualizeComplete = "study-visualize-complete"
     const val studyVisualizeCompleteTitle = "study-visualize-complete-title"
     const val studyVisualizeGallery = "study-visualize-gallery"
@@ -4056,14 +4062,28 @@ object Styles {
         .${studyVisualizeFullscreen} .${studyVisualizeStage} {
             min-height: 0;
         }
-        .${studyVisualizeBackground} {
+        .${studyVisualizeImageLayer} {
             position: absolute;
             z-index: -2;
+            inset: -6%;
+            pointer-events: none;
+            animation-duration: 28s;
+            animation-timing-function: cubic-bezier(.37, 0, .63, 1);
+            animation-iteration-count: infinite;
+        }
+        .${studyVisualizeImageDriftX} { animation-name: study-visualize-image-drift-x; }
+        .${studyVisualizeImageDriftY} { animation-name: study-visualize-image-drift-y; }
+        .${studyVisualizeBackground} {
+            position: absolute;
             inset: 0;
             width: 100%;
             height: 100%;
             object-fit: cover;
+            opacity: 0;
             animation: study-visualize-image-fade 1.4s ease both;
+        }
+        .${studyVisualizeBackgroundOutgoing} {
+            animation: study-visualize-image-fade-out 1.4s ease both;
         }
         .${studyVisualizeVignette} {
             position: absolute;
@@ -4096,29 +4116,47 @@ object Styles {
             z-index: 1;
             width: min(22%, 230px);
             min-height: 46px;
-            padding: 10px 13px;
-            border: 1px solid rgba(255,255,255,.72);
-            border-radius: 999px;
-            background: linear-gradient(145deg, rgba(255,255,255,.92), rgba(237,247,241,.82));
-            color: #1b302e;
+            padding: 0;
+            border: 0;
+            background: transparent;
+            color: inherit;
             font: inherit;
             font-size: clamp(14px, 2vw, 21px);
             font-weight: 750;
             line-height: 1.2;
             text-align: center;
+            cursor: pointer;
+            opacity: 1;
+            transform: translate(-50%, -50%);
+            animation: study-visualize-float 3.8s ease-in-out infinite;
+            animation-delay: var(--float-delay);
+        }
+        .${studyVisualizeChoice}:hover:not(:disabled):not(.${studyVisualizeChoiceCorrect}) .${studyVisualizeChoiceText} {
+            box-shadow: 0 12px 32px rgba(2,10,14,.46), 0 0 0 4px rgba(219,244,232,.25);
+        }
+        .${studyVisualizeChoiceText} {
+            display: grid;
+            min-height: 46px;
+            padding: 10px 13px;
+            place-items: center;
+            border: 1px solid rgba(255,255,255,.72);
+            border-radius: 999px;
+            background: linear-gradient(145deg, rgba(255,255,255,.92), rgba(237,247,241,.82));
+            color: #1b302e;
             text-wrap: balance;
             overflow-wrap: anywhere;
-            cursor: pointer;
             box-shadow: 0 8px 26px rgba(2,10,14,.36), inset 0 1px 0 rgba(255,255,255,.9);
             backdrop-filter: blur(12px);
-            transform: translate(-50%, -50%);
-            animation: study-visualize-float 3.8s ease-in-out infinite, study-visualize-choice-in 420ms ease both;
-            animation-delay: var(--float-delay), var(--reveal-delay);
-            transition: background 160ms ease, box-shadow 160ms ease;
+            opacity: 0;
+            animation: study-visualize-choice-in 420ms ease both;
+            animation-delay: var(--reveal-delay);
+            transition: box-shadow 160ms ease;
         }
-        .${studyVisualizeChoice}:hover:not(:disabled) {
-            background: #fff;
-            box-shadow: 0 12px 32px rgba(2,10,14,.46), 0 0 0 4px rgba(219,244,232,.25);
+        .${studyVisualizeChoiceCorrect} .${studyVisualizeChoiceText} {
+            border-color: #e8f4c7;
+            background: linear-gradient(145deg, #fff9db, #e8f4c7);
+            box-shadow: 0 12px 36px rgba(2,10,14,.5), 0 0 0 5px rgba(232,244,199,.28);
+            transition: background 160ms ease, border-color 160ms ease, box-shadow 160ms ease;
         }
         .${studyVisualizeChoice}:focus-visible {
             outline: 3px solid #d5f3e5;
@@ -4146,7 +4184,14 @@ object Styles {
             border: 1px solid rgba(255,255,255,.12);
             border-radius: 16px;
             background: rgba(255,255,255,.065);
+            color: inherit;
+            font: inherit;
+            text-align: center;
+            cursor: pointer;
+            transition: transform 160ms ease, border-color 160ms ease, background 160ms ease;
         }
+        .${studyVisualizeGalleryCard}:hover { transform: translateY(-2px); border-color: rgba(255,255,255,.36); background: rgba(255,255,255,.11); }
+        .${studyVisualizeGalleryCard}:focus-visible { outline: 3px solid #d5f3e5; outline-offset: 3px; }
         .${studyVisualizeGalleryImage}, .${studyVisualizeGalleryPlaceholder} {
             display: grid;
             width: 100%;
@@ -4169,8 +4214,20 @@ object Styles {
             text-align: center;
         }
         @keyframes study-visualize-image-fade {
-            from { opacity: 0; transform: scale(1.025); }
+            from { opacity: 0; }
             to { opacity: 1; transform: scale(1); }
+        }
+        @keyframes study-visualize-image-fade-out {
+            from { opacity: 1; }
+            to { opacity: 0; }
+        }
+        @keyframes study-visualize-image-drift-x {
+            0%, 100% { transform: translateX(-2.2%) scale(1.08); }
+            50% { transform: translateX(2.2%) scale(1.08); }
+        }
+        @keyframes study-visualize-image-drift-y {
+            0%, 100% { transform: translateY(2.2%) scale(1.08); }
+            50% { transform: translateY(-2.2%) scale(1.08); }
         }
         @keyframes study-visualize-float {
             0%, 100% { transform: translate(-50%, -50%) rotate(-2deg) translateY(0); }
@@ -4190,12 +4247,14 @@ object Styles {
         @media (max-width: 560px) {
             .${studyVisualizeShell} { min-height: 360px; padding: 11px; border-radius: 20px; }
             .${studyVisualizeStage} { min-height: 58vh; border-radius: 17px; }
-            .${studyVisualizeChoice} { width: 23%; min-height: 42px; padding: 8px 6px; font-size: clamp(12px, 3vw, 16px); }
+            .${studyVisualizeChoice} { width: 23%; min-height: 42px; font-size: clamp(12px, 3vw, 16px); }
+            .${studyVisualizeChoiceText} { min-height: 42px; padding: 8px 6px; }
             .${studyVisualizeGallery} { gap: 7px; }
             .${studyVisualizeGalleryCard} { gap: 7px; padding: 6px; border-radius: 12px; }
         }
         @media (prefers-reduced-motion: reduce) {
-            .${studyVisualizeBackground}, .${studyVisualizeChoice}, .${studyVisualizeSceneLoading} { animation-duration: .01ms; animation-iteration-count: 1; }
+            .${studyVisualizeImageLayer} { animation: none; }
+            .${studyVisualizeBackground}, .${studyVisualizeChoice}, .${studyVisualizeChoiceText}, .${studyVisualizeSceneLoading} { animation-duration: .01ms; animation-iteration-count: 1; }
             .${studyVisualizeChoiceLeaving} { opacity: 0; }
         }
         .${studyWriteCorrect} {

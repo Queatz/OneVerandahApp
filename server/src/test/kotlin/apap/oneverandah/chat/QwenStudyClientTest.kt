@@ -64,13 +64,13 @@ class QwenStudyClientTest {
     }
 
     @Test
-    fun `word recall scenarios are indexed and prompt grammar particles as function cues`() = runBlocking {
+    fun `word recall scenarios prompt short impactful utterances without revealing them`() = runBlocking {
         val requestBodies = mutableListOf<String>()
         val engine = MockEngine { request ->
             requestBodies += (request.body as OutgoingContent.ByteArrayContent).bytes().decodeToString()
             respond(
                 content = qwenChatResponse(
-                    """{"scenarios":[{"tokenIndex":0,"scenario":"You need to describe someone's appearance."},{"tokenIndex":1,"scenario":"You need to indicate who is doing the action."}]}""",
+                    """{"scenarios":[{"tokenIndex":0,"scenario":"A car is rushing toward a child. What do you shout?"},{"tokenIndex":1,"scenario":"Someone asks who acted, but the speaker is unclear. What short reply would clarify it?"}]}""",
                 ),
                 status = HttpStatusCode.OK,
                 headers = headersOf(HttpHeaders.ContentType, "application/json"),
@@ -93,14 +93,17 @@ class QwenStudyClientTest {
 
         assertEquals(
             mapOf(
-                0 to "You need to describe someone's appearance.",
-                1 to "You need to indicate who is doing the action.",
+                0 to "A car is rushing toward a child. What do you shout?",
+                1 to "Someone asks who acted, but the speaker is unclear. What short reply would clarify it?",
             ),
             scenarios,
         )
-        assertContains(requestBodies.single(), "lead-up situation or conversation")
-        assertContains(requestBodies.single(), "Do not invent a survival or physical need for a particle")
+        assertContains(requestBodies.single(), "1–4 word imperative or exclamation")
+        assertContains(requestBodies.single(), "contains the exact target form")
+        assertContains(requestBodies.single(), "Make the target word desirable or highly impactful")
+        assertContains(requestBodies.single(), "do not invent a survival or physical need unrelated to the particle")
         assertContains(requestBodies.single(), "Never write the target form")
+        assertContains(requestBodies.single(), "never include it in the scenario")
         client.close()
     }
 

@@ -7,15 +7,21 @@ import androidx.compose.runtime.getValue
 import androidx.compose.runtime.key
 import androidx.compose.runtime.mutableStateOf
 import androidx.compose.runtime.remember
+import androidx.compose.runtime.rememberCoroutineScope
 import androidx.compose.runtime.rememberUpdatedState
 import androidx.compose.runtime.setValue
 import apap.oneverandah.Styles
+import apap.oneverandah.api.SpeechRequest
 import apap.oneverandah.api.StudySessionResponse
 import apap.oneverandah.api.StudyTokenStatus
 import apap.oneverandah.i18n.UiStrings
 import kotlinx.browser.document
 import kotlinx.browser.window
+import kotlinx.coroutines.CancellationException
+import kotlinx.coroutines.CompletableDeferred
 import kotlinx.coroutines.delay
+import kotlinx.coroutines.launch
+import kotlinx.coroutines.withTimeoutOrNull
 import org.jetbrains.compose.web.attributes.ref
 import org.jetbrains.compose.web.dom.Button
 import org.jetbrains.compose.web.dom.Div
@@ -32,13 +38,14 @@ import kotlin.random.Random
 internal const val STUDY_VISUALIZE_REPETITIONS = 3
 internal const val STUDY_VISUALIZE_MAX_CHOICES = 8
 internal const val STUDY_VISUALIZE_IMAGE_DELAY_MS = 3_000
+internal const val STUDY_VISUALIZE_CORRECT_HOLD_MS = 2_000
 
 internal data class StudyVisualizeWord(
     val text: String,
     val imageUrl: String? = null,
 )
 
-internal enum class StudyVisualizePhase { READY, IMAGE, SETUP, CHOOSING, COMPLETE }
+internal enum class StudyVisualizePhase { READY, IMAGE, SETUP, CHOOSING, CORRECT, COMPLETE }
 
 internal data class StudyVisualizeChoice(
     val word: StudyVisualizeWord,
@@ -51,6 +58,12 @@ internal data class StudyVisualizeProgress(
     val wordIndex: Int = 0,
     val choices: List<StudyVisualizeChoice> = emptyList(),
     val setupNonce: Int = 0,
+)
+
+private data class StudyVisualizeImageLayer(
+    val id: String,
+    val imageUrl: String,
+    val driftsHorizontally: Boolean,
 )
 
 internal fun buildStudyVisualizeDeck(
@@ -95,21 +108,28 @@ internal fun setupStudyVisualizeChoices(
 
 internal fun answerStudyVisualize(
     progress: StudyVisualizeProgress,
-    deckSize: Int,
     selectedWord: String,
     correctWord: String,
 ): StudyVisualizeProgress {
     if (progress.phase != StudyVisualizePhase.CHOOSING) return progress
     return if (visualizeWordKey(selectedWord) == visualizeWordKey(correctWord)) {
-        val nextIndex = progress.wordIndex + 1
-        progress.copy(
-            phase = if (nextIndex >= deckSize) StudyVisualizePhase.COMPLETE else StudyVisualizePhase.IMAGE,
-            wordIndex = nextIndex,
-            choices = emptyList(),
-        )
+        progress.copy(phase = StudyVisualizePhase.CORRECT)
     } else {
         progress.copy(phase = StudyVisualizePhase.SETUP, setupNonce = progress.setupNonce + 1)
     }
+}
+
+internal fun advanceStudyVisualize(
+    progress: StudyVisualizeProgress,
+    deckSize: Int,
+): StudyVisualizeProgress {
+    if (progress.phase != StudyVisualizePhase.CORRECT) return progress
+    val nextIndex = progress.wordIndex + 1
+    return progress.copy(
+        phase = if (nextIndex >= deckSize) StudyVisualizePhase.COMPLETE else StudyVisualizePhase.IMAGE,
+        wordIndex = nextIndex,
+        choices = emptyList(),
+    )
 }
 
 private fun visualizeWordKey(text: String): String = text.trim().lowercase()
@@ -141,8 +161,12 @@ internal fun StudyVisualizeTab(
         words.firstOrNull { visualizeWordKey(it.text) == visualizeWordKey(orderedWord.text) } ?: orderedWord
     }
     var progress by remember(session.text, deckOrder, shuffleNonce) { mutableStateOf(StudyVisualizeProgress()) }
+    var currentImageLayer by remember(session.text) { mutableStateOf<StudyVisualizeImageLayer?>(null) }
+    var outgoingImageLayer by remember(session.text) { mutableStateOf<StudyVisualizeImageLayer?>(null) }
     var visualizeElement by remember { mutableStateOf<HTMLElement?>(null) }
     val preloadedImages = remember { mutableListOf<HTMLImageElement>() }
+    val speechUrls = remember(session.text) { mutableMapOf<String, String>() }
+    val scope = rememberCoroutineScope()
     var isFullscreen by remember { mutableStateOf(false) }
     val latestFullscreen by rememberUpdatedState(isFullscreen)
     val latestElement by rememberUpdatedState(visualizeElement)
@@ -152,6 +176,28 @@ internal fun StudyVisualizeTab(
     val preloadUrls = deck.drop(progress.wordIndex).take(4)
         .mapNotNull { it.imageUrl }
         .distinct()
+
+    suspend fun speakVisualizeWord(text: String): Boolean {
+        val spokenText = text.trim()
+        if (spokenText.isEmpty()) return false
+        return try {
+            withTimeoutOrNull(15_000L) {
+                val url = speechUrls[spokenText] ?: loadStudySpeechDataUrl(
+                    SpeechRequest(spokenText, session.textLanguageTag),
+                ).also { speechUrls[spokenText] = it }
+                val playbackEnded = CompletableDeferred<Unit>()
+                playAudio(url, restart = true, onEnded = {
+                    if (!playbackEnded.isCompleted) playbackEnded.complete(Unit)
+                })
+                playbackEnded.await()
+                true
+            } ?: false
+        } catch (cancelled: CancellationException) {
+            throw cancelled
+        } catch (_: Throwable) {
+            false
+        }
+    }
 
     LaunchedEffect(autoStart, anyLoading, hasPendingWords, progress.phase, deckOrder) {
         if (autoStart && !anyLoading && !hasPendingWords && deckOrder.isNotEmpty() && progress.phase == StudyVisualizePhase.READY) {
@@ -166,6 +212,28 @@ internal fun StudyVisualizeTab(
             val image = document.createElement("img") as HTMLImageElement
             preloadedImages += image
             image.src = url
+        }
+    }
+
+    LaunchedEffect(progress.wordIndex, currentWord?.imageUrl) {
+        val imageUrl = currentWord?.imageUrl?.takeIf(String::isNotBlank)
+        val previous = currentImageLayer
+        if (imageUrl == previous?.imageUrl) {
+            outgoingImageLayer = null
+            return@LaunchedEffect
+        }
+        val next = imageUrl?.let {
+            StudyVisualizeImageLayer(
+                id = "${progress.wordIndex}-$it",
+                imageUrl = it,
+                driftsHorizontally = Random.nextBoolean(),
+            )
+        }
+        outgoingImageLayer = previous
+        currentImageLayer = next
+        if (previous != null) {
+            delay(1_400L)
+            if (outgoingImageLayer?.id == previous.id) outgoingImageLayer = null
         }
     }
 
@@ -184,6 +252,14 @@ internal fun StudyVisualizeTab(
                 val choices = layoutStudyVisualizeChoices(options)
                 VisualizeSfx.sceneSetup(choices.size)
                 progress = setupStudyVisualizeChoices(progress, choices)
+            }
+            StudyVisualizePhase.CORRECT -> {
+                val correct = deck.getOrNull(progress.wordIndex) ?: return@LaunchedEffect
+                delay(220)
+                val spoke = speakVisualizeWord(correct.text)
+                if (!spoke) delay(350)
+                delay(STUDY_VISUALIZE_CORRECT_HOLD_MS.toLong())
+                progress = advanceStudyVisualize(progress, deck.size)
             }
             else -> Unit
         }
@@ -226,7 +302,7 @@ internal fun StudyVisualizeTab(
     }) {
         Div(attrs = { classes(Styles.studyVisualizeHeader) }) {
             Span(attrs = { classes(Styles.studyVisualizeTitle) }) { Text(copy.tab) }
-            if (progress.phase in listOf(StudyVisualizePhase.IMAGE, StudyVisualizePhase.SETUP, StudyVisualizePhase.CHOOSING)) {
+            if (progress.phase in listOf(StudyVisualizePhase.IMAGE, StudyVisualizePhase.SETUP, StudyVisualizePhase.CHOOSING, StudyVisualizePhase.CORRECT)) {
                 Span(attrs = { classes(Styles.studyVisualizeProgress) }) {
                     Text(copy.progress((progress.wordIndex + 1).coerceAtMost(deck.size), deck.size))
                 }
@@ -283,7 +359,12 @@ internal fun StudyVisualizeTab(
                     attr("aria-label", copy.collection)
                 }) {
                     words.forEach { word ->
-                        Div(attrs = { classes(Styles.studyVisualizeGalleryCard) }) {
+                        Button(attrs = {
+                            classes(Styles.studyVisualizeGalleryCard)
+                            attr("type", "button")
+                            attr("aria-label", word.text)
+                            onClick { scope.launch { speakVisualizeWord(word.text) } }
+                        }) {
                             if (word.imageUrl != null) {
                                 Img(src = word.imageUrl, alt = "", attrs = {
                                     classes(Styles.studyVisualizeGalleryImage)
@@ -302,13 +383,25 @@ internal fun StudyVisualizeTab(
                     attr("role", "group")
                     attr("aria-label", copy.tapHint)
                 }) {
-                    currentWord?.imageUrl?.let { imageUrl ->
-                        key("${progress.wordIndex}-$imageUrl") {
-                            Img(src = imageUrl, alt = "", attrs = {
-                                classes(Styles.studyVisualizeBackground)
-                            })
+                        listOfNotNull(outgoingImageLayer, currentImageLayer).forEach { imageLayer ->
+                            key(imageLayer.id) {
+                                Div(attrs = {
+                                    classes(Styles.studyVisualizeImageLayer)
+                                    if (imageLayer.driftsHorizontally) {
+                                        classes(Styles.studyVisualizeImageDriftX)
+                                    } else {
+                                        classes(Styles.studyVisualizeImageDriftY)
+                                    }
+                                }) {
+                                    Img(src = imageLayer.imageUrl, alt = "", attrs = {
+                                        classes(Styles.studyVisualizeBackground)
+                                        if (imageLayer.id == outgoingImageLayer?.id) {
+                                            classes(Styles.studyVisualizeBackgroundOutgoing)
+                                        }
+                                    })
+                                }
+                            }
                         }
-                    }
                     Div(attrs = { classes(Styles.studyVisualizeVignette) })
                     if (progress.phase == StudyVisualizePhase.IMAGE) {
                         Span(attrs = { classes(Styles.studyVisualizeSceneLoading) }) { Text(copy.sceneLoading) }
@@ -317,7 +410,11 @@ internal fun StudyVisualizeTab(
                         key("${progress.setupNonce}-${visualizeWordKey(choice.word.text)}") {
                             Button(attrs = {
                                 classes(Styles.studyVisualizeChoice)
-                                if (progress.phase != StudyVisualizePhase.CHOOSING) classes(Styles.studyVisualizeChoiceLeaving)
+                                if (progress.phase == StudyVisualizePhase.CORRECT && visualizeWordKey(choice.word.text) == visualizeWordKey(currentWord?.text.orEmpty())) {
+                                    classes(Styles.studyVisualizeChoiceCorrect)
+                                } else if (progress.phase != StudyVisualizePhase.CHOOSING) {
+                                    classes(Styles.studyVisualizeChoiceLeaving)
+                                }
                                 attr("type", "button")
                                 attr("style", "left:${choice.xPercent}%;top:${choice.yPercent}%;--float-delay:-${index * 240}ms;--reveal-delay:${index * 65}ms")
                                 attr("aria-label", choice.word.text)
@@ -329,12 +426,13 @@ internal fun StudyVisualizeTab(
                                     if (isCorrect) VisualizeSfx.correct() else VisualizeSfx.incorrect()
                                     progress = answerStudyVisualize(
                                         progress = progress,
-                                        deckSize = deck.size,
                                         selectedWord = choice.word.text,
                                         correctWord = correct.text,
                                     )
                                 }
-                            }) { Text(choice.word.text) }
+                            }) {
+                                Span(attrs = { classes(Styles.studyVisualizeChoiceText) }) { Text(choice.word.text) }
+                            }
                         }
                     }
                 }

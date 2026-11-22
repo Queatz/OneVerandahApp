@@ -499,7 +499,7 @@ data class StudyToken(
     val imageId: String? = null,
     /** Public URL once the word visual is ready. */
     val imageUrl: String? = null,
-    /** Cached lead-up situation or conversation for Word Recall; it must not reveal the word or its meaning. */
+    /** Cached situation that prompts a natural 1–4 word imperative/exclamation using this word, without revealing it. */
     val needScenario: String = "",
 ) {
     /** True when this token is ready for full interactive dissection. */

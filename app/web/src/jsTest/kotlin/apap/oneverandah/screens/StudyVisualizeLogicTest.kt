@@ -38,7 +38,7 @@ class StudyVisualizeLogicTest {
             initialChoices.mapIndexed { index, word -> StudyVisualizeChoice(word, index.toDouble(), index.toDouble()) },
         )
 
-        val wrong = answerStudyVisualize(choosing, deckSize = 12, selectedWord = words[1].text, correctWord = correct.text)
+        val wrong = answerStudyVisualize(choosing, selectedWord = words[1].text, correctWord = correct.text)
         val reshuffledChoices = chooseStudyVisualizeWords(words, correct, random = Random(2))
 
         assertEquals(StudyVisualizePhase.SETUP, wrong.phase)
@@ -49,16 +49,34 @@ class StudyVisualizeLogicTest {
     }
 
     @Test
-    fun `correct answer advances and final answer completes the deck`() {
+    fun `correct answer stays visible until advanced and final answer completes the deck`() {
+        val choices = listOf(
+            StudyVisualizeChoice(words[0], 20.0, 30.0),
+            StudyVisualizeChoice(words[1], 70.0, 60.0),
+        )
         val choosing = StudyVisualizeProgress(
             phase = StudyVisualizePhase.CHOOSING,
             wordIndex = 0,
+            choices = choices,
         )
-        val next = answerStudyVisualize(choosing, deckSize = 2, selectedWord = " Word1 ", correctWord = "word1")
-        val final = answerStudyVisualize(next.copy(phase = StudyVisualizePhase.CHOOSING), 2, "word2", "word2")
+        val holding = answerStudyVisualize(choosing, selectedWord = " Word1 ", correctWord = "word1")
+
+        assertEquals(StudyVisualizePhase.CORRECT, holding.phase)
+        assertEquals(0, holding.wordIndex)
+        assertEquals(choices, holding.choices)
+
+        val next = advanceStudyVisualize(holding, deckSize = 2)
+        val finalHolding = answerStudyVisualize(
+            next.copy(phase = StudyVisualizePhase.CHOOSING, choices = choices),
+            selectedWord = "word2",
+            correctWord = "word2",
+        )
+        val final = advanceStudyVisualize(finalHolding, deckSize = 2)
 
         assertEquals(StudyVisualizePhase.IMAGE, next.phase)
         assertEquals(1, next.wordIndex)
+        assertTrue(next.choices.isEmpty())
+        assertEquals(StudyVisualizePhase.CORRECT, finalHolding.phase)
         assertEquals(StudyVisualizePhase.COMPLETE, final.phase)
         assertEquals(2, final.wordIndex)
     }
