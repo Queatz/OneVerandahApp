@@ -2,8 +2,10 @@ package apap.oneverandah.api
 
 import kotlin.test.Test
 import kotlin.test.assertEquals
+import kotlin.test.assertFalse
 import kotlin.test.assertNotNull
 import kotlin.test.assertTrue
+import kotlin.random.Random
 
 class StudyBreakdownTest {
     @Test
@@ -40,17 +42,124 @@ class StudyBreakdownTest {
 
     @Test
     fun `backchain and shadow advance sequentially through all rounds`() {
-        var progress = StudyBreakdownSentenceProgress(step = 2)
+        var progress = StudyBreakdownSentenceProgress(step = 3, schemaVersion = 2)
         repeat(14) { progress = advanceStudyBreakdownBackchain(progress, chunkCount = 3) }
-        assertEquals(StudyBreakdownSentenceProgress(step = 2, backchainRound = 2, backchainRep = 4), progress)
+        assertEquals(StudyBreakdownSentenceProgress(step = 3, backchainRound = 2, backchainRep = 4, schemaVersion = 2), progress)
         progress = advanceStudyBreakdownBackchain(progress, chunkCount = 3)
-        assertEquals(3, progress.step)
+        assertEquals(4, progress.step)
         assertEquals(5, progress.backchainRep)
         repeat(4) { progress = advanceStudyBreakdownShadow(progress) }
-        assertEquals(StudyBreakdownSentenceProgress(step = 3, backchainRound = 2, backchainRep = 5, shadowRep = 4), progress)
+        assertEquals(StudyBreakdownSentenceProgress(step = 4, backchainRound = 2, backchainRep = 5, shadowRep = 4, schemaVersion = 2), progress)
         progress = advanceStudyBreakdownShadow(progress)
-        assertEquals(4, progress.step)
+        assertEquals(5, progress.step)
         assertEquals(5, progress.shadowRep)
+    }
+
+    @Test
+    fun `legacy progress migrates old backchain shadow and recall steps`() {
+        val normalized = StudyBreakdownProgress(
+            sentences = mapOf(
+                0 to StudyBreakdownSentenceProgress(step = 1),
+                1 to StudyBreakdownSentenceProgress(step = 2),
+                2 to StudyBreakdownSentenceProgress(step = 3),
+                3 to StudyBreakdownSentenceProgress(step = 4),
+                4 to StudyBreakdownSentenceProgress(step = 4, completed = true),
+            ),
+        ).normalizedOrNull()
+
+        assertNotNull(normalized)
+        assertEquals(listOf(1, 3, 4, 5, 5), normalized.sentences.toSortedMap().values.map { it.step })
+        assertTrue(normalized.sentences.getValue(4).completed)
+        assertTrue(normalized.sentences.values.all { it.schemaVersion == 2 })
+        assertEquals(null, StudyBreakdownProgress(
+            sentences = mapOf(0 to StudyBreakdownSentenceProgress(step = 6, schemaVersion = 2)),
+        ).normalizedOrNull())
+    }
+
+    @Test
+    fun `word recall interleaves after one then three items and passes after three correct recalls`() {
+        val started = startStudyBreakdownWordRecall(
+            StudyBreakdownSentenceProgress(schemaVersion = 2),
+            (0..7).toList(),
+            Random(12),
+        )
+        val firstWord = started.wordRecallQueue.first()
+
+        val afterFirst = gradeStudyBreakdownWordRecall(revealStudyBreakdownWordRecall(started), correct = true)
+        assertEquals(started.wordRecallQueue[1], afterFirst.wordRecallQueue[0])
+        assertEquals(firstWord, afterFirst.wordRecallQueue[1])
+        assertEquals(1, afterFirst.wordRecallCorrect[firstWord])
+
+        val secondReview = afterFirst.copy(
+            wordRecallQueue = listOf(firstWord) + afterFirst.wordRecallQueue.filterNot { it == firstWord },
+            wordRecallRevealed = true,
+        )
+        val afterSecond = gradeStudyBreakdownWordRecall(secondReview, correct = true)
+        assertEquals(firstWord, afterSecond.wordRecallQueue[3])
+        assertEquals(2, afterSecond.wordRecallCorrect[firstWord])
+
+        val thirdReview = afterSecond.copy(
+            wordRecallQueue = listOf(firstWord) + afterSecond.wordRecallQueue.filterNot { it == firstWord },
+            wordRecallRevealed = true,
+        )
+        val afterThird = gradeStudyBreakdownWordRecall(thirdReview, correct = true)
+        assertFalse(firstWord in afterThird.wordRecallQueue)
+        assertEquals(3, afterThird.wordRecallCorrect[firstWord])
+    }
+
+    @Test
+    fun `miss requeues sooner and known skips the active word`() {
+        val progress = StudyBreakdownSentenceProgress(
+            step = 2,
+            schemaVersion = 2,
+            wordRecallQueue = listOf(4, 2, 8),
+            wordRecallCorrect = mapOf(4 to 1),
+            wordRecallRevealed = true,
+        )
+
+        val missed = gradeStudyBreakdownWordRecall(progress, correct = false)
+        assertEquals(listOf(2, 4, 8), missed.wordRecallQueue)
+        assertEquals(1, missed.wordRecallCorrect[4])
+
+        val skipped = skipStudyBreakdownWordRecall(progress.copy(wordRecallRevealed = false))
+        assertEquals(listOf(2, 8), skipped.wordRecallQueue)
+        assertTrue(4 in skipped.wordRecallKnown)
+    }
+
+    @Test
+    fun `word recall merge keeps a miss requeue and a newly revealed answer`() {
+        val baseline = StudyBreakdownSentenceProgress(
+            step = 2,
+            schemaVersion = 2,
+            wordRecallQueue = listOf(4, 2, 8),
+            wordRecallCorrect = mapOf(4 to 1),
+        )
+        val missed = gradeStudyBreakdownWordRecall(baseline.copy(wordRecallRevealed = true), correct = false)
+        val mergedMiss = mergeStudyBreakdownProgress(
+            current = StudyBreakdownProgress(sentences = mapOf(0 to baseline), updatedAt = 10),
+            incoming = StudyBreakdownProgress(sentences = mapOf(0 to missed), updatedAt = 20),
+        )
+        assertEquals(missed, mergedMiss?.sentences?.getValue(0))
+
+        val revealed = revealStudyBreakdownWordRecall(baseline)
+        val mergedReveal = mergeStudyBreakdownProgress(
+            current = StudyBreakdownProgress(sentences = mapOf(0 to baseline), updatedAt = 10),
+            incoming = StudyBreakdownProgress(sentences = mapOf(0 to revealed), updatedAt = 20),
+        )
+        assertTrue(mergedReveal?.sentences?.getValue(0)?.wordRecallRevealed == true)
+    }
+
+    @Test
+    fun `word recall with no words advances directly to backchain and final correct completes the step`() {
+        val empty = startStudyBreakdownWordRecall(StudyBreakdownSentenceProgress(schemaVersion = 2), emptyList())
+        assertEquals(3, empty.step)
+
+        val single = startStudyBreakdownWordRecall(StudyBreakdownSentenceProgress(schemaVersion = 2), listOf(7))
+        val completed = (1..3).fold(single) { progress, _ ->
+            gradeStudyBreakdownWordRecall(revealStudyBreakdownWordRecall(progress), correct = true)
+        }
+        assertEquals(3, completed.step)
+        assertTrue(completed.wordRecallQueue.isEmpty())
     }
 
     @Test
@@ -58,15 +167,15 @@ class StudyBreakdownTest {
         val merged = mergeStudyBreakdownProgress(
             current = StudyBreakdownProgress(
                 sentences = mapOf(
-                    0 to StudyBreakdownSentenceProgress(step = 4, completed = true),
-                    1 to StudyBreakdownSentenceProgress(step = 2, backchainRound = 1),
+                    0 to StudyBreakdownSentenceProgress(step = 5, completed = true, schemaVersion = 2),
+                    1 to StudyBreakdownSentenceProgress(step = 3, backchainRound = 1, schemaVersion = 2),
                 ),
                 updatedAt = 10,
             ),
             incoming = StudyBreakdownProgress(
                 sentences = mapOf(
-                    0 to StudyBreakdownSentenceProgress(step = 1),
-                    1 to StudyBreakdownSentenceProgress(step = 3, shadowRep = 2),
+                    0 to StudyBreakdownSentenceProgress(step = 1, schemaVersion = 2),
+                    1 to StudyBreakdownSentenceProgress(step = 4, shadowRep = 2, schemaVersion = 2),
                 ),
                 updatedAt = 20,
             ),
@@ -74,7 +183,7 @@ class StudyBreakdownTest {
 
         assertNotNull(merged)
         assertTrue(merged.sentences.getValue(0).completed)
-        assertEquals(3, merged.sentences.getValue(1).step)
+        assertEquals(4, merged.sentences.getValue(1).step)
         assertEquals(2, merged.sentences.getValue(1).shadowRep)
     }
 
@@ -82,11 +191,11 @@ class StudyBreakdownTest {
     fun `later stale save does not rewind backchain reps`() {
         val merged = mergeStudyBreakdownProgress(
             current = StudyBreakdownProgress(
-                sentences = mapOf(0 to StudyBreakdownSentenceProgress(step = 2, backchainRep = 2)),
+                sentences = mapOf(0 to StudyBreakdownSentenceProgress(step = 3, backchainRep = 2, schemaVersion = 2)),
                 updatedAt = 20,
             ),
             incoming = StudyBreakdownProgress(
-                sentences = mapOf(0 to StudyBreakdownSentenceProgress(step = 2, backchainRep = 0)),
+                sentences = mapOf(0 to StudyBreakdownSentenceProgress(step = 3, backchainRep = 0, schemaVersion = 2)),
                 updatedAt = 30,
             ),
         )
@@ -97,10 +206,10 @@ class StudyBreakdownTest {
 
     @Test
     fun `explicit restart clears completion even when an older save is newer`() {
-        val restarted = StudyBreakdownSentenceProgress(step = 1, restartedAt = 30)
+        val restarted = StudyBreakdownSentenceProgress(step = 1, restartedAt = 30, schemaVersion = 2)
         val merged = mergeStudyBreakdownProgress(
             current = StudyBreakdownProgress(
-                sentences = mapOf(0 to StudyBreakdownSentenceProgress(step = 4, completed = true)),
+                sentences = mapOf(0 to StudyBreakdownSentenceProgress(step = 5, completed = true, schemaVersion = 2)),
                 updatedAt = 40,
             ),
             incoming = StudyBreakdownProgress(

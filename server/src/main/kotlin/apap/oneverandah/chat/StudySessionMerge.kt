@@ -115,6 +115,7 @@ object StudySessionMerge {
             client.copy(
                 imageId = preferServer(server.imageId, client.imageId),
                 imageUrl = preferServer(server.imageUrl, client.imageUrl),
+                needScenario = preferServer(server.needScenario, client.needScenario).orEmpty(),
             )
         } else {
             client.copy(
@@ -126,6 +127,7 @@ object StudySessionMerge {
                 exampleSentences = server.exampleSentences,
                 imageId = preferServer(server.imageId, client.imageId),
                 imageUrl = preferServer(server.imageUrl, client.imageUrl),
+                needScenario = preferServer(server.needScenario, client.needScenario).orEmpty(),
             )
         }
     }

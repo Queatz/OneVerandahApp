@@ -102,6 +102,21 @@ data class StudyChunkGenerationRequest(
     val languageTag: String,
 )
 
+data class StudyNeedScenarioToken(
+    val tokenIndex: Int,
+    val text: String,
+    val literalMeaning: String,
+    val contextualMeaning: String,
+    val register: String,
+)
+
+data class StudyNeedScenarioGenerationRequest(
+    val sentenceText: String,
+    val tokens: List<StudyNeedScenarioToken>,
+    val textLanguageTag: String,
+    val languageTag: String,
+)
+
 data class StudyExampleDissectGenerationRequest(
     val word: String,
     val contextualMeaning: String,
@@ -263,6 +278,8 @@ interface StudyAiClient {
     suspend fun generateSkeleton(request: StudyGenerationRequest): StudySessionResponse
     suspend fun dissectSentence(request: StudyDissectGenerationRequest): StudySentence
     suspend fun chunkSentence(request: StudyChunkGenerationRequest): List<StudyChunk> = emptyList()
+    suspend fun generateWordRecallScenarios(request: StudyNeedScenarioGenerationRequest): Map<Int, String> =
+        throw UnsupportedOperationException("Word Recall scenario generation is not implemented by this AI client")
     suspend fun dissectExampleSentences(
         request: StudyExampleDissectGenerationRequest,
     ): List<StudyExampleSentence> = request.exampleSentences.map { example ->
@@ -426,6 +443,38 @@ class StudyService(
             )
         }
         return chunks to studyBreakdownSuffixes(sentenceText, tokenTexts, chunks)
+    }
+
+    suspend fun wordRecallScenarios(
+        sentenceText: String,
+        tokens: List<StudyToken>,
+        textLanguageTag: String,
+        languageTag: String,
+    ): Map<Int, String> {
+        val words = tokens.mapIndexedNotNull { tokenIndex, token ->
+            if (!token.isDissectable || token.needScenario.isNotBlank()) return@mapIndexedNotNull null
+            StudyNeedScenarioToken(
+                tokenIndex = tokenIndex,
+                text = token.text,
+                literalMeaning = token.literalMeaning,
+                contextualMeaning = token.contextualMeaning,
+                register = token.register,
+            )
+        }
+        if (words.isEmpty()) return emptyMap()
+        val generated = aiClient.generateWordRecallScenarios(
+            StudyNeedScenarioGenerationRequest(
+                sentenceText = sentenceText.trim(),
+                tokens = words,
+                textLanguageTag = Language.normalizeContentTag(textLanguageTag),
+                languageTag = Language.normalizeLearnerLanguageTag(languageTag),
+            ),
+        )
+        val expectedIndices = words.mapTo(mutableSetOf()) { it.tokenIndex }
+        require(generated.keys.containsAll(expectedIndices) && expectedIndices.all { generated[it].orEmpty().isNotBlank() }) {
+            "Word Recall scenario generation must return a non-blank cue for every requested token"
+        }
+        return expectedIndices.associateWith { generated.getValue(it).trim() }
     }
 
     /** Full dissection for one skeleton sentence; tokens must match the skeleton order/text. */

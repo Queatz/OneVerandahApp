@@ -137,7 +137,8 @@ class StudyBuildService(
             (record.build?.status == StudyBuildStatus.COMPLETE || record.build?.status == StudyBuildStatus.PARTIAL) &&
             planner.plan(record).any {
                 it.element.kind == StudyBuildElementKind.EXAMPLE_DISSECT ||
-                        it.element.kind == StudyBuildElementKind.CHUNKS
+                        it.element.kind == StudyBuildElementKind.CHUNKS ||
+                        it.element.kind == StudyBuildElementKind.WORD_RECALL_SCENARIOS
             }
         ) {
             record = store.update(key, immediate = true) { current ->

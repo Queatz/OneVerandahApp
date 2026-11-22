@@ -321,6 +321,41 @@ class StudyServiceTest {
     }
 
     @Test
+    fun `word recall scenarios request only uncached dissectable tokens with normalized languages`() = runBlocking {
+        val ai = FakeStudyAiClient()
+        val service = StudyService(ai)
+        val tokens = listOf(
+            StudyToken(
+                text = "Xin",
+                status = StudyTokenStatus.READY,
+                literalMeaning = "hello",
+                register = "neutral",
+                contextualMeaning = "greeting",
+            ),
+            StudyToken(text = ".", status = StudyTokenStatus.PLAIN),
+            StudyToken(
+                text = "chào",
+                status = StudyTokenStatus.READY,
+                literalMeaning = "hello",
+                needScenario = "Cached cue.",
+            ),
+        )
+
+        val scenarios = service.wordRecallScenarios("Xin chào.", tokens, "vi-VN", "en-US")
+
+        assertEquals(mapOf(0 to "cue-0"), scenarios)
+        assertEquals(
+            StudyNeedScenarioGenerationRequest(
+                sentenceText = "Xin chào.",
+                tokens = listOf(StudyNeedScenarioToken(0, "Xin", "hello", "greeting", "neutral")),
+                textLanguageTag = "vi",
+                languageTag = "en",
+            ),
+            ai.lastNeedScenarioRequest,
+        )
+    }
+
+    @Test
     fun `dissect rejects token mismatch`() = runBlocking {
         val service = StudyService(
             FakeStudyAiClient(
@@ -1936,6 +1971,7 @@ internal class FakeStudyAiClient(
     var lastTranslateRequest: StudyTranslateRequest? = null
     var lastSkeletonRequest: StudyGenerationRequest? = null
     var lastDissectRequest: StudyDissectGenerationRequest? = null
+    var lastNeedScenarioRequest: StudyNeedScenarioGenerationRequest? = null
     var lastPlaygroundRequest: StudyWordPlaygroundGenerationRequest? = null
     var lastCharactersRequest: StudyCharactersGenerationRequest? = null
     var lastPlayScenariosRequest: StudyPlayScenariosGenerationRequest? = null
@@ -1993,6 +2029,11 @@ internal class FakeStudyAiClient(
     override suspend fun chunkSentence(request: StudyChunkGenerationRequest): List<StudyChunk> {
         if (chunkFailure) error("Qwen study chunks timed out")
         return emptyList()
+    }
+
+    override suspend fun generateWordRecallScenarios(request: StudyNeedScenarioGenerationRequest): Map<Int, String> {
+        lastNeedScenarioRequest = request
+        return request.tokens.associate { it.tokenIndex to "cue-${it.tokenIndex}" }
     }
 
     override suspend fun evaluateWordUsage(

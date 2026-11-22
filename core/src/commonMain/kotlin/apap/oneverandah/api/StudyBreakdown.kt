@@ -1,6 +1,9 @@
 package apap.oneverandah.api
 
+import kotlin.random.Random
+
 private const val studyBreakdownReps = 5
+private const val studyWordRecallCorrectToPass = 3
 
 /** Makes generated chunk boundaries exact spans over the sentence's existing word tokens. */
 fun alignStudyChunks(
@@ -54,15 +57,20 @@ fun advanceStudyBreakdownBackchain(
     progress: StudyBreakdownSentenceProgress,
     chunkCount: Int,
 ): StudyBreakdownSentenceProgress {
-    if (progress.completed || progress.step != 2 || chunkCount <= 0) return progress
+    if (progress.completed || progress.step != 3 || chunkCount <= 0) return progress
     return when {
-        progress.backchainRep + 1 < studyBreakdownReps -> progress.copy(backchainRep = progress.backchainRep + 1)
+        progress.backchainRep + 1 < studyBreakdownReps -> progress.copy(
+            schemaVersion = 2,
+            backchainRep = progress.backchainRep + 1,
+        )
         progress.backchainRound + 1 < chunkCount -> progress.copy(
+            schemaVersion = 2,
             backchainRound = progress.backchainRound + 1,
             backchainRep = 0,
         )
         else -> progress.copy(
-            step = 3,
+            schemaVersion = 2,
+            step = 4,
             backchainRound = chunkCount - 1,
             backchainRep = studyBreakdownReps,
             shadowRep = 0,
@@ -71,12 +79,83 @@ fun advanceStudyBreakdownBackchain(
 }
 
 fun advanceStudyBreakdownShadow(progress: StudyBreakdownSentenceProgress): StudyBreakdownSentenceProgress {
-    if (progress.completed || progress.step != 3) return progress
+    if (progress.completed || progress.step != 4) return progress
     return if (progress.shadowRep + 1 < studyBreakdownReps) {
-        progress.copy(shadowRep = progress.shadowRep + 1)
+        progress.copy(schemaVersion = 2, shadowRep = progress.shadowRep + 1)
     } else {
-        progress.copy(step = 4, shadowRep = studyBreakdownReps)
+        progress.copy(schemaVersion = 2, step = 5, shadowRep = studyBreakdownReps)
     }
+}
+
+/** Starts Word Recall in randomized token order; queue positions encode intervening-item gaps. */
+fun startStudyBreakdownWordRecall(
+    progress: StudyBreakdownSentenceProgress,
+    tokenIndices: List<Int>,
+    random: Random = Random.Default,
+): StudyBreakdownSentenceProgress {
+    val queue = tokenIndices.distinct().filter { it >= 0 }.shuffled(random)
+    return progress.copy(
+        schemaVersion = 2,
+        step = if (queue.isEmpty()) 3 else 2,
+        backchainRound = 0,
+        backchainRep = 0,
+        wordRecallQueue = queue,
+        wordRecallCorrect = emptyMap(),
+        wordRecallKnown = emptySet(),
+        wordRecallRevealed = false,
+    )
+}
+
+fun revealStudyBreakdownWordRecall(
+    progress: StudyBreakdownSentenceProgress,
+): StudyBreakdownSentenceProgress = if (
+    !progress.completed && progress.step == 2 && progress.wordRecallQueue.isNotEmpty()
+) {
+    progress.copy(schemaVersion = 2, wordRecallRevealed = true)
+} else {
+    progress
+}
+
+/** Grades the revealed head item; successful recalls use expanding 1/3-item gaps and misses use 1. */
+fun gradeStudyBreakdownWordRecall(
+    progress: StudyBreakdownSentenceProgress,
+    correct: Boolean,
+): StudyBreakdownSentenceProgress {
+    if (progress.completed || progress.step != 2 || !progress.wordRecallRevealed) return progress
+    val wordIndex = progress.wordRecallQueue.firstOrNull() ?: return progress
+    val remaining = progress.wordRecallQueue.drop(1)
+    val correctCount = progress.wordRecallCorrect[wordIndex] ?: 0
+    val updatedCorrectCount = if (correct) (correctCount + 1).coerceAtMost(studyWordRecallCorrectToPass) else correctCount
+    val passed = correct && updatedCorrectCount >= studyWordRecallCorrectToPass
+    val queue = if (passed) {
+        remaining
+    } else {
+        val gap = if (!correct) 1 else if (updatedCorrectCount == 1) 1 else 3
+        remaining.toMutableList().apply { add(gap.coerceAtMost(size), wordIndex) }
+    }
+    return progress.copy(
+        schemaVersion = 2,
+        step = if (queue.isEmpty()) 3 else 2,
+        wordRecallQueue = queue,
+        wordRecallCorrect = progress.wordRecallCorrect + (wordIndex to updatedCorrectCount),
+        wordRecallRevealed = false,
+    )
+}
+
+/** Marks the current word as known without revealing its form, meaning, image, or audio. */
+fun skipStudyBreakdownWordRecall(
+    progress: StudyBreakdownSentenceProgress,
+): StudyBreakdownSentenceProgress {
+    if (progress.completed || progress.step != 2) return progress
+    val wordIndex = progress.wordRecallQueue.firstOrNull() ?: return progress.copy(step = 3)
+    val queue = progress.wordRecallQueue.drop(1)
+    return progress.copy(
+        schemaVersion = 2,
+        step = if (queue.isEmpty()) 3 else 2,
+        wordRecallQueue = queue,
+        wordRecallKnown = progress.wordRecallKnown + wordIndex,
+        wordRecallRevealed = false,
+    )
 }
 
 /** True when [candidate] is further through the drill than [baseline], ignoring restarts. */
@@ -86,12 +165,34 @@ fun studyBreakdownSentenceAhead(
 ): Boolean {
     if (candidate.completed && !baseline.completed) return true
     if (baseline.completed || candidate.completed) return false
+    val candidateStep = candidate.currentStudyBreakdownStep()
+    val baselineStep = baseline.currentStudyBreakdownStep()
     return when {
-        candidate.step != baseline.step -> candidate.step > baseline.step
+        candidateStep != baselineStep -> candidateStep > baselineStep
+        candidateStep == 2 -> {
+            val candidateScore = candidate.wordRecallCorrect.values.sum() + candidate.wordRecallKnown.size
+            val baselineScore = baseline.wordRecallCorrect.values.sum() + baseline.wordRecallKnown.size
+            when {
+                candidateScore != baselineScore -> candidateScore > baselineScore
+                candidate.wordRecallCorrect != baseline.wordRecallCorrect ->
+                    candidate.wordRecallCorrect.all { (index, count) -> count >= (baseline.wordRecallCorrect[index] ?: 0) } &&
+                            candidate.wordRecallCorrect.any { (index, count) -> count > (baseline.wordRecallCorrect[index] ?: 0) }
+                candidate.wordRecallKnown != baseline.wordRecallKnown ->
+                    candidate.wordRecallKnown.containsAll(baseline.wordRecallKnown)
+                candidate.wordRecallQueue != baseline.wordRecallQueue -> true
+                else -> candidate.wordRecallRevealed && !baseline.wordRecallRevealed
+            }
+        }
         candidate.backchainRound != baseline.backchainRound -> candidate.backchainRound > baseline.backchainRound
         candidate.backchainRep != baseline.backchainRep -> candidate.backchainRep > baseline.backchainRep
         else -> candidate.shadowRep > baseline.shadowRep
     }
+}
+
+private fun StudyBreakdownSentenceProgress.currentStudyBreakdownStep(): Int = when {
+    schemaVersion == 1 && completed -> 5
+    schemaVersion == 1 && step >= 2 -> step + 1
+    else -> step
 }
 
 /** Progress merge is monotonic for completion, while the newest incomplete pointer remains resumable. */

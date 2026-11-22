@@ -386,6 +386,9 @@ class StudyBuildRoutesTest {
             tokens = request.tokens.map { StudyToken(it, StudyTokenStatus.READY, literalMeaning = "hello") },
         )
 
+        override suspend fun generateWordRecallScenarios(request: StudyNeedScenarioGenerationRequest) =
+            request.tokens.associate { it.tokenIndex to "A neighbor needs a greeting." }
+
         override suspend fun evaluateWordUsage(request: StudyWordPlaygroundGenerationRequest) =
             StudyWordPlaygroundJudgment(true, "Natural.")
 

@@ -61,6 +61,9 @@ class StudyBuildServiceTest {
             assertTrue(completed.session.sentences.single().breakdownAudioReady)
             assertTrue(completed.session.sentences.single().tokens.filter { it.isDissectable }
                 .all { !it.imageUrl.isNullOrBlank() })
+            assertTrue(completed.session.sentences.single().tokens.filter { it.isDissectable }
+                .all { it.needScenario.isNotBlank() })
+            assertTrue(events.indexOf("dissect") < events.indexOf("word-recall-scenarios"))
             assertTrue(completed.session.sentences.single().imageUrl?.isNotBlank() == true)
             assertTrue(completed.session.characters.single().imageUrl?.isNotBlank() == true)
             assertEquals(4, completed.session.playScenarios.size)
@@ -296,6 +299,11 @@ class StudyBuildServiceTest {
                 },
                 translation = "A friendly greeting.",
             )
+        }
+
+        override suspend fun generateWordRecallScenarios(request: StudyNeedScenarioGenerationRequest): Map<Int, String> {
+            events += "word-recall-scenarios"
+            return request.tokens.associate { it.tokenIndex to "A cue for token ${it.tokenIndex}." }
         }
 
         override suspend fun evaluateWordUsage(request: StudyWordPlaygroundGenerationRequest) =

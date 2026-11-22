@@ -74,7 +74,12 @@ class StudyBuildPlannerTest {
             ),
         )
         assertEquals(
-            setOf(StudyBuildElementKind.PORTRAIT, StudyBuildElementKind.WORD_IMAGE, StudyBuildElementKind.CHUNKS),
+            setOf(
+                StudyBuildElementKind.PORTRAIT,
+                StudyBuildElementKind.WORD_IMAGE,
+                StudyBuildElementKind.CHUNKS,
+                StudyBuildElementKind.WORD_RECALL_SCENARIOS,
+            ),
             planner.plan(dissected).map { it.element.kind }.toSet(),
         )
 
@@ -95,7 +100,7 @@ class StudyBuildPlannerTest {
             setOf(
                 StudyBuildElementKind.WORD_IMAGE, StudyBuildElementKind.SENTENCE_IMAGE,
                 StudyBuildElementKind.PLAY_SCENARIOS, StudyBuildElementKind.EXAM,
-                StudyBuildElementKind.CHUNKS,
+                StudyBuildElementKind.CHUNKS, StudyBuildElementKind.WORD_RECALL_SCENARIOS,
             ),
             planner.plan(portraitReady).map { it.element.kind }.toSet(),
         )
@@ -118,6 +123,7 @@ class StudyBuildPlannerTest {
                                 StudyTokenStatus.READY,
                                 literalMeaning = "hello",
                                 imageUrl = "https://img/word",
+                                needScenario = "You need a greeting for a new neighbor.",
                             ),
                         ),
                         imageUrl = "https://img/sentence",
@@ -176,6 +182,27 @@ class StudyBuildPlannerTest {
         assertTrue(StudyBuildElementKind.WORD_IMAGE in dependentWork)
         assertTrue(StudyBuildElementKind.CHUNKS in dependentWork)
         assertTrue(StudyBuildElementKind.PORTRAIT in dependentWork)
+        assertTrue(StudyBuildElementKind.WORD_RECALL_SCENARIOS in dependentWork)
+    }
+
+    @Test
+    fun `missing scenarios backfill completed sessions`() {
+        val complete = record(
+            state = StudyBuildState(status = StudyBuildStatus.COMPLETE),
+            currentSession = session(
+                sentences = listOf(
+                    StudySentence(
+                        "Xin.",
+                        listOf(StudyToken("Xin", StudyTokenStatus.READY, literalMeaning = "hello")),
+                    ),
+                ),
+            ),
+        )
+
+        assertEquals(
+            setOf(StudyBuildElementKind.CHUNKS, StudyBuildElementKind.WORD_RECALL_SCENARIOS),
+            planner.plan(complete).map { it.element.kind }.toSet(),
+        )
     }
 
     @Test

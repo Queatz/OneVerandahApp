@@ -19,8 +19,12 @@ import apap.oneverandah.api.StudySessionResponse
 import apap.oneverandah.api.advanceStudyBreakdownBackchain
 import apap.oneverandah.api.advanceStudyBreakdownShadow
 import apap.oneverandah.api.alignStudyChunks
+import apap.oneverandah.api.gradeStudyBreakdownWordRecall
+import apap.oneverandah.api.revealStudyBreakdownWordRecall
+import apap.oneverandah.api.skipStudyBreakdownWordRecall
 import apap.oneverandah.api.studyBreakdownSentenceAhead
 import apap.oneverandah.api.studyBreakdownSuffixes
+import apap.oneverandah.api.startStudyBreakdownWordRecall
 import apap.oneverandah.components.BottomDialog
 import apap.oneverandah.components.MaterialSymbol
 import apap.oneverandah.i18n.UiStrings
@@ -61,17 +65,24 @@ internal fun StudyBreakdown(
     }
     val scope = rememberCoroutineScope()
     val audioUrls = remember(session.textLanguageTag, sentence.text) { mutableStateMapOf<String, String>() }
+    val normalizedProgress = progress?.normalizedOrNull()
     var drillProgress by remember(sentenceIndex) {
-        mutableStateOf(progress?.sentences?.get(sentenceIndex) ?: StudyBreakdownSentenceProgress())
+        mutableStateOf(
+            normalizedProgress?.sentences?.get(sentenceIndex)
+                ?: StudyBreakdownSentenceProgress(schemaVersion = 2),
+        )
     }
-    var savedProgress by remember(sentenceIndex) { mutableStateOf(progress ?: StudyBreakdownProgress()) }
+    var savedProgress by remember(sentenceIndex) {
+        mutableStateOf(normalizedProgress ?: progress ?: StudyBreakdownProgress())
+    }
     var selectedChunkIndex by remember(sentenceIndex) { mutableStateOf(0) }
     var expandedChunkIndex by remember(sentenceIndex) { mutableStateOf<Int?>(null) }
     var answerVisible by remember(sentenceIndex) { mutableStateOf(false) }
     var userTurn by remember(sentenceIndex) { mutableStateOf(false) }
 
     LaunchedEffect(progress) {
-        val incoming = progress ?: return@LaunchedEffect
+        val incoming = progress?.normalizedOrNull() ?: return@LaunchedEffect
+        if (incoming != progress) onProgressChange(incoming)
         val incomingSentence = incoming.sentences[sentenceIndex] ?: return@LaunchedEffect
         val current = drillProgress
         val accept = when {
@@ -99,9 +110,10 @@ internal fun StudyBreakdown(
     }
 
     fun saveProgress(next: StudyBreakdownSentenceProgress) {
-        drillProgress = next
+        val current = next.copy(schemaVersion = 2)
+        drillProgress = current
         val updated = savedProgress.copy(
-            sentences = savedProgress.sentences + (sentenceIndex to next),
+            sentences = savedProgress.sentences + (sentenceIndex to current),
             updatedAt = Date.now().toLong(),
         )
         savedProgress = updated
@@ -114,7 +126,7 @@ internal fun StudyBreakdown(
         expandedChunkIndex = null
         userTurn = false
         stopActiveStudyAudio()
-        saveProgress(StudyBreakdownSentenceProgress(restartedAt = Date.now().toLong()))
+        saveProgress(StudyBreakdownSentenceProgress(restartedAt = Date.now().toLong(), schemaVersion = 2))
     }
 
     val backchainSuffix = suffixes.getOrNull(
@@ -123,7 +135,7 @@ internal fun StudyBreakdown(
 
     LaunchedEffect(drillProgress.step, drillProgress.backchainRound, drillProgress.backchainRep, backchainSuffix) {
         userTurn = false
-        if (drillProgress.step != 2 || chunks.isEmpty() || backchainSuffix.isBlank()) return@LaunchedEffect
+        if (drillProgress.step != 3 || chunks.isEmpty() || backchainSuffix.isBlank()) return@LaunchedEffect
         val url = audioUrl(backchainSuffix) ?: return@LaunchedEffect
         val (playbackEnded, durationMs) = playBreakdownClip(url)
         if (!playbackEnded) return@LaunchedEffect
@@ -133,7 +145,7 @@ internal fun StudyBreakdown(
 
     LaunchedEffect(drillProgress.step, drillProgress.shadowRep, sentence.text) {
         userTurn = false
-        if (drillProgress.step != 3) return@LaunchedEffect
+        if (drillProgress.step != 4) return@LaunchedEffect
         val url = audioUrl(sentence.text) ?: return@LaunchedEffect
         val playbackRate = breakdownShadowPlaybackRate(drillProgress.shadowRep)
         val (playbackEnded, durationMs) = playBreakdownClip(url, playbackRate)
@@ -147,12 +159,32 @@ internal fun StudyBreakdown(
         }
     }
 
+    LaunchedEffect(drillProgress.step, drillProgress.wordRecallQueue, sentence.tokens) {
+        if (drillProgress.step != 2) return@LaunchedEffect
+        val validIndices = sentence.tokens.indices.filterTo(mutableSetOf()) { sentence.tokens[it].isDissectable }
+        val queue = drillProgress.wordRecallQueue.filter { it in validIndices }
+        if (queue != drillProgress.wordRecallQueue) {
+            saveProgress(
+                drillProgress.copy(
+                    step = if (queue.isEmpty()) 3 else 2,
+                    wordRecallQueue = queue,
+                    wordRecallCorrect = drillProgress.wordRecallCorrect.filterKeys { it in validIndices },
+                    wordRecallKnown = drillProgress.wordRecallKnown intersect validIndices,
+                    wordRecallRevealed = false,
+                ),
+            )
+        } else if (queue.isEmpty()) {
+            saveProgress(drillProgress.copy(step = 3, wordRecallRevealed = false))
+        }
+    }
+
     DisposableEffect(sentenceIndex) {
         onDispose { stopActiveStudyAudio() }
     }
 
     val stepLabels = listOf(
         strings.chatStudyBreakdownDissect,
+        strings.chatStudyBreakdownWordRecall,
         strings.chatStudyBreakdownBackchain,
         strings.chatStudyBreakdownShadow,
         strings.chatStudyBreakdownRecall,
@@ -162,12 +194,16 @@ internal fun StudyBreakdown(
     val newChunkIndex = (chunks.lastIndex - currentRound).coerceAtLeast(0)
     val selectedChunk = chunks.getOrNull(selectedChunkIndex)
     val selectedChunkExpanded = expandedChunkIndex == selectedChunkIndex
+    val wordRecallIndex = drillProgress.wordRecallQueue.firstOrNull()
+    val wordRecallToken = wordRecallIndex?.let(sentence.tokens::getOrNull)?.takeIf { it.isDissectable }
+    val wordRecallScenario = wordRecallToken?.needScenario?.trim().orEmpty()
 
     BottomDialog(
         visible = true,
         closeLabel = strings.close,
         onDismiss = onDismiss,
         expanded = true,
+        opaqueScrim = drillProgress.step == 2,
         footer = {
             Div(attrs = { classes(Styles.studyBreakdownFooter) }) {
                 when {
@@ -179,21 +215,64 @@ internal fun StudyBreakdown(
                         label = strings.chatStudyBreakdownGotIt,
                         enabled = chunks.isNotEmpty(),
                         onClick = {
-                            saveProgress(drillProgress.copy(step = 2, backchainRound = 0, backchainRep = 0))
+                            stopActiveStudyAudio()
+                            saveProgress(
+                                startStudyBreakdownWordRecall(
+                                    drillProgress,
+                                    sentence.tokens.mapIndexedNotNull { index, token -> index.takeIf { token.isDissectable } },
+                                ),
+                            )
                         },
                     )
-                    drillProgress.step == 2 -> BreakdownAction(
+                    drillProgress.step == 2 && !drillProgress.wordRecallRevealed -> {
+                        BreakdownAction(
+                            label = strings.chatStudyBreakdownReveal,
+                            enabled = wordRecallToken != null && wordRecallScenario.isNotBlank(),
+                            onClick = {
+                                val revealed = revealStudyBreakdownWordRecall(drillProgress)
+                                saveProgress(revealed)
+                                wordRecallToken?.let { token ->
+                                    scope.launch { audioUrl(token.text)?.let { playAudio(it, restart = true) } }
+                                }
+                            },
+                        )
+                        BreakdownAction(
+                            label = strings.chatStudyBreakdownKnown,
+                            enabled = wordRecallIndex != null,
+                            onClick = {
+                                stopActiveStudyAudio()
+                                saveProgress(skipStudyBreakdownWordRecall(drillProgress))
+                            },
+                        )
+                    }
+                    drillProgress.step == 2 -> {
+                        BreakdownAction(
+                            label = strings.chatStudyBreakdownMissed,
+                            onClick = {
+                                stopActiveStudyAudio()
+                                saveProgress(gradeStudyBreakdownWordRecall(drillProgress, correct = false))
+                            },
+                        )
+                        BreakdownAction(
+                            label = strings.chatStudyBreakdownGotIt,
+                            onClick = {
+                                stopActiveStudyAudio()
+                                saveProgress(gradeStudyBreakdownWordRecall(drillProgress, correct = true))
+                            },
+                        )
+                    }
+                    drillProgress.step == 3 -> BreakdownAction(
                         strings.chatStudyBreakdownContinue,
                         onClick = { saveProgress(advanceStudyBreakdownBackchain(drillProgress, chunks.size)) },
                     )
-                    drillProgress.step == 4 && !answerVisible -> BreakdownAction(
+                    drillProgress.step == 5 && !answerVisible -> BreakdownAction(
                         strings.chatStudyBreakdownCheck,
                         onClick = {
                             answerVisible = true
                             scope.launch { audioUrl(sentence.text)?.let { playAudio(it, restart = true) } }
                         },
                     )
-                    drillProgress.step == 4 -> {
+                    drillProgress.step == 5 -> {
                         BreakdownAction(
                             strings.chatStudyBreakdownNotYet,
                             onClick = { answerVisible = false },
@@ -202,7 +281,7 @@ internal fun StudyBreakdown(
                             strings.chatStudyBreakdownGotIt,
                             onClick = {
                                 answerVisible = false
-                                saveProgress(drillProgress.copy(step = 4, completed = true))
+                                saveProgress(drillProgress.copy(step = 5, completed = true))
                             },
                         )
                     }
@@ -289,6 +368,27 @@ internal fun StudyBreakdown(
                     P(attrs = { classes(Styles.studyBreakdownPrompt) }) {
                         Text(strings.chatStudyBreakdownSayAloud)
                     }
+                    P(attrs = { classes(Styles.studyBreakdownSentence) }) {
+                        Text(wordRecallScenario.ifBlank { strings.chatStudyBreakdownScenarioLoading })
+                    }
+                    if (drillProgress.wordRecallRevealed) {
+                        wordRecallToken?.let { token ->
+                            P(attrs = { classes(Styles.studyBreakdownSentence) }) { Text(token.text) }
+                            val wordFailKey = messageId?.let { "$it#$sentenceIndex#$wordRecallIndex" }
+                            StudyTokenDetail(
+                                token = token,
+                                textLanguageTag = session.textLanguageTag,
+                                strings = strings,
+                                imageFailed = wordFailKey != null && wordImageFailed[wordFailKey] == true,
+                                onRetryImage = { onRetryWordImage(sentenceIndex, wordRecallIndex) },
+                            )
+                        }
+                    }
+                }
+                drillProgress.step == 3 -> {
+                    P(attrs = { classes(Styles.studyBreakdownPrompt) }) {
+                        Text(strings.chatStudyBreakdownSayAloud)
+                    }
                     P(attrs = { classes(Styles.studyBreakdownSentence) }) { Text(displayedSuffix) }
                     BreakdownWordPhotos(
                         sentence = sentence,
@@ -315,7 +415,7 @@ internal fun StudyBreakdown(
                         }
                     }
                 }
-                drillProgress.step == 3 -> {
+                drillProgress.step == 4 -> {
                     P(attrs = { classes(Styles.studyBreakdownSentence) }) { Text(sentence.text) }
                     P(attrs = { classes(Styles.studyBreakdownPrompt) }) {
                         Text("${drillProgress.shadowRep + 1} / $BREAKDOWN_REPS")

@@ -198,6 +198,7 @@ object Styles {
 
     // Booking dialog (modal bottom sheet)
     const val dialogScrim = "dialog-scrim"
+    const val dialogScrimOpaque = "dialog-scrim-opaque"
     const val dialogScrimVisible = "visible"
     const val dialogSheet = "dialog-sheet"
     const val dialogSheetVisible = "visible"
@@ -1974,6 +1975,13 @@ object Styles {
             opacity: 1;
             pointer-events: auto;
             backdrop-filter: blur(12px);
+        }
+        .${dialogScrim}.${dialogScrimOpaque} {
+            opacity: 1;
+            pointer-events: auto;
+            background: var(--md-sys-color-surface);
+            backdrop-filter: none;
+            transition: none;
         }
         .${dialogSheet} {
             width: 100%;

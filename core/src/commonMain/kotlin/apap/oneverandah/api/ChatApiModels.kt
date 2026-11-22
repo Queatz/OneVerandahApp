@@ -319,6 +319,13 @@ data class StudyBreakdownSentenceProgress(
     val completed: Boolean = false,
     /** Set when the learner explicitly restarts, so a newer reset can clear completion. */
     val restartedAt: Long = 0,
+    /** Version 1 is the original four-step flow; new writes use version 2. */
+    val schemaVersion: Int = 1,
+    /** Interleaved token indices still awaiting their three successful recalls. */
+    val wordRecallQueue: List<Int> = emptyList(),
+    val wordRecallCorrect: Map<Int, Int> = emptyMap(),
+    val wordRecallKnown: Set<Int> = emptySet(),
+    val wordRecallRevealed: Boolean = false,
 )
 
 @Serializable
@@ -327,14 +334,38 @@ data class StudyBreakdownProgress(
     val updatedAt: Long = 0,
 ) {
     fun normalizedOrNull(): StudyBreakdownProgress? {
-        if (updatedAt < 0 || sentences.any { (index, progress) ->
-                index < 0 || progress.step !in 1..4 || progress.backchainRound < 0 ||
-                        progress.backchainRep !in 0..5 || progress.shadowRep !in 0..5 ||
-                        progress.restartedAt < 0 || (progress.completed && progress.step != 4)
-            }
-        ) return null
-        return this
+        if (updatedAt < 0) return null
+        val normalizedSentences = mutableMapOf<Int, StudyBreakdownSentenceProgress>()
+        sentences.forEach { (index, progress) ->
+            if (index < 0) return null
+            normalizedSentences[index] = progress.normalizedOrNull() ?: return null
+        }
+        return copy(sentences = normalizedSentences)
     }
+}
+
+private fun StudyBreakdownSentenceProgress.normalizedOrNull(): StudyBreakdownSentenceProgress? {
+    if (backchainRound < 0 || backchainRep !in 0..5 || shadowRep !in 0..5 || restartedAt < 0) return null
+    val normalizedStep = when (schemaVersion) {
+        1 -> {
+            if (step !in 1..4 || (completed && step != 4)) return null
+            when {
+                completed -> 5
+                step == 1 -> 1
+                else -> step + 1
+            }
+        }
+        2 -> {
+            if (step !in 1..5 || (completed && step != 5)) return null
+            if (wordRecallQueue.any { it < 0 } || wordRecallQueue.distinct().size != wordRecallQueue.size ||
+                wordRecallCorrect.any { (index, correct) -> index < 0 || correct !in 0..3 } ||
+                wordRecallKnown.any { it < 0 } || wordRecallQueue.any { it in wordRecallKnown }
+            ) return null
+            step
+        }
+        else -> return null
+    }
+    return copy(schemaVersion = 2, step = normalizedStep)
 }
 
 @Serializable
@@ -468,6 +499,8 @@ data class StudyToken(
     val imageId: String? = null,
     /** Public URL once the word visual is ready. */
     val imageUrl: String? = null,
+    /** Cached lead-up situation or conversation for Word Recall; it must not reveal the word or its meaning. */
+    val needScenario: String = "",
 ) {
     /** True when this token is ready for full interactive dissection. */
     val isDissectable: Boolean
@@ -1092,6 +1125,7 @@ enum class StudyBuildElementKind {
     NAME,
     DISSECT,
     CHUNKS,
+    WORD_RECALL_SCENARIOS,
     EXAMPLE_DISSECT,
     WORD_IMAGE,
     CHARACTERS,
@@ -1114,6 +1148,7 @@ data class StudyBuildElement(
         get() = when (kind) {
             StudyBuildElementKind.DISSECT,
             StudyBuildElementKind.CHUNKS,
+            StudyBuildElementKind.WORD_RECALL_SCENARIOS,
             StudyBuildElementKind.SENTENCE_IMAGE -> "${kind.name}:${sentenceIndex ?: -1}"
             StudyBuildElementKind.EXAMPLE_DISSECT,
             StudyBuildElementKind.WORD_IMAGE -> "${kind.name}:${sentenceIndex ?: -1}:${tokenIndex ?: -1}"

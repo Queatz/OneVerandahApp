@@ -64,6 +64,57 @@ class QwenStudyClientTest {
     }
 
     @Test
+    fun `word recall scenarios are indexed and prompt grammar particles as function cues`() = runBlocking {
+        val requestBodies = mutableListOf<String>()
+        val engine = MockEngine { request ->
+            requestBodies += (request.body as OutgoingContent.ByteArrayContent).bytes().decodeToString()
+            respond(
+                content = qwenChatResponse(
+                    """{"scenarios":[{"tokenIndex":0,"scenario":"You need to describe someone's appearance."},{"tokenIndex":1,"scenario":"You need to indicate who is doing the action."}]}""",
+                ),
+                status = HttpStatusCode.OK,
+                headers = headersOf(HttpHeaders.ContentType, "application/json"),
+            )
+        }
+        val client = HttpClient(engine)
+        val ai = DashScopeStudyAiClient(qwenConfig(), client)
+
+        val scenarios = ai.generateWordRecallScenarios(
+            StudyNeedScenarioGenerationRequest(
+                sentenceText = "သူမက လှတယ်။",
+                tokens = listOf(
+                    StudyNeedScenarioToken(0, "လှ", "beautiful", "beautiful", "neutral"),
+                    StudyNeedScenarioToken(1, "က", "subject marker", "marks the subject", "neutral"),
+                ),
+                textLanguageTag = "my",
+                languageTag = "en",
+            ),
+        )
+
+        assertEquals(
+            mapOf(
+                0 to "You need to describe someone's appearance.",
+                1 to "You need to indicate who is doing the action.",
+            ),
+            scenarios,
+        )
+        assertContains(requestBodies.single(), "lead-up situation or conversation")
+        assertContains(requestBodies.single(), "Do not invent a survival or physical need for a particle")
+        assertContains(requestBodies.single(), "Never write the target form")
+        client.close()
+    }
+
+    @Test
+    fun `word recall scenario parser rejects missing requested token indices`() {
+        assertFailsWith<IllegalArgumentException> {
+            QwenStudyNeedScenarioParser.parse(
+                """{"scenarios":[{"tokenIndex":0,"scenario":"A private cue."}]}""",
+                setOf(0, 2),
+            )
+        }
+    }
+
+    @Test
     fun `dissect prompt requires examples to use the source context meaning`() = runBlocking {
         val requestBodies = mutableListOf<String>()
         val engine = MockEngine { request ->

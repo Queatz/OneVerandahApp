@@ -194,12 +194,12 @@ class StudySessionsRoutesTest {
         val invalidBreakdownSave = client.put("/api/chat/study/sessions/${saved.id}/breakdown") {
             header(DEVICE_TOKEN_HEADER, tokenA)
             contentType(ContentType.Application.Json)
-            setBody("""{"sentences":{"0":{"step":5}},"updatedAt":300}""")
+            setBody("""{"sentences":{"0":{"step":6,"schemaVersion":2}},"updatedAt":300}""")
         }
         assertEquals(HttpStatusCode.BadRequest, invalidBreakdownSave.status)
 
         val ownerBreakdownProgress = StudyBreakdownProgress(
-            sentences = mapOf(0 to StudyBreakdownSentenceProgress(step = 3, shadowRep = 2)),
+            sentences = mapOf(0 to StudyBreakdownSentenceProgress(step = 4, shadowRep = 2, schemaVersion = 2)),
             updatedAt = 300L,
         )
         val savedBreakdown = client.put("/api/chat/study/sessions/${saved.id}/breakdown") {
@@ -213,7 +213,7 @@ class StudySessionsRoutesTest {
             json.decodeFromString(StudyBreakdownProgress.serializer(), savedBreakdown.bodyAsText()),
         )
         val visitorBreakdownProgress = StudyBreakdownProgress(
-            sentences = mapOf(0 to StudyBreakdownSentenceProgress(step = 4, completed = true)),
+            sentences = mapOf(0 to StudyBreakdownSentenceProgress(step = 5, completed = true, schemaVersion = 2)),
             updatedAt = 301L,
         )
         val savedVisitorBreakdown = client.put("/api/chat/study/sessions/${saved.id}/breakdown") {

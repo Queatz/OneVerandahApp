@@ -237,6 +237,33 @@ object QwenStudyChunkParser {
     }
 }
 
+object QwenStudyNeedScenarioParser {
+    private val json = Json { ignoreUnknownKeys = true; explicitNulls = false; isLenient = true }
+
+    fun parse(content: String, expectedIndices: Set<Int>): Map<Int, String> {
+        val normalized = stripJsonFences(content)
+        val root = runCatching { json.parseToJsonElement(normalized) as? JsonObject }
+            .getOrElse { throw IllegalArgumentException("Qwen Word Recall scenarios are not valid JSON", it) }
+            ?: throw IllegalArgumentException("Qwen Word Recall scenarios root must be a JSON object")
+        val scenarios = root["scenarios"] as? JsonArray
+            ?: throw IllegalArgumentException("Qwen Word Recall scenarios missing scenarios array")
+        val parsed = mutableMapOf<Int, String>()
+        scenarios.forEach { element ->
+            val scenario = element as? JsonObject
+                ?: throw IllegalArgumentException("Qwen Word Recall scenario entry must be an object")
+            val index = scenario["tokenIndex"]?.jsonPrimitive?.intOrNull
+                ?: throw IllegalArgumentException("Qwen Word Recall scenario missing tokenIndex")
+            val text = scenario.string("scenario")?.trim()?.takeIf(String::isNotEmpty)
+                ?: throw IllegalArgumentException("Qwen Word Recall scenario missing cue")
+            require(parsed.put(index, text) == null) { "Qwen Word Recall scenario tokenIndex must be unique" }
+        }
+        require(parsed.keys == expectedIndices) {
+            "Qwen Word Recall scenarios must match every requested token index"
+        }
+        return parsed
+    }
+}
+
 /** Lenient parser for word-by-word dissection of a token's example sentences. */
 object QwenStudyExampleDissectParser {
     private val json = Json { ignoreUnknownKeys = true; explicitNulls = false; isLenient = true }
@@ -607,6 +634,35 @@ class DashScopeStudyAiClient(
             enableThinking = false,
         )
         return QwenStudyChunkParser.parse(content)
+    }
+
+    override suspend fun generateWordRecallScenarios(
+        request: StudyNeedScenarioGenerationRequest,
+    ): Map<Int, String> {
+        val userContent = buildString {
+            appendLine("Study/source language: ${languageName(request.textLanguageTag)} (${request.textLanguageTag})")
+            appendLine("Learner UI language: ${languageName(request.languageTag)} (${request.languageTag})")
+            appendLine("Sentence context (use only to identify each token's sense):")
+            appendLine(request.sentenceText)
+            appendLine("For each token, write the lead-up situation or conversation that made the speaker need that word.")
+            appendLine("Target tokens (tokenIndex is the index in the original sentence token list):")
+            request.tokens.forEach { token ->
+                appendLine("tokenIndex: ${token.tokenIndex}")
+                appendLine("form: ${token.text}")
+                appendLine("literal meaning: ${token.literalMeaning}")
+                appendLine("contextual meaning: ${token.contextualMeaning}")
+                appendLine("register: ${token.register}")
+            }
+        }
+        val content = complete(
+            systemPrompt = wordRecallScenarioSystemPrompt(request.languageTag),
+            userContent = userContent,
+            label = "study word recall scenarios",
+            model = config.chatHeavyModel,
+            enableThinking = true,
+        )
+        val expectedIndices = request.tokens.mapTo(mutableSetOf()) { it.tokenIndex }
+        return QwenStudyNeedScenarioParser.parse(content, expectedIndices)
     }
 
     override suspend fun dissectExampleSentences(
@@ -1278,6 +1334,22 @@ class DashScopeStudyAiClient(
         - Each text is the exact source-language text covered by its word indices, including relevant punctuation.
         - gloss and grammarNote must be concise and written in the learner's active language '$activeLanguageTag'.
         - Do not add any keys besides chunks and the four chunk fields. Do not wrap JSON in markdown.
+    """.trimIndent()
+
+    private fun wordRecallScenarioSystemPrompt(activeLanguageTag: String): String = """
+        You create one short lead-up situation or conversation for each word in a language-learning lesson.
+        The cue is what happened just before the speaker needed this word — a scene and/or a brief exchange that creates the communicative pressure to say it. Stop before the word is spoken.
+        Return ONLY one JSON object with this exact schema:
+        {"scenarios":[{"tokenIndex":0,"scenario":"short lead-up situation or conversation"}]}
+        Rules:
+        - Return exactly one entry for every requested tokenIndex, with no duplicates or extra indices.
+        - Write each scenario in the learner UI language '$activeLanguageTag'. Keep it short and concrete.
+        - For a lexical word, write the lead-up situation and/or conversation that made the speaker need this word. Show people, place, and what was just said or done; do not describe the word itself.
+        - Never write the target form, its translation, definition, synonym, or a sentence that gives the answer away. Do not quote the study sentence.
+        - Do not say that the learner "needs" a word, name the part of speech, or explain the meaning. The situation must stand on its own.
+        - For grammatical particles or function words, write a lead-up conversation that needs that grammatical function or relation. Do not invent a survival or physical need for a particle.
+        - Use source sentence and meanings only to choose the right sense; do not reveal or explain them in the cue.
+        - Do not wrap JSON in markdown or add keys beyond scenarios, tokenIndex, and scenario.
     """.trimIndent()
 
     private fun exampleDissectSystemPrompt(activeLanguageTag: String, textLanguageTag: String): String = """

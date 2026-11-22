@@ -607,6 +607,7 @@ fun StudyScreen(
                 StudyBuildElementKind.NAME,
                 StudyBuildElementKind.CHUNKS,
                 StudyBuildElementKind.EXAMPLE_DISSECT,
+                StudyBuildElementKind.WORD_RECALL_SCENARIOS,
                 -> Unit
             }
         }
@@ -639,6 +640,7 @@ fun StudyScreen(
                 StudyBuildElementKind.NAME,
                 StudyBuildElementKind.CHUNKS,
                 StudyBuildElementKind.EXAMPLE_DISSECT,
+                StudyBuildElementKind.WORD_RECALL_SCENARIOS,
                 -> Unit
             }
         }
@@ -739,7 +741,11 @@ fun StudyScreen(
                 val tokens = event.sentence.tokens.mapIndexed { index, token ->
                     val old = existing.tokens.getOrNull(index)
                     if (old != null && old.text == token.text) {
-                        token.copy(imageId = old.imageId ?: token.imageId, imageUrl = old.imageUrl ?: token.imageUrl)
+                        token.copy(
+                            imageId = old.imageId ?: token.imageId,
+                            imageUrl = old.imageUrl ?: token.imageUrl,
+                            needScenario = token.needScenario.ifBlank { old.needScenario },
+                        )
                     } else {
                         token
                     }

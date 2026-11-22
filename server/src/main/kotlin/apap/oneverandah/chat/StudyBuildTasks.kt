@@ -36,6 +36,7 @@ class StudyBuildTasks(
             StudyBuildElementKind.NAME -> generateName(record)
             StudyBuildElementKind.DISSECT -> dissect(record, task)
             StudyBuildElementKind.CHUNKS -> buildChunks(record, task)
+            StudyBuildElementKind.WORD_RECALL_SCENARIOS -> buildWordRecallScenarios(record, task)
             StudyBuildElementKind.EXAMPLE_DISSECT -> dissectExamples(record, task)
             StudyBuildElementKind.WORD_IMAGE -> renderWordImage(record, task)
             StudyBuildElementKind.CHARACTERS -> designCharacters(record)
@@ -200,6 +201,35 @@ class StudyBuildTasks(
             )
         } ?: return
         audioSaved.session.sentences.getOrNull(sentenceIndex)?.let { latest ->
+            store.publish(record.id, StudyBuildEvent.SentenceDissected(sentenceIndex, latest))
+        }
+    }
+
+    private suspend fun buildWordRecallScenarios(record: SavedStudySessionRecord, task: StudyBuildTask) {
+        val sentenceIndex = requireNotNull(task.element.sentenceIndex)
+        val sentence = record.session.sentences.getOrNull(sentenceIndex) ?: return
+        val scenarios = studyService.wordRecallScenarios(
+            sentenceText = sentence.text,
+            tokens = sentence.tokens,
+            textLanguageTag = record.textLanguageTag,
+            languageTag = record.languageTag,
+        )
+        if (scenarios.isEmpty()) return
+        val updated = store.update(record.id) { current ->
+            val existing = current.session.sentences.getOrNull(sentenceIndex) ?: return@update current
+            val tokens = existing.tokens.mapIndexed { tokenIndex, token ->
+                val scenario = scenarios[tokenIndex]?.takeIf(String::isNotBlank)
+                if (token.isDissectable && token.needScenario.isBlank() && scenario != null) {
+                    token.copy(needScenario = scenario)
+                } else {
+                    token
+                }
+            }
+            val sentences = current.session.sentences.toMutableList()
+            sentences[sentenceIndex] = existing.copy(tokens = tokens)
+            current.copy(session = current.session.copy(sentences = sentences))
+        } ?: return
+        updated.session.sentences.getOrNull(sentenceIndex)?.let { latest ->
             store.publish(record.id, StudyBuildEvent.SentenceDissected(sentenceIndex, latest))
         }
     }
@@ -376,6 +406,10 @@ class StudyBuildTasks(
 
         StudyBuildElementKind.CHUNKS -> record.session.sentences
             .getOrNull(task.element.sentenceIndex ?: -1)?.chunks?.isNotEmpty() == true
+
+        StudyBuildElementKind.WORD_RECALL_SCENARIOS -> record.session.sentences
+            .getOrNull(task.element.sentenceIndex ?: -1)?.tokens
+            ?.filter { it.isDissectable }?.all { it.needScenario.isNotBlank() } == true
 
         StudyBuildElementKind.EXAMPLE_DISSECT -> {
             val token = record.session.sentences.getOrNull(task.element.sentenceIndex ?: -1)

@@ -277,6 +277,7 @@ fun BottomDialog(
     onDismiss: () -> Unit,
     expanded: Boolean = false,
     footer: (@Composable () -> Unit)? = null,
+    opaqueScrim: Boolean = false,
     content: @Composable () -> Unit,
 ) {
     // Drag-to-dismiss state for the bottom sheet handle.
@@ -317,6 +318,7 @@ fun BottomDialog(
     // Scrim covers the frame; clicking it dismisses the sheet.
     Div(attrs = {
         classes(Styles.dialogScrim)
+        if (opaqueScrim) classes(Styles.dialogScrimOpaque)
         if (open) classes(Styles.dialogScrimVisible)
         attr("role", "presentation")
         onClick { onDismiss() }

@@ -52,7 +52,7 @@ class StudyBuildPlanner(private val maxAttempts: Int = 3) {
     private fun pendingElements(record: SavedStudySessionRecord): List<StudyBuildElement> {
         val state = record.build ?: return emptyList()
         if (state.status == StudyBuildStatus.COMPLETE || state.status == StudyBuildStatus.PARTIAL) {
-            return pendingChunkBuilds(record) + pendingExampleDissections(record)
+            return pendingChunkBuilds(record) + pendingExampleDissections(record) + pendingWordRecallScenarios(record)
         }
 
         if (record.session.sentences.isEmpty()) {
@@ -96,7 +96,10 @@ class StudyBuildPlanner(private val maxAttempts: Int = 3) {
             }
         }
 
-        if (dissectionsSettled) elements += pendingExampleDissections(record)
+        if (dissectionsSettled) {
+            elements += pendingExampleDissections(record)
+            elements += pendingWordRecallScenarios(record)
+        }
 
         if (characters.isEmpty()) {
             elements += StudyBuildElement(StudyBuildElementKind.CHARACTERS)
@@ -188,6 +191,15 @@ class StudyBuildPlanner(private val maxAttempts: Int = 3) {
                 null
             } else {
                 StudyBuildElement(StudyBuildElementKind.CHUNKS, sentenceIndex = sentenceIndex)
+            }
+        }
+
+    private fun pendingWordRecallScenarios(record: SavedStudySessionRecord): List<StudyBuildElement> =
+        record.session.sentences.mapIndexedNotNull { sentenceIndex, sentence ->
+            if (sentence.tokens.any { it.isDissectable && it.needScenario.isBlank() }) {
+                StudyBuildElement(StudyBuildElementKind.WORD_RECALL_SCENARIOS, sentenceIndex = sentenceIndex)
+            } else {
+                null
             }
         }
 
