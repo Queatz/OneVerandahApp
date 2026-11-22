@@ -3487,17 +3487,6 @@ private fun StudyWatchTab(
         }
     }
 
-    LaunchedEffect(sentenceAudio.keys.joinToString()) {
-        sentenceAudio.forEach { (key, clip) ->
-            if (!measuredDurations.containsKey(key)) {
-                measuredDurations[key] = watchClipDurationMs(clip.words)
-            }
-            probeAudioDurationMs(clip.url) { ms ->
-                if (ms > 0) measuredDurations[key] = ms
-            }
-        }
-    }
-
     DisposableEffect(Unit) {
         stopActiveStudyAudio()
         onDispose { stopActiveStudyAudio() }
@@ -6719,6 +6708,7 @@ private const val WORD_AUDIO_END_PAD_MS = 40
 private fun sentenceNeedsDissect(sentence: StudySentence): Boolean =
     sentence.tokens.any { it.status == StudyTokenStatus.PENDING }
 
+private var sharedStudyAudio: HTMLAudioElement? = null
 private var activeStudyAudio: HTMLAudioElement? = null
 private var activeStudyAudioUrl: String? = null
 private var primedStudyAudio: HTMLAudioElement? = null
@@ -6756,18 +6746,36 @@ private fun clearStudyAudioHandlers(element: HTMLAudioElement) {
     element.asDynamic().onplay = null
 }
 
+private fun releaseStudyAudioElement(element: HTMLAudioElement) {
+    clearStudyAudioHandlers(element)
+    runCatching { element.pause() }
+    runCatching {
+        element.removeAttribute("src")
+        element.load()
+    }
+}
+
+private fun sharedStudyAudioElement(): HTMLAudioElement =
+    sharedStudyAudio ?: (document.createElement("audio") as HTMLAudioElement).also {
+        sharedStudyAudio = it
+    }
+
 private fun tryPlayStudyAudio(element: HTMLAudioElement) {
     element.asDynamic().play()?.catch { }
 }
 
 internal fun primeStudyAudioPlayback() {
     if (primedStudyAudio != null) return
-    val element = document.createElement("audio") as HTMLAudioElement
+    val active = activeStudyAudio
+    if (active != null && !active.paused && !active.ended) return
+    stopActiveStudyAudio()
+    val element = sharedStudyAudioElement()
+    releaseStudyAudioElement(element)
     primedStudyAudio = element
     element.src = SILENT_STUDY_AUDIO_DATA_URL
     element.asDynamic().play()?.catch {
         if (primedStudyAudio === element) {
-            runCatching { element.pause() }
+            releaseStudyAudioElement(element)
             primedStudyAudio = null
         }
     }
@@ -6780,10 +6788,7 @@ private fun startStudyAudioPlayback(element: HTMLAudioElement, url: String) {
 }
 
 internal fun stopActiveStudyAudio(clearPlaylist: Boolean = true) {
-    activeStudyAudio?.let { current ->
-        clearStudyAudioHandlers(current)
-        runCatching { current.pause() }
-    }
+    activeStudyAudio?.let(::releaseStudyAudioElement)
     activeStudyAudio = null
     activeStudyAudioUrl = null
     studyAudioPlayingUrl = null
@@ -6838,18 +6843,6 @@ private fun watchSeekMsFromClientX(
     return (fraction * totalMs).toInt()
 }
 
-private fun probeAudioDurationMs(url: String, onResult: (Int) -> Unit) {
-    val element = document.createElement("audio") as HTMLAudioElement
-    element.preload = "metadata"
-    element.src = url
-    element.asDynamic().onloadedmetadata = {
-        val duration = element.duration
-        if (duration.isFinite() && duration > 0) {
-            onResult((duration * 1000.0).toInt().coerceAtLeast(1))
-        }
-    }
-}
-
 private fun loadWatchAudioAt(
     url: String,
     startSec: Double,
@@ -6862,11 +6855,13 @@ private fun loadWatchAudioAt(
         existing
     } else {
         stopActiveStudyAudio()
-        (document.createElement("audio") as HTMLAudioElement).also { created ->
-            activeStudyAudio = created
-            activeStudyAudioUrl = url
-            created.src = url
-        }
+        val created = sharedStudyAudioElement()
+        primedStudyAudio = null
+        releaseStudyAudioElement(created)
+        activeStudyAudio = created
+        activeStudyAudioUrl = url
+        created.src = url
+        created
     }
     clearStudyAudioHandlers(element)
     if (play) {
@@ -6921,8 +6916,9 @@ internal fun playAudio(url: String, restart: Boolean = false, onEnded: (() -> Un
         return
     }
     stopActiveStudyAudio()
-    val element = primedStudyAudio ?: (document.createElement("audio") as HTMLAudioElement)
-    if (primedStudyAudio === element) primedStudyAudio = null
+    val element = sharedStudyAudioElement()
+    primedStudyAudio = null
+    releaseStudyAudioElement(element)
     activeStudyAudio = element
     activeStudyAudioUrl = url
     studyAudioPlayingUrl = url
@@ -6963,7 +6959,9 @@ private fun playStudyAudioPlaylistItem(index: Int) {
     studyAudioPlaylistIndex = index
     val url = urls[index]
     stopActiveStudyAudio(clearPlaylist = false)
-    val element = document.createElement("audio") as HTMLAudioElement
+    val element = sharedStudyAudioElement()
+    primedStudyAudio = null
+    releaseStudyAudioElement(element)
     activeStudyAudio = element
     activeStudyAudioUrl = url
     studyAudioPlayingUrl = url
@@ -6987,11 +6985,15 @@ private fun playAudioSegment(url: String, beginMs: Int, endMs: Int) {
     stopActiveStudyAudio()
     val startSec = (beginMs.coerceAtLeast(0)) / 1000.0
     val endSec = (endMs.coerceAtLeast(beginMs + 60) + WORD_AUDIO_END_PAD_MS) / 1000.0
-    val element = document.createElement("audio") as HTMLAudioElement
+    val element = sharedStudyAudioElement()
+    primedStudyAudio = null
+    releaseStudyAudioElement(element)
     activeStudyAudio = element
     activeStudyAudioUrl = url
     studyAudioPlayingUrl = url
-    bindStudyAudioPlaybackState(element, url)
+    bindStudyAudioPlaybackState(element, url) {
+        if (activeStudyAudio === element) stopActiveStudyAudio()
+    }
     fun applyStartAndPlay() {
         val duration = element.duration
         val safeStart = if (duration.isFinite() && duration > 0) startSec.coerceAtMost(duration) else startSec
@@ -7005,8 +7007,7 @@ private fun playAudioSegment(url: String, beginMs: Int, endMs: Int) {
         val duration = element.duration
         val stopAt = if (duration.isFinite() && duration > 0) endSec.coerceAtMost(duration) else endSec
         if (element.currentTime >= stopAt) {
-            element.pause()
-            element.asDynamic().ontimeupdate = null
+            if (activeStudyAudio === element) stopActiveStudyAudio()
         }
     }
     // Some browsers fire loadedmetadata before the handler is attached for cached data URLs.

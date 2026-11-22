@@ -61,6 +61,8 @@ import kotlinx.coroutines.launch
 import kotlinx.coroutines.withContext
 import org.slf4j.LoggerFactory
 
+private const val playScenarioCount = 2
+
 data class StudyGenerationRequest(
     val text: String,
     val languageTag: String,
@@ -676,8 +678,8 @@ class StudyService(
         val defaults = defaultPlayScenarios(request.textLanguageTag)
         val designs = (cleaned + defaults)
             .distinctBy { it.description.trim().lowercase() }
-            .take(4)
-            .let { merged -> if (merged.size < 4) defaults.take(4) else merged }
+            .take(playScenarioCount)
+            .let { merged -> if (merged.size < playScenarioCount) defaults.take(playScenarioCount) else merged }
         return designs.map { design ->
             val id = idGenerator().trim().ifBlank { UUID.randomUUID().toString() }
             StudyPlayScenario(
@@ -686,7 +688,7 @@ class StudyService(
                 openingLine = design.openingLine,
             )
         }
-            .also { require(it.size == 4) { "Play tab requires exactly four scenarios" } }
+            .also { require(it.size == playScenarioCount) { "Play tab requires exactly four scenarios" } }
     }
 
     suspend fun renderPlayCover(
@@ -1368,7 +1370,7 @@ internal fun normalizePlayScenarioDesigns(designs: List<StudyPlayScenarioDesign>
         val opening = design.openingLine?.trim()?.takeIf { it.isNotEmpty() }
         StudyPlayScenarioDesign(description = description, openingLine = opening)
     }
-    return cleaned.take(4)
+    return cleaned.take(playScenarioCount)
 }
 
 internal fun defaultPlayScenarios(languageTag: String): List<StudyPlayScenarioDesign> {
@@ -1382,7 +1384,7 @@ internal fun defaultPlayScenarios(languageTag: String): List<StudyPlayScenarioDe
         "es" -> listOf("¡Hola! ¿Adónde vas hoy?", null, "¿Puedo preguntarte algo?", null)
         "de" -> listOf("Hallo! Wohin gehst du heute?", null, "Darf ich dich kurz etwas fragen?", null)
         "en" -> listOf("Hi there — heading out?", null, "Mind if I ask something quick?", null)
-        else -> List(4) { null }
+        else -> List(playScenarioCount) { null }
     }
     val descriptions = listOf(
         "A neighbor greets you near the lobby.",

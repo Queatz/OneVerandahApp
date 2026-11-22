@@ -51,8 +51,8 @@ internal data class StudyRecallProgress(
 )
 
 internal const val STUDY_RECALL_WORD_REPETITIONS = 3
-internal const val STUDY_RECALL_WORD_TIME_MS = 5_000
-internal const val STUDY_RECALL_PHRASE_TIME_MS = 20_000
+internal const val STUDY_RECALL_WORD_TIME_MS = 10_000
+internal const val STUDY_RECALL_PHRASE_TIME_MS = 30_000
 
 internal fun buildStudyRecallDeck(
     vocabulary: List<StudyVocabularyRow>,
