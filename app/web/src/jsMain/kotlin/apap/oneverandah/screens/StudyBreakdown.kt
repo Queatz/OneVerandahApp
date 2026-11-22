@@ -33,7 +33,8 @@ import org.jetbrains.compose.web.dom.Span
 import org.jetbrains.compose.web.dom.Text
 import kotlin.js.Date
 
-private const val BREAKDOWN_SHADOW_REPS = 5
+private const val BREAKDOWN_REPS = 5
+private const val BREAKDOWN_SLOW_PLAYBACK_RATE = 0.75
 
 @Composable
 internal fun StudyBreakdown(
@@ -63,6 +64,7 @@ internal fun StudyBreakdown(
     var expandedChunkIndex by remember(sentenceIndex) { mutableStateOf<Int?>(null) }
     var answerVisible by remember(sentenceIndex) { mutableStateOf(false) }
     var slowAudio by remember(sentenceIndex) { mutableStateOf(false) }
+    var shadowUserTurn by remember(sentenceIndex) { mutableStateOf(false) }
 
     LaunchedEffect(progress) {
         if (progress != null && progress.updatedAt >= savedProgress.updatedAt) {
@@ -90,7 +92,17 @@ internal fun StudyBreakdown(
         onProgressChange(updated)
     }
 
-    LaunchedEffect(drillProgress.step, drillProgress.backchainRound, chunks, suffixes) {
+    fun restartDrill() {
+        answerVisible = false
+        selectedChunkIndex = null
+        expandedChunkIndex = null
+        slowAudio = false
+        shadowUserTurn = false
+        stopActiveStudyAudio()
+        saveProgress(StudyBreakdownSentenceProgress(restartedAt = Date.now().toLong()))
+    }
+
+    LaunchedEffect(drillProgress.step, drillProgress.backchainRound, drillProgress.backchainRep, chunks, suffixes) {
         if (drillProgress.step != 2 || chunks.isEmpty()) return@LaunchedEffect
         val round = drillProgress.backchainRound.coerceIn(0, chunks.lastIndex)
         val suffix = suffixes.getOrNull(round) ?: buildSuffix(chunks, round)
@@ -98,6 +110,7 @@ internal fun StudyBreakdown(
     }
 
     LaunchedEffect(drillProgress.step, drillProgress.shadowRep, slowAudio, sentence.text) {
+        shadowUserTurn = false
         if (drillProgress.step != 3) return@LaunchedEffect
         val url = audioUrl(sentence.text) ?: return@LaunchedEffect
         var playbackEnded = false
@@ -105,14 +118,18 @@ internal fun StudyBreakdown(
             url,
             restart = true,
             onEnded = { playbackEnded = true },
-            playbackRate = if (slowAudio) 0.75 else 1.0,
+            playbackRate = if (slowAudio) BREAKDOWN_SLOW_PLAYBACK_RATE else 1.0,
         )
         withTimeoutOrNull(90_000) {
             while (!playbackEnded) delay(80)
         }
-        if (playbackEnded) {
+        if (!playbackEnded) return@LaunchedEffect
+        shadowUserTurn = true
+        try {
             delay((sentence.text.length * 60L).coerceIn(1_500L, 5_000L))
             saveProgress(advanceStudyBreakdownShadow(drillProgress))
+        } finally {
+            shadowUserTurn = false
         }
     }
 
@@ -138,13 +155,18 @@ internal fun StudyBreakdown(
         onDismiss = onDismiss,
         expanded = true,
         footer = {
-            Div(attrs = { classes(Styles.studyBreakdownActions) }) {
+            Div(attrs = { classes(Styles.studyBreakdownFooter) }) {
                 when {
-                    drillProgress.completed -> BreakdownAction(label = strings.close, onClick = onDismiss)
+                    drillProgress.completed -> {
+                        BreakdownAction(label = strings.chatStudyBreakdownRestart, onClick = ::restartDrill)
+                        BreakdownAction(label = strings.close, onClick = onDismiss)
+                    }
                     drillProgress.step == 1 -> BreakdownAction(
                         label = strings.chatStudyBreakdownGotIt,
                         enabled = chunks.isNotEmpty(),
-                        onClick = { saveProgress(drillProgress.copy(step = 2, backchainRound = 0)) },
+                        onClick = {
+                            saveProgress(drillProgress.copy(step = 2, backchainRound = 0, backchainRep = 0))
+                        },
                     )
                     drillProgress.step == 2 -> BreakdownAction(
                         strings.chatStudyBreakdownContinue,
@@ -214,8 +236,10 @@ internal fun StudyBreakdown(
                             }
                         }
                         selectedChunk?.let { chunk ->
-                            P { Text(chunk.gloss) }
-                            if (chunk.grammarNote.isNotBlank()) {
+                            if (chunk.gloss.isNotBlank()) {
+                                P(attrs = { classes(Styles.studyBreakdownMeaning) }) { Text(chunk.gloss) }
+                            }
+                            if (chunk.grammarNote.isNotBlank() && !chunk.grammarNote.isPlaceholderGrammarNote()) {
                                 P(attrs = { classes(Styles.studyBreakdownPrompt) }) { Text(chunk.grammarNote) }
                             }
                             Button(attrs = {
@@ -247,13 +271,17 @@ internal fun StudyBreakdown(
                         Text(strings.chatStudyBreakdownSayAloud)
                     }
                     P(attrs = { classes(Styles.studyBreakdownSentence) }) { Text(displayedSuffix) }
+                    P(attrs = { classes(Styles.studyBreakdownPrompt) }) {
+                        Text("${drillProgress.backchainRep + 1} / $BREAKDOWN_REPS")
+                    }
                     Div(attrs = { classes(Styles.studyBreakdownActions) }) {
                         chunks.drop(newChunkIndex).forEachIndexed { offset, chunk ->
                             BreakdownChunkButton(
                                 chunk = chunk,
                                 active = offset == 0,
-                                onClick = {},
-                                enabled = false,
+                                onClick = {
+                                    scope.launch { audioUrl(chunk.text)?.let { playAudio(it, restart = true) } }
+                                },
                             )
                         }
                     }
@@ -261,11 +289,27 @@ internal fun StudyBreakdown(
                 drillProgress.step == 3 -> {
                     P(attrs = { classes(Styles.studyBreakdownSentence) }) { Text(sentence.text) }
                     P(attrs = { classes(Styles.studyBreakdownPrompt) }) {
-                        Text("${strings.chatStudyBreakdownRep} ${drillProgress.shadowRep + 1} / $BREAKDOWN_SHADOW_REPS")
+                        Text("${drillProgress.shadowRep + 1} / $BREAKDOWN_REPS")
+                    }
+                    if (shadowUserTurn) {
+                        Div(attrs = {
+                            classes(Styles.studyBreakdownYourTurn)
+                            attr("role", "status")
+                            attr("aria-live", "assertive")
+                        }) {
+                            MaterialSymbol("mic")
+                            Text(strings.chatStudyBreakdownYourTurn)
+                        }
+                    } else {
+                        P(attrs = { classes(Styles.studyBreakdownPrompt) }) {
+                            Text(strings.chatSpeakListen)
+                        }
                     }
                     Button(attrs = {
                         classes(Styles.studyBreakdownButton, Styles.studyBreakdownAudioToggle)
+                        if (slowAudio) classes(Styles.studyBreakdownButtonActive)
                         attr("type", "button")
+                        attr("aria-pressed", if (slowAudio) "true" else "false")
                         onClick { slowAudio = !slowAudio }
                     }) {
                         MaterialSymbol("slow_motion_video")
@@ -319,6 +363,9 @@ private fun BreakdownChunkButton(
         onClick { onClick() }
     }) { Text(chunk.text.trim()) }
 }
+
+private fun String.isPlaceholderGrammarNote(): Boolean =
+    trim().trimEnd('.', '\u3002').trim().equals("Phrase structure", ignoreCase = true)
 
 private fun buildSuffix(chunks: List<StudyChunk>, round: Int): String {
     if (chunks.isEmpty()) return ""

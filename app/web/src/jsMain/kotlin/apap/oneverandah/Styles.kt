@@ -502,6 +502,10 @@ object Styles {
     const val studyBreakdownChunk = "study-breakdown-chunk"
     const val studyBreakdownChunkActive = "study-breakdown-chunk-active"
     const val studyBreakdownActions = "study-breakdown-actions"
+    const val studyBreakdownFooter = "study-breakdown-footer"
+    const val studyBreakdownMeaning = "study-breakdown-meaning"
+    const val studyBreakdownYourTurn = "study-breakdown-your-turn"
+    const val studyBreakdownButtonActive = "study-breakdown-button-active"
     const val studyBreakdownAudioToggle = "study-breakdown-audio-toggle"
     const val studySentenceImageStatus = "study-sentence-image-status"
     const val studySentenceImageStatusBusy = "study-sentence-image-status-busy"
@@ -4160,6 +4164,42 @@ object Styles {
             flex-wrap: wrap;
             justify-content: center;
             gap: 9px;
+        }
+        .${studyBreakdownFooter} {
+            display: flex;
+            width: 100%;
+            gap: 9px;
+        }
+        .${studyBreakdownFooter} .${studyBreakdownButton} {
+            flex: 1 1 0;
+            min-width: 0;
+        }
+        .${studyBreakdownMeaning} {
+            margin: 2px 0 0;
+            font-size: 18px;
+            font-weight: 750;
+            line-height: 1.45;
+            text-align: center;
+            color: var(--md-sys-color-on-surface);
+        }
+        .${studyBreakdownYourTurn} {
+            display: flex;
+            align-items: center;
+            justify-content: center;
+            gap: 8px;
+            margin: 0;
+            padding: 14px 16px;
+            border-radius: 16px;
+            background: var(--md-sys-color-primary);
+            color: var(--md-sys-color-on-primary);
+            font-size: 20px;
+            font-weight: 750;
+            text-align: center;
+        }
+        .${studyBreakdownButtonActive} {
+            background: var(--md-sys-color-primary);
+            color: var(--md-sys-color-on-primary);
+            border-color: var(--md-sys-color-primary);
         }
         .${studyBreakdownAudioToggle} {
             align-self: center;

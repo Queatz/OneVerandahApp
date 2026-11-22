@@ -314,8 +314,11 @@ data class StudyAdventureProgress(
 data class StudyBreakdownSentenceProgress(
     val step: Int = 1,
     val backchainRound: Int = 0,
+    val backchainRep: Int = 0,
     val shadowRep: Int = 0,
     val completed: Boolean = false,
+    /** Set when the learner explicitly restarts, so a newer reset can clear completion. */
+    val restartedAt: Long = 0,
 )
 
 @Serializable
@@ -326,7 +329,8 @@ data class StudyBreakdownProgress(
     fun normalizedOrNull(): StudyBreakdownProgress? {
         if (updatedAt < 0 || sentences.any { (index, progress) ->
                 index < 0 || progress.step !in 1..4 || progress.backchainRound < 0 ||
-                        progress.shadowRep !in 0..5 || (progress.completed && progress.step != 4)
+                        progress.backchainRep !in 0..5 || progress.shadowRep !in 0..5 ||
+                        progress.restartedAt < 0 || (progress.completed && progress.step != 4)
             }
         ) return null
         return this

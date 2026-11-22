@@ -422,7 +422,7 @@ class StudyService(
             }.joinToString(" ")
             chunk.copy(
                 gloss = chunk.gloss.trim().ifBlank { fallbackGloss },
-                grammarNote = chunk.grammarNote.trim().ifBlank { "Phrase structure." },
+                grammarNote = chunk.grammarNote.trim().takeUnless(::isPlaceholderGrammarNote).orEmpty(),
             )
         }
         return chunks to studyBreakdownSuffixes(sentenceText, tokenTexts, chunks)
@@ -1994,6 +1994,9 @@ internal fun StudySentence.normalizedDissected(expectedTokens: List<String>): St
 
     return StudySentence(text = sentenceText, tokens = aligned, translation = translation.trim())
 }
+
+private fun isPlaceholderGrammarNote(note: String): Boolean =
+    note.trim().trimEnd('.', '。').trim().equals("Phrase structure", ignoreCase = true)
 
 private fun StudyToken.hasDissectionContent(): Boolean =
     literalMeaning.isNotBlank() ||

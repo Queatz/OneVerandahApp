@@ -1,6 +1,6 @@
 package apap.oneverandah.api
 
-private const val studyBreakdownShadowReps = 5
+private const val studyBreakdownReps = 5
 
 /** Makes generated chunk boundaries exact spans over the sentence's existing word tokens. */
 fun alignStudyChunks(
@@ -55,19 +55,27 @@ fun advanceStudyBreakdownBackchain(
     chunkCount: Int,
 ): StudyBreakdownSentenceProgress {
     if (progress.completed || progress.step != 2 || chunkCount <= 0) return progress
-    return if (progress.backchainRound + 1 < chunkCount) {
-        progress.copy(backchainRound = progress.backchainRound + 1)
-    } else {
-        progress.copy(step = 3, backchainRound = chunkCount - 1, shadowRep = 0)
+    return when {
+        progress.backchainRep + 1 < studyBreakdownReps -> progress.copy(backchainRep = progress.backchainRep + 1)
+        progress.backchainRound + 1 < chunkCount -> progress.copy(
+            backchainRound = progress.backchainRound + 1,
+            backchainRep = 0,
+        )
+        else -> progress.copy(
+            step = 3,
+            backchainRound = chunkCount - 1,
+            backchainRep = studyBreakdownReps,
+            shadowRep = 0,
+        )
     }
 }
 
 fun advanceStudyBreakdownShadow(progress: StudyBreakdownSentenceProgress): StudyBreakdownSentenceProgress {
     if (progress.completed || progress.step != 3) return progress
-    return if (progress.shadowRep + 1 < studyBreakdownShadowReps) {
+    return if (progress.shadowRep + 1 < studyBreakdownReps) {
         progress.copy(shadowRep = progress.shadowRep + 1)
     } else {
-        progress.copy(step = 4, shadowRep = studyBreakdownShadowReps)
+        progress.copy(step = 4, shadowRep = studyBreakdownReps)
     }
 }
 
@@ -85,10 +93,14 @@ fun mergeStudyBreakdownProgress(
         val oldSentence = old.sentences[index]
         val newSentence = new.sentences[index]
         when {
-            oldSentence?.completed == true -> oldSentence
-            newSentence?.completed == true -> newSentence
-            selected === new -> newSentence ?: oldSentence!!
-            else -> oldSentence ?: newSentence!!
+            oldSentence == null -> newSentence!!
+            newSentence == null -> oldSentence
+            newSentence.restartedAt > oldSentence.restartedAt -> newSentence
+            oldSentence.restartedAt > newSentence.restartedAt -> oldSentence
+            oldSentence.completed -> oldSentence
+            newSentence.completed -> newSentence
+            selected === new -> newSentence
+            else -> oldSentence
         }
     }
     return selected.copy(sentences = merged)

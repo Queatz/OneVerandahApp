@@ -41,12 +41,13 @@ class StudyBreakdownTest {
     @Test
     fun `backchain and shadow advance sequentially through all rounds`() {
         var progress = StudyBreakdownSentenceProgress(step = 2)
-        repeat(2) { progress = advanceStudyBreakdownBackchain(progress, chunkCount = 3) }
-        assertEquals(StudyBreakdownSentenceProgress(step = 2, backchainRound = 2), progress)
+        repeat(14) { progress = advanceStudyBreakdownBackchain(progress, chunkCount = 3) }
+        assertEquals(StudyBreakdownSentenceProgress(step = 2, backchainRound = 2, backchainRep = 4), progress)
         progress = advanceStudyBreakdownBackchain(progress, chunkCount = 3)
         assertEquals(3, progress.step)
+        assertEquals(5, progress.backchainRep)
         repeat(4) { progress = advanceStudyBreakdownShadow(progress) }
-        assertEquals(StudyBreakdownSentenceProgress(step = 3, backchainRound = 2, shadowRep = 4), progress)
+        assertEquals(StudyBreakdownSentenceProgress(step = 3, backchainRound = 2, backchainRep = 5, shadowRep = 4), progress)
         progress = advanceStudyBreakdownShadow(progress)
         assertEquals(4, progress.step)
         assertEquals(5, progress.shadowRep)
@@ -75,5 +76,22 @@ class StudyBreakdownTest {
         assertTrue(merged.sentences.getValue(0).completed)
         assertEquals(3, merged.sentences.getValue(1).step)
         assertEquals(2, merged.sentences.getValue(1).shadowRep)
+    }
+
+    @Test
+    fun `explicit restart clears completion even when an older save is newer`() {
+        val restarted = StudyBreakdownSentenceProgress(step = 1, restartedAt = 30)
+        val merged = mergeStudyBreakdownProgress(
+            current = StudyBreakdownProgress(
+                sentences = mapOf(0 to StudyBreakdownSentenceProgress(step = 4, completed = true)),
+                updatedAt = 40,
+            ),
+            incoming = StudyBreakdownProgress(
+                sentences = mapOf(0 to restarted),
+                updatedAt = 30,
+            ),
+        )
+
+        assertEquals(restarted, merged?.sentences?.getValue(0))
     }
 }

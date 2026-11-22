@@ -6828,6 +6828,7 @@ private fun clearStudyAudioPlaylist() {
 private fun clearStudyAudioHandlers(element: HTMLAudioElement) {
     element.asDynamic().ontimeupdate = null
     element.asDynamic().onloadedmetadata = null
+    element.asDynamic().onratechange = null
     element.asDynamic().oncanplay = null
     element.asDynamic().onended = null
     element.asDynamic().onerror = null
@@ -6835,9 +6836,23 @@ private fun clearStudyAudioHandlers(element: HTMLAudioElement) {
     element.asDynamic().onplay = null
 }
 
+private var activeStudyAudioRate = 1.0
+
+private fun applyActiveStudyAudioRate(element: HTMLAudioElement) {
+    element.asDynamic().preservesPitch = true
+    if (element.asDynamic().defaultPlaybackRate != activeStudyAudioRate) {
+        element.asDynamic().defaultPlaybackRate = activeStudyAudioRate
+    }
+    if (element.playbackRate != activeStudyAudioRate) {
+        element.playbackRate = activeStudyAudioRate
+    }
+}
+
 private fun releaseStudyAudioElement(element: HTMLAudioElement) {
     clearStudyAudioHandlers(element)
+    activeStudyAudioRate = 1.0
     runCatching { element.pause() }
+    element.asDynamic().defaultPlaybackRate = 1.0
     element.playbackRate = 1.0
     runCatching {
         element.removeAttribute("src")
@@ -6851,7 +6866,10 @@ private fun sharedStudyAudioElement(): HTMLAudioElement =
     }
 
 private fun tryPlayStudyAudio(element: HTMLAudioElement) {
-    element.asDynamic().play()?.catch { }
+    applyActiveStudyAudioRate(element)
+    val playback = element.asDynamic().play() ?: return
+    playback.then { applyActiveStudyAudioRate(element) }
+    playback.catch { }
 }
 
 internal fun primeStudyAudioPlayback() {
@@ -6873,7 +6891,9 @@ internal fun primeStudyAudioPlayback() {
 
 private fun startStudyAudioPlayback(element: HTMLAudioElement, url: String) {
     element.asDynamic().oncanplay = { tryPlayStudyAudio(element) }
+    element.asDynamic().onloadedmetadata = { applyActiveStudyAudioRate(element) }
     element.src = url
+    applyActiveStudyAudioRate(element)
     if (element.readyState >= 2) tryPlayStudyAudio(element)
 }
 
@@ -6893,6 +6913,7 @@ private fun bindStudyAudioPlaybackState(
     onEnded: (() -> Unit)? = null,
 ) {
     element.asDynamic().onplay = {
+        applyActiveStudyAudioRate(element)
         if (activeStudyAudio === element) {
             studyAudioPlayingUrl = url
         }
@@ -6901,7 +6922,6 @@ private fun bindStudyAudioPlaybackState(
         if (activeStudyAudio === element) {
             studyAudioPlayingUrl = null
         }
-        element.playbackRate = 1.0
     }
     element.asDynamic().onended = {
         element.playbackRate = 1.0
@@ -7017,9 +7037,10 @@ internal fun playAudio(
     val element = sharedStudyAudioElement()
     primedStudyAudio = null
     releaseStudyAudioElement(element)
+    activeStudyAudioRate = playbackRate
     activeStudyAudio = element
     activeStudyAudioUrl = url
-    element.playbackRate = playbackRate
+    applyActiveStudyAudioRate(element)
     studyAudioPlayingUrl = url
     bindStudyAudioPlaybackState(element, url, onEnded)
     startStudyAudioPlayback(element, url)
