@@ -196,7 +196,7 @@ internal fun StudyBreakdown(
     val selectedChunkExpanded = expandedChunkIndex == selectedChunkIndex
     val wordRecallIndex = drillProgress.wordRecallQueue.firstOrNull()
     val wordRecallToken = wordRecallIndex?.let(sentence.tokens::getOrNull)?.takeIf { it.isDissectable }
-    val wordRecallScenario = wordRecallToken?.needScenario?.trim().orEmpty()
+    val wordRecallConversation = wordRecallToken?.needConversation.orEmpty()
 
     BottomDialog(
         visible = true,
@@ -227,7 +227,7 @@ internal fun StudyBreakdown(
                     drillProgress.step == 2 && !drillProgress.wordRecallRevealed -> {
                         BreakdownAction(
                             label = strings.chatStudyBreakdownReveal,
-                            enabled = wordRecallToken != null && wordRecallScenario.isNotBlank(),
+                            enabled = wordRecallToken != null && wordRecallConversation.isNotEmpty(),
                             onClick = {
                                 val revealed = revealStudyBreakdownWordRecall(drillProgress)
                                 saveProgress(revealed)
@@ -368,8 +368,26 @@ internal fun StudyBreakdown(
                     P(attrs = { classes(Styles.studyBreakdownPrompt) }) {
                         Text(strings.chatStudyBreakdownSayAloud)
                     }
-                    P(attrs = { classes(Styles.studyBreakdownSentence) }) {
-                        Text(wordRecallScenario.ifBlank { strings.chatStudyBreakdownScenarioLoading })
+                    if (wordRecallConversation.isEmpty()) {
+                        P(attrs = { classes(Styles.studyBreakdownPrompt) }) {
+                            Text(strings.chatStudyBreakdownScenarioLoading)
+                        }
+                    } else {
+                        Div(attrs = { classes(Styles.studyBreakdownConversation) }) {
+                            wordRecallConversation.forEach { line ->
+                                Div(attrs = { classes(Styles.studyBreakdownConversationLine) }) {
+                                    P(attrs = { classes(Styles.studyBreakdownConversationSpeaker) }) {
+                                        Text(line.speaker)
+                                    }
+                                    P(attrs = { classes(Styles.studyBreakdownConversationText) }) {
+                                        Text(line.text)
+                                    }
+                                    P(attrs = { classes(Styles.studyBreakdownConversationTranslation) }) {
+                                        Text(line.translation)
+                                    }
+                                }
+                            }
+                        }
                     }
                     if (drillProgress.wordRecallRevealed) {
                         wordRecallToken?.let { token ->

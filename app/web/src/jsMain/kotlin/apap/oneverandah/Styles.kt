@@ -529,6 +529,11 @@ object Styles {
     const val studyBreakdownStepActive = "study-breakdown-step-active"
     const val studyBreakdownSentence = "study-breakdown-sentence"
     const val studyBreakdownPrompt = "study-breakdown-prompt"
+    const val studyBreakdownConversation = "study-breakdown-conversation"
+    const val studyBreakdownConversationLine = "study-breakdown-conversation-line"
+    const val studyBreakdownConversationSpeaker = "study-breakdown-conversation-speaker"
+    const val studyBreakdownConversationText = "study-breakdown-conversation-text"
+    const val studyBreakdownConversationTranslation = "study-breakdown-conversation-translation"
     const val studyBreakdownChunk = "study-breakdown-chunk"
     const val studyBreakdownChunkActive = "study-breakdown-chunk-active"
     const val studyBreakdownActions = "study-breakdown-actions"
@@ -4494,6 +4499,37 @@ object Styles {
             margin: 0;
             color: var(--md-sys-color-on-surface-variant);
             text-align: center;
+        }
+        .${studyBreakdownConversation} {
+            display: flex;
+            flex-direction: column;
+            gap: 8px;
+            width: 100%;
+            max-height: 36vh;
+            overflow-y: auto;
+        }
+        .${studyBreakdownConversationLine} {
+            padding: 8px 11px;
+            border-radius: 12px;
+            background: var(--md-sys-color-surface-variant);
+        }
+        .${studyBreakdownConversationSpeaker} {
+            margin: 0 0 2px;
+            color: var(--md-sys-color-on-surface-variant);
+            font-size: 12px;
+            font-weight: 700;
+        }
+        .${studyBreakdownConversationText} {
+            margin: 0;
+            font-size: clamp(18px, 4vw, 23px);
+            font-weight: 650;
+            line-height: 1.35;
+        }
+        .${studyBreakdownConversationTranslation} {
+            margin: 2px 0 0;
+            color: var(--md-sys-color-on-surface-variant);
+            font-size: 12px;
+            line-height: 1.35;
         }
         .${studyBreakdownListen} {
             margin: 4px 0 0;

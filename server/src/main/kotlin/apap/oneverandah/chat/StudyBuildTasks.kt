@@ -218,9 +218,9 @@ class StudyBuildTasks(
         val updated = store.update(record.id) { current ->
             val existing = current.session.sentences.getOrNull(sentenceIndex) ?: return@update current
             val tokens = existing.tokens.mapIndexed { tokenIndex, token ->
-                val scenario = scenarios[tokenIndex]?.takeIf(String::isNotBlank)
-                if (token.isDissectable && token.needScenario.isBlank() && scenario != null) {
-                    token.copy(needScenario = scenario)
+                val conversation = scenarios[tokenIndex]?.takeIf { it.isNotEmpty() }
+                if (token.isDissectable && token.needConversation.isEmpty() && conversation != null) {
+                    token.copy(needConversation = conversation)
                 } else {
                     token
                 }
@@ -409,7 +409,7 @@ class StudyBuildTasks(
 
         StudyBuildElementKind.WORD_RECALL_SCENARIOS -> record.session.sentences
             .getOrNull(task.element.sentenceIndex ?: -1)?.tokens
-            ?.filter { it.isDissectable }?.all { it.needScenario.isNotBlank() } == true
+            ?.filter { it.isDissectable }?.all { it.needConversation.isNotEmpty() } == true
 
         StudyBuildElementKind.EXAMPLE_DISSECT -> {
             val token = record.session.sentences.getOrNull(task.element.sentenceIndex ?: -1)

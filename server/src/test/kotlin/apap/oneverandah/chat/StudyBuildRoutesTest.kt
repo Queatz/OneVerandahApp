@@ -24,6 +24,7 @@ import apap.oneverandah.api.StudySessionResponse
 import apap.oneverandah.api.StudyStoryCharacter
 import apap.oneverandah.api.StudyToken
 import apap.oneverandah.api.StudyTokenStatus
+import apap.oneverandah.api.StudyWordRecallLine
 import apap.oneverandah.api.SavedStudySession
 import apap.oneverandah.api.isTenRoundExam
 import apap.oneverandah.routes.DEVICE_TOKEN_HEADER
@@ -387,7 +388,12 @@ class StudyBuildRoutesTest {
         )
 
         override suspend fun generateWordRecallScenarios(request: StudyNeedScenarioGenerationRequest) =
-            request.tokens.associate { it.tokenIndex to "A neighbor needs a greeting." }
+            request.tokens.associate { token ->
+                token.tokenIndex to listOf(
+                    StudyWordRecallLine("Mina", "___!", "___!"),
+                    StudyWordRecallLine("Kai", "___!", "___!"),
+                )
+            }
 
         override suspend fun evaluateWordUsage(request: StudyWordPlaygroundGenerationRequest) =
             StudyWordPlaygroundJudgment(true, "Natural.")

@@ -26,6 +26,7 @@ import apap.oneverandah.api.StudySessionResponse
 import apap.oneverandah.api.StudyTranslateRequest
 import apap.oneverandah.api.StudyToken
 import apap.oneverandah.api.StudyTokenStatus
+import apap.oneverandah.api.StudyWordRecallLine
 import apap.oneverandah.api.StudyWriteCheckRequest
 import apap.oneverandah.api.StudyWordImageRequest
 import apap.oneverandah.api.StudyWordPlaygroundRequest
@@ -337,13 +338,24 @@ class StudyServiceTest {
                 text = "chào",
                 status = StudyTokenStatus.READY,
                 literalMeaning = "hello",
-                needScenario = "Cached cue.",
+                needConversation = listOf(
+                    StudyWordRecallLine("Mina", "___!", "___!"),
+                    StudyWordRecallLine("Kai", "___!", "___!"),
+                ),
             ),
         )
 
-        val scenarios = service.wordRecallScenarios("Xin chào.", tokens, "vi-VN", "en-US")
+        val conversations = service.wordRecallScenarios("Xin chào.", tokens, "vi-VN", "en-US")
 
-        assertEquals(mapOf(0 to "cue-0"), scenarios)
+        assertEquals(
+            mapOf(
+                0 to listOf(
+                    StudyWordRecallLine("Mina", "___!", "___!"),
+                    StudyWordRecallLine("Kai", "___!", "___!"),
+                ),
+            ),
+            conversations,
+        )
         assertEquals(
             StudyNeedScenarioGenerationRequest(
                 sentenceText = "Xin chào.",
@@ -2031,9 +2043,16 @@ internal class FakeStudyAiClient(
         return emptyList()
     }
 
-    override suspend fun generateWordRecallScenarios(request: StudyNeedScenarioGenerationRequest): Map<Int, String> {
+    override suspend fun generateWordRecallScenarios(
+        request: StudyNeedScenarioGenerationRequest,
+    ): Map<Int, List<StudyWordRecallLine>> {
         lastNeedScenarioRequest = request
-        return request.tokens.associate { it.tokenIndex to "cue-${it.tokenIndex}" }
+        return request.tokens.associate { token ->
+            token.tokenIndex to listOf(
+                StudyWordRecallLine("Mina", "___!", "___!"),
+                StudyWordRecallLine("Kai", "___!", "___!"),
+            )
+        }
     }
 
     override suspend fun evaluateWordUsage(

@@ -196,7 +196,7 @@ class StudyBuildPlanner(private val maxAttempts: Int = 3) {
 
     private fun pendingWordRecallScenarios(record: SavedStudySessionRecord): List<StudyBuildElement> =
         record.session.sentences.mapIndexedNotNull { sentenceIndex, sentence ->
-            if (sentence.tokens.any { it.isDissectable && it.needScenario.isBlank() }) {
+            if (sentence.tokens.any { it.isDissectable && it.needConversation.isEmpty() }) {
                 StudyBuildElement(StudyBuildElementKind.WORD_RECALL_SCENARIOS, sentenceIndex = sentenceIndex)
             } else {
                 null

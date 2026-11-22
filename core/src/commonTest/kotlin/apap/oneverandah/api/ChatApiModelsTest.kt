@@ -213,6 +213,10 @@ class ChatApiModelsTest {
                             ),
                             imageId = "word-img-1",
                             imageUrl = "https://cdn.example/word.png",
+                            needConversation = listOf(
+                                StudyWordRecallLine("Mina", "___!", "___!"),
+                                StudyWordRecallLine("Kai", "___!", "___!"),
+                            ),
                         ),
                         StudyToken(text = ".", status = StudyTokenStatus.PLAIN),
                         StudyToken(text = "đang", status = StudyTokenStatus.PENDING),
@@ -268,6 +272,13 @@ class ChatApiModelsTest {
         assertEquals(true, decoded.sentences.single().tokens[0].isDissectable)
         assertEquals("word-img-1", decoded.sentences.single().tokens[0].imageId)
         assertEquals("https://cdn.example/word.png", decoded.sentences.single().tokens[0].imageUrl)
+        assertEquals(
+            listOf(
+                StudyWordRecallLine("Mina", "___!", "___!"),
+                StudyWordRecallLine("Kai", "___!", "___!"),
+            ),
+            decoded.sentences.single().tokens[0].needConversation,
+        )
         assertEquals(false, decoded.sentences.single().tokens[1].isDissectable)
         assertEquals(false, decoded.sentences.single().tokens[2].isDissectable)
         assertEquals(StudyTokenStatus.PENDING, decoded.sentences.single().tokens[2].status)
@@ -279,6 +290,15 @@ class ChatApiModelsTest {
         assertEquals(3, decoded.playScenarios.single().messages.size)
         assertEquals(StudyPlaySpeaker.USER, decoded.playScenarios.single().messages[1].speaker)
         assertEquals("https://cdn.example/play2.png", decoded.playScenarios.single().messages[2].imageUrl)
+    }
+
+    @Test
+    fun `legacy word recall scenario decodes as an uncached conversation`() {
+        val decoded = json.decodeFromString<StudySessionResponse>(
+            """{"text":"Xin chào.","textLanguageTag":"vi","sentences":[{"text":"Xin chào.","tokens":[{"text":"Xin","status":"READY","needScenario":"Legacy cue."}]}]}""",
+        )
+
+        assertEquals(emptyList(), decoded.sentences.single().tokens.single().needConversation)
     }
 
     @Test

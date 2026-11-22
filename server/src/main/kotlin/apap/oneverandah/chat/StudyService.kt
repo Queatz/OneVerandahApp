@@ -48,6 +48,7 @@ import apap.oneverandah.api.StudyStoryCharactersRequest
 import apap.oneverandah.api.StudyStoryCharactersResponse
 import apap.oneverandah.api.StudyToken
 import apap.oneverandah.api.StudyTokenStatus
+import apap.oneverandah.api.StudyWordRecallLine
 import apap.oneverandah.api.StudyWordImageRequest
 import apap.oneverandah.api.StudyWordImageResponse
 import apap.oneverandah.api.StudyWordPlaygroundRequest
@@ -278,8 +279,10 @@ interface StudyAiClient {
     suspend fun generateSkeleton(request: StudyGenerationRequest): StudySessionResponse
     suspend fun dissectSentence(request: StudyDissectGenerationRequest): StudySentence
     suspend fun chunkSentence(request: StudyChunkGenerationRequest): List<StudyChunk> = emptyList()
-    suspend fun generateWordRecallScenarios(request: StudyNeedScenarioGenerationRequest): Map<Int, String> =
-        throw UnsupportedOperationException("Word Recall scenario generation is not implemented by this AI client")
+    suspend fun generateWordRecallScenarios(
+        request: StudyNeedScenarioGenerationRequest,
+    ): Map<Int, List<StudyWordRecallLine>> =
+        throw UnsupportedOperationException("Word Recall conversation generation is not implemented by this AI client")
     suspend fun dissectExampleSentences(
         request: StudyExampleDissectGenerationRequest,
     ): List<StudyExampleSentence> = request.exampleSentences.map { example ->
@@ -450,9 +453,9 @@ class StudyService(
         tokens: List<StudyToken>,
         textLanguageTag: String,
         languageTag: String,
-    ): Map<Int, String> {
+    ): Map<Int, List<StudyWordRecallLine>> {
         val words = tokens.mapIndexedNotNull { tokenIndex, token ->
-            if (!token.isDissectable || token.needScenario.isNotBlank()) return@mapIndexedNotNull null
+            if (!token.isDissectable || token.needConversation.isNotEmpty()) return@mapIndexedNotNull null
             StudyNeedScenarioToken(
                 tokenIndex = tokenIndex,
                 text = token.text,
@@ -471,10 +474,21 @@ class StudyService(
             ),
         )
         val expectedIndices = words.mapTo(mutableSetOf()) { it.tokenIndex }
-        require(generated.keys.containsAll(expectedIndices) && expectedIndices.all { generated[it].orEmpty().isNotBlank() }) {
-            "Word Recall scenario generation must return a non-blank cue for every requested token"
+        require(generated.keys.containsAll(expectedIndices) && expectedIndices.all { !generated[it].isNullOrEmpty() }) {
+            "Word Recall conversation generation must return lines for every requested token"
         }
-        return expectedIndices.associateWith { generated.getValue(it).trim() }
+        return expectedIndices.associateWith { index ->
+            generated.getValue(index).map { line ->
+                require(line.speaker.isNotBlank() && line.text.isNotBlank() && line.translation.isNotBlank()) {
+                    "Word Recall conversation lines must include speaker, text, and translation"
+                }
+                line.copy(
+                    speaker = line.speaker.trim(),
+                    text = line.text.trim(),
+                    translation = line.translation.trim(),
+                )
+            }
+        }
     }
 
     /** Full dissection for one skeleton sentence; tokens must match the skeleton order/text. */

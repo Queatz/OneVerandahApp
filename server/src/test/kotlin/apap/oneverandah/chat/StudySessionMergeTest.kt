@@ -12,6 +12,7 @@ import apap.oneverandah.api.StudySessionResponse
 import apap.oneverandah.api.StudyStoryCharacter
 import apap.oneverandah.api.StudyToken
 import apap.oneverandah.api.StudyTokenStatus
+import apap.oneverandah.api.StudyWordRecallLine
 import kotlin.test.Test
 import kotlin.test.assertEquals
 
@@ -40,7 +41,10 @@ class StudySessionMergeTest {
                                 status = StudyTokenStatus.READY,
                                 literalMeaning = "hello",
                                 contextualMeaning = "A greeting.",
-                                needScenario = "You need a greeting for a new neighbor.",
+                                needConversation = listOf(
+                                    StudyWordRecallLine("Mina", "___!", "___!"),
+                                    StudyWordRecallLine("Kai", "___!", "___!"),
+                                ),
                                 imageId = "word-image",
                                 imageUrl = "https://img/word",
                             ),
@@ -117,7 +121,13 @@ class StudySessionMergeTest {
         assertEquals(StudyTokenStatus.READY, sentence.tokens.single().status)
         assertEquals("hello", sentence.tokens.single().literalMeaning)
         assertEquals("A greeting.", sentence.tokens.single().contextualMeaning)
-        assertEquals("You need a greeting for a new neighbor.", sentence.tokens.single().needScenario)
+        assertEquals(
+            listOf(
+                StudyWordRecallLine("Mina", "___!", "___!"),
+                StudyWordRecallLine("Kai", "___!", "___!"),
+            ),
+            sentence.tokens.single().needConversation,
+        )
         assertEquals("word-image", sentence.tokens.single().imageId)
         assertEquals("https://img/word", sentence.tokens.single().imageUrl)
         assertEquals("sentence-image", sentence.imageId)

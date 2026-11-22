@@ -7,6 +7,7 @@ import apap.oneverandah.api.StudyExampleToken
 import apap.oneverandah.api.StudyChunk
 import apap.oneverandah.api.StudySentence
 import apap.oneverandah.api.StudyStoryCharacter
+import apap.oneverandah.api.StudyWordRecallLine
 import apap.oneverandah.config.QwenChatConfig
 import io.ktor.client.HttpClient
 import io.ktor.client.engine.mock.MockEngine
@@ -64,13 +65,13 @@ class QwenStudyClientTest {
     }
 
     @Test
-    fun `word recall scenarios prompt short impactful utterances without revealing them`() = runBlocking {
+    fun `word recall conversations blank target words in bilingual dialogue lines`() = runBlocking {
         val requestBodies = mutableListOf<String>()
         val engine = MockEngine { request ->
             requestBodies += (request.body as OutgoingContent.ByteArrayContent).bytes().decodeToString()
             respond(
                 content = qwenChatResponse(
-                    """{"scenarios":[{"tokenIndex":0,"scenario":"A car is rushing toward a child. What do you shout?"},{"tokenIndex":1,"scenario":"Someone asks who acted, but the speaker is unclear. What short reply would clarify it?"}]}""",
+                    """{"scenarios":[{"tokenIndex":0,"lines":[{"speaker":"Mina","text":"___! Stop the bike!","translation":"___! Stop the bike!"},{"speaker":"Kai","text":"___, there's a child ahead!","translation":"___, there's a child ahead!"}]},{"tokenIndex":1,"lines":[{"speaker":"Mina","text":"___ said it was ready.","translation":"___ said it was ready."},{"speaker":"Kai","text":"___? I thought you did.","translation":"___? I thought you did."},{"speaker":"Mina","text":"No, ___ was someone else.","translation":"No, ___ was someone else."}]}]}""",
                 ),
                 status = HttpStatusCode.OK,
                 headers = headersOf(HttpHeaders.ContentType, "application/json"),
@@ -79,7 +80,7 @@ class QwenStudyClientTest {
         val client = HttpClient(engine)
         val ai = DashScopeStudyAiClient(qwenConfig(), client)
 
-        val scenarios = ai.generateWordRecallScenarios(
+        val conversations = ai.generateWordRecallScenarios(
             StudyNeedScenarioGenerationRequest(
                 sentenceText = "သူမက လှတယ်။",
                 tokens = listOf(
@@ -93,26 +94,48 @@ class QwenStudyClientTest {
 
         assertEquals(
             mapOf(
-                0 to "A car is rushing toward a child. What do you shout?",
-                1 to "Someone asks who acted, but the speaker is unclear. What short reply would clarify it?",
+                0 to listOf(
+                    StudyWordRecallLine("Mina", "___! Stop the bike!", "___! Stop the bike!"),
+                    StudyWordRecallLine("Kai", "___, there's a child ahead!", "___, there's a child ahead!"),
+                ),
+                1 to listOf(
+                    StudyWordRecallLine("Mina", "___ said it was ready.", "___ said it was ready."),
+                    StudyWordRecallLine("Kai", "___? I thought you did.", "___? I thought you did."),
+                    StudyWordRecallLine("Mina", "No, ___ was someone else.", "No, ___ was someone else."),
+                ),
             ),
-            scenarios,
+            conversations,
         )
-        assertContains(requestBodies.single(), "1–4 word imperative or exclamation")
-        assertContains(requestBodies.single(), "contains the exact target form")
-        assertContains(requestBodies.single(), "Make the target word desirable or highly impactful")
-        assertContains(requestBodies.single(), "do not invent a survival or physical need unrelated to the particle")
-        assertContains(requestBodies.single(), "Never write the target form")
-        assertContains(requestBodies.single(), "never include it in the scenario")
+        assertContains(requestBodies.single(), "2–3 distinct speakers")
+        assertContains(requestBodies.single(), "2–3 times")
+        assertContains(requestBodies.single(), "Replace every occurrence of the target form with exactly")
+        assertContains(requestBodies.single(), "matching learner-language translation")
+        assertContains(requestBodies.single(), "Replace the matching translated word or phrase with exactly")
         client.close()
     }
 
     @Test
-    fun `word recall scenario parser rejects missing requested token indices`() {
+    fun `word recall conversation parser rejects missing requested token indices`() {
         assertFailsWith<IllegalArgumentException> {
             QwenStudyNeedScenarioParser.parse(
-                """{"scenarios":[{"tokenIndex":0,"scenario":"A private cue."}]}""",
+                """{"scenarios":[{"tokenIndex":0,"lines":[{"speaker":"Mina","text":"___!","translation":"___!"},{"speaker":"Kai","text":"___!","translation":"___!"}]}]}""",
                 setOf(0, 2),
+            )
+        }
+    }
+
+    @Test
+    fun `word recall conversation parser rejects missing blanks and a single speaker`() {
+        assertFailsWith<IllegalArgumentException> {
+            QwenStudyNeedScenarioParser.parse(
+                """{"scenarios":[{"tokenIndex":0,"lines":[{"speaker":"Mina","text":"Hello!","translation":"Hello!"},{"speaker":"Kai","text":"Hi!","translation":"Hi!"}]}]}""",
+                setOf(0),
+            )
+        }
+        assertFailsWith<IllegalArgumentException> {
+            QwenStudyNeedScenarioParser.parse(
+                """{"scenarios":[{"tokenIndex":0,"lines":[{"speaker":"Mina","text":"___!","translation":"___!"},{"speaker":"Mina","text":"___!","translation":"___!"}]}]}""",
+                setOf(0),
             )
         }
     }

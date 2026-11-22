@@ -123,7 +123,10 @@ class StudyBuildPlannerTest {
                                 StudyTokenStatus.READY,
                                 literalMeaning = "hello",
                                 imageUrl = "https://img/word",
-                                needScenario = "You need a greeting for a new neighbor.",
+                                needConversation = listOf(
+                                    apap.oneverandah.api.StudyWordRecallLine("Mina", "___!", "___!"),
+                                    apap.oneverandah.api.StudyWordRecallLine("Kai", "___!", "___!"),
+                                ),
                             ),
                         ),
                         imageUrl = "https://img/sentence",

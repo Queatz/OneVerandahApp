@@ -13,6 +13,7 @@ import apap.oneverandah.api.StudySessionResponse
 import apap.oneverandah.api.StudyTranslateRequest
 import apap.oneverandah.api.StudyToken
 import apap.oneverandah.api.StudyTokenStatus
+import apap.oneverandah.api.StudyWordRecallLine
 import apap.oneverandah.config.QwenChatConfig
 import apap.oneverandah.model.Language
 import io.ktor.client.HttpClient
@@ -239,26 +240,52 @@ object QwenStudyChunkParser {
 
 object QwenStudyNeedScenarioParser {
     private val json = Json { ignoreUnknownKeys = true; explicitNulls = false; isLenient = true }
+    private val blankMarker = Regex("(?<!_)___(?!_)")
 
-    fun parse(content: String, expectedIndices: Set<Int>): Map<Int, String> {
+    fun parse(content: String, expectedIndices: Set<Int>): Map<Int, List<StudyWordRecallLine>> {
         val normalized = stripJsonFences(content)
         val root = runCatching { json.parseToJsonElement(normalized) as? JsonObject }
-            .getOrElse { throw IllegalArgumentException("Qwen Word Recall scenarios are not valid JSON", it) }
-            ?: throw IllegalArgumentException("Qwen Word Recall scenarios root must be a JSON object")
+            .getOrElse { throw IllegalArgumentException("Qwen Word Recall conversations are not valid JSON", it) }
+            ?: throw IllegalArgumentException("Qwen Word Recall conversations root must be a JSON object")
         val scenarios = root["scenarios"] as? JsonArray
-            ?: throw IllegalArgumentException("Qwen Word Recall scenarios missing scenarios array")
-        val parsed = mutableMapOf<Int, String>()
+            ?: throw IllegalArgumentException("Qwen Word Recall conversations missing scenarios array")
+        val parsed = mutableMapOf<Int, List<StudyWordRecallLine>>()
         scenarios.forEach { element ->
             val scenario = element as? JsonObject
-                ?: throw IllegalArgumentException("Qwen Word Recall scenario entry must be an object")
+                ?: throw IllegalArgumentException("Qwen Word Recall conversation entry must be an object")
             val index = scenario["tokenIndex"]?.jsonPrimitive?.intOrNull
-                ?: throw IllegalArgumentException("Qwen Word Recall scenario missing tokenIndex")
-            val text = scenario.string("scenario")?.trim()?.takeIf(String::isNotEmpty)
-                ?: throw IllegalArgumentException("Qwen Word Recall scenario missing cue")
-            require(parsed.put(index, text) == null) { "Qwen Word Recall scenario tokenIndex must be unique" }
+                ?: throw IllegalArgumentException("Qwen Word Recall conversation missing tokenIndex")
+            val lines = scenario["lines"] as? JsonArray
+                ?: throw IllegalArgumentException("Qwen Word Recall conversation missing lines")
+            val conversation = lines.map { lineElement ->
+                val line = lineElement as? JsonObject
+                    ?: throw IllegalArgumentException("Qwen Word Recall line must be an object")
+                StudyWordRecallLine(
+                    speaker = line.string("speaker")?.trim()?.takeIf(String::isNotEmpty)
+                        ?: throw IllegalArgumentException("Qwen Word Recall line missing speaker"),
+                    text = line.string("text")?.trim()?.takeIf(String::isNotEmpty)
+                        ?: throw IllegalArgumentException("Qwen Word Recall line missing text"),
+                    translation = line.string("translation")?.trim()?.takeIf(String::isNotEmpty)
+                        ?: throw IllegalArgumentException("Qwen Word Recall line missing translation"),
+                )
+            }
+            require(conversation.size >= 2) { "Qwen Word Recall conversation must have at least two lines" }
+            val speakerCount = conversation.map { it.speaker.lowercase() }.toSet().size
+            require(speakerCount in 2..3) { "Qwen Word Recall conversation must have two or three speakers" }
+            val textBlankCount = conversation.sumOf { blankMarker.findAll(it.text).count() }
+            val translationBlankCount = conversation.sumOf { blankMarker.findAll(it.translation).count() }
+            require(textBlankCount in 2..3) {
+                "Qwen Word Recall conversation must blank the target word two or three times"
+            }
+            require(translationBlankCount == textBlankCount) {
+                "Qwen Word Recall translations must blank every target word occurrence"
+            }
+            require(parsed.put(index, conversation) == null) {
+                "Qwen Word Recall conversation tokenIndex must be unique"
+            }
         }
         require(parsed.keys == expectedIndices) {
-            "Qwen Word Recall scenarios must match every requested token index"
+            "Qwen Word Recall conversations must match every requested token index"
         }
         return parsed
     }
@@ -638,13 +665,13 @@ class DashScopeStudyAiClient(
 
     override suspend fun generateWordRecallScenarios(
         request: StudyNeedScenarioGenerationRequest,
-    ): Map<Int, String> {
+    ): Map<Int, List<StudyWordRecallLine>> {
         val userContent = buildString {
             appendLine("Study/source language: ${languageName(request.textLanguageTag)} (${request.textLanguageTag})")
             appendLine("Learner UI language: ${languageName(request.languageTag)} (${request.languageTag})")
-            appendLine("Sentence context (use only to identify each token's sense):")
+            appendLine("Sentence context (use only to identify each token's sense; do not quote it):")
             appendLine(request.sentenceText)
-            appendLine("For each token, write a situation that naturally prompts a high-impact 1–4 word imperative or exclamation using that token. Show only the setup, never the reply.")
+            appendLine("For each token, write a natural, short conversation in the study/source language that uses the target form two or three times. Return each line with a matching learner-language translation.")
             appendLine("Target tokens (tokenIndex is the index in the original sentence token list):")
             request.tokens.forEach { token ->
                 appendLine("tokenIndex: ${token.tokenIndex}")
@@ -657,7 +684,7 @@ class DashScopeStudyAiClient(
         val content = complete(
             systemPrompt = wordRecallScenarioSystemPrompt(request.languageTag),
             userContent = userContent,
-            label = "study word recall scenarios",
+            label = "study word recall conversations",
             model = config.chatHeavyModel,
             enableThinking = true,
         )
@@ -1337,20 +1364,21 @@ class DashScopeStudyAiClient(
     """.trimIndent()
 
     private fun wordRecallScenarioSystemPrompt(activeLanguageTag: String): String = """
-        You create one short situation for each word in a language-learning lesson. Each situation must make a natural, high-impact 1–4 word imperative or exclamation containing the target word the obvious thing to say.
-        The cue shows what is happening and asks what the learner would say; stop before writing the reply. For example, a car rushing toward a child creates a reason to shout, but never include the shout itself in the cue.
+        You create one natural, short conversation for each target word in a language-learning lesson.
         Return ONLY one JSON object with this exact schema:
-        {"scenarios":[{"tokenIndex":0,"scenario":"short situation that prompts an imperative or exclamation"}]}
+        {"scenarios":[{"tokenIndex":0,"lines":[{"speaker":"Mina","text":"___!","translation":"___!"},{"speaker":"Kai","text":"...","translation":"..."}]}]}
         Rules:
         - Return exactly one entry for every requested tokenIndex, with no duplicates or extra indices.
-        - Write each scenario in the learner UI language '$activeLanguageTag'. Keep it short and concrete.
-        - Privately ensure the obvious natural reply is an imperative or exclamation of 1–4 words in the study/source language, contains the exact target form, and fits its supplied sense. The reply is for the learner to produce after seeing the cue; never include it in the scenario.
-        - Make the target word desirable or highly impactful in that moment. Show the concrete event or exchange and ask what the learner would say; do not describe the word itself or write a generic situation that could prompt any word.
-        - Never write the target form, its translation, definition, synonym, or the intended reply. Do not quote the study sentence or give the answer away indirectly.
-        - Do not say that the learner "needs" a word, name the part of speech, or explain the meaning. The situation must stand on its own.
-        - For grammatical particles or function words, the short natural reply must use the target form for its grammatical function. Use a fitting interaction; do not invent a survival or physical need unrelated to the particle.
-        - Use source sentence and meanings only to choose the right sense; do not reveal or explain them in the cue.
-        - Do not wrap JSON in markdown or add keys beyond scenarios, tokenIndex, and scenario.
+        - Create a dialogue among 2–3 distinct speakers, with at least two short conversational lines, in the study/source language.
+        - Naturally use the exact target form 2–3 times in the dialogue, in the supplied sense. The dialogue must be a believable exchange, not a list of example sentences.
+        - Replace every occurrence of the target form with exactly "___" in the returned study-language text. Never return the unblanked target form.
+        - For every line, provide "speaker", "text" in the study/source language, and "translation" in the learner UI language '$activeLanguageTag'. Keep the translation aligned with that phrase, not as a summary.
+        - Replace the matching translated word or phrase with exactly "___" in the translation too; ensure the number of blanks in translations equals the number in the dialogue (2–3).
+        - Each scenario must have exactly 2–3 occurrences of "___" in its dialogue and the same count in translations. Do not use any other blank marker.
+        - Use the supplied meanings and the source sentence only to select the target sense. Do not quote the complete source sentence or reveal the answer indirectly.
+        - For grammatical particles or function words, make the dialogue naturally require the particle's grammatical function and blank it in the corresponding translation; do not use an unrelated physical or survival situation.
+        - Do not add definitions, grammar explanations, or extra keys beyond scenarios, tokenIndex, lines, and the line fields.
+        - Do not wrap JSON in markdown.
     """.trimIndent()
 
     private fun exampleDissectSystemPrompt(activeLanguageTag: String, textLanguageTag: String): String = """

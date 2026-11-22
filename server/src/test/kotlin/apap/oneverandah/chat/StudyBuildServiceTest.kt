@@ -13,6 +13,7 @@ import apap.oneverandah.api.StudySentence
 import apap.oneverandah.api.StudySessionResponse
 import apap.oneverandah.api.StudyToken
 import apap.oneverandah.api.StudyTokenStatus
+import apap.oneverandah.api.StudyWordRecallLine
 import kotlinx.coroutines.CompletableDeferred
 import kotlinx.coroutines.CoroutineScope
 import kotlinx.coroutines.Dispatchers
@@ -62,7 +63,7 @@ class StudyBuildServiceTest {
             assertTrue(completed.session.sentences.single().tokens.filter { it.isDissectable }
                 .all { !it.imageUrl.isNullOrBlank() })
             assertTrue(completed.session.sentences.single().tokens.filter { it.isDissectable }
-                .all { it.needScenario.isNotBlank() })
+                .all { it.needConversation.isNotEmpty() })
             assertTrue(events.indexOf("dissect") < events.indexOf("word-recall-scenarios"))
             assertTrue(completed.session.sentences.single().imageUrl?.isNotBlank() == true)
             assertTrue(completed.session.characters.single().imageUrl?.isNotBlank() == true)
@@ -301,9 +302,16 @@ class StudyBuildServiceTest {
             )
         }
 
-        override suspend fun generateWordRecallScenarios(request: StudyNeedScenarioGenerationRequest): Map<Int, String> {
+        override suspend fun generateWordRecallScenarios(
+            request: StudyNeedScenarioGenerationRequest,
+        ): Map<Int, List<StudyWordRecallLine>> {
             events += "word-recall-scenarios"
-            return request.tokens.associate { it.tokenIndex to "A cue for token ${it.tokenIndex}." }
+            return request.tokens.associate { token ->
+                token.tokenIndex to listOf(
+                    StudyWordRecallLine("Mina", "___!", "___!"),
+                    StudyWordRecallLine("Kai", "___!", "___!"),
+                )
+            }
         }
 
         override suspend fun evaluateWordUsage(request: StudyWordPlaygroundGenerationRequest) =

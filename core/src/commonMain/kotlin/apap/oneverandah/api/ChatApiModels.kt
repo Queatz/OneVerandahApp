@@ -476,6 +476,14 @@ data class StudyExampleSentence(
     val tokens: List<StudyExampleToken> = emptyList(),
 )
 
+/** One line in a cached Word Recall conversation, paired with its learner-language translation. */
+@Serializable
+data class StudyWordRecallLine(
+    val speaker: String,
+    val text: String,
+    val translation: String,
+)
+
 /**
  * A token inside a [StudySentence].
  *
@@ -499,8 +507,8 @@ data class StudyToken(
     val imageId: String? = null,
     /** Public URL once the word visual is ready. */
     val imageUrl: String? = null,
-    /** Cached situation that prompts a natural 1–4 word imperative/exclamation using this word, without revealing it. */
-    val needScenario: String = "",
+    /** Cached Word Recall conversation with occurrences of this word blanked in both languages. */
+    val needConversation: List<StudyWordRecallLine> = emptyList(),
 ) {
     /** True when this token is ready for full interactive dissection. */
     val isDissectable: Boolean

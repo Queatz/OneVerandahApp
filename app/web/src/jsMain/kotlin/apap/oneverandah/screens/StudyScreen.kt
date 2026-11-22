@@ -744,7 +744,7 @@ fun StudyScreen(
                         token.copy(
                             imageId = old.imageId ?: token.imageId,
                             imageUrl = old.imageUrl ?: token.imageUrl,
-                            needScenario = token.needScenario.ifBlank { old.needScenario },
+                            needConversation = token.needConversation.ifEmpty { old.needConversation },
                         )
                     } else {
                         token
