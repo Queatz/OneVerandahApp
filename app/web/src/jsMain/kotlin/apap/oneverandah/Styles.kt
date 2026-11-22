@@ -483,6 +483,29 @@ object Styles {
     const val studyRecallTimeUp = "study-recall-time-up"
     const val studyRecallProgress = "study-recall-progress"
     const val studyRecallScore = "study-recall-score"
+    const val studyVisualizeShell = "study-visualize-shell"
+    const val studyVisualizeFullscreen = "study-visualize-fullscreen"
+    const val studyVisualizeHeader = "study-visualize-header"
+    const val studyVisualizeIconButton = "study-visualize-icon-button"
+    const val studyVisualizeTitle = "study-visualize-title"
+    const val studyVisualizeProgress = "study-visualize-progress"
+    const val studyVisualizeNotice = "study-visualize-notice"
+    const val studyVisualizeWelcome = "study-visualize-welcome"
+    const val studyVisualizeHint = "study-visualize-hint"
+    const val studyVisualizePrimary = "study-visualize-primary"
+    const val studyVisualizeStage = "study-visualize-stage"
+    const val studyVisualizeBackground = "study-visualize-background"
+    const val studyVisualizeVignette = "study-visualize-vignette"
+    const val studyVisualizeSceneLoading = "study-visualize-scene-loading"
+    const val studyVisualizeChoice = "study-visualize-choice"
+    const val studyVisualizeChoiceLeaving = "study-visualize-choice-leaving"
+    const val studyVisualizeComplete = "study-visualize-complete"
+    const val studyVisualizeCompleteTitle = "study-visualize-complete-title"
+    const val studyVisualizeGallery = "study-visualize-gallery"
+    const val studyVisualizeGalleryCard = "study-visualize-gallery-card"
+    const val studyVisualizeGalleryImage = "study-visualize-gallery-image"
+    const val studyVisualizeGalleryPlaceholder = "study-visualize-gallery-placeholder"
+    const val studyVisualizeGalleryWord = "study-visualize-gallery-word"
     const val studyPlayBlock = "study-play-block"
     const val studyPlayDescription = "study-play-description"
     const val studyPlayLine = "study-play-line"
@@ -3914,6 +3937,266 @@ object Styles {
         .${studyRecallScore} {
             font-size: 22px;
             font-weight: 700;
+        }
+        .${studyVisualizeShell} {
+            display: flex;
+            flex-direction: column;
+            gap: 14px;
+            min-height: 420px;
+            padding: 16px;
+            overflow: hidden;
+            border: 1px solid rgba(255,255,255,.1);
+            border-radius: 26px;
+            background: radial-gradient(circle at 50% 0%, #36566a 0, #182630 42%, #10191f 100%);
+            color: #f7fbfa;
+            box-shadow: 0 18px 46px rgba(8, 18, 24, .3);
+        }
+        .${studyVisualizeFullscreen} {
+            position: fixed;
+            inset: 0;
+            z-index: 70;
+            width: 100%;
+            height: 100vh;
+            height: 100dvh;
+            max-height: 100dvh;
+            min-height: 0;
+            box-sizing: border-box;
+            padding: max(14px, env(safe-area-inset-top)) max(14px, env(safe-area-inset-right)) max(14px, env(safe-area-inset-bottom)) max(14px, env(safe-area-inset-left));
+            overflow: auto;
+            border: 0;
+            border-radius: 0;
+        }
+        .${studyVisualizeHeader} {
+            display: flex;
+            align-items: center;
+            gap: 10px;
+            min-height: 42px;
+        }
+        .${studyVisualizeTitle} {
+            flex: 1;
+            font-size: 17px;
+            font-weight: 800;
+            letter-spacing: .04em;
+        }
+        .${studyVisualizeProgress} {
+            padding: 6px 11px;
+            border: 1px solid rgba(255,255,255,.2);
+            border-radius: 999px;
+            background: rgba(255,255,255,.08);
+            color: rgba(255,255,255,.82);
+            font-size: 13px;
+            font-variant-numeric: tabular-nums;
+        }
+        .${studyVisualizeIconButton} {
+            display: grid;
+            place-items: center;
+            min-width: 42px;
+            min-height: 42px;
+            padding: 0 10px;
+            border: 1px solid rgba(255,255,255,.2);
+            border-radius: 15px;
+            background: rgba(255,255,255,.1);
+            color: #fff;
+            font: inherit;
+            font-size: 20px;
+            cursor: pointer;
+            transition: transform 140ms ease, background 140ms ease;
+        }
+        .${studyVisualizeIconButton}:hover { background: rgba(255,255,255,.18); }
+        .${studyVisualizeIconButton}:active { transform: scale(.94); }
+        .${studyVisualizeNotice}, .${studyVisualizeWelcome}, .${studyVisualizeComplete} {
+            display: flex;
+            flex-direction: column;
+            align-items: center;
+            justify-content: center;
+            gap: 14px;
+            min-height: 300px;
+            padding: 24px;
+            border: 1px solid rgba(255,255,255,.12);
+            border-radius: 22px;
+            background: rgba(255,255,255,.045);
+            text-align: center;
+        }
+        .${studyVisualizeHint}, .${studyVisualizeCompleteTitle} {
+            max-width: 560px;
+            margin: 0;
+            color: rgba(255,255,255,.86);
+            font-size: clamp(18px, 2.8vw, 25px);
+            line-height: 1.45;
+        }
+        .${studyVisualizePrimary} {
+            display: inline-flex;
+            align-items: center;
+            justify-content: center;
+            min-height: 48px;
+            padding: 10px 22px;
+            border: 1px solid rgba(240,250,247,.7);
+            border-radius: 999px;
+            background: linear-gradient(135deg, #d6efe5, #a9d8c8);
+            color: #172b29;
+            font: inherit;
+            font-weight: 800;
+            cursor: pointer;
+            box-shadow: 0 8px 26px rgba(0,0,0,.2);
+            transition: transform 160ms ease, filter 160ms ease;
+        }
+        .${studyVisualizePrimary}:hover { filter: brightness(1.06); transform: translateY(-1px); }
+        .${studyVisualizePrimary}:active { transform: scale(.97); }
+        .${studyVisualizeStage} {
+            position: relative;
+            isolation: isolate;
+            flex: 1 1 auto;
+            min-height: clamp(360px, 62vh, 720px);
+            overflow: hidden;
+            border: 1px solid rgba(255,255,255,.16);
+            border-radius: 22px;
+            background: radial-gradient(ellipse at 50% 35%, #4b6264, #1d2c31 60%, #11191f);
+            box-shadow: inset 0 0 90px rgba(4,10,14,.32), 0 14px 36px rgba(0,0,0,.2);
+        }
+        .${studyVisualizeFullscreen} .${studyVisualizeStage} {
+            min-height: 0;
+        }
+        .${studyVisualizeBackground} {
+            position: absolute;
+            z-index: -2;
+            inset: 0;
+            width: 100%;
+            height: 100%;
+            object-fit: cover;
+            animation: study-visualize-image-fade 1.4s ease both;
+        }
+        .${studyVisualizeVignette} {
+            position: absolute;
+            z-index: -1;
+            inset: 0;
+            background:
+                linear-gradient(180deg, rgba(6,14,18,.24), rgba(6,14,18,.08) 36%, rgba(6,14,18,.37)),
+                radial-gradient(ellipse at center, transparent 30%, rgba(4,10,13,.46) 100%);
+            pointer-events: none;
+        }
+        .${studyVisualizeSceneLoading} {
+            position: absolute;
+            left: 50%;
+            top: 50%;
+            max-width: min(80%, 520px);
+            padding: 10px 17px;
+            border: 1px solid rgba(255,255,255,.16);
+            border-radius: 999px;
+            background: rgba(11,20,24,.32);
+            color: rgba(255,255,255,.92);
+            font-size: 15px;
+            letter-spacing: .035em;
+            text-align: center;
+            text-shadow: 0 2px 12px rgba(0,0,0,.5);
+            transform: translate(-50%, -50%);
+            animation: study-visualize-breathe 2.6s ease-in-out infinite;
+        }
+        .${studyVisualizeChoice} {
+            position: absolute;
+            z-index: 1;
+            width: min(22%, 230px);
+            min-height: 46px;
+            padding: 10px 13px;
+            border: 1px solid rgba(255,255,255,.72);
+            border-radius: 999px;
+            background: linear-gradient(145deg, rgba(255,255,255,.92), rgba(237,247,241,.82));
+            color: #1b302e;
+            font: inherit;
+            font-size: clamp(14px, 2vw, 21px);
+            font-weight: 750;
+            line-height: 1.2;
+            text-align: center;
+            text-wrap: balance;
+            overflow-wrap: anywhere;
+            cursor: pointer;
+            box-shadow: 0 8px 26px rgba(2,10,14,.36), inset 0 1px 0 rgba(255,255,255,.9);
+            backdrop-filter: blur(12px);
+            transform: translate(-50%, -50%);
+            animation: study-visualize-float 3.8s ease-in-out infinite, study-visualize-choice-in 420ms ease both;
+            animation-delay: var(--float-delay), var(--reveal-delay);
+            transition: background 160ms ease, box-shadow 160ms ease;
+        }
+        .${studyVisualizeChoice}:hover:not(:disabled) {
+            background: #fff;
+            box-shadow: 0 12px 32px rgba(2,10,14,.46), 0 0 0 4px rgba(219,244,232,.25);
+        }
+        .${studyVisualizeChoice}:focus-visible {
+            outline: 3px solid #d5f3e5;
+            outline-offset: 4px;
+        }
+        .${studyVisualizeChoice}:disabled { cursor: default; }
+        .${studyVisualizeChoiceLeaving} {
+            animation: study-visualize-leave 180ms ease-in forwards;
+            animation-delay: 0ms;
+        }
+        .${studyVisualizeComplete} { min-height: 180px; }
+        .${studyVisualizeCompleteTitle} { font-size: clamp(20px, 3vw, 28px); font-weight: 750; }
+        .${studyVisualizeGallery} {
+            display: grid;
+            grid-template-columns: repeat(3, minmax(0, 1fr));
+            gap: 12px;
+        }
+        .${studyVisualizeGalleryCard} {
+            display: flex;
+            min-width: 0;
+            flex-direction: column;
+            gap: 9px;
+            padding: 9px;
+            overflow: hidden;
+            border: 1px solid rgba(255,255,255,.12);
+            border-radius: 16px;
+            background: rgba(255,255,255,.065);
+        }
+        .${studyVisualizeGalleryImage}, .${studyVisualizeGalleryPlaceholder} {
+            display: grid;
+            width: 100%;
+            height: clamp(90px, 17vw, 180px);
+            place-items: center;
+            border-radius: 11px;
+            background: linear-gradient(145deg, rgba(185,219,207,.24), rgba(48,77,79,.6));
+            color: rgba(255,255,255,.72);
+            font-size: 28px;
+            object-fit: cover;
+        }
+        .${studyVisualizeGalleryWord} {
+            min-width: 0;
+            padding: 0 3px 2px;
+            color: #fff;
+            font-size: clamp(13px, 1.7vw, 17px);
+            font-weight: 700;
+            line-height: 1.3;
+            overflow-wrap: anywhere;
+            text-align: center;
+        }
+        @keyframes study-visualize-image-fade {
+            from { opacity: 0; transform: scale(1.025); }
+            to { opacity: 1; transform: scale(1); }
+        }
+        @keyframes study-visualize-float {
+            0%, 100% { transform: translate(-50%, -50%) rotate(-2deg) translateY(0); }
+            50% { transform: translate(-50%, -50%) rotate(2deg) translateY(-7px); }
+        }
+        @keyframes study-visualize-choice-in {
+            from { opacity: 0; }
+            to { opacity: 1; }
+        }
+        @keyframes study-visualize-leave {
+            to { opacity: 0; transform: translate(-50%, -50%) scale(.82) rotate(-5deg); }
+        }
+        @keyframes study-visualize-breathe {
+            0%, 100% { opacity: .76; }
+            50% { opacity: 1; }
+        }
+        @media (max-width: 560px) {
+            .${studyVisualizeShell} { min-height: 360px; padding: 11px; border-radius: 20px; }
+            .${studyVisualizeStage} { min-height: 58vh; border-radius: 17px; }
+            .${studyVisualizeChoice} { width: 23%; min-height: 42px; padding: 8px 6px; font-size: clamp(12px, 3vw, 16px); }
+            .${studyVisualizeGallery} { gap: 7px; }
+            .${studyVisualizeGalleryCard} { gap: 7px; padding: 6px; border-radius: 12px; }
+        }
+        @media (prefers-reduced-motion: reduce) {
+            .${studyVisualizeBackground}, .${studyVisualizeChoice}, .${studyVisualizeSceneLoading} { animation-duration: .01ms; animation-iteration-count: 1; }
+            .${studyVisualizeChoiceLeaving} { opacity: 0; }
         }
         .${studyWriteCorrect} {
             display: inline-flex;

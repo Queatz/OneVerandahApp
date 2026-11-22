@@ -2171,6 +2171,12 @@ private fun StudySessionContent(
         }) { Text(strings.chatAdventure.tab) }
         Button(attrs = {
             classes(Styles.chip)
+            if (mode == StudySessionMode.VISUALIZE) classes(Styles.chipActive)
+            attr("type", "button")
+            onClick { mode = StudySessionMode.VISUALIZE }
+        }) { Text(strings.chatVisualize.tab) }
+        Button(attrs = {
+            classes(Styles.chip)
             if (mode == StudySessionMode.WORDS) classes(Styles.chipActive)
             attr("type", "button")
             onClick { mode = StudySessionMode.WORDS }
@@ -2325,6 +2331,14 @@ private fun StudySessionContent(
                     session = session,
                     progress = adventureProgress,
                     onAdventureProgress = onAdventureProgress,
+                    strings = strings,
+                )
+            }
+            StudySessionMode.VISUALIZE -> {
+                StudyVisualizeTab(
+                    session = session,
+                    anyLoading = anyLoading,
+                    autoStart = mode != StudySessionMode.ALL,
                     strings = strings,
                 )
             }
@@ -2690,7 +2704,7 @@ internal fun StudySentenceVisual(
     }
 }
 
-private enum class StudySessionMode { ALL, WATCH, STUDY, STORY, ADVENTURE, WORDS, LISTEN, SPEAK, RECALL, READ, WRITE, EXPRESS, PLAY, TEST }
+private enum class StudySessionMode { ALL, WATCH, STUDY, STORY, ADVENTURE, VISUALIZE, WORDS, LISTEN, SPEAK, RECALL, READ, WRITE, EXPRESS, PLAY, TEST }
 
 internal enum class StudySpeakPhase { READY, LISTENING, SPEAKING, REVIEW }
 
@@ -2865,6 +2879,7 @@ private fun StudySessionMode.tabLabel(strings: UiStrings): String = when (this) 
     StudySessionMode.WATCH -> strings.chatWatchTab
     StudySessionMode.STORY -> strings.chatStoryTab
     StudySessionMode.ADVENTURE -> strings.chatAdventure.tab
+    StudySessionMode.VISUALIZE -> strings.chatVisualize.tab
     StudySessionMode.STUDY -> strings.chatStudyTab
     StudySessionMode.WORDS -> strings.chatWordsTab
     StudySessionMode.LISTEN -> strings.chatListenTab
