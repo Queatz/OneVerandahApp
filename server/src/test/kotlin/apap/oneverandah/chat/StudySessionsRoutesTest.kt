@@ -6,6 +6,9 @@ import apap.oneverandah.api.SavedStudySessionSummary
 import apap.oneverandah.api.SavedStudySessionsResponse
 import apap.oneverandah.api.SaveStudySessionRequest
 import apap.oneverandah.api.StudyAdventureProgress
+import apap.oneverandah.api.StudyBreakdownProgress
+import apap.oneverandah.api.StudyBreakdownSentenceProgress
+import apap.oneverandah.api.StudyChunk
 import apap.oneverandah.api.StudyExamGrade
 import apap.oneverandah.api.StudyExamScene
 import apap.oneverandah.api.StudyExamSceneRequest
@@ -117,6 +120,24 @@ class StudySessionsRoutesTest {
         assertEquals("vi", saved.textLanguageTag)
         assertEquals(null, saved.examGrade)
 
+        val savedChunks = listOf(
+            StudyChunk("Xin", "Hello", "Greeting", listOf(0)),
+            StudyChunk("chào.", "hello", "Greeting", listOf(1)),
+        )
+        studySessionsService.sessionStore.update(saved.id, immediate = true) { current ->
+            current.copy(
+                session = current.session.copy(
+                    sentences = current.session.sentences.map { sentence ->
+                        sentence.copy(
+                            chunks = savedChunks,
+                            breakdownSuffixes = listOf("chào.", "Xin chào."),
+                            breakdownAudioReady = true,
+                        )
+                    },
+                ),
+            )
+        }
+
         val ownerGrade = StudyExamGrade(4, 5, 3, "Stored by the server.", 100L)
         studySessionsService.saveExamGrade(tokenA, saved.id, ownerGrade)
 
@@ -162,6 +183,58 @@ class StudySessionsRoutesTest {
         assertEquals(
             visitorAdventureProgress,
             json.decodeFromString(SavedStudySession.serializer(), visitorSnapshot.bodyAsText()).adventureProgress,
+        )
+
+        val unauthorizedBreakdownSave = client.put("/api/chat/study/sessions/${saved.id}/breakdown") {
+            contentType(ContentType.Application.Json)
+            setBody("""{"sentences":{},"updatedAt":300}""")
+        }
+        assertEquals(HttpStatusCode.Unauthorized, unauthorizedBreakdownSave.status)
+
+        val invalidBreakdownSave = client.put("/api/chat/study/sessions/${saved.id}/breakdown") {
+            header(DEVICE_TOKEN_HEADER, tokenA)
+            contentType(ContentType.Application.Json)
+            setBody("""{"sentences":{"0":{"step":5}},"updatedAt":300}""")
+        }
+        assertEquals(HttpStatusCode.BadRequest, invalidBreakdownSave.status)
+
+        val ownerBreakdownProgress = StudyBreakdownProgress(
+            sentences = mapOf(0 to StudyBreakdownSentenceProgress(step = 3, shadowRep = 2)),
+            updatedAt = 300L,
+        )
+        val savedBreakdown = client.put("/api/chat/study/sessions/${saved.id}/breakdown") {
+            header(DEVICE_TOKEN_HEADER, tokenA)
+            contentType(ContentType.Application.Json)
+            setBody(json.encodeToString(StudyBreakdownProgress.serializer(), ownerBreakdownProgress))
+        }
+        assertEquals(HttpStatusCode.OK, savedBreakdown.status)
+        assertEquals(
+            ownerBreakdownProgress,
+            json.decodeFromString(StudyBreakdownProgress.serializer(), savedBreakdown.bodyAsText()),
+        )
+        val visitorBreakdownProgress = StudyBreakdownProgress(
+            sentences = mapOf(0 to StudyBreakdownSentenceProgress(step = 4, completed = true)),
+            updatedAt = 301L,
+        )
+        val savedVisitorBreakdown = client.put("/api/chat/study/sessions/${saved.id}/breakdown") {
+            header(DEVICE_TOKEN_HEADER, tokenB)
+            contentType(ContentType.Application.Json)
+            setBody(json.encodeToString(StudyBreakdownProgress.serializer(), visitorBreakdownProgress))
+        }
+        assertEquals(HttpStatusCode.OK, savedVisitorBreakdown.status)
+        val visitorBreakdownSnapshot = client.get("/api/chat/study/sessions/${saved.id}") {
+            header(DEVICE_TOKEN_HEADER, tokenB)
+        }
+        assertEquals(
+            visitorBreakdownProgress,
+            json.decodeFromString(SavedStudySession.serializer(), visitorBreakdownSnapshot.bodyAsText()).breakdownProgress,
+        )
+        val ownerBreakdownSnapshot = client.get("/api/chat/study/sessions/${saved.id}") {
+            header(DEVICE_TOKEN_HEADER, tokenA)
+        }
+        assertEquals(
+            ownerBreakdownProgress,
+            json.decodeFromString(SavedStudySession.serializer(), ownerBreakdownSnapshot.bodyAsText()).breakdownProgress,
         )
 
         val progressiveSave = client.post("/api/chat/study/sessions") {
@@ -215,13 +288,19 @@ class StudySessionsRoutesTest {
         assertEquals("Xin chào.", fetched.text)
         assertEquals(saved.name, fetched.name)
         assertEquals("Xin chào.", fetched.session.text)
+        assertEquals(savedChunks, fetched.session.sentences.single().chunks)
+        assertEquals(listOf("chào.", "Xin chào."), fetched.session.sentences.single().breakdownSuffixes)
+        assertTrue(fetched.session.sentences.single().breakdownAudioReady)
+        assertEquals(visitorBreakdownProgress, fetched.breakdownProgress)
         assertEquals(1, fetched.session.sentences.size)
         assertEquals(null, fetched.examGrade)
 
         val ownerGet = client.get("/api/chat/study/sessions/${saved.id}") {
             header(DEVICE_TOKEN_HEADER, tokenA)
         }
-        assertEquals(ownerGrade, json.decodeFromString(SavedStudySession.serializer(), ownerGet.bodyAsText()).examGrade)
+        val ownerFetched = json.decodeFromString(SavedStudySession.serializer(), ownerGet.bodyAsText())
+        assertEquals(ownerGrade, ownerFetched.examGrade)
+        assertEquals(ownerBreakdownProgress, ownerFetched.breakdownProgress)
 
         val missing = client.get("/api/chat/study/sessions/missing-id") {
             header(DEVICE_TOKEN_HEADER, tokenA)

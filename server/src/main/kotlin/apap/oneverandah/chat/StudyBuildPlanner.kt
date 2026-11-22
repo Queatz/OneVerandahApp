@@ -52,7 +52,7 @@ class StudyBuildPlanner(private val maxAttempts: Int = 3) {
     private fun pendingElements(record: SavedStudySessionRecord): List<StudyBuildElement> {
         val state = record.build ?: return emptyList()
         if (state.status == StudyBuildStatus.COMPLETE || state.status == StudyBuildStatus.PARTIAL) {
-            return pendingExampleDissections(record)
+            return pendingChunkBuilds(record) + pendingExampleDissections(record)
         }
 
         if (record.session.sentences.isEmpty()) {
@@ -96,6 +96,7 @@ class StudyBuildPlanner(private val maxAttempts: Int = 3) {
         }
 
         if (dissectionsSettled) elements += pendingExampleDissections(record)
+        if (dissectionsSettled) elements += pendingChunkBuilds(record)
 
         if (characters.isEmpty()) {
             elements += StudyBuildElement(StudyBuildElementKind.CHARACTERS)
@@ -178,6 +179,15 @@ class StudyBuildPlanner(private val maxAttempts: Int = 3) {
                 } else {
                     null
                 }
+            }
+        }
+
+    private fun pendingChunkBuilds(record: SavedStudySessionRecord): List<StudyBuildElement> =
+        record.session.sentences.mapIndexedNotNull { sentenceIndex, sentence ->
+            if (sentence.breakdownAudioReady) {
+                null
+            } else {
+                StudyBuildElement(StudyBuildElementKind.CHUNKS, sentenceIndex = sentenceIndex)
             }
         }
 

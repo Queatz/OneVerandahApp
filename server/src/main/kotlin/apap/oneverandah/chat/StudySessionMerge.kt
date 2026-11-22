@@ -6,6 +6,7 @@ import apap.oneverandah.api.StudySentence
 import apap.oneverandah.api.StudySessionResponse
 import apap.oneverandah.api.StudyToken
 import apap.oneverandah.api.StudyTokenStatus
+import apap.oneverandah.api.mergeStudyBreakdownProgress
 
 object StudySessionMerge {
     fun mergeClientSave(
@@ -33,6 +34,12 @@ object StudySessionMerge {
             visitorExamGrades = stored.visitorExamGrades,
             adventureProgress = if (sameBuildContext) stored.adventureProgress else null,
             visitorAdventureProgress = if (sameBuildContext) stored.visitorAdventureProgress else emptyMap(),
+            breakdownProgress = if (sameBuildContext) {
+                mergeStudyBreakdownProgress(stored.breakdownProgress, incoming.breakdownProgress)
+            } else {
+                incoming.breakdownProgress
+            },
+            visitorBreakdownProgress = if (sameBuildContext) stored.visitorBreakdownProgress else emptyMap(),
             build = if (sameBuildContext) stored.build ?: incoming.build else incoming.build,
             buildRequest = if (sameBuildContext) stored.buildRequest
                 ?: incoming.buildRequest else incoming.buildRequest,
@@ -95,6 +102,9 @@ object StudySessionMerge {
             tokens = tokens,
             imageId = preferServer(server.imageId, client.imageId),
             imageUrl = preferServer(server.imageUrl, client.imageUrl),
+            chunks = server.chunks.ifEmpty { client.chunks },
+            breakdownSuffixes = server.breakdownSuffixes.ifEmpty { client.breakdownSuffixes },
+            breakdownAudioReady = server.breakdownAudioReady,
         )
     }
 

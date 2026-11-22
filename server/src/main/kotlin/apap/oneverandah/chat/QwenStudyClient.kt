@@ -4,6 +4,7 @@ import apap.oneverandah.api.STUDY_EXAM_BEAT_COUNT
 import apap.oneverandah.api.STUDY_EXAM_ROUND_COUNT
 import apap.oneverandah.api.StudyExampleSentence
 import apap.oneverandah.api.StudyExampleToken
+import apap.oneverandah.api.StudyChunk
 import apap.oneverandah.api.StudyExamBeat
 import apap.oneverandah.api.StudyExamBeatKind
 import apap.oneverandah.api.StudyExamScene
@@ -42,6 +43,7 @@ import kotlinx.serialization.json.contentOrNull
 import kotlinx.serialization.json.jsonArray
 import kotlinx.serialization.json.jsonObject
 import kotlinx.serialization.json.jsonPrimitive
+import kotlinx.serialization.json.intOrNull
 import kotlinx.serialization.json.put
 
 /** Strips common markdown fences around model JSON. */
@@ -209,6 +211,29 @@ object QwenStudyDissectParser {
             .getOrElse { throw IllegalArgumentException("Qwen study dissect is not valid JSON", it) }
         return element as? JsonObject
             ?: throw IllegalArgumentException("Qwen study dissect root must be a JSON object")
+    }
+}
+
+object QwenStudyChunkParser {
+    private val json = Json { ignoreUnknownKeys = true; explicitNulls = false; isLenient = true }
+
+    fun parse(content: String): List<StudyChunk> = runCatching { parseChunks(content) }.getOrDefault(emptyList())
+
+    private fun parseChunks(content: String): List<StudyChunk> {
+        val root = json.parseToJsonElement(stripJsonFences(content)) as? JsonObject ?: return emptyList()
+        val chunks = root["chunks"] as? JsonArray ?: return emptyList()
+        return chunks.mapNotNull { element ->
+            val chunk = element as? JsonObject ?: return@mapNotNull null
+            val indices = (chunk["wordIndices"] as? JsonArray)?.mapNotNull { it.jsonPrimitive.intOrNull }
+                .orEmpty()
+            if (indices.isEmpty()) return@mapNotNull null
+            StudyChunk(
+                text = chunk.string("text").orEmpty(),
+                gloss = chunk.string("gloss").orEmpty(),
+                grammarNote = chunk.string("grammarNote").orEmpty(),
+                wordIndices = indices,
+            )
+        }
     }
 }
 
@@ -563,6 +588,28 @@ class DashScopeStudyAiClient(
         return QwenStudyDissectParser.parse(content)
     }
 
+    override suspend fun chunkSentence(request: StudyChunkGenerationRequest): List<StudyChunk> {
+        val indexedTokens = request.tokens.mapIndexedNotNull { index, text ->
+            if (text.isBlank()) null else "$index: $text"
+        }.joinToString("\n")
+        val userContent = buildString {
+            appendLine("Source language: ${languageName(request.textLanguageTag)} (${request.textLanguageTag})")
+            appendLine("Learner UI language: ${languageName(request.languageTag)} (${request.languageTag})")
+            appendLine("Sentence:")
+            appendLine(request.sentenceText)
+            appendLine("Ordered token indices and texts:")
+            append(indexedTokens)
+        }
+        val content = complete(
+            systemPrompt = chunkSystemPrompt(request.languageTag),
+            userContent = userContent,
+            label = "study chunks",
+            model = config.chatHeavyModel,
+            enableThinking = true,
+        )
+        return QwenStudyChunkParser.parse(content)
+    }
+
     override suspend fun dissectExampleSentences(
         request: StudyExampleDissectGenerationRequest,
     ): List<StudyExampleSentence> {
@@ -764,7 +811,7 @@ class DashScopeStudyAiClient(
             userContent = examSceneMaterials(request),
             label = "study exam scene",
             temperature = 0.5,
-            enableThinking = true,
+            enableThinking = false,
         )
         val scene = runCatching { QwenStudyExamSceneParser.parse(content) }
             .onFailure { error ->
@@ -872,6 +919,7 @@ class DashScopeStudyAiClient(
             userContent = userContent,
             label = "study exam beat judgment",
             temperature = 0.1,
+            enableThinking = false,
         )
         return QwenStudyExamJudgmentParser.parse(content)
     }
@@ -978,7 +1026,7 @@ class DashScopeStudyAiClient(
             userContent = userContent,
             label = "study express generate",
             temperature = 0.7,
-            enableThinking = true,
+            enableThinking = false,
         )
         return QwenStudyExpressGenerateParser.parse(content)
     }
@@ -1217,6 +1265,20 @@ class DashScopeStudyAiClient(
         - exampleSentences: for every dissectable word/phrase provide exactly 3 short, natural example objects. Each object MUST include "text" written in the source language (tag '$textLanguageTag') and "translation" written in the learner's active language '$activeLanguageTag'. Never leave translation blank for a non-empty example. Do not put plain strings in exampleSentences.
         - Each example sentence for a word MUST use the same contextual meaning that the word has in the supplied source sentence. Use the word in that exact sense, not merely its literal/dictionary meaning; for example, when a word means "very" in context, its examples must use "very," not a different sense such as "beautiful." Translate each example according to that same sense.
         - Do not invent content unrelated to the sentence. Do not wrap the JSON in markdown.
+    """.trimIndent()
+
+    private fun chunkSystemPrompt(activeLanguageTag: String): String = """
+        You split one language-learning sentence into 2–4 natural, contiguous chunks (one chunk only for a one-word sentence).
+        Always return one JSON object and no markdown. The schema is exactly:
+        {"chunks":[{"text":"exact source phrase","gloss":"short translation in $activeLanguageTag","grammarNote":"one-line grammar note in $activeLanguageTag","wordIndices":[0,1]}]}
+        Rules:
+        - Preserve the source sentence exactly; do not rewrite, omit, duplicate, or reorder any words.
+        - Chunk boundaries MUST be between adjacent source word tokens. Every lexical token index must occur exactly once, in order; punctuation is not a word index.
+        - Use the supplied indices, which are indices in the complete token list (including punctuation entries when present).
+        - Keep chunks natural phrase units rather than splitting arbitrarily; aim for 2–4 chunks when the sentence has multiple words.
+        - Each text is the exact source-language text covered by its word indices, including relevant punctuation.
+        - gloss and grammarNote must be concise and written in the learner's active language '$activeLanguageTag'.
+        - Do not add any keys besides chunks and the four chunk fields. Do not wrap JSON in markdown.
     """.trimIndent()
 
     private fun exampleDissectSystemPrompt(activeLanguageTag: String, textLanguageTag: String): String = """

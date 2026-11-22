@@ -10,6 +10,8 @@ import apap.oneverandah.api.StudyBuildRequest
 import apap.oneverandah.api.StudyBuildState
 import apap.oneverandah.api.StudyExamGrade
 import apap.oneverandah.api.StudyAdventureProgress
+import apap.oneverandah.api.StudyBreakdownProgress
+import apap.oneverandah.api.mergeStudyBreakdownProgress
 import apap.oneverandah.api.StudySessionRequest
 import apap.oneverandah.api.StudySessionResponse
 import apap.oneverandah.api.sentenceImageUrls
@@ -35,6 +37,8 @@ data class SavedStudySessionRecord(
     val visitorExamGrades: Map<String, StudyExamGrade> = emptyMap(),
     val adventureProgress: StudyAdventureProgress? = null,
     val visitorAdventureProgress: Map<String, StudyAdventureProgress> = emptyMap(),
+    val breakdownProgress: StudyBreakdownProgress? = null,
+    val visitorBreakdownProgress: Map<String, StudyBreakdownProgress> = emptyMap(),
     val build: StudyBuildState? = null,
     val buildRequest: StudyBuildRequest? = null,
 ) {
@@ -44,9 +48,13 @@ data class SavedStudySessionRecord(
     fun adventureProgressFor(deviceTokenHash: String): StudyAdventureProgress? =
         if (this.deviceTokenHash == deviceTokenHash) adventureProgress else visitorAdventureProgress[deviceTokenHash]
 
+    fun breakdownProgressFor(deviceTokenHash: String): StudyBreakdownProgress? =
+        if (this.deviceTokenHash == deviceTokenHash) breakdownProgress else visitorBreakdownProgress[deviceTokenHash]
+
     fun toApi(
         viewerExamGrade: StudyExamGrade? = examGrade,
         viewerAdventureProgress: StudyAdventureProgress? = adventureProgress,
+        viewerBreakdownProgress: StudyBreakdownProgress? = breakdownProgress,
     ) = SavedStudySession(
         id = id,
         sourceMessageId = sourceMessageId,
@@ -60,6 +68,7 @@ data class SavedStudySessionRecord(
         examGrade = viewerExamGrade,
         build = build,
         adventureProgress = viewerAdventureProgress,
+        breakdownProgress = viewerBreakdownProgress,
     )
 
     fun toSummaryApi() = SavedStudySessionSummary(
@@ -237,6 +246,7 @@ class StudySessionsService(
         return record.toApi(
             viewerExamGrade = record.examGradeFor(device.tokenHash),
             viewerAdventureProgress = record.adventureProgressFor(device.tokenHash),
+            viewerBreakdownProgress = record.breakdownProgressFor(device.tokenHash),
         )
     }
 
@@ -265,6 +275,7 @@ class StudySessionsService(
         return record.toApi(
             viewerExamGrade = record.examGradeFor(device.tokenHash),
             viewerAdventureProgress = record.adventureProgressFor(device.tokenHash),
+            viewerBreakdownProgress = record.breakdownProgressFor(device.tokenHash),
         )
     }
 
@@ -288,6 +299,28 @@ class StudySessionsService(
             }
         } ?: return null
         return record.adventureProgressFor(device.tokenHash)
+    }
+
+    suspend fun saveBreakdownProgress(
+        rawDeviceToken: String?,
+        id: String,
+        progress: StudyBreakdownProgress,
+    ): StudyBreakdownProgress? {
+        val device = requireDevice(rawDeviceToken)
+        val key = id.trim().takeIf(String::isNotEmpty) ?: return null
+        val normalized = progress.normalizedOrNull() ?: return null
+        val record = sessionStore.update(key, immediate = true) { stored ->
+            if (stored.deviceTokenHash == device.tokenHash) {
+                stored.copy(breakdownProgress = mergeStudyBreakdownProgress(stored.breakdownProgress, normalized))
+            } else {
+                val current = stored.visitorBreakdownProgress[device.tokenHash]
+                stored.copy(
+                    visitorBreakdownProgress = stored.visitorBreakdownProgress +
+                            (device.tokenHash to mergeStudyBreakdownProgress(current, normalized)!!),
+                )
+            }
+        } ?: return null
+        return record.breakdownProgressFor(device.tokenHash)
     }
 
     private fun mergeAdventureProgress(

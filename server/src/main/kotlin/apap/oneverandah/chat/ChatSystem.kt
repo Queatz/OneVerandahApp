@@ -136,11 +136,24 @@ class ChatSystem(
                 studyAiClient = studyAiClient,
                 sessionStore = studySessionStore,
             )
+            val speechService = SpeechService(
+                client = RoutingSpeechClient(
+                    qwenClient = DashScopeSpeechClient(config.qwenChat, providerClient),
+                    speechgenClient = SpeechgenSpeechClient(config.speechgen, providerClient),
+                    qwenEnabled = config.qwenChat.enabled,
+                    speechgenEnabled = config.speechgen.enabled,
+                ),
+                voiceResolver = clonedVoicesService,
+                cache = createTtsCache(File(config.ttsCacheDir)).also {
+                    log.info("TTS speech cache enabled at {}", File(config.ttsCacheDir).absolutePath)
+                },
+            )
             val studyBuildService = StudyBuildService(
                 repository = studySessionsRepository,
                 deviceService = deviceService,
                 sessionsService = studySessionsService,
                 studyService = studyService,
+                speechService = speechService,
                 scope = scope,
                 config = config,
             )
@@ -150,18 +163,7 @@ class ChatSystem(
                     aiClient = DashScopeChatAiClient(config.qwenChat, providerClient),
                     residentDirectory = ResidentDirectory(residents),
                 ),
-                speechService = SpeechService(
-                    client = RoutingSpeechClient(
-                        qwenClient = DashScopeSpeechClient(config.qwenChat, providerClient),
-                        speechgenClient = SpeechgenSpeechClient(config.speechgen, providerClient),
-                        qwenEnabled = config.qwenChat.enabled,
-                        speechgenEnabled = config.speechgen.enabled,
-                    ),
-                    voiceResolver = clonedVoicesService,
-                    cache = createTtsCache(File(config.ttsCacheDir)).also {
-                        log.info("TTS speech cache enabled at {}", File(config.ttsCacheDir).absolutePath)
-                    },
-                ),
+                speechService = speechService,
                 studyService = studyService,
                 asrRelay = QwenAsrRelay(config.qwenChat, asrClient, scope),
                 deviceService = deviceService,

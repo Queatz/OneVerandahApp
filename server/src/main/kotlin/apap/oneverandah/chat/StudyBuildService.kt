@@ -37,6 +37,7 @@ class StudyBuildService(
     retryBackoffMillis: List<Long> = StudyBuildQueue.DEFAULT_RETRY_BACKOFF_MILLIS,
     private val idGenerator: () -> String = { UUID.randomUUID().toString() },
     private val clock: () -> Long = System::currentTimeMillis,
+    speechService: SpeechService? = null,
 ) {
     private val store = sessionsService.sessionStore
     private val attemptLimit = maxAttempts.coerceAtLeast(1)
@@ -44,7 +45,7 @@ class StudyBuildService(
     private val planningLocks = ConcurrentHashMap<String, Mutex>()
     private val queue = StudyBuildQueue(
         store = store,
-        executor = StudyBuildTasks(store, studyService, sessionsService),
+        executor = StudyBuildTasks(store, studyService, sessionsService, speechService),
         scope = scope,
         textWorkers = textWorkers,
         imageWorkers = imageWorkers,
@@ -63,6 +64,7 @@ class StudyBuildService(
         config: AppConfig,
         idGenerator: () -> String = { UUID.randomUUID().toString() },
         clock: () -> Long = System::currentTimeMillis,
+        speechService: SpeechService? = null,
     ) : this(
         repository = repository,
         deviceService = deviceService,
@@ -74,6 +76,7 @@ class StudyBuildService(
         maxAttempts = config.studyBuildMaxAttempts,
         idGenerator = idGenerator,
         clock = clock,
+        speechService = speechService,
     )
 
     suspend fun create(rawDeviceToken: String?, rawRequest: StudyBuildRequest): SavedStudySession {
@@ -132,7 +135,10 @@ class StudyBuildService(
         }
         if (
             (record.build?.status == StudyBuildStatus.COMPLETE || record.build?.status == StudyBuildStatus.PARTIAL) &&
-            planner.plan(record).any { it.element.kind == StudyBuildElementKind.EXAMPLE_DISSECT }
+            planner.plan(record).any {
+                it.element.kind == StudyBuildElementKind.EXAMPLE_DISSECT ||
+                        it.element.kind == StudyBuildElementKind.CHUNKS
+            }
         ) {
             record = store.update(key, immediate = true) { current ->
                 val build = current.build ?: return@update null

@@ -55,6 +55,10 @@ class StudyBuildServiceTest {
             assertEquals(StudyBuildStatus.COMPLETE, completed.build?.status)
             assertTrue(completed.name.isNotBlank())
             assertEquals(2, completed.session.sentences.single().tokens.count { it.status == StudyTokenStatus.READY })
+            assertEquals(2, completed.session.sentences.single().chunks.size)
+            assertEquals(listOf(listOf(0), listOf(1)), completed.session.sentences.single().chunks.map { it.wordIndices })
+            assertEquals(listOf("chào.", "Xin chào."), completed.session.sentences.single().breakdownSuffixes)
+            assertTrue(completed.session.sentences.single().breakdownAudioReady)
             assertTrue(completed.session.sentences.single().tokens.filter { it.isDissectable }
                 .all { !it.imageUrl.isNullOrBlank() })
             assertTrue(completed.session.sentences.single().imageUrl?.isNotBlank() == true)
@@ -290,6 +294,7 @@ class StudyBuildServiceTest {
                         )
                     }
                 },
+                translation = "A friendly greeting.",
             )
         }
 

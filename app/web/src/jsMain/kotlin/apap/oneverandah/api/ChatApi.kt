@@ -531,6 +531,20 @@ object ChatApi {
         )
     }
 
+    suspend fun saveStudyBreakdownProgress(id: String, progress: StudyBreakdownProgress): StudyBreakdownProgress {
+        val token = DeviceTokenStore.ensureToken()
+        return apiRequest(
+            request = {
+                client.put(chatApiUrl("/study/sessions/$id/breakdown")) {
+                    header(DEVICE_TOKEN_HEADER, token)
+                    contentType(ContentType.Application.Json)
+                    setBody(json.encodeToString(StudyBreakdownProgress.serializer(), progress))
+                }
+            },
+            decode = { json.decodeFromString(StudyBreakdownProgress.serializer(), it) },
+        )
+    }
+
     suspend fun deleteStudySession(id: String) {
         val token = DeviceTokenStore.ensureToken()
         apiRequest(

@@ -2,6 +2,9 @@ package apap.oneverandah.chat
 
 import apap.oneverandah.api.StudyDissectSentenceRequest
 import apap.oneverandah.api.StudyDissectSentenceResponse
+import apap.oneverandah.api.StudyChunk
+import apap.oneverandah.api.alignStudyChunks
+import apap.oneverandah.api.studyBreakdownSuffixes
 import apap.oneverandah.api.StudyBuildMode
 import apap.oneverandah.api.StudyBuildRequest
 import apap.oneverandah.api.StudyExamBeat
@@ -61,7 +64,7 @@ import kotlinx.coroutines.launch
 import kotlinx.coroutines.withContext
 import org.slf4j.LoggerFactory
 
-private const val playScenarioCount = 2
+private const val playScenarioCount = 4
 
 data class StudyGenerationRequest(
     val text: String,
@@ -86,6 +89,13 @@ data class StudySceneGenerationRequest(
 
 data class StudyDissectGenerationRequest(
     val text: String,
+    val sentenceText: String,
+    val tokens: List<String>,
+    val textLanguageTag: String,
+    val languageTag: String,
+)
+
+data class StudyChunkGenerationRequest(
     val sentenceText: String,
     val tokens: List<String>,
     val textLanguageTag: String,
@@ -252,6 +262,7 @@ interface StudyAiClient {
 
     suspend fun generateSkeleton(request: StudyGenerationRequest): StudySessionResponse
     suspend fun dissectSentence(request: StudyDissectGenerationRequest): StudySentence
+    suspend fun chunkSentence(request: StudyChunkGenerationRequest): List<StudyChunk> = emptyList()
     suspend fun dissectExampleSentences(
         request: StudyExampleDissectGenerationRequest,
     ): List<StudyExampleSentence> = request.exampleSentences.map { example ->
@@ -381,6 +392,35 @@ class StudyService(
             tokens = sentence.tokens,
             translation = translation,
         )
+    }
+
+    suspend fun chunkSentence(
+        sentenceText: String,
+        tokens: List<StudyToken>,
+        textLanguageTag: String,
+        languageTag: String,
+    ): Pair<List<StudyChunk>, List<String>> {
+        val tokenTexts = tokens.map { it.text }
+        val generated = aiClient.chunkSentence(
+            StudyChunkGenerationRequest(
+                sentenceText = sentenceText,
+                tokens = tokenTexts,
+                textLanguageTag = textLanguageTag,
+                languageTag = languageTag,
+            ),
+        )
+        val chunks = alignStudyChunks(sentenceText, tokenTexts, generated).map { chunk ->
+            val fallbackGloss = chunk.wordIndices.mapNotNull { index ->
+                tokens.getOrNull(index)?.let { token ->
+                    token.contextualMeaning.ifBlank { token.literalMeaning }.takeIf(String::isNotBlank)
+                }
+            }.joinToString(" ")
+            chunk.copy(
+                gloss = chunk.gloss.trim().ifBlank { fallbackGloss },
+                grammarNote = chunk.grammarNote.trim().ifBlank { "Phrase structure." },
+            )
+        }
+        return chunks to studyBreakdownSuffixes(sentenceText, tokenTexts, chunks)
     }
 
     /** Full dissection for one skeleton sentence; tokens must match the skeleton order/text. */

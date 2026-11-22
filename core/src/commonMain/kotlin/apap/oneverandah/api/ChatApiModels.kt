@@ -311,6 +311,29 @@ data class StudyAdventureProgress(
 }
 
 @Serializable
+data class StudyBreakdownSentenceProgress(
+    val step: Int = 1,
+    val backchainRound: Int = 0,
+    val shadowRep: Int = 0,
+    val completed: Boolean = false,
+)
+
+@Serializable
+data class StudyBreakdownProgress(
+    val sentences: Map<Int, StudyBreakdownSentenceProgress> = emptyMap(),
+    val updatedAt: Long = 0,
+) {
+    fun normalizedOrNull(): StudyBreakdownProgress? {
+        if (updatedAt < 0 || sentences.any { (index, progress) ->
+                index < 0 || progress.step !in 1..4 || progress.backchainRound < 0 ||
+                        progress.shadowRep !in 0..5 || (progress.completed && progress.step != 4)
+            }
+        ) return null
+        return this
+    }
+}
+
+@Serializable
 data class StudyExamSceneRequest(
     val session: StudySessionResponse,
     val languageTag: String,
@@ -382,6 +405,20 @@ data class StudySentence(
     val imageUrl: String? = null,
     /** Full sentence translation in the learner's active UI language. */
     val translation: String = "",
+    val chunks: List<StudyChunk> = emptyList(),
+    /** Exact cumulative suffixes used by Backchain, from the last chunk to the full sentence. */
+    val breakdownSuffixes: List<String> = emptyList(),
+    /** True when the builder has attempted to warm all Breakdown audio in the shared TTS cache. */
+    val breakdownAudioReady: Boolean = false,
+)
+
+@Serializable
+data class StudyChunk(
+    val text: String,
+    val gloss: String,
+    val grammarNote: String,
+    /** Indices into [StudySentence.tokens] for the words represented by this chunk. */
+    val wordIndices: List<Int>,
 )
 
 /**
@@ -1050,6 +1087,7 @@ enum class StudyBuildElementKind {
     SKELETON,
     NAME,
     DISSECT,
+    CHUNKS,
     EXAMPLE_DISSECT,
     WORD_IMAGE,
     CHARACTERS,
@@ -1070,11 +1108,12 @@ data class StudyBuildElement(
 ) {
     val key: String
         get() = when (kind) {
-            StudyBuildElementKind.DISSECT -> "${kind.name}:${sentenceIndex ?: -1}"
+            StudyBuildElementKind.DISSECT,
+            StudyBuildElementKind.CHUNKS,
+            StudyBuildElementKind.SENTENCE_IMAGE -> "${kind.name}:${sentenceIndex ?: -1}"
             StudyBuildElementKind.EXAMPLE_DISSECT,
             StudyBuildElementKind.WORD_IMAGE -> "${kind.name}:${sentenceIndex ?: -1}:${tokenIndex ?: -1}"
             StudyBuildElementKind.PORTRAIT -> "${kind.name}:${characterId.orEmpty()}"
-            StudyBuildElementKind.SENTENCE_IMAGE -> "${kind.name}:${sentenceIndex ?: -1}"
             StudyBuildElementKind.PLAY_COVER -> "${kind.name}:${scenarioId.orEmpty()}"
             else -> kind.name
         }
@@ -1149,6 +1188,7 @@ data class SavedStudySession(
     val examGrade: StudyExamGrade? = null,
     val build: StudyBuildState? = null,
     val adventureProgress: StudyAdventureProgress? = null,
+    val breakdownProgress: StudyBreakdownProgress? = null,
 )
 
 @Serializable

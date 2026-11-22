@@ -492,6 +492,17 @@ object Styles {
     const val studySentenceBlock = "study-sentence-block"
     const val studySentenceImage = "study-sentence-image"
     const val studySentenceImagePlaceholder = "study-sentence-image-placeholder"
+    const val studyBreakdownButton = "study-breakdown-button"
+    const val studyBreakdownSheet = "study-breakdown-sheet"
+    const val studyBreakdownSteps = "study-breakdown-steps"
+    const val studyBreakdownStep = "study-breakdown-step"
+    const val studyBreakdownStepActive = "study-breakdown-step-active"
+    const val studyBreakdownSentence = "study-breakdown-sentence"
+    const val studyBreakdownPrompt = "study-breakdown-prompt"
+    const val studyBreakdownChunk = "study-breakdown-chunk"
+    const val studyBreakdownChunkActive = "study-breakdown-chunk-active"
+    const val studyBreakdownActions = "study-breakdown-actions"
+    const val studyBreakdownAudioToggle = "study-breakdown-audio-toggle"
     const val studySentenceImageStatus = "study-sentence-image-status"
     const val studySentenceImageStatusBusy = "study-sentence-image-status-busy"
     const val studySentenceError = "study-sentence-error"
@@ -4072,6 +4083,86 @@ object Styles {
             gap: 8px;
             font-size: 13px;
             color: var(--md-sys-color-on-surface-variant);
+        }
+        .${studyBreakdownButton} {
+            display: inline-flex;
+            align-items: center;
+            justify-content: center;
+            gap: 7px;
+            min-height: 40px;
+            padding: 8px 13px;
+            border: 1px solid color-mix(in srgb, var(--md-sys-color-primary) 30%, var(--md-sys-color-outline));
+            border-radius: 999px;
+            background: color-mix(in srgb, var(--md-sys-color-primary) 9%, var(--md-sys-color-surface));
+            color: var(--md-sys-color-primary);
+            font: inherit;
+            font-weight: 650;
+            cursor: pointer;
+        }
+        .${studyBreakdownSheet} {
+            display: flex;
+            flex-direction: column;
+            gap: 14px;
+            width: 100%;
+            max-width: 720px;
+            margin: 0 auto;
+        }
+        .${studyBreakdownSteps} {
+            display: flex;
+            gap: 7px;
+            overflow-x: auto;
+            padding: 2px 0 6px;
+        }
+        .${studyBreakdownStep} {
+            flex: 1 0 auto;
+            padding: 7px 10px;
+            border-radius: 999px;
+            background: var(--md-sys-color-surface-variant);
+            color: var(--md-sys-color-on-surface-variant);
+            font-size: 12px;
+            text-align: center;
+        }
+        .${studyBreakdownStepActive} {
+            background: var(--md-sys-color-primary);
+            color: var(--md-sys-color-on-primary);
+            font-weight: 700;
+        }
+        .${studyBreakdownSentence} {
+            margin: 4px 0;
+            font-size: clamp(20px, 5vw, 30px);
+            font-weight: 650;
+            line-height: 1.45;
+            text-align: center;
+        }
+        .${studyBreakdownPrompt} {
+            margin: 0;
+            color: var(--md-sys-color-on-surface-variant);
+            text-align: center;
+        }
+        .${studyBreakdownChunk} {
+            display: inline-flex;
+            margin: 3px;
+            padding: 7px 11px;
+            border: 1px solid var(--md-sys-color-outline-variant);
+            border-radius: 12px;
+            background: var(--md-sys-color-surface);
+            color: var(--md-sys-color-on-surface);
+            font: inherit;
+            cursor: pointer;
+        }
+        .${studyBreakdownChunkActive} {
+            border-color: var(--md-sys-color-primary);
+            background: color-mix(in srgb, var(--md-sys-color-primary) 15%, var(--md-sys-color-surface));
+            box-shadow: 0 0 0 2px color-mix(in srgb, var(--md-sys-color-primary) 24%, transparent);
+        }
+        .${studyBreakdownActions} {
+            display: flex;
+            flex-wrap: wrap;
+            justify-content: center;
+            gap: 9px;
+        }
+        .${studyBreakdownAudioToggle} {
+            align-self: center;
         }
         """.trimIndent() + """
         .study-adventure-shell {

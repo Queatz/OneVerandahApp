@@ -10,6 +10,7 @@ import apap.oneverandah.api.StudyExamBeat
 import apap.oneverandah.api.StudyExamBeatKind
 import apap.oneverandah.api.StudyExamScene
 import apap.oneverandah.api.StudyExampleSentence
+import apap.oneverandah.api.StudyChunk
 import apap.oneverandah.api.StudySentence
 import apap.oneverandah.api.StudySessionResponse
 import apap.oneverandah.api.StudyStoryCharacter
@@ -68,7 +69,7 @@ class StudyBuildPlannerTest {
             ),
         )
         assertEquals(
-            setOf(StudyBuildElementKind.PORTRAIT, StudyBuildElementKind.WORD_IMAGE),
+            setOf(StudyBuildElementKind.PORTRAIT, StudyBuildElementKind.WORD_IMAGE, StudyBuildElementKind.CHUNKS),
             planner.plan(dissected).map { it.element.kind }.toSet(),
         )
 
@@ -88,7 +89,8 @@ class StudyBuildPlannerTest {
         assertEquals(
             setOf(
                 StudyBuildElementKind.WORD_IMAGE, StudyBuildElementKind.SENTENCE_IMAGE,
-                StudyBuildElementKind.PLAY_SCENARIOS, StudyBuildElementKind.EXAM
+                StudyBuildElementKind.PLAY_SCENARIOS, StudyBuildElementKind.EXAM,
+                StudyBuildElementKind.CHUNKS,
             ),
             planner.plan(portraitReady).map { it.element.kind }.toSet(),
         )
@@ -114,6 +116,9 @@ class StudyBuildPlannerTest {
                             ),
                         ),
                         imageUrl = "https://img/sentence",
+                        chunks = listOf(StudyChunk("Xin", "hello", "greeting", listOf(0))),
+                        breakdownSuffixes = listOf("Xin."),
+                        breakdownAudioReady = true,
                     ),
                 ),
                 characters = listOf(
@@ -145,6 +150,7 @@ class StudyBuildPlannerTest {
 
         val pendingKinds = planner.plan(partiallyDissected).map { it.element.kind }.toSet()
         assertTrue(StudyBuildElementKind.DISSECT in pendingKinds)
+        assertTrue(StudyBuildElementKind.CHUNKS !in pendingKinds)
         assertTrue(StudyBuildElementKind.CHARACTERS in pendingKinds)
         assertTrue(StudyBuildElementKind.WORD_IMAGE !in pendingKinds)
 
@@ -163,6 +169,7 @@ class StudyBuildPlannerTest {
         )
         val dependentWork = planner.plan(textWorkSettled).map { it.element.kind }.toSet()
         assertTrue(StudyBuildElementKind.WORD_IMAGE in dependentWork)
+        assertTrue(StudyBuildElementKind.CHUNKS in dependentWork)
         assertTrue(StudyBuildElementKind.PORTRAIT in dependentWork)
     }
 
@@ -191,6 +198,7 @@ class StudyBuildPlannerTest {
         )
 
         val completed = building.copy(build = StudyBuildState(status = StudyBuildStatus.COMPLETE))
+        assertTrue(planner.plan(completed).any { it.element.kind == StudyBuildElementKind.CHUNKS })
         assertEquals(
             listOf("EXAMPLE_DISSECT:0:0"),
             planner.plan(completed).filter { it.element.kind == StudyBuildElementKind.EXAMPLE_DISSECT }

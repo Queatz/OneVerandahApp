@@ -418,6 +418,8 @@ private data class SavedStudySessionDocument(
     val visitorExamGrades: Map<String, apap.oneverandah.api.StudyExamGrade> = emptyMap(),
     val adventureProgress: apap.oneverandah.api.StudyAdventureProgress? = null,
     val visitorAdventureProgress: Map<String, apap.oneverandah.api.StudyAdventureProgress> = emptyMap(),
+    val breakdownProgress: apap.oneverandah.api.StudyBreakdownProgress? = null,
+    val visitorBreakdownProgress: Map<String, apap.oneverandah.api.StudyBreakdownProgress> = emptyMap(),
     val build: StudyBuildState? = null,
     val buildRequest: StudyBuildRequest? = null,
 ) {
@@ -436,6 +438,8 @@ private data class SavedStudySessionDocument(
         visitorExamGrades = visitorExamGrades,
         adventureProgress = adventureProgress,
         visitorAdventureProgress = visitorAdventureProgress,
+        breakdownProgress = breakdownProgress,
+        visitorBreakdownProgress = visitorBreakdownProgress,
         build = build,
         buildRequest = buildRequest,
     )
@@ -456,6 +460,8 @@ private data class SavedStudySessionDocument(
             visitorExamGrades = record.visitorExamGrades,
             adventureProgress = record.adventureProgress,
             visitorAdventureProgress = record.visitorAdventureProgress,
+            breakdownProgress = record.breakdownProgress,
+            visitorBreakdownProgress = record.visitorBreakdownProgress,
             build = record.build,
             buildRequest = record.buildRequest,
         )

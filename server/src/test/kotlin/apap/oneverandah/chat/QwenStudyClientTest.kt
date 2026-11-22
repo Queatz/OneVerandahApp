@@ -4,6 +4,7 @@ import apap.oneverandah.api.StudyTranslateRequest
 import apap.oneverandah.api.StudyExamBeatKind
 import apap.oneverandah.api.StudyExampleSentence
 import apap.oneverandah.api.StudyExampleToken
+import apap.oneverandah.api.StudyChunk
 import apap.oneverandah.api.StudySentence
 import apap.oneverandah.api.StudyStoryCharacter
 import apap.oneverandah.config.QwenChatConfig
@@ -25,6 +26,43 @@ import kotlinx.serialization.json.jsonObject
 import kotlinx.serialization.json.jsonPrimitive
 
 class QwenStudyClientTest {
+    @Test
+    fun `chunk generation parses contiguous word indices and requests word aligned boundaries`() = runBlocking {
+        val requestBodies = mutableListOf<String>()
+        val engine = MockEngine { request ->
+            requestBodies += (request.body as OutgoingContent.ByteArrayContent).bytes().decodeToString()
+            respond(
+                content = qwenChatResponse(
+                    """{"chunks":[{"text":"we are","gloss":"we are","grammarNote":"subject and verb","wordIndices":[0,1]},{"text":"ready!","gloss":"ready","grammarNote":"adjective","wordIndices":[2]}]}""",
+                ),
+                status = HttpStatusCode.OK,
+                headers = headersOf(HttpHeaders.ContentType, "application/json"),
+            )
+        }
+        val client = HttpClient(engine)
+        val ai = DashScopeStudyAiClient(qwenConfig(), client)
+
+        val chunks = ai.chunkSentence(
+            StudyChunkGenerationRequest(
+                sentenceText = "We are ready!",
+                tokens = listOf("We", "are", "ready", "!"),
+                textLanguageTag = "en",
+                languageTag = "my",
+            ),
+        )
+
+        assertEquals(
+            listOf(
+                StudyChunk("we are", "we are", "subject and verb", listOf(0, 1)),
+                StudyChunk("ready!", "ready", "adjective", listOf(2)),
+            ),
+            chunks,
+        )
+        assertContains(requestBodies.single(), "between adjacent source word tokens")
+        assertContains(requestBodies.single(), "Learner UI language: Burmese")
+        client.close()
+    }
+
     @Test
     fun `dissect prompt requires examples to use the source context meaning`() = runBlocking {
         val requestBodies = mutableListOf<String>()

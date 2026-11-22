@@ -14,6 +14,7 @@ import apap.oneverandah.api.StudyBuildRequest
 import apap.oneverandah.api.StudyBuildRetryRequest
 import apap.oneverandah.api.StudyBuildStatus
 import apap.oneverandah.api.StudyAdventureProgress
+import apap.oneverandah.api.StudyBreakdownProgress
 import apap.oneverandah.api.StudyExpressCheckRequest
 import apap.oneverandah.api.StudyExpressGenerateRequest
 import apap.oneverandah.api.StudyExamSceneRequest
@@ -485,6 +486,7 @@ fun Route.chatRoutes(
                                     session = event.session.copy(
                                         examGrade = accessible.examGrade,
                                         adventureProgress = accessible.adventureProgress,
+                                        breakdownProgress = accessible.breakdownProgress,
                                     ),
                                 )
                                 else -> event
@@ -616,6 +618,30 @@ fun Route.chatRoutes(
             }
             try {
                 val saved = studySessionsService.saveAdventureProgress(token, id, progress)
+                if (saved == null) {
+                    call.respond(HttpStatusCode.NotFound, ChatErrorResponse("Study session not found"))
+                    return@put
+                }
+                call.respondStudyPayload(saved)
+            } catch (_: UnauthorizedDeviceException) {
+                call.respond(HttpStatusCode.Unauthorized, ChatErrorResponse("Valid device token required"))
+            }
+        }
+
+        put("/api/chat/study/sessions/{id}/breakdown") {
+            val token = call.request.header(DEVICE_TOKEN_HEADER)
+            val id = call.parameters["id"]?.trim().orEmpty()
+            if (id.isEmpty()) {
+                call.respond(HttpStatusCode.BadRequest, ChatErrorResponse("Study session id is required"))
+                return@put
+            }
+            val progress = call.receiveStudyPayload<StudyBreakdownProgress>().normalizedOrNull()
+            if (progress == null) {
+                call.respond(HttpStatusCode.BadRequest, ChatErrorResponse("Invalid breakdown progress"))
+                return@put
+            }
+            try {
+                val saved = studySessionsService.saveBreakdownProgress(token, id, progress)
                 if (saved == null) {
                     call.respond(HttpStatusCode.NotFound, ChatErrorResponse("Study session not found"))
                     return@put

@@ -5,6 +5,7 @@ import apap.oneverandah.api.StudyBuildElementKind
 import apap.oneverandah.api.StudyBuildMode
 import apap.oneverandah.api.StudyBuildStatus
 import apap.oneverandah.api.StudyDissectSentenceRequest
+import apap.oneverandah.api.SpeechRequest
 import apap.oneverandah.api.StudyExamSceneRequest
 import apap.oneverandah.api.StudyPlayScenariosRequest
 import apap.oneverandah.api.StudySentenceImageRequest
@@ -21,6 +22,7 @@ class StudyBuildTasks(
     private val store: StudySessionStore,
     private val studyService: StudyService,
     private val studySessionsService: StudySessionsService,
+    private val speechService: SpeechService? = null,
 ) : StudyBuildTaskExecutor {
     override suspend fun execute(task: StudyBuildTask) {
         val record = store.findById(task.sessionId) ?: return
@@ -31,6 +33,7 @@ class StudyBuildTasks(
             StudyBuildElementKind.SKELETON -> buildSkeleton(record)
             StudyBuildElementKind.NAME -> generateName(record)
             StudyBuildElementKind.DISSECT -> dissect(record, task)
+            StudyBuildElementKind.CHUNKS -> buildChunks(record, task)
             StudyBuildElementKind.EXAMPLE_DISSECT -> dissectExamples(record, task)
             StudyBuildElementKind.WORD_IMAGE -> renderWordImage(record, task)
             StudyBuildElementKind.CHARACTERS -> designCharacters(record)
@@ -129,6 +132,63 @@ class StudyBuildTasks(
                     },
                 ),
             )
+        }
+    }
+
+    private suspend fun buildChunks(record: SavedStudySessionRecord, task: StudyBuildTask) {
+        val sentenceIndex = requireNotNull(task.element.sentenceIndex)
+        val sentence = record.session.sentences.getOrNull(sentenceIndex) ?: return
+        if (sentence.breakdownAudioReady) return
+        val (chunks, suffixes) = if (sentence.chunks.isNotEmpty()) {
+            sentence.chunks to sentence.breakdownSuffixes.ifEmpty {
+                apap.oneverandah.api.studyBreakdownSuffixes(
+                    sentence.text,
+                    sentence.tokens.map { it.text },
+                    sentence.chunks,
+                )
+            }
+        } else {
+            studyService.chunkSentence(
+                sentenceText = sentence.text,
+                tokens = sentence.tokens,
+                textLanguageTag = record.textLanguageTag,
+                languageTag = record.languageTag,
+            )
+        }
+        val chunksSaved = store.update(record.id) { current ->
+            if (current.session.sentences.getOrNull(sentenceIndex) == null) return@update current
+            current.copy(
+                session = current.session.copy(
+                    sentences = current.session.sentences.mapIndexed { index, item ->
+                        if (index == sentenceIndex) item.copy(
+                            chunks = chunks,
+                            breakdownSuffixes = suffixes,
+                            breakdownAudioReady = false,
+                        ) else item
+                    },
+                ),
+            )
+        } ?: return
+        chunksSaved.session.sentences.getOrNull(sentenceIndex)?.let { latest ->
+            store.publish(record.id, StudyBuildEvent.SentenceDissected(sentenceIndex, latest))
+        }
+
+        speechService?.let { speech ->
+            (chunks.map { it.text } + suffixes).filter(String::isNotBlank).distinct().forEach { text ->
+                speech.synthesize(SpeechRequest(text = text, languageTag = record.textLanguageTag))
+            }
+        }
+        val audioSaved = store.update(record.id) { current ->
+            current.copy(
+                session = current.session.copy(
+                    sentences = current.session.sentences.mapIndexed { index, item ->
+                        if (index == sentenceIndex) item.copy(breakdownAudioReady = true) else item
+                    },
+                ),
+            )
+        } ?: return
+        audioSaved.session.sentences.getOrNull(sentenceIndex)?.let { latest ->
+            store.publish(record.id, StudyBuildEvent.SentenceDissected(sentenceIndex, latest))
         }
     }
 
@@ -301,6 +361,9 @@ class StudyBuildTasks(
             val sentence = task.element.sentenceIndex?.let(record.session.sentences::getOrNull)
             sentence != null && sentence.tokens.none { it.status == StudyTokenStatus.PENDING }
         }
+
+        StudyBuildElementKind.CHUNKS -> record.session.sentences
+            .getOrNull(task.element.sentenceIndex ?: -1)?.breakdownAudioReady == true
 
         StudyBuildElementKind.EXAMPLE_DISSECT -> {
             val token = record.session.sentences.getOrNull(task.element.sentenceIndex ?: -1)

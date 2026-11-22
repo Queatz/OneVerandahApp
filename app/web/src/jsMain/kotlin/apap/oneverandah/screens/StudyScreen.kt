@@ -24,6 +24,8 @@ import apap.oneverandah.api.StudyBuildRequest
 import apap.oneverandah.api.StudyBuildState
 import apap.oneverandah.api.StudyBuildStatus
 import apap.oneverandah.api.StudyAdventureProgress
+import apap.oneverandah.api.StudyBreakdownProgress
+import apap.oneverandah.api.mergeStudyBreakdownProgress
 import apap.oneverandah.api.LanguageStudyMiniApp
 import apap.oneverandah.api.SaveStudySessionRequest
 import apap.oneverandah.api.SavedStudySession
@@ -165,6 +167,7 @@ fun StudyScreen(
     val studyExamFailed = remember { mutableStateMapOf<String, Boolean>() }
     val studyBuildStateByMessageId = remember { mutableStateMapOf<String, StudyBuildState>() }
     val studyAdventureProgressBySessionId = remember { mutableStateMapOf<String, StudyAdventureProgress>() }
+    val studyBreakdownProgressBySessionId = remember { mutableStateMapOf<String, StudyBreakdownProgress>() }
     var studyBuildStreamJob by remember { mutableStateOf<Job?>(null) }
     // sourceMessageId (or session id fallback) -> persisted study row id
     val studyPersistedBySourceId = remember { mutableStateMapOf<String, String>() }
@@ -602,6 +605,7 @@ fun StudyScreen(
                 StudyBuildElementKind.PREPARE,
                 StudyBuildElementKind.SKELETON,
                 StudyBuildElementKind.NAME,
+                StudyBuildElementKind.CHUNKS,
                 StudyBuildElementKind.EXAMPLE_DISSECT,
                 -> Unit
             }
@@ -633,6 +637,7 @@ fun StudyScreen(
                     studyError = strings.chatStudyError
                 }
                 StudyBuildElementKind.NAME,
+                StudyBuildElementKind.CHUNKS,
                 StudyBuildElementKind.EXAMPLE_DISSECT,
                 -> Unit
             }
@@ -662,6 +667,24 @@ fun StudyScreen(
                                     studyAdventureProgressBySessionId[event.session.id] =
                                         mergeAdventureProgress(studyAdventureProgressBySessionId[event.session.id], persisted)
                                             ?: persisted
+                                }
+                        }
+                    }
+                }
+                val savedSessionBreakdown = studyBreakdownProgressBySessionId[event.session.id]
+                val oldBreakdownProgress = savedSessionBreakdown ?: studyBreakdownProgressBySessionId[messageId]
+                val breakdownProgress = mergeStudyBreakdownProgress(oldBreakdownProgress, event.session.breakdownProgress)
+                if (breakdownProgress != null) {
+                    studyBreakdownProgressBySessionId[event.session.id] = breakdownProgress
+                    if (event.session.breakdownProgress == null && savedSessionBreakdown == null) {
+                        scope.launch {
+                            runCatching { ChatApi.saveStudyBreakdownProgress(event.session.id, breakdownProgress) }
+                                .getOrNull()?.let { persisted ->
+                                    studyBreakdownProgressBySessionId[event.session.id] =
+                                        mergeStudyBreakdownProgress(
+                                            studyBreakdownProgressBySessionId[event.session.id],
+                                            persisted,
+                                        ) ?: persisted
                                 }
                         }
                     }
@@ -726,6 +749,9 @@ fun StudyScreen(
                     tokens = tokens,
                     imageId = existing.imageId ?: event.sentence.imageId,
                     imageUrl = existing.imageUrl ?: event.sentence.imageUrl,
+                    chunks = event.sentence.chunks.ifEmpty { existing.chunks },
+                    breakdownSuffixes = event.sentence.breakdownSuffixes.ifEmpty { existing.breakdownSuffixes },
+                    breakdownAudioReady = event.sentence.breakdownAudioReady || existing.breakdownAudioReady,
                 )
                 replaceStudySession(messageId, current.copy(sentences = sentences))
                 studySentenceStatus[event.index] = StudySentenceLoadState.READY
@@ -866,6 +892,11 @@ fun StudyScreen(
                 studyAdventureProgressBySessionId[key],
                 restoredProgress,
             ) ?: restoredProgress
+        }
+        mergeStudyBreakdownProgress(studyBreakdownProgressBySessionId[item.id], item.breakdownProgress)?.let { progress ->
+            studyBreakdownProgressBySessionId[item.id] = progress
+            studyBreakdownProgressBySessionId[key] =
+                mergeStudyBreakdownProgress(studyBreakdownProgressBySessionId[key], progress) ?: progress
         }
         activeStudySessionItem = studySessionItems.firstOrNull { it.id == item.id }
             ?: communitySessionItems.firstOrNull { it.id == item.id }
@@ -1142,6 +1173,29 @@ fun StudyScreen(
                         studyPersistedBySourceId[targetId]?.let { studyAdventureProgressBySessionId[it] }
                             ?: studyAdventureProgressBySessionId[targetId]
                     },
+                breakdownProgress = activeStudySessionItem?.id?.let { studyBreakdownProgressBySessionId[it] }
+                    ?: studyTarget?.id?.let { targetId ->
+                        studyPersistedBySourceId[targetId]?.let { studyBreakdownProgressBySessionId[it] }
+                            ?: studyBreakdownProgressBySessionId[targetId]
+                    },
+                onBreakdownProgress = { incoming ->
+                    val targetId = studyTarget?.id ?: return@StudySessionPane
+                    val savedId = activeStudySessionItem?.id ?: studyPersistedBySourceId[targetId]
+                    val key = savedId ?: targetId
+                    val merged = mergeStudyBreakdownProgress(studyBreakdownProgressBySessionId[key], incoming)
+                        ?: incoming
+                    studyBreakdownProgressBySessionId[key] = merged
+                    if (savedId != null) {
+                        scope.launch {
+                            runCatching { ChatApi.saveStudyBreakdownProgress(savedId, merged) }
+                                .getOrNull()?.let { persisted ->
+                                    studyBreakdownProgressBySessionId[savedId] =
+                                        mergeStudyBreakdownProgress(studyBreakdownProgressBySessionId[savedId], persisted)
+                                            ?: persisted
+                                }
+                        }
+                    }
+                },
                 onAdventureProgress = { incoming ->
                     val targetId = studyTarget?.id ?: return@StudySessionPane
                     val savedId = activeStudySessionItem?.id ?: studyPersistedBySourceId[targetId]
@@ -1742,6 +1796,8 @@ private fun StudySessionPane(
     messageId: String?,
     examScoreSessionId: String?,
     savedExamGrade: StudyExamGrade?,
+    breakdownProgress: StudyBreakdownProgress?,
+    onBreakdownProgress: (StudyBreakdownProgress) -> Unit,
     adventureProgress: StudyAdventureProgress?,
     onAdventureProgress: (StudyAdventureProgress) -> Unit,
     imageFailed: Map<String, Boolean>,
@@ -1806,6 +1862,8 @@ private fun StudySessionPane(
                         charactersLoading = charactersLoading,
                         examScoreSessionId = examScoreSessionId,
                         savedExamGrade = savedExamGrade,
+                        breakdownProgress = breakdownProgress,
+                        onBreakdownProgress = onBreakdownProgress,
                         adventureProgress = adventureProgress,
                         onAdventureProgress = onAdventureProgress,
                         imageFailed = imageFailed,
@@ -1925,6 +1983,8 @@ private fun StudySessionContent(
     charactersLoading: Boolean,
     examScoreSessionId: String?,
     savedExamGrade: StudyExamGrade?,
+    breakdownProgress: StudyBreakdownProgress?,
+    onBreakdownProgress: (StudyBreakdownProgress) -> Unit,
     adventureProgress: StudyAdventureProgress?,
     onAdventureProgress: (StudyAdventureProgress) -> Unit,
     imageFailed: Map<String, Boolean>,
@@ -1952,6 +2012,7 @@ private fun StudySessionContent(
         mutableStateMapOf<String, String>()
     }
     var selectedRef by remember(session.text) { mutableStateOf<StudyTokenRef?>(null) }
+    var breakdownSentenceIndex by remember(session.text) { mutableStateOf<Int?>(null) }
     var mode by remember(session.text) { mutableStateOf(StudySessionMode.ALL) }
     var highlightedWord by remember(session.text) { mutableStateOf<String?>(null) }
     var examAttempt by remember(session.text) { mutableStateOf(StudyExamAttemptState()) }
@@ -2301,6 +2362,20 @@ private fun StudySessionContent(
                                 if (sentencePlaying) strings.chatStudyPauseSentence else strings.chatStudyPlaySentence,
                             )
                         }
+                        Button(attrs = {
+                            classes(Styles.studyBreakdownButton)
+                            attr("type", "button")
+                            onClick { breakdownSentenceIndex = sentenceIndex }
+                        }) {
+                            MaterialSymbol("account_tree")
+                            Text(
+                                if (breakdownProgress?.sentences?.get(sentenceIndex)?.completed == true) {
+                                    strings.chatStudyBreakdownComplete
+                                } else {
+                                    strings.chatStudyBreakdown
+                                },
+                            )
+                        }
                         Div(attrs = { classes(Styles.languageSentence) }) {
                             sentence.tokens.forEachIndexed { tokenIndex, token ->
                                 when {
@@ -2367,6 +2442,20 @@ private fun StudySessionContent(
                                 onRetryImage = {
                                     selectedRef?.let { ref -> onRetryWordImage(ref.sentenceIndex, ref.tokenIndex) }
                                 },
+                            )
+                        }
+                        if (breakdownSentenceIndex == sentenceIndex) {
+                            StudyBreakdown(
+                                session = session,
+                                sentenceIndex = sentenceIndex,
+                                progress = breakdownProgress,
+                                strings = strings,
+                                onProgressChange = onBreakdownProgress,
+                                onRetryWordImage = onRetryWordImage,
+                                wordImageFailed = wordImageFailed,
+                                sentenceImageFailed = visualFailed,
+                                messageId = messageId,
+                                onDismiss = { breakdownSentenceIndex = null },
                             )
                         }
                     }
@@ -2559,7 +2648,7 @@ private fun StudyImageRetryButton(
 }
 
 @Composable
-private fun StudySentenceVisual(
+internal fun StudySentenceVisual(
     imageUrl: String?,
     failed: Boolean,
     strings: UiStrings,
@@ -6363,7 +6452,7 @@ internal suspend fun loadStudySpeechDataUrl(request: SpeechRequest): String =
     StudyAudioCache.dataUrl(loadStudySpeech(request))
 
 @Composable
-private fun StudyTokenDetail(
+internal fun StudyTokenDetail(
     token: StudyToken,
     textLanguageTag: String,
     strings: UiStrings,
@@ -6749,6 +6838,7 @@ private fun clearStudyAudioHandlers(element: HTMLAudioElement) {
 private fun releaseStudyAudioElement(element: HTMLAudioElement) {
     clearStudyAudioHandlers(element)
     runCatching { element.pause() }
+    element.playbackRate = 1.0
     runCatching {
         element.removeAttribute("src")
         element.load()
@@ -6811,8 +6901,10 @@ private fun bindStudyAudioPlaybackState(
         if (activeStudyAudio === element) {
             studyAudioPlayingUrl = null
         }
+        element.playbackRate = 1.0
     }
     element.asDynamic().onended = {
+        element.playbackRate = 1.0
         if (activeStudyAudio === element) {
             studyAudioPlayingUrl = null
             if (onEnded != null) {
@@ -6821,6 +6913,7 @@ private fun bindStudyAudioPlaybackState(
         }
     }
     element.asDynamic().onerror = {
+        element.playbackRate = 1.0
         if (activeStudyAudio === element) {
             studyAudioPlayingUrl = null
             if (onEnded != null) {
@@ -6901,7 +6994,12 @@ private fun loadWatchAudioAt(
     }
 }
 
-internal fun playAudio(url: String, restart: Boolean = false, onEnded: (() -> Unit)? = null) {
+internal fun playAudio(
+    url: String,
+    restart: Boolean = false,
+    playbackRate: Double = 1.0,
+    onEnded: (() -> Unit)? = null,
+) {
     val current = activeStudyAudio
     // Toggle: tapping the same sentence again pauses instead of restarting.
     if (
@@ -6921,6 +7019,7 @@ internal fun playAudio(url: String, restart: Boolean = false, onEnded: (() -> Un
     releaseStudyAudioElement(element)
     activeStudyAudio = element
     activeStudyAudioUrl = url
+    element.playbackRate = playbackRate
     studyAudioPlayingUrl = url
     bindStudyAudioPlaybackState(element, url, onEnded)
     startStudyAudioPlayback(element, url)
