@@ -79,6 +79,23 @@ class StudyBreakdownTest {
     }
 
     @Test
+    fun `later stale save does not rewind backchain reps`() {
+        val merged = mergeStudyBreakdownProgress(
+            current = StudyBreakdownProgress(
+                sentences = mapOf(0 to StudyBreakdownSentenceProgress(step = 2, backchainRep = 2)),
+                updatedAt = 20,
+            ),
+            incoming = StudyBreakdownProgress(
+                sentences = mapOf(0 to StudyBreakdownSentenceProgress(step = 2, backchainRep = 0)),
+                updatedAt = 30,
+            ),
+        )
+
+        assertEquals(2, merged?.sentences?.getValue(0)?.backchainRep)
+        assertEquals(30, merged?.updatedAt)
+    }
+
+    @Test
     fun `explicit restart clears completion even when an older save is newer`() {
         val restarted = StudyBreakdownSentenceProgress(step = 1, restartedAt = 30)
         val merged = mergeStudyBreakdownProgress(

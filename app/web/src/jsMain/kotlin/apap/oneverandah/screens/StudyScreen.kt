@@ -2141,6 +2141,12 @@ private fun StudySessionContent(
         }) { Text(strings.chatWatchTab) }
         Button(attrs = {
             classes(Styles.chip)
+            if (mode == StudySessionMode.STUDY) classes(Styles.chipActive)
+            attr("type", "button")
+            onClick { mode = StudySessionMode.STUDY }
+        }) { Text(strings.chatStudyTab) }
+        Button(attrs = {
+            classes(Styles.chip)
             if (mode == StudySessionMode.STORY) classes(Styles.chipActive)
             attr("type", "button")
             onClick {
@@ -2157,12 +2163,6 @@ private fun StudySessionContent(
                 selectedRef = null
             }
         }) { Text(strings.chatAdventure.tab) }
-        Button(attrs = {
-            classes(Styles.chip)
-            if (mode == StudySessionMode.STUDY) classes(Styles.chipActive)
-            attr("type", "button")
-            onClick { mode = StudySessionMode.STUDY }
-        }) { Text(strings.chatStudyTab) }
         Button(attrs = {
             classes(Styles.chip)
             if (mode == StudySessionMode.WORDS) classes(Styles.chipActive)
@@ -2684,7 +2684,7 @@ internal fun StudySentenceVisual(
     }
 }
 
-private enum class StudySessionMode { ALL, WATCH, STORY, ADVENTURE, STUDY, WORDS, LISTEN, SPEAK, RECALL, READ, WRITE, EXPRESS, PLAY, TEST }
+private enum class StudySessionMode { ALL, WATCH, STUDY, STORY, ADVENTURE, WORDS, LISTEN, SPEAK, RECALL, READ, WRITE, EXPRESS, PLAY, TEST }
 
 internal enum class StudySpeakPhase { READY, LISTENING, SPEAKING, REVIEW }
 
@@ -6889,11 +6889,30 @@ internal fun primeStudyAudioPlayback() {
     }
 }
 
-private fun startStudyAudioPlayback(element: HTMLAudioElement, url: String) {
-    element.asDynamic().oncanplay = { tryPlayStudyAudio(element) }
-    element.asDynamic().onloadedmetadata = { applyActiveStudyAudioRate(element) }
+private fun startStudyAudioPlayback(
+    element: HTMLAudioElement,
+    url: String,
+    onDurationMs: ((Int) -> Unit)? = null,
+) {
+    var durationNotified = false
+    fun notifyDuration() {
+        if (durationNotified || onDurationMs == null) return
+        val duration = element.duration
+        if (!duration.isFinite() || duration <= 0) return
+        durationNotified = true
+        onDurationMs((duration * 1000.0).toInt().coerceAtLeast(1))
+    }
+    element.asDynamic().oncanplay = {
+        notifyDuration()
+        tryPlayStudyAudio(element)
+    }
+    element.asDynamic().onloadedmetadata = {
+        applyActiveStudyAudioRate(element)
+        notifyDuration()
+    }
     element.src = url
     applyActiveStudyAudioRate(element)
+    notifyDuration()
     if (element.readyState >= 2) tryPlayStudyAudio(element)
 }
 
@@ -7019,6 +7038,7 @@ internal fun playAudio(
     restart: Boolean = false,
     playbackRate: Double = 1.0,
     onEnded: (() -> Unit)? = null,
+    onDurationMs: ((Int) -> Unit)? = null,
 ) {
     val current = activeStudyAudio
     // Toggle: tapping the same sentence again pauses instead of restarting.
@@ -7043,7 +7063,7 @@ internal fun playAudio(
     applyActiveStudyAudioRate(element)
     studyAudioPlayingUrl = url
     bindStudyAudioPlaybackState(element, url, onEnded)
-    startStudyAudioPlayback(element, url)
+    startStudyAudioPlayback(element, url, onDurationMs)
 }
 
 /**

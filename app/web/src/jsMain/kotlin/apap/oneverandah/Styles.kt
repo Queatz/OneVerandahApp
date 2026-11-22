@@ -505,8 +505,10 @@ object Styles {
     const val studyBreakdownFooter = "study-breakdown-footer"
     const val studyBreakdownMeaning = "study-breakdown-meaning"
     const val studyBreakdownYourTurn = "study-breakdown-your-turn"
-    const val studyBreakdownButtonActive = "study-breakdown-button-active"
-    const val studyBreakdownAudioToggle = "study-breakdown-audio-toggle"
+    const val studyBreakdownListen = "study-breakdown-listen"
+    const val studyBreakdownPhotos = "study-breakdown-photos"
+    const val studyBreakdownPhotoRow = "study-breakdown-photo-row"
+    const val studyBreakdownPhoto = "study-breakdown-photo"
     const val studySentenceImageStatus = "study-sentence-image-status"
     const val studySentenceImageStatusBusy = "study-sentence-image-status-busy"
     const val studySentenceError = "study-sentence-error"
@@ -4143,6 +4145,48 @@ object Styles {
             color: var(--md-sys-color-on-surface-variant);
             text-align: center;
         }
+        .${studyBreakdownListen} {
+            margin: 4px 0 0;
+            color: var(--md-sys-color-primary);
+            font-size: 22px;
+            font-weight: 750;
+            line-height: 1.3;
+        }
+        .${studyBreakdownPhotos} {
+            width: 100%;
+            margin: 4px 0 8px;
+            overflow-x: auto;
+            scrollbar-width: none;
+        }
+        .${studyBreakdownPhotos}::-webkit-scrollbar {
+            display: none;
+        }
+        .${studyBreakdownPhotoRow} {
+            display: flex;
+            align-items: center;
+            justify-content: center;
+            width: max-content;
+            min-width: 100%;
+            box-sizing: border-box;
+            padding: 5px 12px;
+        }
+        .${studyBreakdownPhoto} {
+            position: relative;
+            width: 120px;
+            height: 120px;
+            flex: 0 0 72px;
+            object-fit: cover;
+            border: 3px solid var(--md-sys-color-surface);
+            border-radius: 20px;
+            box-shadow: 0 5px 13px rgba(0, 0, 0, .2);
+        }
+        .${studyBreakdownPhoto} + .${studyBreakdownPhoto} {
+            margin-left: -16px;
+        }
+        .${studyBreakdownPhoto}:nth-of-type(4n + 1) { transform: rotate(-7deg); z-index: 1; }
+        .${studyBreakdownPhoto}:nth-of-type(4n + 2) { transform: rotate(5deg); z-index: 2; }
+        .${studyBreakdownPhoto}:nth-of-type(4n + 3) { transform: rotate(-3deg); z-index: 3; }
+        .${studyBreakdownPhoto}:nth-of-type(4n) { transform: rotate(7deg); z-index: 4; }
         .${studyBreakdownChunk} {
             display: inline-flex;
             margin: 3px;
@@ -4187,22 +4231,24 @@ object Styles {
             align-items: center;
             justify-content: center;
             gap: 8px;
-            margin: 0;
-            padding: 14px 16px;
-            border-radius: 16px;
-            background: var(--md-sys-color-primary);
-            color: var(--md-sys-color-on-primary);
-            font-size: 20px;
+            margin: 4px 0 0;
+            padding: 0;
+            border: none;
+            background: transparent;
+            color: var(--md-sys-color-primary);
+            font-size: 22px;
             font-weight: 750;
+            line-height: 1.3;
             text-align: center;
+            pointer-events: none;
+            animation: study-breakdown-your-turn-pulse 1.7s ease-in-out infinite;
         }
-        .${studyBreakdownButtonActive} {
-            background: var(--md-sys-color-primary);
-            color: var(--md-sys-color-on-primary);
-            border-color: var(--md-sys-color-primary);
+        .${studyBreakdownYourTurn} .${materialSymbols} {
+            font-size: 26px;
         }
-        .${studyBreakdownAudioToggle} {
-            align-self: center;
+        @keyframes study-breakdown-your-turn-pulse {
+            0%, 100% { opacity: 0.48; transform: scale(0.97); }
+            50% { opacity: 1; transform: scale(1.05); }
         }
         """.trimIndent() + """
         .study-adventure-shell {

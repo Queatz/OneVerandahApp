@@ -79,6 +79,21 @@ fun advanceStudyBreakdownShadow(progress: StudyBreakdownSentenceProgress): Study
     }
 }
 
+/** True when [candidate] is further through the drill than [baseline], ignoring restarts. */
+fun studyBreakdownSentenceAhead(
+    candidate: StudyBreakdownSentenceProgress,
+    baseline: StudyBreakdownSentenceProgress,
+): Boolean {
+    if (candidate.completed && !baseline.completed) return true
+    if (baseline.completed || candidate.completed) return false
+    return when {
+        candidate.step != baseline.step -> candidate.step > baseline.step
+        candidate.backchainRound != baseline.backchainRound -> candidate.backchainRound > baseline.backchainRound
+        candidate.backchainRep != baseline.backchainRep -> candidate.backchainRep > baseline.backchainRep
+        else -> candidate.shadowRep > baseline.shadowRep
+    }
+}
+
 /** Progress merge is monotonic for completion, while the newest incomplete pointer remains resumable. */
 fun mergeStudyBreakdownProgress(
     current: StudyBreakdownProgress?,
@@ -99,6 +114,8 @@ fun mergeStudyBreakdownProgress(
             oldSentence.restartedAt > newSentence.restartedAt -> oldSentence
             oldSentence.completed -> oldSentence
             newSentence.completed -> newSentence
+            studyBreakdownSentenceAhead(newSentence, oldSentence) -> newSentence
+            studyBreakdownSentenceAhead(oldSentence, newSentence) -> oldSentence
             selected === new -> newSentence
             else -> oldSentence
         }

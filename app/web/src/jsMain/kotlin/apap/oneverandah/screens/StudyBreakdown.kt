@@ -19,6 +19,7 @@ import apap.oneverandah.api.StudySessionResponse
 import apap.oneverandah.api.advanceStudyBreakdownBackchain
 import apap.oneverandah.api.advanceStudyBreakdownShadow
 import apap.oneverandah.api.alignStudyChunks
+import apap.oneverandah.api.studyBreakdownSentenceAhead
 import apap.oneverandah.api.studyBreakdownSuffixes
 import apap.oneverandah.components.BottomDialog
 import apap.oneverandah.components.MaterialSymbol
@@ -28,13 +29,17 @@ import kotlinx.coroutines.launch
 import kotlinx.coroutines.withTimeoutOrNull
 import org.jetbrains.compose.web.dom.Button
 import org.jetbrains.compose.web.dom.Div
+import org.jetbrains.compose.web.dom.Img
 import org.jetbrains.compose.web.dom.P
 import org.jetbrains.compose.web.dom.Span
 import org.jetbrains.compose.web.dom.Text
 import kotlin.js.Date
 
 private const val BREAKDOWN_REPS = 5
-private const val BREAKDOWN_SLOW_PLAYBACK_RATE = 0.75
+private const val BREAKDOWN_SHADOW_SLOW_PLAYBACK_RATE = 0.6
+private const val BREAKDOWN_SHADOW_MEDIUM_PLAYBACK_RATE = 0.8
+private const val BREAKDOWN_YOUR_TURN_MULTIPLIER = 1.5
+private const val BREAKDOWN_YOUR_TURN_FALLBACK_MS = 2_000L
 
 @Composable
 internal fun StudyBreakdown(
@@ -60,16 +65,27 @@ internal fun StudyBreakdown(
         mutableStateOf(progress?.sentences?.get(sentenceIndex) ?: StudyBreakdownSentenceProgress())
     }
     var savedProgress by remember(sentenceIndex) { mutableStateOf(progress ?: StudyBreakdownProgress()) }
-    var selectedChunkIndex by remember(sentenceIndex) { mutableStateOf<Int?>(null) }
+    var selectedChunkIndex by remember(sentenceIndex) { mutableStateOf(0) }
     var expandedChunkIndex by remember(sentenceIndex) { mutableStateOf<Int?>(null) }
     var answerVisible by remember(sentenceIndex) { mutableStateOf(false) }
-    var slowAudio by remember(sentenceIndex) { mutableStateOf(false) }
-    var shadowUserTurn by remember(sentenceIndex) { mutableStateOf(false) }
+    var userTurn by remember(sentenceIndex) { mutableStateOf(false) }
 
     LaunchedEffect(progress) {
-        if (progress != null && progress.updatedAt >= savedProgress.updatedAt) {
-            savedProgress = progress
-            drillProgress = progress.sentences[sentenceIndex] ?: StudyBreakdownSentenceProgress()
+        val incoming = progress ?: return@LaunchedEffect
+        val incomingSentence = incoming.sentences[sentenceIndex] ?: return@LaunchedEffect
+        val current = drillProgress
+        val accept = when {
+            incomingSentence.restartedAt > current.restartedAt -> true
+            incomingSentence.restartedAt < current.restartedAt -> false
+            incomingSentence.completed && !current.completed -> true
+            current.completed && !incomingSentence.completed -> false
+            studyBreakdownSentenceAhead(incomingSentence, current) -> true
+            incomingSentence == current -> incoming.updatedAt > savedProgress.updatedAt
+            else -> false
+        }
+        if (accept) {
+            savedProgress = incoming
+            drillProgress = incomingSentence
         }
     }
 
@@ -94,42 +110,40 @@ internal fun StudyBreakdown(
 
     fun restartDrill() {
         answerVisible = false
-        selectedChunkIndex = null
+        selectedChunkIndex = 0
         expandedChunkIndex = null
-        slowAudio = false
-        shadowUserTurn = false
+        userTurn = false
         stopActiveStudyAudio()
         saveProgress(StudyBreakdownSentenceProgress(restartedAt = Date.now().toLong()))
     }
 
-    LaunchedEffect(drillProgress.step, drillProgress.backchainRound, drillProgress.backchainRep, chunks, suffixes) {
-        if (drillProgress.step != 2 || chunks.isEmpty()) return@LaunchedEffect
-        val round = drillProgress.backchainRound.coerceIn(0, chunks.lastIndex)
-        val suffix = suffixes.getOrNull(round) ?: buildSuffix(chunks, round)
-        audioUrl(suffix)?.let { playAudio(it, restart = true) }
+    val backchainSuffix = suffixes.getOrNull(
+        drillProgress.backchainRound.coerceIn(0, chunks.lastIndex.coerceAtLeast(0)),
+    ) ?: buildSuffix(chunks, drillProgress.backchainRound)
+
+    LaunchedEffect(drillProgress.step, drillProgress.backchainRound, drillProgress.backchainRep, backchainSuffix) {
+        userTurn = false
+        if (drillProgress.step != 2 || chunks.isEmpty() || backchainSuffix.isBlank()) return@LaunchedEffect
+        val url = audioUrl(backchainSuffix) ?: return@LaunchedEffect
+        val (playbackEnded, durationMs) = playBreakdownClip(url)
+        if (!playbackEnded) return@LaunchedEffect
+        userTurn = true
+        delay(breakdownYourTurnDelayMs(durationMs))
     }
 
-    LaunchedEffect(drillProgress.step, drillProgress.shadowRep, slowAudio, sentence.text) {
-        shadowUserTurn = false
+    LaunchedEffect(drillProgress.step, drillProgress.shadowRep, sentence.text) {
+        userTurn = false
         if (drillProgress.step != 3) return@LaunchedEffect
         val url = audioUrl(sentence.text) ?: return@LaunchedEffect
-        var playbackEnded = false
-        playAudio(
-            url,
-            restart = true,
-            onEnded = { playbackEnded = true },
-            playbackRate = if (slowAudio) BREAKDOWN_SLOW_PLAYBACK_RATE else 1.0,
-        )
-        withTimeoutOrNull(90_000) {
-            while (!playbackEnded) delay(80)
-        }
+        val playbackRate = breakdownShadowPlaybackRate(drillProgress.shadowRep)
+        val (playbackEnded, durationMs) = playBreakdownClip(url, playbackRate)
         if (!playbackEnded) return@LaunchedEffect
-        shadowUserTurn = true
+        userTurn = true
         try {
-            delay((sentence.text.length * 60L).coerceIn(1_500L, 5_000L))
+            delay(breakdownYourTurnDelayMs(durationMs, playbackRate))
             saveProgress(advanceStudyBreakdownShadow(drillProgress))
         } finally {
-            shadowUserTurn = false
+            userTurn = false
         }
     }
 
@@ -146,7 +160,7 @@ internal fun StudyBreakdown(
     val currentRound = if (chunks.isNotEmpty()) drillProgress.backchainRound.coerceIn(0, chunks.lastIndex) else 0
     val displayedSuffix = suffixes.getOrNull(currentRound) ?: buildSuffix(chunks, currentRound)
     val newChunkIndex = (chunks.lastIndex - currentRound).coerceAtLeast(0)
-    val selectedChunk = selectedChunkIndex?.let(chunks::getOrNull)
+    val selectedChunk = chunks.getOrNull(selectedChunkIndex)
     val selectedChunkExpanded = expandedChunkIndex == selectedChunkIndex
 
     BottomDialog(
@@ -242,6 +256,11 @@ internal fun StudyBreakdown(
                             if (chunk.grammarNote.isNotBlank() && !chunk.grammarNote.isPlaceholderGrammarNote()) {
                                 P(attrs = { classes(Styles.studyBreakdownPrompt) }) { Text(chunk.grammarNote) }
                             }
+                            BreakdownWordPhotos(
+                                sentence = sentence,
+                                chunk = chunk,
+                                imageAlt = strings.chatStudyWordImageAlt,
+                            )
                             Button(attrs = {
                                 classes(Styles.studyBreakdownButton)
                                 attr("type", "button")
@@ -271,9 +290,19 @@ internal fun StudyBreakdown(
                         Text(strings.chatStudyBreakdownSayAloud)
                     }
                     P(attrs = { classes(Styles.studyBreakdownSentence) }) { Text(displayedSuffix) }
+                    BreakdownWordPhotos(
+                        sentence = sentence,
+                        chunk = chunks.getOrNull(newChunkIndex),
+                        imageAlt = strings.chatStudyWordImageAlt,
+                    )
                     P(attrs = { classes(Styles.studyBreakdownPrompt) }) {
                         Text("${drillProgress.backchainRep + 1} / $BREAKDOWN_REPS")
                     }
+                    BreakdownYourTurn(
+                        label = strings.chatStudyBreakdownYourTurn,
+                        listenLabel = strings.chatSpeakListen,
+                        userTurn = userTurn,
+                    )
                     Div(attrs = { classes(Styles.studyBreakdownActions) }) {
                         chunks.drop(newChunkIndex).forEachIndexed { offset, chunk ->
                             BreakdownChunkButton(
@@ -291,30 +320,11 @@ internal fun StudyBreakdown(
                     P(attrs = { classes(Styles.studyBreakdownPrompt) }) {
                         Text("${drillProgress.shadowRep + 1} / $BREAKDOWN_REPS")
                     }
-                    if (shadowUserTurn) {
-                        Div(attrs = {
-                            classes(Styles.studyBreakdownYourTurn)
-                            attr("role", "status")
-                            attr("aria-live", "assertive")
-                        }) {
-                            MaterialSymbol("mic")
-                            Text(strings.chatStudyBreakdownYourTurn)
-                        }
-                    } else {
-                        P(attrs = { classes(Styles.studyBreakdownPrompt) }) {
-                            Text(strings.chatSpeakListen)
-                        }
-                    }
-                    Button(attrs = {
-                        classes(Styles.studyBreakdownButton, Styles.studyBreakdownAudioToggle)
-                        if (slowAudio) classes(Styles.studyBreakdownButtonActive)
-                        attr("type", "button")
-                        attr("aria-pressed", if (slowAudio) "true" else "false")
-                        onClick { slowAudio = !slowAudio }
-                    }) {
-                        MaterialSymbol("slow_motion_video")
-                        Text(strings.chatStudyBreakdownSlow)
-                    }
+                    BreakdownYourTurn(
+                        label = strings.chatStudyBreakdownYourTurn,
+                        listenLabel = strings.chatSpeakListen,
+                        userTurn = userTurn,
+                    )
                 }
                 else -> {
                     P(attrs = { classes(Styles.studyBreakdownPrompt) }) {
@@ -329,6 +339,51 @@ internal fun StudyBreakdown(
                         P(attrs = { classes(Styles.studyBreakdownSentence) }) { Text(sentence.text) }
                     }
                 }
+            }
+        }
+    }
+}
+
+@Composable
+private fun BreakdownYourTurn(
+    label: String,
+    listenLabel: String,
+    userTurn: Boolean,
+) {
+    if (userTurn) {
+        Div(attrs = {
+            classes(Styles.studyBreakdownYourTurn)
+            attr("role", "status")
+            attr("aria-live", "assertive")
+        }) {
+            MaterialSymbol("mic")
+            Text(label)
+        }
+    } else {
+        P(attrs = { classes(Styles.studyBreakdownPrompt, Styles.studyBreakdownListen) }) {
+            Text(listenLabel)
+        }
+    }
+}
+
+@Composable
+private fun BreakdownWordPhotos(
+    sentence: StudySentence,
+    chunk: StudyChunk?,
+    imageAlt: String,
+) {
+    val imageUrls = chunk?.wordIndices.orEmpty().mapNotNull { tokenIndex ->
+        sentence.tokens.getOrNull(tokenIndex)?.imageUrl?.takeIf { it.isNotBlank() }
+    }
+    if (imageUrls.isEmpty()) return
+
+    Div(attrs = { classes(Styles.studyBreakdownPhotos) }) {
+        Div(attrs = { classes(Styles.studyBreakdownPhotoRow) }) {
+            imageUrls.forEach { imageUrl ->
+                Img(src = imageUrl, alt = imageAlt, attrs = {
+                    classes(Styles.studyBreakdownPhoto)
+                    attr("loading", "lazy")
+                })
             }
         }
     }
@@ -362,6 +417,43 @@ private fun BreakdownChunkButton(
         if (!enabled) attr("disabled", "")
         onClick { onClick() }
     }) { Text(chunk.text.trim()) }
+}
+
+private suspend fun playBreakdownClip(
+    url: String,
+    playbackRate: Double = 1.0,
+): Pair<Boolean, Int> {
+    var playbackEnded = false
+    var durationMs = 0
+    playAudio(
+        url,
+        restart = true,
+        playbackRate = playbackRate,
+        onEnded = { playbackEnded = true },
+        onDurationMs = { durationMs = it },
+    )
+    withTimeoutOrNull(90_000) {
+        while (!playbackEnded) delay(80)
+    }
+    return playbackEnded to durationMs
+}
+
+private fun breakdownYourTurnDelayMs(
+    audioDurationMs: Int,
+    playbackRate: Double = 1.0,
+): Long {
+    val spokenMs = when {
+        audioDurationMs <= 0 -> BREAKDOWN_YOUR_TURN_FALLBACK_MS.toDouble()
+        playbackRate > 0.0 -> audioDurationMs / playbackRate
+        else -> audioDurationMs.toDouble()
+    }
+    return (spokenMs * BREAKDOWN_YOUR_TURN_MULTIPLIER).toLong().coerceIn(1_500L, 30_000L)
+}
+
+private fun breakdownShadowPlaybackRate(shadowRep: Int): Double = when (shadowRep) {
+    0, 1 -> BREAKDOWN_SHADOW_SLOW_PLAYBACK_RATE
+    2, 3 -> BREAKDOWN_SHADOW_MEDIUM_PLAYBACK_RATE
+    else -> 1.0
 }
 
 private fun String.isPlaceholderGrammarNote(): Boolean =
