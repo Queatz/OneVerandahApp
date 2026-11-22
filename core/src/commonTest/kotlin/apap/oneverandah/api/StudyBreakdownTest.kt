@@ -127,6 +127,25 @@ class StudyBreakdownTest {
     }
 
     @Test
+    fun `word recall step skip advances to backchain and is a no-op elsewhere`() {
+        val progress = StudyBreakdownSentenceProgress(
+            step = 2,
+            schemaVersion = 2,
+            wordRecallQueue = listOf(4, 2),
+            wordRecallCorrect = mapOf(4 to 1),
+            wordRecallRevealed = true,
+        )
+
+        val skipped = skipStudyBreakdownWordRecallStep(progress)
+        assertEquals(3, skipped.step)
+        assertEquals(progress.wordRecallQueue, skipped.wordRecallQueue)
+        assertEquals(progress.wordRecallCorrect, skipped.wordRecallCorrect)
+        assertFalse(skipped.wordRecallRevealed)
+        val backchain = progress.copy(step = 3)
+        assertEquals(backchain, skipStudyBreakdownWordRecallStep(backchain))
+    }
+
+    @Test
     fun `word recall merge keeps a miss requeue and a newly revealed answer`() {
         val baseline = StudyBreakdownSentenceProgress(
             step = 2,

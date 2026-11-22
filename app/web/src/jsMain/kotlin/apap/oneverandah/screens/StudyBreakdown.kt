@@ -22,6 +22,7 @@ import apap.oneverandah.api.alignStudyChunks
 import apap.oneverandah.api.gradeStudyBreakdownWordRecall
 import apap.oneverandah.api.revealStudyBreakdownWordRecall
 import apap.oneverandah.api.skipStudyBreakdownWordRecall
+import apap.oneverandah.api.skipStudyBreakdownWordRecallStep
 import apap.oneverandah.api.studyBreakdownSentenceAhead
 import apap.oneverandah.api.studyBreakdownSuffixes
 import apap.oneverandah.api.startStudyBreakdownWordRecall
@@ -224,10 +225,17 @@ internal fun StudyBreakdown(
                             )
                         },
                     )
+                    drillProgress.step == 2 && wordRecallConversation.isEmpty() -> BreakdownAction(
+                        label = strings.chatStudyBreakdownSkip,
+                        onClick = {
+                            stopActiveStudyAudio()
+                            saveProgress(skipStudyBreakdownWordRecallStep(drillProgress))
+                        },
+                    )
                     drillProgress.step == 2 && !drillProgress.wordRecallRevealed -> {
                         BreakdownAction(
                             label = strings.chatStudyBreakdownReveal,
-                            enabled = wordRecallToken != null && wordRecallConversation.isNotEmpty(),
+                            enabled = wordRecallToken != null,
                             onClick = {
                                 val revealed = revealStudyBreakdownWordRecall(drillProgress)
                                 saveProgress(revealed)

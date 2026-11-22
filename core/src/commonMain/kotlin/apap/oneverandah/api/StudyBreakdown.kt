@@ -158,6 +158,15 @@ fun skipStudyBreakdownWordRecall(
     )
 }
 
+/** Skips the entire Word Recall step while its generated conversation is unavailable. */
+fun skipStudyBreakdownWordRecallStep(
+    progress: StudyBreakdownSentenceProgress,
+): StudyBreakdownSentenceProgress = if (!progress.completed && progress.step == 2) {
+    progress.copy(schemaVersion = 2, step = 3, wordRecallRevealed = false)
+} else {
+    progress
+}
+
 /** True when [candidate] is further through the drill than [baseline], ignoring restarts. */
 fun studyBreakdownSentenceAhead(
     candidate: StudyBreakdownSentenceProgress,

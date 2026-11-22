@@ -686,7 +686,7 @@ class DashScopeStudyAiClient(
             userContent = userContent,
             label = "study word recall conversations",
             model = config.chatHeavyModel,
-            enableThinking = true,
+            enableThinking = false,
         )
         val expectedIndices = request.tokens.mapTo(mutableSetOf()) { it.tokenIndex }
         return QwenStudyNeedScenarioParser.parse(content, expectedIndices)

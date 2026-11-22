@@ -2130,129 +2130,42 @@ private fun StudySessionContent(
     }
 
     Div(attrs = { classes(Styles.studyModeTabs) }) {
-        Button(attrs = {
-            classes(Styles.chip)
-            if (mode == StudySessionMode.ALL) classes(Styles.chipActive)
-            attr("type", "button")
-            onClick { mode = StudySessionMode.ALL }
-        }) { Text(strings.chatAllTab) }
-        Button(attrs = {
-            classes(Styles.chip)
-            if (mode == StudySessionMode.WATCH) classes(Styles.chipActive)
-            attr("type", "button")
-            onClick {
-                mode = StudySessionMode.WATCH
-                selectedRef = null
+        StudySessionMode.entries.forEach { tabMode ->
+            Button(attrs = {
+                classes(Styles.chip)
+                if (mode == tabMode) classes(Styles.chipActive)
+                attr("type", "button")
+                style {
+                    property("display", "inline-flex")
+                    property("flex-direction", "column")
+                    property("align-items", "center")
+                    property("justify-content", "center")
+                    property("line-height", "1.2")
+                }
+                onClick {
+                    mode = tabMode
+                    if (tabMode != StudySessionMode.ALL &&
+                        tabMode != StudySessionMode.STUDY &&
+                        tabMode != StudySessionMode.VISUALIZE &&
+                        tabMode != StudySessionMode.WORDS
+                    ) {
+                        selectedRef = null
+                    }
+                }
+            }) {
+                Span { Text(tabMode.tabLabel(strings)) }
+                Span(attrs = {
+                    style {
+                        property("font-size", "11px")
+                        property("font-weight", "400")
+                        property("opacity", "0.5")
+                        property("margin-top", "2px")
+                    }
+                }) {
+                    Text(tabMode.skillPracticed(strings))
+                }
             }
-        }) { Text(strings.chatWatchTab) }
-        Button(attrs = {
-            classes(Styles.chip)
-            if (mode == StudySessionMode.STUDY) classes(Styles.chipActive)
-            attr("type", "button")
-            onClick { mode = StudySessionMode.STUDY }
-        }) { Text(strings.chatStudyTab) }
-        Button(attrs = {
-            classes(Styles.chip)
-            if (mode == StudySessionMode.STORY) classes(Styles.chipActive)
-            attr("type", "button")
-            onClick {
-                mode = StudySessionMode.STORY
-                selectedRef = null
-            }
-        }) { Text(strings.chatStoryTab) }
-        Button(attrs = {
-            classes(Styles.chip)
-            if (mode == StudySessionMode.ADVENTURE) classes(Styles.chipActive)
-            attr("type", "button")
-            onClick {
-                mode = StudySessionMode.ADVENTURE
-                selectedRef = null
-            }
-        }) { Text(strings.chatAdventure.tab) }
-        Button(attrs = {
-            classes(Styles.chip)
-            if (mode == StudySessionMode.VISUALIZE) classes(Styles.chipActive)
-            attr("type", "button")
-            onClick { mode = StudySessionMode.VISUALIZE }
-        }) { Text(strings.chatVisualize.tab) }
-        Button(attrs = {
-            classes(Styles.chip)
-            if (mode == StudySessionMode.WORDS) classes(Styles.chipActive)
-            attr("type", "button")
-            onClick { mode = StudySessionMode.WORDS }
-        }) { Text(strings.chatWordsTab) }
-        Button(attrs = {
-            classes(Styles.chip)
-            if (mode == StudySessionMode.LISTEN) classes(Styles.chipActive)
-            attr("type", "button")
-            onClick {
-                mode = StudySessionMode.LISTEN
-                selectedRef = null
-            }
-        }) { Text(strings.chatListenTab) }
-        Button(attrs = {
-            classes(Styles.chip)
-            if (mode == StudySessionMode.SPEAK) classes(Styles.chipActive)
-            attr("type", "button")
-            onClick {
-                mode = StudySessionMode.SPEAK
-                selectedRef = null
-            }
-        }) { Text(strings.chatSpeakTab) }
-        Button(attrs = {
-            classes(Styles.chip)
-            if (mode == StudySessionMode.RECALL) classes(Styles.chipActive)
-            attr("type", "button")
-            onClick {
-                mode = StudySessionMode.RECALL
-                selectedRef = null
-            }
-        }) { Text(strings.chatAdventure.recall.tab) }
-        Button(attrs = {
-            classes(Styles.chip)
-            if (mode == StudySessionMode.READ) classes(Styles.chipActive)
-            attr("type", "button")
-            onClick {
-                mode = StudySessionMode.READ
-                selectedRef = null
-            }
-        }) { Text(strings.chatReadTab) }
-        Button(attrs = {
-            classes(Styles.chip)
-            if (mode == StudySessionMode.WRITE) classes(Styles.chipActive)
-            attr("type", "button")
-            onClick {
-                mode = StudySessionMode.WRITE
-                selectedRef = null
-            }
-        }) { Text(strings.chatWriteTab) }
-        Button(attrs = {
-            classes(Styles.chip)
-            if (mode == StudySessionMode.EXPRESS) classes(Styles.chipActive)
-            attr("type", "button")
-            onClick {
-                mode = StudySessionMode.EXPRESS
-                selectedRef = null
-            }
-        }) { Text(strings.chatExpressTab) }
-        Button(attrs = {
-            classes(Styles.chip)
-            if (mode == StudySessionMode.PLAY) classes(Styles.chipActive)
-            attr("type", "button")
-            onClick {
-                mode = StudySessionMode.PLAY
-                selectedRef = null
-            }
-        }) { Text(strings.chatPlayTab) }
-        Button(attrs = {
-            classes(Styles.chip)
-            if (mode == StudySessionMode.TEST) classes(Styles.chipActive)
-            attr("type", "button")
-            onClick {
-                mode = StudySessionMode.TEST
-                selectedRef = null
-            }
-        }) { Text(strings.chatTestTab) }
+        }
         Button(attrs = {
             classes(Styles.chip, Styles.studyWorksheetPrint)
             attr("type", "button")
@@ -2890,6 +2803,24 @@ private fun StudySessionMode.tabLabel(strings: UiStrings): String = when (this) 
     StudySessionMode.EXPRESS -> strings.chatExpressTab
     StudySessionMode.PLAY -> strings.chatPlayTab
     StudySessionMode.TEST -> strings.chatTestTab
+}
+
+private fun StudySessionMode.skillPracticed(strings: UiStrings): String = when (this) {
+    StudySessionMode.ALL -> strings.chatAllSkill
+    StudySessionMode.WATCH -> strings.chatWatchSkill
+    StudySessionMode.STORY -> strings.chatStorySkill
+    StudySessionMode.ADVENTURE -> strings.chatAdventureSkill
+    StudySessionMode.VISUALIZE -> strings.chatVisualizeSkill
+    StudySessionMode.STUDY -> strings.chatStudySkill
+    StudySessionMode.WORDS -> strings.chatWordsSkill
+    StudySessionMode.LISTEN -> strings.chatListenSkill
+    StudySessionMode.SPEAK -> strings.chatSpeakSkill
+    StudySessionMode.RECALL -> strings.chatRecallSkill
+    StudySessionMode.READ -> strings.chatReadSkill
+    StudySessionMode.WRITE -> strings.chatWriteSkill
+    StudySessionMode.EXPRESS -> strings.chatExpressSkill
+    StudySessionMode.PLAY -> strings.chatPlaySkill
+    StudySessionMode.TEST -> strings.chatTestSkill
 }
 
 private fun studyExamLevelLabel(level: Int, strings: UiStrings): String = when (level) {

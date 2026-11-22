@@ -518,6 +518,7 @@ data class UiStrings(
     val chatStudyBreakdownReveal: String,
     val chatStudyBreakdownMissed: String,
     val chatStudyBreakdownKnown: String,
+    val chatStudyBreakdownSkip: String,
     val chatStudyBreakdownContinue: String,
     val chatStudyBreakdownCheck: String,
     val chatStudyBreakdownNotYet: String,
@@ -769,7 +770,30 @@ data class UiStrings(
     val adminStatsNoData: String,
     val adminStatsTimezone: String,
     val adminStatsSelected: String,
+    val chatSkillEverything: String = "Everything",
+    val chatSkillListening: String = "Listening",
+    val chatSkillReading: String = "Reading",
+    val chatSkillReadingRecall: String = "Reading, Recall",
+    val chatSkillRecall: String = "Recall",
+    val chatSkillSpeaking: String = "Speaking",
+    val chatSkillWriting: String = "Writing",
+    val chatSkillSpeakingListening: String = "Speaking, Listening",
 ) {
+    val chatAllSkill: String get() = chatSkillEverything
+    val chatWatchSkill: String get() = chatSkillListening
+    val chatStudySkill: String get() = chatSkillReading
+    val chatStorySkill: String get() = chatSkillReading
+    val chatAdventureSkill: String get() = chatSkillReadingRecall
+    val chatVisualizeSkill: String get() = chatSkillRecall
+    val chatWordsSkill: String get() = chatSkillReading
+    val chatListenSkill: String get() = chatSkillListening
+    val chatSpeakSkill: String get() = chatSkillSpeaking
+    val chatRecallSkill: String get() = chatSkillRecall
+    val chatReadSkill: String get() = chatSkillReading
+    val chatWriteSkill: String get() = chatSkillWriting
+    val chatExpressSkill: String get() = chatSkillRecall
+    val chatPlaySkill: String get() = chatSkillRecall
+    val chatTestSkill: String get() = chatSkillSpeakingListening
     val chatTestTab: String get() = chatTest.tab
     val chatTestSceneLoading: String get() = chatTest.sceneLoading
     val chatTestSceneError: String get() = chatTest.sceneError
@@ -1299,6 +1323,7 @@ private val English = UiStrings(
     chatStudyBreakdownReveal = "Reveal",
     chatStudyBreakdownMissed = "Missed",
     chatStudyBreakdownKnown = "Known",
+    chatStudyBreakdownSkip = "Skip",
     chatStudyBreakdownContinue = "Continue",
     chatStudyBreakdownCheck = "Check",
     chatStudyBreakdownNotYet = "Not yet",
@@ -1550,6 +1575,14 @@ private val English = UiStrings(
     adminStatsNoData = "No visits recorded yet.",
     adminStatsTimezone = "Times in UTC+7",
     adminStatsSelected = "Selected day",
+    chatSkillEverything = "Everything",
+    chatSkillListening = "Listening",
+    chatSkillReading = "Reading",
+    chatSkillReadingRecall = "Reading, Recall",
+    chatSkillRecall = "Recall",
+    chatSkillSpeaking = "Speaking",
+    chatSkillWriting = "Writing",
+    chatSkillSpeakingListening = "Speaking, Listening",
 )
 
 private val Vietnamese = UiStrings(
@@ -2052,6 +2085,7 @@ private val Vietnamese = UiStrings(
     chatStudyBreakdownReveal = "Hiện từ",
     chatStudyBreakdownMissed = "Chưa nhớ",
     chatStudyBreakdownKnown = "Đã biết",
+    chatStudyBreakdownSkip = "Bỏ qua",
     chatStudyBreakdownContinue = "Tiếp tục",
     chatStudyBreakdownCheck = "Kiểm tra",
     chatStudyBreakdownNotYet = "Chưa được",
@@ -2303,6 +2337,14 @@ private val Vietnamese = UiStrings(
     adminStatsNoData = "Chưa có lượt truy cập.",
     adminStatsTimezone = "Giờ UTC+7",
     adminStatsSelected = "Ngày đã chọn",
+    chatSkillEverything = "Tất cả",
+    chatSkillListening = "Nghe hiểu",
+    chatSkillReading = "Đọc hiểu",
+    chatSkillReadingRecall = "Đọc, Gợi nhớ",
+    chatSkillRecall = "Gợi nhớ",
+    chatSkillSpeaking = "Nói",
+    chatSkillWriting = "Viết",
+    chatSkillSpeakingListening = "Nói, Nghe hiểu",
 )
 
 private val Chinese = UiStrings(
@@ -2804,6 +2846,7 @@ private val Chinese = UiStrings(
     chatStudyBreakdownReveal = "揭晓",
     chatStudyBreakdownMissed = "没想起来",
     chatStudyBreakdownKnown = "已掌握",
+    chatStudyBreakdownSkip = "跳过",
     chatStudyBreakdownContinue = "继续",
     chatStudyBreakdownCheck = "检查",
     chatStudyBreakdownNotYet = "还不行",
@@ -3055,6 +3098,14 @@ private val Chinese = UiStrings(
     adminStatsNoData = "暂无访问记录。",
     adminStatsTimezone = "UTC+7 时间",
     adminStatsSelected = "所选日期",
+    chatSkillEverything = "全部",
+    chatSkillListening = "听力理解",
+    chatSkillReading = "阅读",
+    chatSkillReadingRecall = "阅读、回忆",
+    chatSkillRecall = "回忆",
+    chatSkillSpeaking = "口语表达",
+    chatSkillWriting = "写作",
+    chatSkillSpeakingListening = "口语、听力",
 )
 
 private val Japanese = UiStrings(
@@ -3556,6 +3607,7 @@ private val Japanese = UiStrings(
     chatStudyBreakdownReveal = "答えを見る",
     chatStudyBreakdownMissed = "思い出せなかった",
     chatStudyBreakdownKnown = "知っている",
+    chatStudyBreakdownSkip = "スキップ",
     chatStudyBreakdownContinue = "続ける",
     chatStudyBreakdownCheck = "確認",
     chatStudyBreakdownNotYet = "まだです",
@@ -3807,6 +3859,14 @@ private val Japanese = UiStrings(
     adminStatsNoData = "まだ訪問がありません。",
     adminStatsTimezone = "UTC+7",
     adminStatsSelected = "選択した日",
+    chatSkillEverything = "すべて",
+    chatSkillListening = "リスニング",
+    chatSkillReading = "読解",
+    chatSkillReadingRecall = "読解、想起",
+    chatSkillRecall = "想起",
+    chatSkillSpeaking = "スピーキング",
+    chatSkillWriting = "ライティング",
+    chatSkillSpeakingListening = "スピーキング、リスニング",
 )
 
 private val Korean = UiStrings(
@@ -4308,6 +4368,7 @@ private val Korean = UiStrings(
     chatStudyBreakdownReveal = "정답 보기",
     chatStudyBreakdownMissed = "떠올리지 못함",
     chatStudyBreakdownKnown = "알고 있어요",
+    chatStudyBreakdownSkip = "건너뛰기",
     chatStudyBreakdownContinue = "계속",
     chatStudyBreakdownCheck = "확인",
     chatStudyBreakdownNotYet = "아직이에요",
@@ -4559,6 +4620,14 @@ private val Korean = UiStrings(
     adminStatsNoData = "아직 방문 기록이 없습니다.",
     adminStatsTimezone = "UTC+7",
     adminStatsSelected = "선택한 날",
+    chatSkillEverything = "전체",
+    chatSkillListening = "듣기",
+    chatSkillReading = "읽기",
+    chatSkillReadingRecall = "읽기, 회상",
+    chatSkillRecall = "회상",
+    chatSkillSpeaking = "말하기",
+    chatSkillWriting = "쓰기",
+    chatSkillSpeakingListening = "말하기, 듣기",
 )
 
 private val Russian = UiStrings(
@@ -5060,6 +5129,7 @@ private val Russian = UiStrings(
     chatStudyBreakdownReveal = "Показать ответ",
     chatStudyBreakdownMissed = "Не вспомнил(а)",
     chatStudyBreakdownKnown = "Знаю",
+    chatStudyBreakdownSkip = "Пропустить",
     chatStudyBreakdownContinue = "Продолжить",
     chatStudyBreakdownCheck = "Проверить",
     chatStudyBreakdownNotYet = "Пока нет",
@@ -5311,6 +5381,14 @@ private val Russian = UiStrings(
     adminStatsNoData = "Пока нет визитов.",
     adminStatsTimezone = "Время UTC+7",
     adminStatsSelected = "Выбранный день",
+    chatSkillEverything = "Всё",
+    chatSkillListening = "Аудирование",
+    chatSkillReading = "Чтение",
+    chatSkillReadingRecall = "Чтение, воспоминание",
+    chatSkillRecall = "Воспоминание",
+    chatSkillSpeaking = "Говорение",
+    chatSkillWriting = "Письмо",
+    chatSkillSpeakingListening = "Говорение, аудирование",
 )
 
 private val Spanish = UiStrings(
@@ -5813,6 +5891,7 @@ private val Spanish = UiStrings(
     chatStudyBreakdownReveal = "Revelar",
     chatStudyBreakdownMissed = "No la recordé",
     chatStudyBreakdownKnown = "Ya la sé",
+    chatStudyBreakdownSkip = "Omitir",
     chatStudyBreakdownContinue = "Continuar",
     chatStudyBreakdownCheck = "Comprobar",
     chatStudyBreakdownNotYet = "Todavía no",
@@ -6064,6 +6143,14 @@ private val Spanish = UiStrings(
     adminStatsNoData = "Aún no hay visitas.",
     adminStatsTimezone = "Horario UTC+7",
     adminStatsSelected = "Día seleccionado",
+    chatSkillEverything = "Todo",
+    chatSkillListening = "Comprensión auditiva",
+    chatSkillReading = "Lectura",
+    chatSkillReadingRecall = "Lectura, recuerdo",
+    chatSkillRecall = "Recuerdo",
+    chatSkillSpeaking = "Expresión oral",
+    chatSkillWriting = "Escritura",
+    chatSkillSpeakingListening = "Expresión oral, comprensión auditiva",
 )
 
 private val German = UiStrings(
@@ -6566,6 +6653,7 @@ private val German = UiStrings(
     chatStudyBreakdownReveal = "Aufdecken",
     chatStudyBreakdownMissed = "Nicht gewusst",
     chatStudyBreakdownKnown = "Schon bekannt",
+    chatStudyBreakdownSkip = "Überspringen",
     chatStudyBreakdownContinue = "Weiter",
     chatStudyBreakdownCheck = "Prüfen",
     chatStudyBreakdownNotYet = "Noch nicht",
@@ -6817,6 +6905,14 @@ private val German = UiStrings(
     adminStatsNoData = "Noch keine Besuche.",
     adminStatsTimezone = "Zeit in UTC+7",
     adminStatsSelected = "Ausgewählter Tag",
+    chatSkillEverything = "Alles",
+    chatSkillListening = "Hörverstehen",
+    chatSkillReading = "Leseverstehen",
+    chatSkillReadingRecall = "Lesen, Erinnern",
+    chatSkillRecall = "Erinnern",
+    chatSkillSpeaking = "Sprechen",
+    chatSkillWriting = "Schreiben",
+    chatSkillSpeakingListening = "Sprechen, Hörverstehen",
 )
 
 private val Burmese = UiStrings(
@@ -7319,6 +7415,7 @@ private val Burmese = UiStrings(
     chatStudyBreakdownReveal = "အဖြေကို ဖော်ပြမည်",
     chatStudyBreakdownMissed = "မမှတ်မိပါ",
     chatStudyBreakdownKnown = "သိပြီးပါပြီ",
+    chatStudyBreakdownSkip = "ကျော်ရန်",
     chatStudyBreakdownContinue = "ဆက်လုပ်ရန်",
     chatStudyBreakdownCheck = "စစ်ဆေးရန်",
     chatStudyBreakdownNotYet = "မရသေးပါ",
@@ -7570,6 +7667,14 @@ private val Burmese = UiStrings(
     adminStatsNoData = "လည်ပတ်မှု မှတ်တမ်း မရှိသေးပါ။",
     adminStatsTimezone = "အချိန်သည် UTC+7 ဖြစ်သည်",
     adminStatsSelected = "ရွေးချယ်ထားသော နေ့",
+    chatSkillEverything = "အားလုံး",
+    chatSkillListening = "နားထောင်ခြင်း",
+    chatSkillReading = "စာဖတ်ခြင်း",
+    chatSkillReadingRecall = "စာဖတ်ခြင်း၊ ပြန်သတိရခြင်း",
+    chatSkillRecall = "ပြန်သတိရခြင်း",
+    chatSkillSpeaking = "စကားပြောခြင်း",
+    chatSkillWriting = "စာရေးခြင်း",
+    chatSkillSpeakingListening = "စကားပြောခြင်း၊ နားထောင်ခြင်း",
 )
 
 fun stringsFor(language: Language): UiStrings = when (language) {
