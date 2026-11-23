@@ -30,6 +30,7 @@ import io.ktor.serialization.kotlinx.json.json
 import io.ktor.server.application.Application
 import io.ktor.server.application.install
 import io.ktor.server.application.ApplicationStopped
+import io.ktor.server.engine.BaseApplicationResponse
 import io.ktor.server.engine.embeddedServer
 import io.ktor.server.engine.connector
 import io.ktor.server.engine.sslConnector
@@ -43,6 +44,8 @@ import io.ktor.server.response.respondText
 import io.ktor.server.routing.get
 import io.ktor.server.routing.routing
 import io.ktor.server.websocket.WebSockets
+import io.ktor.util.cio.ChannelIOException
+import io.ktor.utils.io.ClosedByteChannelException
 import kotlinx.coroutines.CancellationException
 import kotlinx.coroutines.CoroutineScope
 import kotlinx.coroutines.Job
@@ -52,6 +55,7 @@ import kotlinx.serialization.json.Json
 import org.slf4j.LoggerFactory
 import org.slf4j.event.Level
 import java.io.File
+import java.nio.channels.ClosedChannelException
 import java.security.KeyStore
 
 private val log = LoggerFactory.getLogger("apap.oneverandah.Application")
@@ -176,12 +180,7 @@ fun Application.module(
             }
         }
     }
-    install(StatusPages) {
-        exception<Throwable> { call, cause ->
-            log.error("Unhandled error on {}: {}", call.request.local.uri, cause.message, cause)
-            call.respond(HttpStatusCode.InternalServerError, ApiError(cause.message ?: "Internal server error"))
-        }
-    }
+    configureStatusPages()
 
     monitor.subscribe(ApplicationStopped) {
         imageSystem.shutdown()
@@ -255,6 +254,39 @@ fun Application.module(
         }
         statsRoutes(statsSystem, config)
     }
+}
+
+internal fun Application.configureStatusPages() {
+    install(StatusPages) {
+        exception<Throwable> { call, cause ->
+            val committed = call.response.isCommitted || call.response.isSent
+            if (cause.isClientDisconnect(responseCommitted = committed)) {
+                log.debug("Client disconnected on {}: {}", call.request.local.uri, cause.message)
+                return@exception
+            }
+            log.error("Unhandled error on {}: {}", call.request.local.uri, cause.message, cause)
+            if (!committed) {
+                try {
+                    call.respond(HttpStatusCode.InternalServerError, ApiError(cause.message ?: "Internal server error"))
+                } catch (_: BaseApplicationResponse.ResponseAlreadySentException) {
+                } catch (_: ChannelIOException) {
+                }
+            }
+        }
+    }
+}
+
+internal fun Throwable.isClientDisconnect(responseCommitted: Boolean): Boolean {
+    val visited = HashSet<Throwable>()
+    var current: Throwable? = this
+    while (current != null && visited.add(current)) {
+        if (current is ChannelIOException) return true
+        if (responseCommitted && (current is ClosedByteChannelException || current is ClosedChannelException)) {
+            return true
+        }
+        current = current.cause
+    }
+    return false
 }
 
 internal fun CoroutineScope.launchChatStartup(startup: suspend () -> Unit): Job {

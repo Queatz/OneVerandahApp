@@ -4400,7 +4400,7 @@ object Styles {
         .${studyTalkHeader} {
             display: flex;
             align-items: center;
-            justify-content: space-between;
+            justify-content: flex-end;
             gap: 12px;
         }
         .${studyTalkIconButton} {
@@ -4420,7 +4420,7 @@ object Styles {
         }
         .${studyTalkIconButton}:hover { background: rgba(255,255,255,.18); }
         .${studyTalkIconButton}:active { transform: scale(.94); }
-        .${studyTalkTitle} { margin: 0; font-size: 18px; }
+        .${studyTalkTitle} { margin: 0; font-size: 18px; flex-grow: 1; }
         .${studyTalkProgress} {
             margin: 0;
             font-size: 13px;

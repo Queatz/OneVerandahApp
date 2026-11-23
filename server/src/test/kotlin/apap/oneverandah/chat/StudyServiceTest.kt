@@ -46,6 +46,39 @@ import kotlinx.coroutines.runBlocking
 
 class StudyServiceTest {
     @Test
+    fun `fallback Talk world has distinct conversations and keeps replies in the study vocabulary`() = runBlocking {
+        val world = StudyService(FakeStudyAiClient()).talkWorld(
+            StudyTalkGenerationRequest(
+                text = "Xin chào.",
+                textLanguageTag = "vi",
+                languageTag = "en",
+                sentences = listOf(
+                    StudySentence(
+                        "Xin chào.",
+                        listOf(
+                            StudyToken("Xin", StudyTokenStatus.READY),
+                            StudyToken("chào", StudyTokenStatus.READY),
+                        ),
+                    ),
+                ),
+                characters = listOf(StudyStoryCharacter("main", "Lan", "main", "A neighbor.")),
+            ),
+        )
+
+        assertEquals(6, world.scenes.map { it.title }.distinct().size)
+        assertEquals(6, world.scenes.map { it.description }.distinct().size)
+        assertEquals(
+            world.scenes.size,
+            world.scenes.map { scene ->
+                scene.turns.joinToString("|") { "${it.characterLine}|${it.reply}" }
+            }.distinct().size,
+        )
+        assertTrue(world.scenes.flatMap { it.turns }.all { turn ->
+            turn.reply.contains("xin", ignoreCase = true) || turn.reply.contains("chào", ignoreCase = true)
+        })
+    }
+
+    @Test
     fun `skeleton normalizes request language and forces pending tokens`() = runBlocking {
         val ai = FakeStudyAiClient(
             skeleton = StudySessionResponse(

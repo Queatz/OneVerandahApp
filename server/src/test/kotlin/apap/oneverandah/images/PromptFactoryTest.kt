@@ -23,10 +23,15 @@ class PromptFactoryTest {
         )
 
         assertContains(prompt, "The Flower Market")
-        assertContains(prompt, "one specific location")
-        assertContains(prompt, "no people, human figures, faces, silhouettes")
-        assertContains(prompt, "No speech bubbles, dialogue balloons")
+        assertContains(prompt, "one specific unoccupied location")
+        assertContains(prompt, "empty location plate")
+        assertContains(prompt, "no people, human figures, characters")
+        assertContains(prompt, "No speech bubbles, dialogue balloons, captions")
         assertContains(prompt, PromptFactory.NO_TEXT)
+        assertTrue(!prompt.contains("visual-novel"))
+        assertTrue(!prompt.contains("conversation"))
+        assertTrue(!prompt.contains("faces"))
+        assertTrue(!prompt.contains("lifelike"))
         assertTrue(!prompt.contains("High quality square image"))
     }
 

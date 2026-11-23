@@ -55,14 +55,17 @@ import io.ktor.server.routing.get
 import io.ktor.server.routing.post
 import io.ktor.server.routing.put
 import io.ktor.server.websocket.webSocket
+import io.ktor.util.cio.ChannelIOException
+import io.ktor.utils.io.ClosedByteChannelException
 import io.ktor.utils.io.writeStringUtf8
+import java.io.IOException
+import java.nio.channels.ClosedChannelException
 import java.util.Base64
 import kotlinx.coroutines.Dispatchers
 import kotlinx.coroutines.CoroutineStart
 import kotlinx.coroutines.NonCancellable
 import kotlinx.coroutines.channels.Channel
 import kotlinx.coroutines.cancel
-import kotlinx.coroutines.cancelAndJoin
 import kotlinx.coroutines.coroutineScope
 import kotlinx.coroutines.flow.collect
 import kotlinx.coroutines.launch
@@ -95,6 +98,7 @@ fun Route.chatRoutes(
     studyService: StudyService? = null,
     studySessionsService: StudySessionsService? = null,
     studyBuildService: StudyBuildService? = null,
+    studyBuildHeartbeatMillis: Long = STUDY_BUILD_HEARTBEAT_MILLIS,
 ) {
     post("/api/chat") {
         val request = call.receive<ChatRequest>()
@@ -111,9 +115,20 @@ fun Route.chatRoutes(
 
         // NDJSON stream: optional partial line(s), then a final non-partial ChatResponse.
         call.respondTextWriter(contentType = ndjsonContentType) {
+            var disconnected = false
             suspend fun writeEvent(response: ChatResponse) {
-                appendLine(chatStreamJson.encodeToString(ChatResponse.serializer(), response))
-                flush()
+                if (disconnected) return
+                val payload = chatStreamJson.encodeToString(ChatResponse.serializer(), response)
+                try {
+                    appendLine(payload)
+                    flush()
+                } catch (cause: Throwable) {
+                    if (cause.isStreamWriteDisconnect()) {
+                        disconnected = true
+                    } else {
+                        throw cause
+                    }
+                }
             }
 
             val final = chatService.send(request) { partial ->
@@ -482,7 +497,8 @@ fun Route.chatRoutes(
                             eventFlow.collect { channel.send(it) }
                         }
 
-                        suspend fun writeEvent(event: StudyBuildEvent) {
+                        suspend fun writeEvent(event: StudyBuildEvent): Boolean {
+                            if (isClosedForWrite) return false
                             val viewerEvent = when (event) {
                                 is StudyBuildEvent.Snapshot -> event.copy(
                                     session = event.session.copy(
@@ -493,38 +509,49 @@ fun Route.chatRoutes(
                                 )
                                 else -> event
                             }
-                            writeStringUtf8(
-                                studyPayloadJson.encodeToString(StudyBuildEvent.serializer(), viewerEvent) + "\n",
-                            )
-                            flush()
+                            val payload = studyPayloadJson.encodeToString(StudyBuildEvent.serializer(), viewerEvent) + "\n"
+                            return try {
+                                writeStringUtf8(payload)
+                                flush()
+                                !isClosedForWrite
+                            } catch (cause: Throwable) {
+                                if (cause.isStreamWriteDisconnect()) {
+                                    false
+                                } else {
+                                    throw cause
+                                }
+                            }
                         }
                         try {
                             val snapshot = studyBuildService.ensureBuilding(id)
-                            writeEvent(StudyBuildEvent.Snapshot(snapshot ?: accessible))
+                            if (!writeEvent(StudyBuildEvent.Snapshot(snapshot ?: accessible))) return@coroutineScope
                             val terminal = snapshot?.build?.status == StudyBuildStatus.COMPLETE ||
                                     snapshot?.build?.status == StudyBuildStatus.PARTIAL
                             if (snapshot == null || terminal) {
                                 writeEvent(StudyBuildEvent.Done)
                                 return@coroutineScope
                             }
-                            while (true) {
-                                val event = withTimeoutOrNull(STUDY_BUILD_HEARTBEAT_MILLIS) { channel.receive() }
+                            while (!isClosedForWrite) {
+                                val event = withTimeoutOrNull(studyBuildHeartbeatMillis) { channel.receive() }
                                 if (event == null) {
-                                    val latest = studyBuildService.getSession(id)
-                                    val status = latest?.build?.status
+                                    val latest = studyBuildService.getSession(id) ?: return@coroutineScope
+                                    val status = latest.build?.status
                                     if (status == StudyBuildStatus.COMPLETE || status == StudyBuildStatus.PARTIAL) {
                                         writeEvent(StudyBuildEvent.Done)
                                         return@coroutineScope
                                     }
-                                    writeEvent(StudyBuildEvent.Heartbeat)
+                                    if (!writeEvent(StudyBuildEvent.Heartbeat)) return@coroutineScope
                                 } else {
-                                    writeEvent(event)
+                                    if (!writeEvent(event)) return@coroutineScope
                                     if (event == StudyBuildEvent.Done) return@coroutineScope
                                 }
                             }
                         } finally {
-                            collector.cancelAndJoin()
+                            collector.cancel()
                             channel.cancel()
+                            withContext(NonCancellable) {
+                                collector.join()
+                            }
                         }
                     }
                 }
@@ -754,6 +781,23 @@ private fun ApplicationCall.disableStudyReadCaching(includeNoCache: Boolean = fa
     val directive = if (includeNoCache) "no-store, no-cache" else "no-store"
     response.headers.append(HttpHeaders.CacheControl, directive)
     response.headers.append(HttpHeaders.Vary, DEVICE_TOKEN_HEADER)
+}
+
+private fun Throwable.isStreamWriteDisconnect(): Boolean {
+    val visited = HashSet<Throwable>()
+    var current: Throwable? = this
+    while (current != null && visited.add(current)) {
+        if (
+            current is ChannelIOException ||
+            current is ClosedByteChannelException ||
+            current is ClosedChannelException ||
+            current is IOException
+        ) {
+            return true
+        }
+        current = current.cause
+    }
+    return false
 }
 
 private const val STUDY_BUILD_HEARTBEAT_MILLIS = 15_000L

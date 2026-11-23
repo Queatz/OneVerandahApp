@@ -48,11 +48,11 @@ class StudyBuildServiceTest {
         val failure = assertFailsWith<IllegalArgumentException> {
             study.talkWorld(
                 StudyTalkGenerationRequest(
-                    text = "Xin chào.",
+                    text = "I go.",
                     textLanguageTag = "vi",
                     languageTag = "en",
                     sentences = listOf(
-                        StudySentence("Xin chào.", listOf(StudyToken("Xin", StudyTokenStatus.READY))),
+                        StudySentence("I go.", listOf(StudyToken("I", StudyTokenStatus.READY))),
                     ),
                     characters = listOf(StudyStoryCharacter("main", "Lan", "main", "A neighbor.")),
                 ),
@@ -86,6 +86,58 @@ class StudyBuildServiceTest {
         val turn = world.scenes.first().turns.first()
         assertEquals("A natural greeting.", turn.characterLine)
         assertEquals("XIN!", turn.reply)
+    }
+
+    @Test
+    fun `talk generation rejects the same conversation repeated across scenes`() = runBlocking {
+        val study = StudyService(
+            aiClient = FakeBuildStudyAi(
+                events = CopyOnWriteArrayList(),
+                duplicateTalkConversations = true,
+            ),
+        )
+
+        val failure = assertFailsWith<IllegalArgumentException> {
+            study.talkWorld(
+                StudyTalkGenerationRequest(
+                    text = "Xin chào.",
+                    textLanguageTag = "vi",
+                    languageTag = "en",
+                    sentences = listOf(
+                        StudySentence("Xin chào.", listOf(StudyToken("Xin", StudyTokenStatus.READY))),
+                    ),
+                    characters = listOf(StudyStoryCharacter("main", "Lan", "main", "A neighbor.")),
+                ),
+            )
+        }
+
+        assertContains(failure.message.orEmpty(), "different conversations")
+    }
+
+    @Test
+    fun `talk generation rejects people and dialogue references in scene backgrounds`() = runBlocking {
+        val study = StudyService(
+            aiClient = FakeBuildStudyAi(
+                events = CopyOnWriteArrayList(),
+                talkDescriptionWithPeople = true,
+            ),
+        )
+
+        val failure = assertFailsWith<IllegalArgumentException> {
+            study.talkWorld(
+                StudyTalkGenerationRequest(
+                    text = "Xin chào.",
+                    textLanguageTag = "vi",
+                    languageTag = "en",
+                    sentences = listOf(
+                        StudySentence("Xin chào.", listOf(StudyToken("Xin", StudyTokenStatus.READY))),
+                    ),
+                    characters = listOf(StudyStoryCharacter("main", "Lan", "main", "A neighbor.")),
+                ),
+            )
+        }
+
+        assertContains(failure.message.orEmpty(), "empty scenery")
     }
 
     @Test
@@ -531,6 +583,8 @@ class StudyBuildServiceTest {
         private val skeletonGate: CompletableDeferred<Unit>? = null,
         private val invalidTalkReply: Boolean = false,
         private val characterLineWithoutVocabulary: Boolean = false,
+        private val duplicateTalkConversations: Boolean = false,
+        private val talkDescriptionWithPeople: Boolean = false,
     ) : StudyAiClient {
         val skeletonCalls = AtomicInteger()
         val talkWorldCalls = AtomicInteger()
@@ -661,19 +715,29 @@ class StudyBuildServiceTest {
             talkWorldCalls.incrementAndGet()
             val speakerId = request.characters.first().id
             val sourceSentence = request.sentences.first().text
+            val locations = listOf("Apartment lobby", "Corner café", "Flower market", "Riverside walk", "Community garden", "Train platform")
             return StudyTalkWorld(
                 setting = "A connected neighborhood story.",
                 scenes = List(6) { sceneIndex ->
                     StudyTalkScene(
                         id = "scene-${sceneIndex + 1}",
-                        title = "Scene ${sceneIndex + 1}",
-                        description = "A friendly moment in the neighborhood.",
+                        title = locations[sceneIndex],
+                        description = if (talkDescriptionWithPeople && sceneIndex == 2) {
+                            "People speak inside bright speech bubbles."
+                        } else {
+                            "An empty view of the ${locations[sceneIndex].lowercase()}."
+                        },
                         turns = List(3) { turnIndex ->
                             StudyTalkTurn(
                                 id = "turn-${turnIndex + 1}",
                                 speakerCharacterId = speakerId,
                                 expressionId = "$speakerId-happy",
-                                characterLine = if (characterLineWithoutVocabulary) "A natural greeting." else sourceSentence,
+                                characterLine = when {
+                                    duplicateTalkConversations -> sourceSentence
+                                    characterLineWithoutVocabulary && sceneIndex == 0 -> "A natural greeting."
+                                    characterLineWithoutVocabulary -> "A natural greeting at the ${locations[sceneIndex].lowercase()}."
+                                    else -> "A greeting at the ${locations[sceneIndex].lowercase()}."
+                                },
                                 intention = "I want to say hello.",
                                 reply = if (invalidTalkReply) "A reply outside the study pool." else sourceSentence,
                             )

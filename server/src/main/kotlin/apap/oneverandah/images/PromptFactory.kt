@@ -111,13 +111,14 @@ object PromptFactory {
             .filter(String::isNotEmpty)
             .joinToString(". ")
         return buildString {
-            append("Create a wide cinematic visual-novel background plate for one conversation scene. ")
-            if (scene.isNotEmpty()) append("Depict exactly one specific location from this scene: $scene. ")
+            append("Create a wide cinematic empty location plate for a language-learning scene. ")
+            if (scene.isNotEmpty()) append("Depict exactly one specific unoccupied location: $scene. ")
             append("Make this location visibly distinct from the other scene locations; do not combine or montage places. ")
-            append("Show only the environment: no people, human figures, faces, silhouettes, bodies, portraits, or cast members. ")
-            append("No speech bubbles, dialogue balloons, or panels. ")
-            append("Use a wide landscape composition with clear depth and open foreground space for a separately layered sprite. ")
-            append("Art style: $ART_STYLE. $NO_TEXT")
+            append("Show only unoccupied architecture, landscape, props, weather, and light; no people, human figures, characters, or portraits. ")
+            append("No speech bubbles, dialogue balloons, captions, panels, or overlays. ")
+            append("Use a wide landscape composition with clear depth and open foreground space. ")
+            append("Use cinematic natural lighting, fine environmental detail, and a warm painterly realism; not cartoon, comic, manga, anime, storybook, or clipart. ")
+            append(NO_TEXT)
         }
     }
 

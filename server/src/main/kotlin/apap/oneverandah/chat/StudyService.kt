@@ -74,11 +74,23 @@ import org.slf4j.LoggerFactory
 
 private const val playScenarioCount = 4
 private val studyTalkWordSeparator = Regex("[\\p{P}\\p{S}]+")
+private val studyTalkBackgroundForbiddenWords = setOf(
+    "person", "people", "someone", "somebody", "anyone", "man", "men", "woman", "women", "child", "children",
+    "character", "characters", "human", "figure", "figures", "face", "faces", "silhouette", "silhouettes",
+    "portrait", "portraits", "shopkeeper", "vendor", "waiter", "customer", "neighbor", "neighbour", "seller",
+    "stranger", "pedestrian", "commuter", "passenger", "barista", "cashier", "worker", "student", "teacher",
+    "friend", "family", "couple", "crowd", "crowded", "group", "gardener", "staff",
+    "speech", "dialog", "dialogue", "talk", "talking", "chat", "chatting", "conversation", "conversations",
+    "speak", "speaking", "spoken", "bubble", "bubbles", "balloon", "balloons", "caption", "captions",
+    "subtitle", "subtitles", "text", "writing", "written", "letter", "letters", "word", "words", "label",
+    "labels", "sign", "signs", "signage", "logo", "logos", "watermark", "watermarks", "printed", "print",
+    "menu", "newspaper", "poster", "notice", "billboard", "placard",
+)
 
 private fun studyTalkWords(value: String): List<String> = value.lowercase()
     .replace(studyTalkWordSeparator, " ")
     .split(Regex("\\s+"))
-    .filter { it.length > 1 }
+    .filter(String::isNotEmpty)
 
 data class StudyGenerationRequest(
     val text: String,
@@ -883,9 +895,15 @@ class StudyService(
             require(scene.title.isNotBlank() && scene.description.isNotBlank()) {
                 "Study Talk scene ${sceneIndex + 1} requires a title and description"
             }
+            require(studyTalkWords(scene.description).none { it in studyTalkBackgroundForbiddenWords }) {
+                "Study Talk scene ${sceneIndex + 1} must describe empty scenery only"
+            }
             val turns = scene.turns.mapIndexed { turnIndex, turn ->
                 require(turn.characterLine.isNotBlank() && turn.intention.isNotBlank() && turn.reply.isNotBlank()) {
                     "Study Talk turn ${sceneIndex + 1}.${turnIndex + 1} contains a blank line"
+                }
+                require(vocabularyWords.isEmpty() || studyTalkWords(turn.reply).any { it in vocabularyWords }) {
+                    "Study Talk turn ${sceneIndex + 1}.${turnIndex + 1} reply must use a word from the study pool"
                 }
                 val speakerId = turn.speakerCharacterId.takeIf { it in knownCharacters }
                     ?: characters.first().id
@@ -898,6 +916,17 @@ class StudyService(
                 )
             }
             scene.copy(id = "scene-${sceneIndex + 1}", turns = turns)
+        }
+        require(scenes.map { studyTalkWords(it.title).joinToString(" ").ifBlank { it.title.trim().lowercase() } }
+            .distinct().size == scenes.size) {
+            "Study Talk requires distinct scene titles"
+        }
+        require(scenes.map { studyTalkWords(it.description).joinToString(" ").ifBlank { it.description.trim().lowercase() } }
+            .distinct().size == scenes.size) {
+            "Study Talk requires distinct scene descriptions"
+        }
+        require(scenes.map(::studyTalkConversationFingerprint).distinct().size == scenes.size) {
+            "Study Talk requires different conversations in every scene"
         }
         return generated.copy(
             setting = generated.setting.trim().ifBlank { "A connected neighborhood story" },
@@ -1628,20 +1657,31 @@ private fun fallbackStudyTalkWorld(request: StudyTalkGenerationRequest): StudyTa
     }
     val sentences = request.sentences.filter { it.text.isNotBlank() }
     require(sentences.isNotEmpty()) { "Study Talk requires at least one source sentence" }
+    val vocabularyWords = sentences.flatMap { sentence ->
+        sentence.tokens.filter { it.status != StudyTokenStatus.PLAIN }.flatMap { studyTalkWords(it.text) }
+    }.distinct().ifEmpty {
+        sentences.flatMap { studyTalkWords(it.text) }.distinct().ifEmpty { listOf(sentences.first().text.trim()) }
+    }
+    fun fallbackPhrase(index: Int): String {
+        val offset = index % vocabularyWords.size
+        val repeats = index / vocabularyWords.size + 1
+        val rotatedVocabulary = vocabularyWords.drop(offset) + vocabularyWords.take(offset)
+        return (rotatedVocabulary + List(repeats) { vocabularyWords[offset] }).joinToString(" ")
+    }
     return StudyTalkWorld(
         setting = "A friendly neighborhood connected by everyday conversations",
         scenes = List(STUDY_TALK_SCENE_COUNT) { sceneIndex ->
             val (title, description) = sceneLocations[sceneIndex]
             val turns = List(STUDY_TALK_MIN_TURNS_PER_SCENE) { turnIndex ->
-                val sentence = sentences[(sceneIndex + turnIndex) % sentences.size]
                 val character = characters[(sceneIndex + turnIndex) % characters.size]
+                val phraseIndex = sceneIndex * STUDY_TALK_MIN_TURNS_PER_SCENE + turnIndex
                 StudyTalkTurn(
                     id = "scene-${sceneIndex + 1}-turn-${turnIndex + 1}",
                     speakerCharacterId = character.id,
                     expressionId = "${character.id}-${listOf("neutral", "happy", "curious")[turnIndex % 3]}",
-                    characterLine = sentence.text,
-                    intention = sentence.translation.ifBlank { "I want to reply politely." },
-                    reply = sentence.text,
+                    characterLine = fallbackPhrase(phraseIndex),
+                    intention = "I want to continue this conversation in the ${title.lowercase()}.",
+                    reply = fallbackPhrase(phraseIndex + STUDY_TALK_SCENE_COUNT * STUDY_TALK_MIN_TURNS_PER_SCENE),
                 )
             }
             StudyTalkScene(
@@ -1652,6 +1692,12 @@ private fun fallbackStudyTalkWorld(request: StudyTalkGenerationRequest): StudyTa
             )
         },
     )
+}
+
+private fun studyTalkConversationFingerprint(scene: StudyTalkScene): String = scene.turns.joinToString("\u0000") { turn ->
+    val characterLine = studyTalkWords(turn.characterLine).joinToString(" ")
+    val reply = studyTalkWords(turn.reply).joinToString(" ")
+    "$characterLine\u0001$reply"
 }
 
 private fun List<StudyStoryCharacter>.toImageCharacters(): List<PromptFactory.CharacterRef> =

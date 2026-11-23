@@ -1,9 +1,23 @@
 package apap.oneverandah
 
+import ch.qos.logback.classic.Level as LogbackLevel
+import ch.qos.logback.classic.Logger as LogbackLogger
+import ch.qos.logback.classic.spi.ILoggingEvent
+import ch.qos.logback.core.read.ListAppender
 import io.ktor.client.request.*
 import io.ktor.client.statement.*
 import io.ktor.http.*
+import io.ktor.serialization.kotlinx.json.json
+import io.ktor.server.application.install
+import io.ktor.server.plugins.contentnegotiation.ContentNegotiation
+import io.ktor.server.response.respondText
+import io.ktor.server.routing.get
+import io.ktor.server.routing.routing
 import io.ktor.server.testing.*
+import io.ktor.util.cio.ChannelWriteException
+import io.ktor.utils.io.ClosedWriteChannelException
+import java.nio.channels.ClosedChannelException
+import org.slf4j.LoggerFactory
 import kotlin.test.*
 
 class ApplicationTest {
@@ -192,5 +206,66 @@ class ApplicationTest {
         assertEquals("2.5 hours", durationLine150.label.en)
         assertEquals("2.5 giờ", durationLine150.label.vi)
         assertEquals("2.5 小时", durationLine150.label.zh)
+    }
+
+    @Test
+    fun testStatusPagesClientDisconnectAndCommittedResponses() = testApplication {
+        val appLogger = LoggerFactory.getLogger("apap.oneverandah.Application") as LogbackLogger
+        val logEvents = ListAppender<ILoggingEvent>().apply { start() }
+        appLogger.addAppender(logEvents)
+
+        application {
+            install(ContentNegotiation) { json() }
+            configureStatusPages()
+            routing {
+                get("/boom") {
+                    error("Boom before commit")
+                }
+                get("/outbound-closed") {
+                    throw ClosedChannelException()
+                }
+                get("/disconnect") {
+                    call.respondText("ok")
+                    throw ChannelWriteException("Cannot write to channel", ClosedChannelException())
+                }
+                get("/closed-after-commit") {
+                    call.respondText("ok")
+                    throw ClosedWriteChannelException()
+                }
+                get("/boom-after-commit") {
+                    call.respondText("ok")
+                    error("Boom after commit")
+                }
+            }
+        }
+
+        try {
+            val boom = client.get("/boom")
+            assertEquals(HttpStatusCode.InternalServerError, boom.status)
+            assertTrue(boom.bodyAsText().contains("Boom before commit"))
+            assertEquals(1, logEvents.list.count { it.level == LogbackLevel.ERROR })
+
+            logEvents.list.clear()
+            val outboundClosed = client.get("/outbound-closed")
+            assertEquals(HttpStatusCode.InternalServerError, outboundClosed.status)
+            assertEquals(1, logEvents.list.count { it.level == LogbackLevel.ERROR })
+
+            logEvents.list.clear()
+            val disconnect = client.get("/disconnect")
+            assertEquals(HttpStatusCode.OK, disconnect.status)
+            assertEquals(0, logEvents.list.count { it.level == LogbackLevel.ERROR })
+
+            logEvents.list.clear()
+            val closedAfterCommit = client.get("/closed-after-commit")
+            assertEquals(HttpStatusCode.OK, closedAfterCommit.status)
+            assertEquals(0, logEvents.list.count { it.level == LogbackLevel.ERROR })
+
+            logEvents.list.clear()
+            val boomAfterCommit = client.get("/boom-after-commit")
+            assertEquals(HttpStatusCode.OK, boomAfterCommit.status)
+            assertEquals(1, logEvents.list.count { it.level == LogbackLevel.ERROR })
+        } finally {
+            appLogger.detachAppender(logEvents)
+        }
     }
 }
