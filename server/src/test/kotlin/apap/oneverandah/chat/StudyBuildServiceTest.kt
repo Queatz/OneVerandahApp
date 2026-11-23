@@ -5,6 +5,7 @@ import apap.oneverandah.api.StudyBuildElement
 import apap.oneverandah.api.StudyBuildMode
 import apap.oneverandah.api.StudyBuildRequest
 import apap.oneverandah.api.StudyBuildRetryRequest
+import apap.oneverandah.api.StudyBuildJournalOutcome
 import apap.oneverandah.api.StudyBuildStatus
 import apap.oneverandah.api.StudyExamBeat
 import apap.oneverandah.api.StudyExamBeatKind
@@ -352,7 +353,7 @@ class StudyBuildServiceTest {
         val token = devices.issueToken().deviceToken
         val events = CopyOnWriteArrayList<String>()
         val images = FakeBuildImageGenerator(events).apply { blankTalkExpressions.set(true) }
-        val (_, service) = harness(
+        val (sessions, service) = harness(
             repository,
             devices,
             FakeBuildStudyAi(events),
@@ -374,6 +375,91 @@ class StudyBuildServiceTest {
             assertNotNull(failedExpression)
             assertContains(partial.build?.failureReasons?.get(failedExpression.key).orEmpty(), "did not produce")
             assertEquals(3, partial.build?.attempts?.get(failedExpression.key))
+
+            images.blankTalkExpressions.set(false)
+            sessions.sessionStore.update(created.id, immediate = true) { current ->
+                val build = requireNotNull(current.build)
+                current.copy(
+                    build = build.copy(
+                        automaticRevives = build.automaticRevives + (failedExpression.key to 2),
+                    ),
+                )
+            }
+            service.retry(token, created.id, StudyBuildRetryRequest(elements = listOf(failedExpression)))
+            val retried = awaitTerminal(service, created.id)
+
+            assertTrue(retried.session.talkWorld?.expressions
+                ?.first { it.id == failedExpression.expressionId }?.imageUrl.isNullOrBlank().not())
+            assertEquals(1, retried.build?.attempts?.get(failedExpression.key))
+            assertFalse(retried.build?.automaticRevives.orEmpty().containsKey(failedExpression.key))
+            assertTrue(retried.build?.journal.orEmpty().any {
+                it.element.key == failedExpression.key &&
+                        it.outcome == StudyBuildJournalOutcome.REVIVED &&
+                        it.detail == "Manually retried by the user."
+            })
+        } finally {
+            scope.cancel()
+        }
+    }
+
+    @Test
+    fun `manual retry drops a Talk task waiting in automatic backoff`() = runBlocking {
+        val scope = CoroutineScope(SupervisorJob() + Dispatchers.Default)
+        val repository = InMemoryStudySessionsRepository()
+        val devices = DeviceService(InMemoryDeviceRepository())
+        val token = devices.issueToken().deviceToken
+        val events = CopyOnWriteArrayList<String>()
+        val images = FakeBuildImageGenerator(events)
+        val (sessions, service) = harness(
+            repository,
+            devices,
+            FakeBuildStudyAi(events),
+            images,
+            scope,
+            retryBackoffMillis = listOf(5_000L, 5_000L, 5_000L),
+        )
+        val expression = StudyBuildElement(
+            kind = StudyBuildElementKind.TALK_EXPRESSION,
+            expressionId = "main-happy",
+        )
+        try {
+            val created = service.create(
+                token,
+                StudyBuildRequest(text = "Hello.", languageTag = "en", sourceMessageId = "retry-talk-backoff"),
+            )
+            val complete = awaitTerminal(service, created.id)
+            assertEquals(StudyBuildStatus.COMPLETE, complete.build?.status)
+            sessions.sessionStore.update(created.id, immediate = true) { current ->
+                val world = requireNotNull(current.session.talkWorld)
+                current.copy(
+                    session = current.session.copy(
+                        talkWorld = world.copy(
+                            expressions = world.expressions.map {
+                                if (it.id == expression.expressionId) it.copy(imageUrl = null) else it
+                            },
+                        ),
+                    ),
+                    build = current.build?.copy(status = StudyBuildStatus.PARTIAL),
+                )
+            }
+
+            images.fail.set(true)
+            service.retry(token, created.id, StudyBuildRetryRequest(elements = listOf(expression)))
+            withTimeout(2_000L) {
+                while (sessions.sessionStore.findById(created.id)?.build?.journal?.lastOrNull()?.outcome !=
+                    StudyBuildJournalOutcome.RETRYING
+                ) {
+                    delay(5L)
+                }
+            }
+
+            images.fail.set(false)
+            service.retry(token, created.id, StudyBuildRetryRequest(elements = listOf(expression)))
+            val rebuilt = withTimeout(2_000L) { awaitTerminal(service, created.id) }
+
+            assertTrue(rebuilt.session.talkWorld?.expressions
+                ?.first { it.id == expression.expressionId }?.imageUrl.isNullOrBlank().not())
+            assertEquals(1, rebuilt.build?.attempts?.get(expression.key))
         } finally {
             scope.cancel()
         }
@@ -575,6 +661,7 @@ class StudyBuildServiceTest {
         scope: CoroutineScope,
         maxAttempts: Int = 3,
         audioCalls: AtomicInteger? = null,
+        retryBackoffMillis: List<Long> = listOf(5L, 5L, 5L),
     ): Pair<StudySessionsService, StudyBuildService> {
         val store = StudySessionStore(repository, scope = scope)
         val sessions = StudySessionsService(
@@ -593,7 +680,7 @@ class StudyBuildServiceTest {
             textWorkers = 2,
             imageWorkers = 3,
             maxAttempts = maxAttempts,
-            retryBackoffMillis = listOf(5L, 5L, 5L),
+            retryBackoffMillis = retryBackoffMillis,
             talkAudioGenerator = StudyTalkAudioGenerator { _, _ ->
                 val index = audioCalls?.incrementAndGet() ?: 1
                 "https://audio/$index"

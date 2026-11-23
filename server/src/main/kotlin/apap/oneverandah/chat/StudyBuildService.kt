@@ -178,45 +178,61 @@ class StudyBuildService(
         val key = id.trim().takeIf(String::isNotEmpty) ?: return null
         val record = store.findById(key) ?: return null
         if (record.deviceTokenHash != device.tokenHash) return null
-        val currentBuild = record.build ?: return null
-        val requestedKeys = request.elements.mapTo(mutableSetOf()) { it.key }
-        val activeKeys = queue.activeElements(key).mapTo(mutableSetOf()) { it.key }
-        val selected = (
-            currentBuild.failed.filter { request.elements.isEmpty() || it.key in requestedKeys } +
-                    planner.incompleteTalkElements(record).filter { request.elements.isEmpty() || it.key in requestedKeys }
-            ).distinctBy { it.key }
-            .filterNot { it.key in activeKeys }
-        if (selected.isEmpty()) return currentBuild.copy(inFlight = queue.activeElements(key))
-        val selectedKeys = selected.mapTo(mutableSetOf()) { it.key }
-        val updated = store.update(key, immediate = true) { current ->
-            val build = current.build ?: return@update null
-            current.copy(
-                build = build.copy(
-                    status = if (selected.any { it.kind == StudyBuildElementKind.PREPARE }) {
-                        StudyBuildStatus.PREPARING
-                    } else {
-                        StudyBuildStatus.BUILDING
-                    },
-                    failed = build.failed.filterNot { it.key in selectedKeys },
-                    failureReasons = build.failureReasons - selectedKeys,
-                    attempts = build.attempts - selectedKeys,
-                    journal = (build.journal + selected.map { element ->
-                        StudyBuildJournalEntry(
-                            timestamp = clock(),
-                            element = element,
-                            outcome = StudyBuildJournalOutcome.REVIVED,
-                            attempt = build.attempts[element.key] ?: 0,
-                            detail = "Manually retried by the user.",
-                        )
-                    }).takeLast(StudyBuildQueue.MAX_JOURNAL_ENTRIES),
-                    updatedAt = clock(),
-                ),
-            )
-        } ?: return null
-        queue.start()
-        store.publish(key, StudyBuildEvent.Build(updated.build!!.copy(inFlight = queue.activeElements(key))))
-        planSession(key)
-        return getSession(key)?.build
+        var shouldPlan = false
+        val retried = planningLocks.computeIfAbsent(key) { Mutex() }.withLock {
+            val current = store.findById(key) ?: return@withLock null
+            val currentBuild = current.build ?: return@withLock null
+            val requestedKeys = request.elements.mapTo(mutableSetOf()) { it.key }
+            val candidates = (
+                currentBuild.failed.filter { request.elements.isEmpty() || it.key in requestedKeys } +
+                        planner.incompleteTalkElements(current)
+                            .filter { request.elements.isEmpty() || it.key in requestedKeys }
+                ).distinctBy { it.key }
+            if (candidates.isEmpty()) {
+                return@withLock currentBuild.copy(inFlight = queue.activeElements(key))
+            }
+
+            val runningKeys = queue.dropIdle(key, candidates.mapTo(mutableSetOf()) { it.key })
+            val selected = candidates.filterNot { it.key in runningKeys }
+            if (selected.isEmpty()) {
+                return@withLock currentBuild.copy(inFlight = queue.activeElements(key))
+            }
+            val selectedKeys = selected.mapTo(mutableSetOf()) { it.key }
+            shouldPlan = true
+            val updated = store.update(key, immediate = true) { latest ->
+                val build = latest.build ?: return@update null
+                latest.copy(
+                    build = build.copy(
+                        status = if (selected.any { it.kind == StudyBuildElementKind.PREPARE }) {
+                            StudyBuildStatus.PREPARING
+                        } else {
+                            StudyBuildStatus.BUILDING
+                        },
+                        failed = build.failed.filterNot { it.key in selectedKeys },
+                        failureReasons = build.failureReasons - selectedKeys,
+                        attempts = build.attempts - selectedKeys,
+                        automaticRevives = build.automaticRevives - selectedKeys,
+                        journal = (build.journal + selected.map { element ->
+                            StudyBuildJournalEntry(
+                                timestamp = clock(),
+                                element = element,
+                                outcome = StudyBuildJournalOutcome.REVIVED,
+                                attempt = build.attempts[element.key] ?: 0,
+                                detail = "Manually retried by the user.",
+                            )
+                        }).takeLast(StudyBuildQueue.MAX_JOURNAL_ENTRIES),
+                        updatedAt = clock(),
+                    ),
+                )
+            } ?: return@withLock null
+            updated.build!!.copy(inFlight = queue.activeElements(key))
+        }
+        if (shouldPlan) {
+            queue.start()
+            retried?.let { store.publish(key, StudyBuildEvent.Build(it)) }
+            planSession(key)
+        }
+        return retried?.let { getSession(key)?.build ?: it }
     }
 
     suspend fun resumeAll() {

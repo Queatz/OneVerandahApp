@@ -84,6 +84,22 @@ internal fun StudyTalkWorld?.missingTalkBuildElements(): List<StudyBuildElement>
     }
 }
 
+internal fun canRetryStudyTalk(world: StudyTalkWorld?, buildState: StudyBuildState?): Boolean {
+    if (buildState?.failed.orEmpty().any { it.kind.isStudyTalkKind() }) return true
+    if (world.missingTalkBuildElements().isEmpty()) return false
+    val build = buildState ?: return false
+    if (build.status == apap.oneverandah.api.StudyBuildStatus.COMPLETE ||
+        build.status == apap.oneverandah.api.StudyBuildStatus.PARTIAL
+    ) return true
+    return build.journal.any { entry ->
+        entry.element.kind.isStudyTalkKind() && entry.outcome in setOf(
+            StudyBuildJournalOutcome.FAILED,
+            StudyBuildJournalOutcome.RETRYING,
+            StudyBuildJournalOutcome.REVIVED,
+        )
+    } || build.inFlight.none { it.kind.isStudyTalkKind() }
+}
+
 internal fun retryStudyTalkTurn(progress: StudyTalkProgress): StudyTalkProgress =
     progress.copy(phase = StudyTalkPhase.THINK)
 
@@ -375,13 +391,13 @@ private fun StudyTalkBuildStatus(
         if (failed) {
             StudyTalkBuildHeader("error", copy.error)
             Span { Text(copy.failureDetails(failureReason ?: copy.incompleteFailure)) }
-            if (canRetry) StudyTalkRetryButton(copy.retry, onRetry)
         } else {
             StudyTalkBuildHeader(
                 "progress_activity",
                 if (progress.scriptReady) copy.loading else copy.scriptLoading,
             )
         }
+        if (canRetry) StudyTalkRetryButton(copy.retry, onRetry)
         StudyTalkProgressBar(progress, copy)
         StudyTalkPreparationSteps(world.studyTalkPreparationSteps(buildState), copy)
         StudyTalkBuildJournal(buildState?.journal.orEmpty(), copy)

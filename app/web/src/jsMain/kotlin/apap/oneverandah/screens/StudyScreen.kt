@@ -1337,17 +1337,14 @@ fun StudyScreen(
                     val world = studyCache[targetId]?.talkWorld
                         ?: studySession?.takeIf { studyTarget?.id == targetId }?.talkWorld
                     val terminal = build?.status == StudyBuildStatus.COMPLETE || build?.status == StudyBuildStatus.PARTIAL
-                    val building = build?.status == StudyBuildStatus.PREPARING || build?.status == StudyBuildStatus.BUILDING
-                    !building && (build?.failed.orEmpty().any { it.kind.isStudyTalkKind() } ||
-                            (terminal && world?.hasAllTalkAssets() != true))
+                    build?.failed.orEmpty().any { it.kind.isStudyTalkKind() } ||
+                            (terminal && world?.hasAllTalkAssets() != true)
                 } == true,
                 talkCanRetry = studyTarget?.id?.let { targetId ->
                     val build = studyBuildStateByMessageId[targetId]
                     val world = studyCache[targetId]?.talkWorld
                         ?: studySession?.takeIf { studyTarget?.id == targetId }?.talkWorld
-                    val terminal = build?.status == StudyBuildStatus.COMPLETE || build?.status == StudyBuildStatus.PARTIAL
-                    terminal && (build.failed.any { it.kind.isStudyTalkKind() } ||
-                            world.missingTalkBuildElements().isNotEmpty())
+                    canRetryStudyTalk(world, build)
                 } == true,
                 exactText = studyStartExact,
                 buildStatus = studyTarget?.id?.let { studyBuildStateByMessageId[it]?.status },
@@ -1392,9 +1389,7 @@ fun StudyScreen(
                 },
                 onOpenTalk = {
                     val target = studyTarget ?: return@StudySessionPane
-                    studyPersistedBySourceId[target.id]?.let { sessionId ->
-                        subscribeToStudyBuild(target.id, sessionId)
-                    }
+                    retryTalkBuildAndSubscribe(target.id)
                 },
                 onPlayScenarioUpdate = { scenarioId, transform ->
                     val targetId = studyTarget?.id ?: return@StudySessionPane

@@ -65,6 +65,58 @@ class StudyBuildQueueTest {
     }
 
     @Test
+    fun `dropping idle work preserves running tasks and allows a fresh enqueue`() = runBlocking {
+        val scope = CoroutineScope(SupervisorJob() + Dispatchers.Default)
+        val store = StudySessionStore(InMemoryStudySessionsRepository(), scope = scope)
+        store.create(record())
+        val runningTask = StudyBuildTask(
+            "study-1",
+            StudyBuildElement(StudyBuildElementKind.TALK_EXPRESSION, expressionId = "main-neutral"),
+        )
+        val idleTask = StudyBuildTask(
+            "study-1",
+            StudyBuildElement(StudyBuildElementKind.TALK_SCENE_IMAGE, sceneIndex = 0),
+        )
+        val runningStarted = CompletableDeferred<Unit>()
+        val releaseRunning = CompletableDeferred<Unit>()
+        val bothCompleted = CompletableDeferred<Unit>()
+        val calls = AtomicInteger()
+        val queue = StudyBuildQueue(
+            store = store,
+            executor = StudyBuildTaskExecutor { task ->
+                if (task.element.key == runningTask.element.key) {
+                    runningStarted.complete(Unit)
+                    releaseRunning.await()
+                }
+                if (calls.incrementAndGet() == 2) bothCompleted.complete(Unit)
+            },
+            scope = scope,
+            textWorkers = 1,
+            imageWorkers = 1,
+        )
+
+        try {
+            queue.start()
+            queue.enqueue(listOf(runningTask))
+            withTimeout(2_000L) { runningStarted.await() }
+            queue.enqueue(listOf(idleTask))
+
+            assertEquals(
+                setOf(runningTask.element.key),
+                queue.dropIdle("study-1", setOf(runningTask.element.key, idleTask.element.key)),
+            )
+            assertEquals(listOf(runningTask.element), queue.activeElements("study-1"))
+
+            queue.enqueue(listOf(idleTask.copy()))
+            releaseRunning.complete(Unit)
+            withTimeout(2_000L) { bothCompleted.await() }
+            assertEquals(2, calls.get())
+        } finally {
+            scope.cancel()
+        }
+    }
+
+    @Test
     fun `transient task failure retries and succeeds without marking failed`() = runBlocking {
         val scope = CoroutineScope(SupervisorJob() + Dispatchers.Default)
         val store = StudySessionStore(InMemoryStudySessionsRepository(), scope = scope)

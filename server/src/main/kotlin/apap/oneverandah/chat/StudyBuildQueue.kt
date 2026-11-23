@@ -112,6 +112,7 @@ class StudyBuildQueue(
         kotlinx.coroutines.channels.Channel<StudyBuildTask>(kotlinx.coroutines.channels.Channel.UNLIMITED)
     private val queued = ConcurrentHashMap<String, StudyBuildTask>()
     private val running = ConcurrentHashMap.newKeySet<String>()
+    private val taskStateLock = Any()
     private val started = AtomicBoolean(false)
 
     fun start() {
@@ -130,7 +131,10 @@ class StudyBuildQueue(
     ) {
         tasks.forEach { task ->
             val queuedTask = if (priorityOverride == null) task else task.copy(priorityOverride = priorityOverride)
-            if (queued.putIfAbsent(queuedTask.key, queuedTask) == null) send(queuedTask)
+            val added = synchronized(taskStateLock) {
+                queued.putIfAbsent(queuedTask.key, queuedTask) == null
+            }
+            if (added) send(queuedTask)
         }
     }
 
@@ -140,6 +144,21 @@ class StudyBuildQueue(
         .map { it.element }
         .distinctBy { it.key }
         .toList()
+
+    fun dropIdle(sessionId: String, elementKeys: Set<String>): Set<String> = synchronized(taskStateLock) {
+        buildSet {
+            elementKeys.forEach { key ->
+                val task = queued.values.firstOrNull {
+                    it.sessionId == sessionId && it.element.key == key
+                } ?: return@forEach
+                if (task.key in running) {
+                    add(key)
+                } else {
+                    queued.remove(task.key, task)
+                }
+            }
+        }
+    }
 
     fun hasActive(sessionId: String): Boolean = queued.values.any { it.sessionId == sessionId }
 
@@ -166,10 +185,14 @@ class StudyBuildQueue(
     }
 
     private suspend fun process(task: StudyBuildTask) {
-        if (queued[task.key] != task || !running.add(task.key)) return
+        val accepted = synchronized(taskStateLock) {
+            queued[task.key] === task && running.add(task.key)
+        }
+        if (!accepted) return
         var attempt = 0
         if (store.findById(task.sessionId) == null) {
             finish(task)
+            synchronized(taskStateLock) { running.remove(task.key) }
             return
         }
         val attempted = store.update(task.sessionId) { current ->
@@ -195,8 +218,8 @@ class StudyBuildQueue(
             )
         }
         if (attempted == null) {
-            running.remove(task.key)
             finish(task)
+            synchronized(taskStateLock) { running.remove(task.key) }
             return
         }
         publishBuild(task.sessionId)
@@ -216,25 +239,35 @@ class StudyBuildQueue(
                     cancelled,
                 )
             } else {
+                synchronized(taskStateLock) { running.remove(task.key) }
                 throw cancelled
             }
         } catch (error: Exception) {
             failure = error
-        } finally {
-            running.remove(task.key)
         }
         val elapsedMs = (System.nanoTime() - attemptStartedAt) / 1_000_000
 
-        if (failure == null) {
-            appendJournal(
-                task,
-                StudyBuildJournalOutcome.SUCCEEDED,
-                attempt,
-                elapsedMs,
-            )
-            finish(task)
-        } else {
-            handleFailure(task, attempt, elapsedMs, failure)
+        var retryDelayMillis: Long? = null
+        try {
+            if (failure == null) {
+                appendJournal(
+                    task,
+                    StudyBuildJournalOutcome.SUCCEEDED,
+                    attempt,
+                    elapsedMs,
+                )
+                finish(task)
+            } else {
+                retryDelayMillis = handleFailure(task, attempt, elapsedMs, failure)
+            }
+        } finally {
+            synchronized(taskStateLock) { running.remove(task.key) }
+        }
+        retryDelayMillis?.let { delayMillis ->
+            scope.launch {
+                delay(delayMillis)
+                if (scope.isActive && queued[task.key] === task) send(task)
+            }
         }
         publishBuild(task.sessionId)
         if (scope.isActive) {
@@ -249,7 +282,7 @@ class StudyBuildQueue(
         }
     }
 
-    private suspend fun handleFailure(task: StudyBuildTask, attempt: Int, elapsedMs: Long, error: Exception) {
+    private suspend fun handleFailure(task: StudyBuildTask, attempt: Int, elapsedMs: Long, error: Exception): Long? {
         if (attempt < attemptLimit) {
             val delayMillis = retryBackoffMillis.getOrElse(attempt - 1) {
                 retryBackoffMillis.lastOrNull() ?: 0L
@@ -273,11 +306,7 @@ class StudyBuildQueue(
                 elapsedMs,
                 "${StudyBuildFailureReason.display(error)} Retrying in ${delayMillis.coerceAtLeast(0L)} ms.",
             )
-            scope.launch {
-                delay(delayMillis.coerceAtLeast(0L))
-                if (scope.isActive && queued[task.key] == task) send(task)
-            }
-            return
+            return delayMillis.coerceAtLeast(0L)
         }
 
         store.update(task.sessionId) { current ->
@@ -312,6 +341,7 @@ class StudyBuildQueue(
             SafeFailureDiagnostics.describe(error),
         )
         finish(task)
+        return null
     }
 
     private suspend fun publishBuild(sessionId: String) {
@@ -349,7 +379,9 @@ class StudyBuildQueue(
     }
 
     private fun finish(task: StudyBuildTask) {
-        queued.remove(task.key, task)
+        synchronized(taskStateLock) {
+            if (queued[task.key] === task) queued.remove(task.key)
+        }
     }
 
     private suspend fun send(task: StudyBuildTask) {
