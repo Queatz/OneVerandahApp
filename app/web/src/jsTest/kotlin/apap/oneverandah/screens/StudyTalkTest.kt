@@ -195,6 +195,42 @@ class StudyTalkTest {
         assertEquals("The image provider rejected the request (HTTP 503).", state.talkFailureReason())
     }
 
+    @Test
+    fun `missing talk assets produce only the incomplete talk retry elements`() {
+        val source = sampleTalkWorld()
+        val partial = source.copy(
+            scenes = source.scenes.mapIndexed { index, scene ->
+                scene.copy(
+                    backgroundImageUrl = if (index == 0) null else "background.png",
+                    turns = scene.turns.mapIndexed { turnIndex, turn ->
+                        turn.copy(
+                            characterAudioUrl = if (index == 0 && turnIndex == 0) null else "character.mp3",
+                            replyAudioUrl = "reply.mp3",
+                        )
+                    },
+                )
+            },
+            expressions = source.expressions.map {
+                it.copy(imageUrl = if (it.id == "main-neutral") null else "expression.png")
+            },
+        )
+
+        val retryElements = partial.missingTalkBuildElements()
+
+        assertEquals(
+            setOf(
+                "TALK_SCENE_IMAGE:0",
+                "TALK_EXPRESSION:main-neutral",
+                "TALK_AUDIO:0:0:CHARACTER_LINE",
+            ),
+            retryElements.map { it.key }.toSet(),
+        )
+        assertEquals(
+            listOf(StudyBuildElement(StudyBuildElementKind.TALK_WORLD)),
+            null.missingTalkBuildElements(),
+        )
+    }
+
     private fun sampleTalkWorld() = StudyTalkWorld(
         setting = "A friendly neighborhood",
         expressions = listOf(

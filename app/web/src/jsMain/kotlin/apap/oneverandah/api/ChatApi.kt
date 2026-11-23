@@ -2,6 +2,7 @@ package apap.oneverandah.api
 
 import apap.oneverandah.state.DeviceTokenStore
 import io.ktor.client.HttpClient
+import io.ktor.client.engine.js.Js
 import io.ktor.client.request.accept
 import io.ktor.client.request.delete
 import io.ktor.client.request.get
@@ -29,6 +30,7 @@ import kotlinx.coroutines.delay
 import kotlinx.coroutines.sync.Semaphore
 import kotlinx.coroutines.withContext
 import kotlinx.coroutines.withTimeoutOrNull
+import kotlinx.serialization.SerializationException
 import kotlinx.serialization.json.Json
 import kotlin.time.Duration.Companion.milliseconds
 
@@ -40,10 +42,17 @@ object ChatApi {
     private const val REQUEST_TIMEOUT_MESSAGE = "Chat request timed out"
     private const val STREAM_IDLE_TIMEOUT_MILLIS = 60_000L
     private val STUDY_EVENT_RECONNECT_BACKOFF_MILLIS = listOf(1_000L, 2_000L, 5_000L, 10_000L)
+    private val READ_RETRY_BACKOFF_MILLIS = listOf(400L, 1_200L)
 
     private val requestSlots = Semaphore(permits = 4)
     private val client by lazy {
-        HttpClient {
+        HttpClient(Js) {
+            engine {
+                configureRequest {
+                    // Bypass browser HTTP cache and cache-entry locks on dynamic study/chat API reads.
+                    cache = "no-store"
+                }
+            }
             install(HttpTimeout) {
                 connectTimeoutMillis = 30_000L
                 requestTimeoutMillis = REQUEST_TIMEOUT_MILLIS
@@ -363,8 +372,7 @@ object ChatApi {
 
     suspend fun listStudySessions(): SavedStudySessionsResponse {
         return apiReadRequest(
-            request = {
-                val token = DeviceTokenStore.ensureToken()
+            request = { token ->
                 client.get(chatApiUrl("/study/sessions")) {
                     header(DEVICE_TOKEN_HEADER, token)
                     timeout { requestTimeoutMillis = STUDY_SESSION_READ_TIMEOUT_MILLIS }
@@ -376,8 +384,7 @@ object ChatApi {
 
     suspend fun getStudySession(id: String): SavedStudySession {
         return apiReadRequest(
-            request = {
-                val token = DeviceTokenStore.ensureToken()
+            request = { token ->
                 client.get(chatApiUrl("/study/sessions/$id")) {
                     header(DEVICE_TOKEN_HEADER, token)
                     timeout { requestTimeoutMillis = STUDY_SESSION_READ_TIMEOUT_MILLIS }
@@ -420,11 +427,14 @@ object ChatApi {
         id: String,
         onEvent: suspend (StudyBuildEvent) -> Unit,
     ) {
-        val token = DeviceTokenStore.ensureToken()
         var reconnectAttempt = 0
+        var refreshedToken = false
         while (true) {
             var done = false
+            var usedToken: String? = null
             try {
+                val token = DeviceTokenStore.ensureToken()
+                usedToken = token
                 client.prepareGet(chatApiUrl("/study/sessions/$id/events")) {
                     header(DEVICE_TOKEN_HEADER, token)
                     timeout { requestTimeoutMillis = HttpTimeoutConfig.INFINITE_TIMEOUT_MS }
@@ -439,7 +449,11 @@ object ChatApi {
                             channel.readLine()
                         } ?: throw ChatApiException("Study event stream idle timeout")
                         if (line.isBlank()) continue
-                        val event = decodeStudyBuildEventLine(line)
+                        val event = try {
+                            decodeStudyBuildEventLine(line)
+                        } catch (_: SerializationException) {
+                            continue
+                        }
                         onEvent(event)
                         reconnectAttempt = 0
                         if (event == StudyBuildEvent.Done) {
@@ -451,9 +465,14 @@ object ChatApi {
             } catch (cancelled: CancellationException) {
                 throw cancelled
             } catch (error: ChatApiException) {
-                if (error.statusCode != 0) throw error
-            } catch (_: Exception) {
-                // Reconnect below; every connection begins with a fresh snapshot.
+                if (error.statusCode == 401 && !refreshedToken && usedToken != null) {
+                    refreshedToken = true
+                    DeviceTokenStore.clearIfMatches(usedToken)
+                } else if (error.statusCode != 0 && error.statusCode !in RETRYABLE_READ_STATUS_CODES) {
+                    throw error
+                }
+            } catch (_: Throwable) {
+                // Reconnect below (including Ktor JS Error("Fail to fetch")); every connection starts with a snapshot.
             }
             if (done) return
             val backoff = STUDY_EVENT_RECONNECT_BACKOFF_MILLIS[
@@ -472,8 +491,7 @@ object ChatApi {
         limit: Int = 20,
     ): CommunityStudySessionsResponse {
         return apiReadRequest(
-            request = {
-                val token = DeviceTokenStore.ensureToken()
+            request = { token ->
                 client.get(chatApiUrl("/study/sessions/community")) {
                     header(DEVICE_TOKEN_HEADER, token)
                     parameter("limit", limit)
@@ -565,18 +583,23 @@ object ChatApi {
     }
 
     private suspend fun <T> apiReadRequest(
-        request: suspend () -> io.ktor.client.statement.HttpResponse,
+        request: suspend (token: String) -> io.ktor.client.statement.HttpResponse,
         decode: (String) -> T,
-    ): T {
-        repeat(2) { attempt ->
-            try {
-                return executeApiRequest(request, decode, STUDY_SESSION_READ_TIMEOUT_MILLIS)
-            } catch (error: ChatApiException) {
-                if (error.message != REQUEST_TIMEOUT_MESSAGE || attempt == 1) throw error
-            }
-        }
-        throw ChatApiException(REQUEST_TIMEOUT_MESSAGE)
-    }
+    ): T = executeWithReadRetry(
+        obtainToken = { DeviceTokenStore.ensureToken() },
+        onUnauthorized = { failedToken -> DeviceTokenStore.clearIfMatches(failedToken) },
+        execute = { token ->
+            executeApiRequest(
+                request = { request(token) },
+                decode = decode,
+                timeoutMillis = STUDY_SESSION_READ_TIMEOUT_MILLIS,
+            )
+        },
+        delayBeforeRetry = { retryIndex ->
+            val backoff = READ_RETRY_BACKOFF_MILLIS[retryIndex.coerceAtMost(READ_RETRY_BACKOFF_MILLIS.lastIndex)]
+            delay(backoff.milliseconds)
+        },
+    )
 
     private suspend fun <T> withRequestSlot(block: suspend () -> T): T {
         withTimeoutOrNull(REQUEST_SLOT_WAIT_TIMEOUT_MILLIS.milliseconds) {
@@ -612,6 +635,45 @@ object ChatApi {
         runCatching { json.decodeFromString(ChatErrorResponse.serializer(), body).error }
             .getOrElse { "Chat request failed ($status)" }
 
+}
+
+internal val RETRYABLE_READ_STATUS_CODES = setOf(408, 429, 500, 502, 503, 504)
+
+internal suspend fun <T> executeWithReadRetry(
+    obtainToken: suspend () -> String,
+    onUnauthorized: (failedToken: String) -> Unit,
+    execute: suspend (token: String) -> T,
+    maxTransientRetries: Int = 2,
+    delayBeforeRetry: suspend (retryIndex: Int) -> Unit = {},
+): T {
+    var transientRetries = 0
+    var refreshedToken = false
+    while (true) {
+        var usedToken: String? = null
+        try {
+            val token = obtainToken()
+            usedToken = token
+            return execute(token)
+        } catch (cancelled: CancellationException) {
+            throw cancelled
+        } catch (error: SerializationException) {
+            throw error
+        } catch (error: ChatApiException) {
+            if (error.statusCode == 401 && !refreshedToken && usedToken != null) {
+                refreshedToken = true
+                onUnauthorized(usedToken)
+                continue
+            }
+            val retryable = error.statusCode == 0 || error.statusCode in RETRYABLE_READ_STATUS_CODES
+            if (!retryable || transientRetries >= maxTransientRetries) throw error
+            delayBeforeRetry(transientRetries)
+            transientRetries += 1
+        } catch (error: Throwable) {
+            if (transientRetries >= maxTransientRetries) throw error
+            delayBeforeRetry(transientRetries)
+            transientRetries += 1
+        }
+    }
 }
 
 internal fun chatApiUrl(path: String = ""): String = "${ImageApi.apiBaseUrl}/api/chat$path"

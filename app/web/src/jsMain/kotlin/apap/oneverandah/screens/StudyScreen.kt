@@ -142,7 +142,7 @@ fun StudyScreen(
     val language = Localization.language
     val scope = rememberCoroutineScope()
     var studyTarget by remember { mutableStateOf<ChatMessage?>(null) }
-    var studySessionVisible by remember { mutableStateOf(false) }
+    var studySessionVisible by remember { mutableStateOf(!sessionId.isNullOrBlank()) }
     var studyLoading by remember { mutableStateOf(false) }
     var studyError by remember { mutableStateOf<String?>(null) }
     var studySession by remember { mutableStateOf<StudySessionResponse?>(null) }
@@ -174,9 +174,11 @@ fun StudyScreen(
     val studyPersistedBySourceId = remember { mutableStateMapOf<String, String>() }
     var studySessionItems by remember { mutableStateOf<List<SavedStudySessionSummary>>(emptyList()) }
     var studySessionsLoading by remember { mutableStateOf(false) }
+    var studySessionsError by remember { mutableStateOf(false) }
     var studySessionsJob by remember { mutableStateOf<Job?>(null) }
     var communitySessionItems by remember { mutableStateOf<List<SavedStudySessionSummary>>(emptyList()) }
     var communitySessionsLoading by remember { mutableStateOf(false) }
+    var communitySessionsError by remember { mutableStateOf(false) }
     var communitySessionsLoadingMore by remember { mutableStateOf(false) }
     var communitySessionsJob by remember { mutableStateOf<Job?>(null) }
     var communityNextCursor by remember { mutableStateOf<String?>(null) }
@@ -207,10 +209,12 @@ fun StudyScreen(
         val job = scope.launch(start = CoroutineStart.LAZY) {
             try {
                 val response = ChatApi.listStudySessions()
+                studySessionsError = false
                 applyStudySessionItems(response.items)
             } catch (cancelled: CancellationException) {
                 throw cancelled
             } catch (_: Throwable) {
+                studySessionsError = studySessionItems.isEmpty()
                 if (!silent) Toaster.show(strings.chatStudySessionsError)
             } finally {
                 if (studySessionsJob === currentCoroutineContext()[Job]) {
@@ -220,7 +224,8 @@ fun StudyScreen(
             }
         }
         studySessionsJob = job
-        studySessionsLoading = !silent
+        studySessionsLoading = !silent || studySessionItems.isEmpty()
+        studySessionsError = false
         job.start()
     }
 
@@ -256,11 +261,13 @@ fun StudyScreen(
         val job = scope.launch(start = CoroutineStart.LAZY) {
             try {
                 val page = ChatApi.listCommunityStudySessions(limit = STUDY_COMMUNITY_PAGE_SIZE)
+                communitySessionsError = false
                 communitySessionItems = page.items
                 communityNextCursor = page.nextCursor
             } catch (cancelled: CancellationException) {
                 throw cancelled
             } catch (_: Throwable) {
+                communitySessionsError = communitySessionItems.isEmpty()
                 Toaster.show(strings.chatStudySessionsError)
             } finally {
                 if (communitySessionsJob === currentCoroutineContext()[Job]) {
@@ -272,6 +279,7 @@ fun StudyScreen(
         }
         communitySessionsJob = job
         communitySessionsLoading = communitySessionItems.isEmpty()
+        communitySessionsError = false
         communitySessionsLoadingMore = false
         job.start()
     }
@@ -840,11 +848,11 @@ fun StudyScreen(
         }
     }
 
-    fun subscribeToStudyBuild(messageId: String, saved: SavedStudySession) {
+    fun subscribeToStudyBuild(messageId: String, sessionId: String) {
         studyBuildStreamJob?.cancel()
         studyBuildStreamJob = scope.launch {
             try {
-                ChatApi.studySessionEvents(saved.id) { event ->
+                ChatApi.studySessionEvents(sessionId) { event ->
                     if (studyTarget?.id == messageId && studySessionVisible) {
                         applyStudyBuildEvent(messageId, event)
                     }
@@ -857,6 +865,32 @@ fun StudyScreen(
                     studyLoading = false
                 }
             }
+        }
+    }
+
+    fun retryTalkBuildAndSubscribe(messageId: String) {
+        val sessionId = studyPersistedBySourceId[messageId] ?: return
+        val session = studyCache[messageId]
+            ?: studySession?.takeIf { studyTarget?.id == messageId }
+        val failedTalk = studyBuildStateByMessageId[messageId]?.failed.orEmpty()
+            .filter { it.kind.isStudyTalkKind() }
+        val elements = (failedTalk + session?.talkWorld.missingTalkBuildElements().orEmpty())
+            .distinctBy { it.key }
+        if (elements.isEmpty()) {
+            subscribeToStudyBuild(messageId, sessionId)
+            return
+        }
+        scope.launch {
+            runCatching { ChatApi.retryStudyBuild(sessionId, elements) }
+                .onSuccess { build ->
+                    if (studyTarget?.id == messageId) {
+                        applyStudyBuildState(messageId, build)
+                        if (studySessionVisible) subscribeToStudyBuild(messageId, sessionId)
+                    }
+                }
+                .onFailure {
+                    if (studyTarget?.id == messageId) studyError = strings.chatStudyError
+                }
         }
     }
 
@@ -890,7 +924,8 @@ fun StudyScreen(
         studyStartExact = mode != StudyBuildMode.INTENT
         if (existingSession != null) {
             applyStudyBuildEvent(message.id, StudyBuildEvent.Snapshot(existingSession))
-            subscribeToStudyBuild(message.id, existingSession)
+            studyPersistedBySourceId[message.id] = existingSession.id
+            subscribeToStudyBuild(message.id, existingSession.id)
             return
         }
         activeStudySessionItem = null
@@ -922,7 +957,7 @@ fun StudyScreen(
                     applyStudyBuildEvent(message.id, StudyBuildEvent.Snapshot(saved))
                     studyError = null
                     if (studySessionVisible) {
-                        subscribeToStudyBuild(message.id, saved)
+                        subscribeToStudyBuild(message.id, saved.id)
                         if (sessionId.isNullOrBlank()) onOpenSession(saved.id)
                     }
                 }
@@ -1118,6 +1153,33 @@ fun StudyScreen(
     }
 
 
+    val latestStudySessionVisible by rememberUpdatedState(studySessionVisible)
+    val latestStudySessionsError by rememberUpdatedState(studySessionsError)
+    val latestCommunitySessionsError by rememberUpdatedState(communitySessionsError)
+
+    DisposableEffect(Unit) {
+        val onPageShow: (Event) -> Unit = { event ->
+            if (event.asDynamic().persisted == true) {
+                refreshStudySessions(silent = true)
+                if (!latestStudySessionVisible) {
+                    loadCommunitySessions(reset = true)
+                }
+            }
+        }
+        val onOnline: (Event) -> Unit = {
+            if (!latestStudySessionVisible && (latestStudySessionsError || latestCommunitySessionsError)) {
+                refreshStudySessions(silent = true)
+                loadCommunitySessions(reset = true)
+            }
+        }
+        window.addEventListener("pageshow", onPageShow)
+        window.addEventListener("online", onOnline)
+        onDispose {
+            window.removeEventListener("pageshow", onPageShow)
+            window.removeEventListener("online", onOnline)
+        }
+    }
+
     LaunchedEffect(studySessionVisible) {
         if (!studySessionVisible) {
             refreshStudySessions(silent = true)
@@ -1279,7 +1341,12 @@ fun StudyScreen(
                             (terminal && world?.hasAllTalkAssets() != true)
                 } == true,
                 talkCanRetry = studyTarget?.id?.let { targetId ->
-                    studyBuildStateByMessageId[targetId]?.failed.orEmpty().any { it.kind.isStudyTalkKind() }
+                    val build = studyBuildStateByMessageId[targetId]
+                    val world = studyCache[targetId]?.talkWorld
+                        ?: studySession?.takeIf { studyTarget?.id == targetId }?.talkWorld
+                    val terminal = build?.status == StudyBuildStatus.COMPLETE || build?.status == StudyBuildStatus.PARTIAL
+                    build?.failed.orEmpty().any { it.kind.isStudyTalkKind() } ||
+                            (terminal && world.missingTalkBuildElements().isNotEmpty())
                 } == true,
                 exactText = studyStartExact,
                 buildStatus = studyTarget?.id?.let { studyBuildStateByMessageId[it]?.status },
@@ -1320,9 +1387,11 @@ fun StudyScreen(
                 },
                 onRetryTalk = {
                     val target = studyTarget ?: return@StudySessionPane
-                    val failed = studyBuildStateByMessageId[target.id]?.failed.orEmpty()
-                        .filter { it.kind.isStudyTalkKind() }
-                    if (failed.isNotEmpty()) retryStudyBuildElements(target.id, failed)
+                    retryTalkBuildAndSubscribe(target.id)
+                },
+                onOpenTalk = {
+                    val target = studyTarget ?: return@StudySessionPane
+                    retryTalkBuildAndSubscribe(target.id)
                 },
                 onPlayScenarioUpdate = { scenarioId, transform ->
                     val targetId = studyTarget?.id ?: return@StudySessionPane
@@ -1359,8 +1428,10 @@ fun StudyScreen(
             StudySessionsList(
                 items = studySessionItems,
                 loading = studySessionsLoading,
+                error = studySessionsError,
                 communityItems = communitySessionItems,
                 communityLoading = communitySessionsLoading,
+                communityError = communitySessionsError,
                 communityLoadingMore = communitySessionsLoadingMore,
                 communityHasMore = communityNextCursor != null,
                 strings = strings,
@@ -1370,6 +1441,10 @@ fun StudyScreen(
                 onRemove = ::removeStudySession,
                 onRename = { pendingStudySessionRename = it },
                 onLoadMoreCommunity = { loadCommunitySessions() },
+                onRetryLoad = {
+                    refreshStudySessions()
+                    loadCommunitySessions(reset = true)
+                },
             )
         }
     }
@@ -1395,8 +1470,10 @@ fun StudyScreen(
 private fun StudySessionsList(
     items: List<SavedStudySessionSummary>,
     loading: Boolean,
+    error: Boolean,
     communityItems: List<SavedStudySessionSummary>,
     communityLoading: Boolean,
+    communityError: Boolean,
     communityLoadingMore: Boolean,
     communityHasMore: Boolean,
     strings: UiStrings,
@@ -1406,6 +1483,7 @@ private fun StudySessionsList(
     onRemove: (SavedStudySessionSummary) -> Unit,
     onRename: (SavedStudySessionSummary) -> Unit,
     onLoadMoreCommunity: () -> Unit,
+    onRetryLoad: () -> Unit,
 ) {
     var draft by remember { mutableStateOf("") }
     var exact by remember { mutableStateOf(false) }
@@ -1547,19 +1625,37 @@ private fun StudySessionsList(
             targetLanguageTag = targetLanguageTag,
         )
         val hasActiveSearch = searchQuery.isNotBlank() || sourceLanguageTag.isNotBlank() || targetLanguageTag.isNotBlank()
-        val visibleLoading = when (filter) {
-            StudySessionsFilter.ALL -> visibleItems.isEmpty() && (loading || communityLoading)
-            StudySessionsFilter.MINE -> loading && visibleItems.isEmpty()
-            StudySessionsFilter.COMMUNITY -> communityLoading && visibleItems.isEmpty()
-        }
-        when {
-            visibleLoading -> {
+        val viewState = studySessionsListViewState(
+            filter = filter,
+            visibleItemsEmpty = visibleItems.isEmpty(),
+            hasActiveSearch = hasActiveSearch,
+            loading = loading,
+            error = error,
+            communityLoading = communityLoading,
+            communityError = communityError,
+        )
+        when (viewState) {
+            StudySessionsListViewState.LOADING -> {
                 Div(attrs = { classes(Styles.chatStatus) }) {
                     MaterialSymbol("progress_activity")
                     Text(strings.chatThinking)
                 }
             }
-            visibleItems.isEmpty() -> {
+            StudySessionsListViewState.ERROR -> {
+                Div(attrs = { classes(Styles.studySessionError) }) {
+                    MaterialSymbol("error")
+                    P { Text(strings.chatStudySessionsError) }
+                    Button(attrs = {
+                        classes(Styles.savedItemAction)
+                        attr("type", "button")
+                        onClick { onRetryLoad() }
+                    }) {
+                        MaterialSymbol("refresh")
+                        Text(strings.chatTestRetry)
+                    }
+                }
+            }
+            StudySessionsListViewState.EMPTY -> {
                 Div(attrs = { classes(Styles.savedPanelEmpty) }) {
                     MaterialSymbol(
                         when {
@@ -1579,7 +1675,7 @@ private fun StudySessionsList(
                     }
                 }
             }
-            else -> visibleItems.forEach { entry ->
+            StudySessionsListViewState.CONTENT -> visibleItems.forEach { entry ->
                 StudySessionCard(
                     item = entry.item,
                     strings = strings,
@@ -1889,6 +1985,7 @@ private fun StudySessionPane(
     talkFailed: Boolean,
     talkCanRetry: Boolean,
     onRetryTalk: () -> Unit,
+    onOpenTalk: () -> Unit,
     onPlayScenarioUpdate: (String, (StudyPlayScenario) -> StudyPlayScenario) -> Unit,
     onPlayMessageImage: (scenarioId: String, imageId: String, imageUrl: String?) -> Unit,
     onPracticeSentences: (List<StudyExampleSentence>) -> Unit,
@@ -1949,6 +2046,7 @@ private fun StudySessionPane(
                         talkFailed = talkFailed,
                         talkCanRetry = talkCanRetry,
                         onRetryTalk = onRetryTalk,
+                        onOpenTalk = onOpenTalk,
                         onRetryExam = onRetryExam,
                         strings = strings,
                         onRetrySentence = onRetrySentence,
@@ -2075,6 +2173,7 @@ private fun StudySessionContent(
     talkCanRetry: Boolean,
     onRetryExam: () -> Unit,
     onRetryTalk: () -> Unit,
+    onOpenTalk: () -> Unit,
     strings: UiStrings,
     onRetrySentence: (Int) -> Unit,
     onRetryImage: (Int) -> Unit,
@@ -2220,6 +2319,7 @@ private fun StudySessionContent(
                 }
                 onClick {
                     mode = tabMode
+                    if (tabMode == StudySessionMode.TALK) onOpenTalk()
                     if (tabMode != StudySessionMode.ALL &&
                         tabMode != StudySessionMode.STUDY &&
                         tabMode != StudySessionMode.VISUALIZE &&
@@ -3387,6 +3487,40 @@ internal enum class StudySessionsFilter {
     ALL,
     MINE,
     COMMUNITY,
+}
+
+internal enum class StudySessionsListViewState {
+    LOADING,
+    ERROR,
+    EMPTY,
+    CONTENT,
+}
+
+internal fun studySessionsListViewState(
+    filter: StudySessionsFilter,
+    visibleItemsEmpty: Boolean,
+    hasActiveSearch: Boolean,
+    loading: Boolean,
+    error: Boolean,
+    communityLoading: Boolean,
+    communityError: Boolean,
+): StudySessionsListViewState {
+    if (!visibleItemsEmpty) return StudySessionsListViewState.CONTENT
+    val isLoading = when (filter) {
+        StudySessionsFilter.ALL -> loading || communityLoading
+        StudySessionsFilter.MINE -> loading
+        StudySessionsFilter.COMMUNITY -> communityLoading
+    }
+    if (isLoading) return StudySessionsListViewState.LOADING
+    if (!hasActiveSearch) {
+        val isError = when (filter) {
+            StudySessionsFilter.ALL -> error || communityError
+            StudySessionsFilter.MINE -> error
+            StudySessionsFilter.COMMUNITY -> communityError
+        }
+        if (isError) return StudySessionsListViewState.ERROR
+    }
+    return StudySessionsListViewState.EMPTY
 }
 
 internal data class StudySessionListEntry(

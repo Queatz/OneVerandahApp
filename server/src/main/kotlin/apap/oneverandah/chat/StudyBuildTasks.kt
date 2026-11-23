@@ -32,7 +32,10 @@ class StudyBuildTasks(
     private val log = LoggerFactory.getLogger(StudyBuildTasks::class.java)
     override suspend fun execute(task: StudyBuildTask) {
         val record = store.findById(task.sessionId) ?: return
-        if (isComplete(record, task)) return
+        if (isComplete(record, task)) {
+            verifyTalkTaskResult(task)
+            return
+        }
 
         when (task.element.kind) {
             StudyBuildElementKind.PREPARE -> prepare(record)
@@ -54,6 +57,48 @@ class StudyBuildTasks(
             StudyBuildElementKind.TALK_EXPRESSION -> renderTalkExpression(record, task)
             StudyBuildElementKind.TALK_AUDIO -> renderTalkAudio(record, task)
         }
+        verifyTalkTaskResult(task)
+    }
+
+    private suspend fun verifyTalkTaskResult(task: StudyBuildTask) {
+        val record = store.findById(task.sessionId) ?: return
+        val world = record.session.talkWorld
+        val errorMessage = when (task.element.kind) {
+            StudyBuildElementKind.TALK_WORLD -> if (
+                record.session.sentences.isNotEmpty() && record.session.characters.isNotEmpty() && world == null
+            ) {
+                "Talk world generation completed without creating a world."
+            } else {
+                null
+            }
+
+            StudyBuildElementKind.TALK_SCENE_IMAGE -> world?.scenes
+                ?.getOrNull(task.element.sceneIndex ?: -1)
+                ?.backgroundImageUrl
+                ?.takeIf(String::isNullOrBlank)
+                ?.let { "Talk scene image generation completed but did not produce an image URL." }
+
+            StudyBuildElementKind.TALK_EXPRESSION -> world?.expressions
+                ?.firstOrNull { it.id == task.element.expressionId }
+                ?.imageUrl
+                ?.takeIf(String::isNullOrBlank)
+                ?.let { "Talk expression generation completed but did not produce an image URL." }
+
+            StudyBuildElementKind.TALK_AUDIO -> {
+                val turn = world?.scenes?.getOrNull(task.element.sceneIndex ?: -1)
+                    ?.turns?.getOrNull(task.element.turnIndex ?: -1)
+                val audioUrl = when (task.element.audioKind) {
+                    StudyTalkAudioKind.CHARACTER_LINE -> turn?.characterAudioUrl
+                    StudyTalkAudioKind.REPLY -> turn?.replyAudioUrl
+                    null -> null
+                }
+                audioUrl?.takeIf(String::isNullOrBlank)
+                    ?.let { "Talk audio generation completed but did not produce an audio URL." }
+            }
+
+            else -> null
+        }
+        if (errorMessage != null) throw IllegalStateException(errorMessage)
     }
 
     private suspend fun prepare(record: SavedStudySessionRecord) {

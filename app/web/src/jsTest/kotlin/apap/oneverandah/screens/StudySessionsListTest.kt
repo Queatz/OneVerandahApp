@@ -172,6 +172,70 @@ class StudySessionsListTest {
     }
 
     @Test
+    fun `study sessions list view state surfaces loading and retryable errors when empty`() {
+        assertEquals(
+            StudySessionsListViewState.LOADING,
+            studySessionsListViewState(
+                filter = StudySessionsFilter.MINE,
+                visibleItemsEmpty = true,
+                hasActiveSearch = false,
+                loading = true,
+                error = false,
+                communityLoading = false,
+                communityError = false,
+            ),
+        )
+        assertEquals(
+            StudySessionsListViewState.ERROR,
+            studySessionsListViewState(
+                filter = StudySessionsFilter.ALL,
+                visibleItemsEmpty = true,
+                hasActiveSearch = false,
+                loading = false,
+                error = false,
+                communityLoading = false,
+                communityError = true,
+            ),
+        )
+        assertEquals(
+            StudySessionsListViewState.ERROR,
+            studySessionsListViewState(
+                filter = StudySessionsFilter.MINE,
+                visibleItemsEmpty = true,
+                hasActiveSearch = false,
+                loading = false,
+                error = true,
+                communityLoading = false,
+                communityError = false,
+            ),
+        )
+        assertEquals(
+            StudySessionsListViewState.EMPTY,
+            studySessionsListViewState(
+                filter = StudySessionsFilter.ALL,
+                visibleItemsEmpty = true,
+                hasActiveSearch = true,
+                loading = false,
+                error = true,
+                communityLoading = false,
+                communityError = true,
+            ),
+        )
+        assertEquals(
+            StudySessionsListViewState.CONTENT,
+            studySessionsListViewState(
+                filter = StudySessionsFilter.ALL,
+                visibleItemsEmpty = false,
+                hasActiveSearch = false,
+                loading = false,
+                error = true,
+                communityLoading = false,
+                communityError = true,
+            ),
+        )
+    }
+
+    @Test
     fun `study session path is shareable by id`() {
         assertEquals("/study/abc-123", studySessionPath("abc-123"))
         assertEquals("/study/abc-123", studySessionPath(" abc-123 "))

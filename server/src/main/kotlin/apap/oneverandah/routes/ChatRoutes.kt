@@ -417,6 +417,7 @@ fun Route.chatRoutes(
         }
 
         get("/api/chat/study/sessions/community") {
+            call.disableStudyReadCaching()
             val token = call.request.header(DEVICE_TOKEN_HEADER)
             val cursor = call.request.queryParameters["cursor"]
             val limit = call.request.queryParameters["limit"]?.toIntOrNull()
@@ -436,6 +437,7 @@ fun Route.chatRoutes(
         }
 
         get("/api/chat/study/sessions") {
+            call.disableStudyReadCaching()
             val token = call.request.header(DEVICE_TOKEN_HEADER)
             try {
                 val sessions = withTimeoutOrNull(STUDY_SESSION_LIST_TIMEOUT_MILLIS) {
@@ -453,6 +455,7 @@ fun Route.chatRoutes(
 
         if (studyBuildService != null) {
             get("/api/chat/study/sessions/{id}/events") {
+                call.disableStudyReadCaching(includeNoCache = true)
                 val token = call.request.header(DEVICE_TOKEN_HEADER)
                 val id = call.parameters["id"]?.trim().orEmpty()
                 if (id.isEmpty()) {
@@ -470,7 +473,6 @@ fun Route.chatRoutes(
                     return@get
                 }
 
-                call.response.headers.append(HttpHeaders.CacheControl, "no-cache")
                 call.response.headers.append("X-Accel-Buffering", "no")
                 val eventFlow = studyBuildService.events(id)
                 call.respondBytesWriter(contentType = ndjsonContentType) {
@@ -550,6 +552,7 @@ fun Route.chatRoutes(
         }
 
         get("/api/chat/study/sessions/{id}") {
+            call.disableStudyReadCaching()
             val token = call.request.header(DEVICE_TOKEN_HEADER)
             val id = call.parameters["id"]?.trim().orEmpty()
             if (id.isEmpty()) {
@@ -681,6 +684,7 @@ fun Route.chatRoutes(
     // Register static /saved paths before /{conversationId} so "saved" is not captured as an id.
     if (savedMessagesService != null) {
         get("/api/chat/saved") {
+            call.disableStudyReadCaching()
             val token = call.request.header(DEVICE_TOKEN_HEADER)
             try {
                 call.respond(savedMessagesService.list(token))
@@ -744,6 +748,12 @@ private suspend inline fun <reified T> ApplicationCall.respondStudyPayload(
 ) {
     val text = withContext(Dispatchers.Default) { studyPayloadJson.encodeToString(payload) }
     respondText(text, ContentType.Application.Json, status)
+}
+
+private fun ApplicationCall.disableStudyReadCaching(includeNoCache: Boolean = false) {
+    val directive = if (includeNoCache) "no-store, no-cache" else "no-store"
+    response.headers.append(HttpHeaders.CacheControl, directive)
+    response.headers.append(HttpHeaders.Vary, DEVICE_TOKEN_HEADER)
 }
 
 private const val STUDY_BUILD_HEARTBEAT_MILLIS = 15_000L

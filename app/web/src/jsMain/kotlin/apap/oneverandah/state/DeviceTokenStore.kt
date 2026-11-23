@@ -27,12 +27,19 @@ object DeviceTokenStore {
      */
     suspend fun ensureToken(): String {
         peek()?.let { return it }
-        val issued = ChatApi.createDeviceToken()
         return mutex.withLock {
             peek()?.let { return@withLock it }
+            val issued = ChatApi.createDeviceToken()
             persist(issued)
             cached = issued
             issued
+        }
+    }
+
+    /** Clears the local token only if it still matches [expected], avoiding wiping a freshly issued token. */
+    fun clearIfMatches(expected: String) {
+        if (peek() == expected) {
+            clear()
         }
     }
 

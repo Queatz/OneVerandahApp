@@ -12,8 +12,10 @@ import kotlinx.coroutines.CoroutineScope
 import kotlinx.coroutines.delay
 import kotlinx.coroutines.isActive
 import kotlinx.coroutines.launch
+import kotlinx.coroutines.TimeoutCancellationException
 import kotlinx.coroutines.selects.select
 import kotlinx.coroutines.withContext
+import kotlinx.coroutines.withTimeout
 import java.util.concurrent.ConcurrentHashMap
 import java.util.concurrent.atomic.AtomicBoolean
 import org.slf4j.LoggerFactory
@@ -94,6 +96,7 @@ class StudyBuildQueue(
     private val retryBackoffMillis: List<Long> = DEFAULT_RETRY_BACKOFF_MILLIS,
     private val clock: () -> Long = System::currentTimeMillis,
     private val onTaskSettled: suspend (String) -> Unit = {},
+    private val taskTimeoutMillis: Long = DEFAULT_TASK_TIMEOUT_MILLIS,
 ) {
     private val log = LoggerFactory.getLogger(StudyBuildQueue::class.java)
     private val attemptLimit = maxAttempts.coerceAtLeast(1)
@@ -193,11 +196,20 @@ class StudyBuildQueue(
         var failure: Exception? = null
         val attemptStartedAt = System.nanoTime()
         try {
-            withContext(CoroutineName("study-build session=${task.sessionId} element=${task.element.key} attempt=$attempt")) {
-                executor.execute(task)
+            withTimeout(taskTimeoutMillis) {
+                withContext(CoroutineName("study-build session=${task.sessionId} element=${task.element.key} attempt=$attempt")) {
+                    executor.execute(task)
+                }
             }
         } catch (cancelled: CancellationException) {
-            throw cancelled
+            if (cancelled is TimeoutCancellationException) {
+                failure = IllegalStateException(
+                    "Study build task exceeded its $taskTimeoutMillis ms time limit.",
+                    cancelled,
+                )
+            } else {
+                throw cancelled
+            }
         } catch (error: Exception) {
             failure = error
         } finally {
@@ -297,5 +309,6 @@ class StudyBuildQueue(
 
     companion object {
         val DEFAULT_RETRY_BACKOFF_MILLIS = listOf(2_000L, 10_000L, 30_000L)
+        const val DEFAULT_TASK_TIMEOUT_MILLIS = 5 * 60 * 1_000L
     }
 }

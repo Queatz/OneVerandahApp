@@ -24,5 +24,6 @@ config.plugins.push(new HtmlWebpackPlugin({
     template: require('path').resolve(__dirname, 'kotlin/index.template.html'),
     filename: 'index.html',
     publicPath: '/',
+    hash: true,
     inject: 'body',
 }));

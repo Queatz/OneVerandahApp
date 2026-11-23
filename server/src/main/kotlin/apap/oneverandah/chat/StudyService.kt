@@ -891,19 +891,6 @@ class StudyService(
                     ?: characters.first().id
                 val emotion = turn.expressionId.substringAfterLast('-').lowercase()
                     .takeIf { it in emotions } ?: "neutral"
-                val replyUsesStudyVocabulary = vocabularyWords.isEmpty() ||
-                    studyTalkWords(turn.reply).any(vocabularyWords::contains)
-                if (!replyUsesStudyVocabulary) {
-                    log.warn(
-                        "Study Talk exchange {}.{} failed study-pool validation (poolSize={})",
-                        sceneIndex + 1,
-                        turnIndex + 1,
-                        vocabularyWords.size,
-                    )
-                }
-                require(replyUsesStudyVocabulary) {
-                    "Study Talk exchange ${sceneIndex + 1}.${turnIndex + 1} must use a word from the study pool"
-                }
                 turn.copy(
                     id = "scene-${sceneIndex + 1}-turn-${turnIndex + 1}",
                     speakerCharacterId = speakerId,

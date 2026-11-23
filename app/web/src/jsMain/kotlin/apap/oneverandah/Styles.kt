@@ -528,11 +528,13 @@ object Styles {
     const val studyTalkProgress = "study-talk-progress"
     const val studyTalkStage = "study-talk-stage"
     const val studyTalkBackground = "study-talk-background"
+    const val studyTalkBackgroundVisible = "study-talk-background-visible"
     const val studyTalkVignette = "study-talk-vignette"
     const val studyTalkHud = "study-talk-hud"
     const val studyTalkCharacterButton = "study-talk-character-button"
     const val studyTalkCharacter = "study-talk-character"
     const val studyTalkCharacterVisible = "study-talk-character-visible"
+    const val studyTalkCharacterEntering = "study-talk-character-entering"
     const val studyTalkCharacterTapped = "study-talk-character-tapped"
     const val studyTalkIntent = "study-talk-intent"
     const val studyTalkAnswer = "study-talk-answer"
@@ -4451,7 +4453,12 @@ object Styles {
             width: 100%;
             height: 100%;
         }
-        .${studyTalkBackground} { z-index: -2; object-fit: cover; }
+        .${studyTalkBackground} { z-index: -2; object-fit: cover; opacity: 0; }
+        .${studyTalkBackgroundVisible} { animation: study-talk-background-enter 500ms ease-out both; }
+        @keyframes study-talk-background-enter {
+            from { opacity: 0; }
+            to { opacity: 1; }
+        }
         .${studyTalkVignette} {
             z-index: -1;
             background: linear-gradient(180deg, #00000018 20%, #00000012 52%, #00000088 100%);
@@ -4510,6 +4517,8 @@ object Styles {
         }
         .${studyTalkCharacterVisible} {
             opacity: 1;
+        }
+        .${studyTalkCharacterEntering} {
             animation: study-talk-character-enter 650ms cubic-bezier(.2, .75, .25, 1) both;
         }
         .${studyTalkCharacterTapped} {
@@ -4520,8 +4529,8 @@ object Styles {
             to { opacity: 1; transform: translate(-50%, 0) scale(1); }
         }
         @keyframes study-talk-character-tap {
-            0%, 100% { transform: translateX(-50%) scale(1); }
-            42% { transform: translateX(-50%) translateY(-7px) scale(1.035); }
+            0%, 100% { transform: none; }
+            42% { transform: translateY(-7px) scale(1.035); }
         }
         .${studyTalkIntent}, .${studyTalkAnswer} {
             padding: 14px 16px;
@@ -4546,21 +4555,25 @@ object Styles {
             color: var(--md-sys-color-on-surface);
             background: color-mix(in srgb, var(--md-sys-color-primary) 13%, var(--md-sys-color-surface));
             cursor: pointer;
-            transition: transform 140ms ease, background 140ms ease;
+            transition: transform 140ms ease;
         }
-        .${studyTalkAnswer}:hover { background: color-mix(in srgb, var(--md-sys-color-primary) 19%, var(--md-sys-color-surface)); }
         .${studyTalkAnswer}:active { transform: scale(.99); }
         .${studyTalkActions} {
             display: flex;
-            align-items: center;
+            align-items: stretch;
             justify-content: flex-end;
             flex-wrap: nowrap;
             gap: 8px;
         }
         .${studyTalkActions} > button {
+            display: flex;
+            align-items: center;
+            justify-content: center;
             flex: 1 1 0;
             width: auto;
             min-width: 0;
+            box-sizing: border-box;
+            text-align: center;
         }
         .${studyTalkStatus} {
             display: flex;
@@ -4605,7 +4618,8 @@ object Styles {
         }
         @media (prefers-reduced-motion: reduce) {
             .${studyTalkProgressFill} { transition: none; }
-            .${studyTalkCharacterVisible}, .${studyTalkCharacterTapped} {
+            .${studyTalkBackgroundVisible} { animation: none; opacity: 1; }
+            .${studyTalkCharacterVisible}, .${studyTalkCharacterEntering}, .${studyTalkCharacterTapped} {
                 animation: none;
                 opacity: 1;
             }

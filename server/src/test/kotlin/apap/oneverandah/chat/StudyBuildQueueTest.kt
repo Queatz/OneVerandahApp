@@ -147,7 +147,10 @@ class StudyBuildQueueTest {
             queue.start()
             queue.enqueue(listOf(task))
             withTimeout(2_000L) {
-                while (store.findById("study-1")?.build?.failed.isNullOrEmpty()) delay(5L)
+                while (
+                    store.findById("study-1")?.build?.failed.isNullOrEmpty() ||
+                    appender.list.none { it.formattedMessage.contains("failed after") }
+                ) delay(5L)
             }
             val build = requireNotNull(store.findById("study-1")?.build)
             assertEquals(2, calls.get())
@@ -159,6 +162,45 @@ class StudyBuildQueueTest {
         } finally {
             logger.detachAppender(appender)
             appender.stop()
+            scope.cancel()
+        }
+    }
+
+    @Test
+    fun `timed out task is failed and does not kill its worker`() = runBlocking {
+        val scope = CoroutineScope(SupervisorJob() + Dispatchers.Default)
+        val store = StudySessionStore(InMemoryStudySessionsRepository(), scope = scope)
+        store.create(record())
+        val nextTaskCompleted = CompletableDeferred<Unit>()
+        val queue = StudyBuildQueue(
+            store = store,
+            executor = StudyBuildTaskExecutor { task ->
+                if (task.element.kind == StudyBuildElementKind.NAME) {
+                    CompletableDeferred<Unit>().await()
+                } else {
+                    nextTaskCompleted.complete(Unit)
+                }
+            },
+            scope = scope,
+            textWorkers = 1,
+            imageWorkers = 1,
+            maxAttempts = 1,
+            retryBackoffMillis = listOf(1L),
+            taskTimeoutMillis = 25L,
+        )
+        val timedOutTask = StudyBuildTask("study-1", StudyBuildElement(StudyBuildElementKind.NAME))
+        val followingTask = StudyBuildTask("study-1", StudyBuildElement(StudyBuildElementKind.SKELETON))
+
+        try {
+            queue.start()
+            queue.enqueue(listOf(timedOutTask, followingTask))
+
+            withTimeout(2_000L) { nextTaskCompleted.await() }
+
+            val build = requireNotNull(store.findById("study-1")?.build)
+            assertTrue(build.failed.any { it.key == timedOutTask.element.key })
+            assertEquals(1, build.attempts[timedOutTask.element.key])
+        } finally {
             scope.cancel()
         }
     }

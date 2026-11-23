@@ -1,6 +1,7 @@
 package apap.oneverandah.chat
 
 import apap.oneverandah.api.StudyBuildElementKind
+import apap.oneverandah.api.StudyBuildElement
 import apap.oneverandah.api.StudyBuildMode
 import apap.oneverandah.api.StudyBuildRequest
 import apap.oneverandah.api.StudyBuildRetryRequest
@@ -251,6 +252,137 @@ class StudyBuildServiceTest {
             assertTrue(completed.session.sentences.single().imageUrl?.isNotBlank() == true)
             assertTrue(completed.session.characters.single().imageUrl?.isNotBlank() == true)
             assertTrue(completed.session.playScenarios.all { !it.imageUrl.isNullOrBlank() })
+        } finally {
+            scope.cancel()
+        }
+    }
+
+    @Test
+    fun `talk expression returning a blank image url is tracked as a failure`() = runBlocking {
+        val scope = CoroutineScope(SupervisorJob() + Dispatchers.Default)
+        val repository = InMemoryStudySessionsRepository()
+        val devices = DeviceService(InMemoryDeviceRepository())
+        val token = devices.issueToken().deviceToken
+        val events = CopyOnWriteArrayList<String>()
+        val images = FakeBuildImageGenerator(events).apply { blankTalkExpressions.set(true) }
+        val (_, service) = harness(
+            repository,
+            devices,
+            FakeBuildStudyAi(events),
+            images,
+            scope,
+            maxAttempts = 3,
+        )
+        try {
+            val created = service.create(
+                token,
+                StudyBuildRequest(text = "Hello.", languageTag = "en", sourceMessageId = "blank-talk-expression"),
+            )
+
+            val partial = awaitTerminal(service, created.id)
+            val failedExpression = partial.build?.failed.orEmpty().firstOrNull {
+                it.kind == StudyBuildElementKind.TALK_EXPRESSION
+            }
+
+            assertNotNull(failedExpression)
+            assertContains(partial.build?.failureReasons?.get(failedExpression.key).orEmpty(), "did not produce")
+            assertEquals(3, partial.build?.attempts?.get(failedExpression.key))
+        } finally {
+            scope.cancel()
+        }
+    }
+
+    @Test
+    fun `retry rebuilds an incomplete talk expression even without a recorded failure`() = runBlocking {
+        val scope = CoroutineScope(SupervisorJob() + Dispatchers.Default)
+        val repository = InMemoryStudySessionsRepository()
+        val devices = DeviceService(InMemoryDeviceRepository())
+        val token = devices.issueToken().deviceToken
+        val events = CopyOnWriteArrayList<String>()
+        val images = FakeBuildImageGenerator(events)
+        val (sessions, service) = harness(repository, devices, FakeBuildStudyAi(events), images, scope)
+        val missingExpression = StudyBuildElement(
+            kind = StudyBuildElementKind.TALK_EXPRESSION,
+            expressionId = "main-happy",
+        )
+        try {
+            val created = service.create(
+                token,
+                StudyBuildRequest(text = "Hello.", languageTag = "en", sourceMessageId = "retry-incomplete-talk"),
+            )
+            val complete = awaitTerminal(service, created.id)
+            assertEquals(StudyBuildStatus.COMPLETE, complete.build?.status)
+            sessions.sessionStore.update(created.id, immediate = true) { current ->
+                val world = requireNotNull(current.session.talkWorld)
+                current.copy(
+                    session = current.session.copy(
+                        talkWorld = world.copy(
+                            expressions = world.expressions.map {
+                                if (it.id == missingExpression.expressionId) it.copy(imageUrl = null) else it
+                            },
+                        ),
+                    ),
+                    build = current.build?.copy(
+                        status = StudyBuildStatus.PARTIAL,
+                        attempts = current.build.attempts + (missingExpression.key to 3),
+                    ),
+                )
+            }
+
+            service.retry(token, created.id, StudyBuildRetryRequest(elements = listOf(missingExpression)))
+            val retried = awaitTerminal(service, created.id)
+
+            assertTrue(retried.session.talkWorld?.expressions?.first { it.id == missingExpression.expressionId }
+                ?.imageUrl.isNullOrBlank().not())
+            assertEquals(1, retried.build?.attempts?.get(missingExpression.key))
+            assertFalse(retried.build?.failed.orEmpty().any { it.key == missingExpression.key })
+        } finally {
+            scope.cancel()
+        }
+    }
+
+    @Test
+    fun `ensure building revives exhausted missing talk backgrounds`() = runBlocking {
+        val scope = CoroutineScope(SupervisorJob() + Dispatchers.Default)
+        val repository = InMemoryStudySessionsRepository()
+        val devices = DeviceService(InMemoryDeviceRepository())
+        val token = devices.issueToken().deviceToken
+        val events = CopyOnWriteArrayList<String>()
+        val images = FakeBuildImageGenerator(events)
+        val (sessions, service) = harness(repository, devices, FakeBuildStudyAi(events), images, scope)
+        val missingBackground = StudyBuildElement(
+            kind = StudyBuildElementKind.TALK_SCENE_IMAGE,
+            sceneIndex = 0,
+        )
+        try {
+            val created = service.create(
+                token,
+                StudyBuildRequest(text = "Hello.", languageTag = "en", sourceMessageId = "ensure-incomplete-talk"),
+            )
+            val complete = awaitTerminal(service, created.id)
+            assertEquals(StudyBuildStatus.COMPLETE, complete.build?.status)
+            sessions.sessionStore.update(created.id, immediate = true) { current ->
+                val world = requireNotNull(current.session.talkWorld)
+                current.copy(
+                    session = current.session.copy(
+                        talkWorld = world.copy(
+                            scenes = world.scenes.mapIndexed { index, scene ->
+                                if (index == 0) scene.copy(backgroundImageUrl = null) else scene
+                            },
+                        ),
+                    ),
+                    build = current.build?.copy(
+                        status = StudyBuildStatus.PARTIAL,
+                        attempts = current.build.attempts + (missingBackground.key to 3),
+                    ),
+                )
+            }
+
+            service.ensureBuilding(created.id)
+            val rebuilt = awaitTerminal(service, created.id)
+
+            assertTrue(rebuilt.session.talkWorld?.scenes?.first()?.backgroundImageUrl.isNullOrBlank().not())
+            assertEquals(1, rebuilt.build?.attempts?.get(missingBackground.key))
         } finally {
             scope.cancel()
         }
@@ -569,6 +701,7 @@ class StudyBuildServiceTest {
         private val portraitUrls = ConcurrentHashMap.newKeySet<String>()
         val referenceImageCalls = AtomicInteger()
         val failPortraits = AtomicBoolean(false)
+        val blankTalkExpressions = AtomicBoolean(false)
 
         override suspend fun generate(prompt: String, referenceImageUrls: List<String>): String {
             if (referenceImageUrls.isNotEmpty()) {
@@ -580,6 +713,9 @@ class StudyBuildServiceTest {
                 error("portrait provider temporarily unavailable")
             }
             if (fail.get()) error("temporary image failure")
+            if (blankTalkExpressions.get() && prompt.startsWith("Create a full-body visual-novel character sprite")) {
+                return " "
+            }
             val url = "https://img/${imageCounter.incrementAndGet()}"
             if (prompt.contains("Character reference portrait")) {
                 portraitUrls += url

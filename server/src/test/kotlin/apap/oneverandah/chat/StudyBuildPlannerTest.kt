@@ -239,6 +239,38 @@ class StudyBuildPlannerTest {
     }
 
     @Test
+    fun `incomplete talk elements include failed and exhausted missing expressions`() {
+        val expression = StudyBuildElement(
+            kind = StudyBuildElementKind.TALK_EXPRESSION,
+            expressionId = "main-neutral",
+        )
+        val originalWorld = completeTalkWorld()
+        val world = originalWorld.copy(
+            expressions = originalWorld.expressions.map {
+                if (it.id == expression.expressionId) it.copy(imageUrl = null) else it
+            },
+        )
+        val incomplete = record(
+            state = StudyBuildState(
+                status = StudyBuildStatus.PARTIAL,
+                failed = listOf(expression),
+                failureReasons = mapOf(expression.key to "provider timed out"),
+                attempts = mapOf(expression.key to 3),
+            ),
+            currentSession = session(
+                sentences = listOf(
+                    StudySentence("Xin.", listOf(StudyToken("Xin", StudyTokenStatus.READY, literalMeaning = "hello"))),
+                ),
+                characters = listOf(StudyStoryCharacter("main", "Lan", "main", "Young neighbor", "https://img/portrait")),
+                talkWorld = world,
+            ),
+        )
+
+        assertEquals(listOf(expression), planner.incompleteTalkElements(incomplete))
+        assertTrue(planner.plan(incomplete).none { it.element.key == expression.key })
+    }
+
+    @Test
     fun `example dissection jobs have stable word keys and backfill completed sessions`() {
         val exampleToken = StudyToken(
             text = "လှ",

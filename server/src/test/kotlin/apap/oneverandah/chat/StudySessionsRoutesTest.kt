@@ -28,6 +28,7 @@ import io.ktor.client.request.put
 import io.ktor.client.request.setBody
 import io.ktor.client.statement.bodyAsText
 import io.ktor.http.ContentType
+import io.ktor.http.HttpHeaders
 import io.ktor.http.HttpStatusCode
 import io.ktor.http.contentType
 import io.ktor.serialization.kotlinx.json.json
@@ -585,5 +586,59 @@ class StudySessionsRoutesTest {
             )
         }
         assertEquals(HttpStatusCode.BadRequest, response.status)
+    }
+
+    @Test
+    fun `study session read routes disable browser caching and vary by device token`() = testApplication {
+        val deviceService = DeviceService(InMemoryDeviceRepository())
+        val studySessionsService = StudySessionsService(
+            repository = InMemoryStudySessionsRepository(),
+            deviceService = deviceService,
+        )
+        val chatService = ChatService(
+            repository = InMemoryChatRepository(),
+            aiClient = object : ChatAiClient {
+                override suspend fun generate(
+                    request: ChatGenerationRequest,
+                    onPartial: suspend (GeneratedChatReply) -> Unit,
+                ) = GeneratedChatReply("unused")
+            },
+            residentDirectory = ResidentDirectory(emptyList()),
+        )
+        application {
+            install(ContentNegotiation) { json(json) }
+            routing {
+                chatRoutes(
+                    chatService,
+                    SpeechService(RouteSpeechClient()),
+                    studySessionsService = studySessionsService,
+                )
+            }
+        }
+
+        val token = deviceService.issueToken().deviceToken
+        val saved = studySessionsService.save(
+            token,
+            SaveStudySessionRequest(
+                languageTag = "en",
+                session = StudySessionResponse(
+                    text = "Hello.",
+                    textLanguageTag = "en",
+                    sentences = listOf(StudySentence("Hello.", emptyList())),
+                ),
+            ),
+        )
+
+        val responses = listOf(
+            client.get("/api/chat/study/sessions"),
+            client.get("/api/chat/study/sessions") { header(DEVICE_TOKEN_HEADER, token) },
+            client.get("/api/chat/study/sessions/community") { header(DEVICE_TOKEN_HEADER, token) },
+            client.get("/api/chat/study/sessions/${saved.id}") { header(DEVICE_TOKEN_HEADER, token) },
+        )
+
+        responses.forEach { response ->
+            assertEquals("no-store", response.headers[HttpHeaders.CacheControl])
+            assertTrue(response.headers.getAll(HttpHeaders.Vary).orEmpty().any { it.contains(DEVICE_TOKEN_HEADER) })
+        }
     }
 }

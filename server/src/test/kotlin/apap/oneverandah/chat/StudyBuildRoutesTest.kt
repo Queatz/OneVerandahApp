@@ -176,7 +176,8 @@ class StudyBuildRoutesTest {
                 header(DEVICE_TOKEN_HEADER, token)
             }
             assertEquals(HttpStatusCode.OK, stream.status)
-            assertEquals("no-cache", stream.headers[HttpHeaders.CacheControl])
+            assertEquals("no-store, no-cache", stream.headers[HttpHeaders.CacheControl])
+            assertTrue(stream.headers.getAll(HttpHeaders.Vary).orEmpty().any { it.contains(DEVICE_TOKEN_HEADER) })
             assertEquals("no", stream.headers["X-Accel-Buffering"])
             val events = stream.bodyAsText()
                 .lineSequence()

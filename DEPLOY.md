@@ -26,6 +26,10 @@ server {
 
     listen 80;
 
+    location = /index.html {
+        add_header Cache-Control "no-cache";
+    }
+
     location / {
         index index.html;
         try_files $uri $uri/ /index.html =404;

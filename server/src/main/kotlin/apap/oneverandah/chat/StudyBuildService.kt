@@ -140,6 +140,7 @@ class StudyBuildService(
                 )
             } ?: return null
         }
+        record = reviveIncompleteTalkElements(key, record) ?: return null
         if (
             (record.build?.status == StudyBuildStatus.COMPLETE || record.build?.status == StudyBuildStatus.PARTIAL) &&
             planner.plan(record).any {
@@ -173,7 +174,12 @@ class StudyBuildService(
         if (record.deviceTokenHash != device.tokenHash) return null
         val currentBuild = record.build ?: return null
         val requestedKeys = request.elements.mapTo(mutableSetOf()) { it.key }
-        val selected = currentBuild.failed.filter { request.elements.isEmpty() || it.key in requestedKeys }
+        val activeKeys = queue.activeElements(key).mapTo(mutableSetOf()) { it.key }
+        val selected = (
+            currentBuild.failed.filter { request.elements.isEmpty() || it.key in requestedKeys } +
+                    planner.incompleteTalkElements(record).filter { request.elements.isEmpty() || it.key in requestedKeys }
+            ).distinctBy { it.key }
+            .filterNot { it.key in activeKeys }
         if (selected.isEmpty()) return currentBuild.copy(inFlight = queue.activeElements(key))
         val selectedKeys = selected.mapTo(mutableSetOf()) { it.key }
         val updated = store.update(key, immediate = true) { current ->
@@ -196,6 +202,36 @@ class StudyBuildService(
         store.publish(key, StudyBuildEvent.Build(updated.build!!.copy(inFlight = queue.activeElements(key))))
         planSession(key)
         return getSession(key)?.build
+    }
+
+    private suspend fun reviveIncompleteTalkElements(
+        id: String,
+        record: SavedStudySessionRecord,
+    ): SavedStudySessionRecord? {
+        val incompleteKeys = planner.incompleteTalkElements(record).mapTo(mutableSetOf()) { it.key }
+        val activeKeys = queue.activeElements(id).mapTo(mutableSetOf()) { it.key }
+        val keysToRevive = incompleteKeys - activeKeys
+        if (keysToRevive.isEmpty()) return record
+        return store.update(id, immediate = true) { current ->
+            val build = current.build ?: return@update null
+            val currentMissingKeys = planner.incompleteTalkElements(current).mapTo(mutableSetOf()) { it.key }
+            val currentActiveKeys = queue.activeElements(id).mapTo(mutableSetOf()) { it.key }
+            val reviveKeys = keysToRevive.intersect(currentMissingKeys) - currentActiveKeys
+            if (reviveKeys.isEmpty()) return@update current
+            current.copy(
+                build = build.copy(
+                    status = if (build.status == StudyBuildStatus.COMPLETE || build.status == StudyBuildStatus.PARTIAL) {
+                        StudyBuildStatus.BUILDING
+                    } else {
+                        build.status
+                    },
+                    failed = build.failed.filterNot { it.key in reviveKeys },
+                    failureReasons = build.failureReasons - reviveKeys,
+                    attempts = build.attempts - reviveKeys,
+                    updatedAt = clock(),
+                ),
+            )
+        }
     }
 
     suspend fun resumeAll() {

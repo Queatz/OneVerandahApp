@@ -173,9 +173,17 @@ class StudyBuildPlanner(
         return elements
     }
 
-    private fun pendingTalkBuilds(record: SavedStudySessionRecord): List<StudyBuildElement> {
+    private fun pendingTalkBuilds(record: SavedStudySessionRecord): List<StudyBuildElement> =
+        incompleteTalkElements(record).filterNot { isFailed(record, it) }
+
+    fun incompleteTalkElements(record: SavedStudySessionRecord): List<StudyBuildElement> {
         val session = record.session
         if (session.sentences.isEmpty() || session.characters.isEmpty()) return emptyList()
+        val dissectionsSettled = session.sentences.indices.all { index ->
+            session.sentences[index].tokens.none { it.status == StudyTokenStatus.PENDING } ||
+                    isFailed(record, StudyBuildElement(StudyBuildElementKind.DISSECT, sentenceIndex = index))
+        }
+        if (!dissectionsSettled) return emptyList()
         val world = session.talkWorld ?: return listOf(StudyBuildElement(StudyBuildElementKind.TALK_WORLD))
         val elements = mutableListOf<StudyBuildElement>()
         if (supportsTalkImages) {
@@ -184,9 +192,7 @@ class StudyBuildPlanner(
                     StudyBuildElementKind.TALK_SCENE_IMAGE,
                     sceneIndex = sceneIndex,
                 )
-                if (scene.backgroundImageUrl.isNullOrBlank() && !isFailed(record, element)) {
-                    elements += element
-                }
+                if (scene.backgroundImageUrl.isNullOrBlank()) elements += element
             }
             val usedExpressionIds = world.scenes.flatMap { scene ->
                 scene.turns.map { it.expressionId }
@@ -196,9 +202,7 @@ class StudyBuildPlanner(
                     StudyBuildElementKind.TALK_EXPRESSION,
                     expressionId = expression.id,
                 )
-                if (expression.imageUrl.isNullOrBlank() && !isFailed(record, element)) {
-                    elements += element
-                }
+                if (expression.imageUrl.isNullOrBlank()) elements += element
             }
         }
         if (supportsTalkAudio) {
@@ -210,18 +214,14 @@ class StudyBuildPlanner(
                         turnIndex = turnIndex,
                         audioKind = StudyTalkAudioKind.CHARACTER_LINE,
                     )
-                    if (turn.characterAudioUrl.isNullOrBlank() && !isFailed(record, characterAudio)) {
-                        elements += characterAudio
-                    }
+                    if (turn.characterAudioUrl.isNullOrBlank()) elements += characterAudio
                     val replyAudio = StudyBuildElement(
                         kind = StudyBuildElementKind.TALK_AUDIO,
                         sceneIndex = sceneIndex,
                         turnIndex = turnIndex,
                         audioKind = StudyTalkAudioKind.REPLY,
                     )
-                    if (turn.replyAudioUrl.isNullOrBlank() && !isFailed(record, replyAudio)) {
-                        elements += replyAudio
-                    }
+                    if (turn.replyAudioUrl.isNullOrBlank()) elements += replyAudio
                 }
             }
         }

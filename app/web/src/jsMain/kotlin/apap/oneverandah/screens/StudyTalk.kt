@@ -9,8 +9,11 @@ import androidx.compose.runtime.remember
 import androidx.compose.runtime.rememberUpdatedState
 import androidx.compose.runtime.setValue
 import apap.oneverandah.Styles
+import apap.oneverandah.api.StudyBuildElement
+import apap.oneverandah.api.StudyBuildElementKind
 import apap.oneverandah.api.StudyBuildState
 import apap.oneverandah.api.StudySessionResponse
+import apap.oneverandah.api.StudyTalkAudioKind
 import apap.oneverandah.api.StudyTalkWorld
 import apap.oneverandah.api.STUDY_TALK_MAX_TURNS_PER_SCENE
 import apap.oneverandah.api.STUDY_TALK_MIN_TURNS_PER_SCENE
@@ -38,6 +41,45 @@ internal data class StudyTalkProgress(
     val turnIndex: Int = 0,
     val phase: StudyTalkPhase = StudyTalkPhase.LISTEN,
 )
+
+internal fun StudyTalkWorld?.missingTalkBuildElements(): List<StudyBuildElement> {
+    if (this == null) return listOf(StudyBuildElement(StudyBuildElementKind.TALK_WORLD))
+    return buildList {
+        scenes.forEachIndexed { sceneIndex, scene ->
+            if (scene.backgroundImageUrl.isNullOrBlank()) {
+                add(StudyBuildElement(StudyBuildElementKind.TALK_SCENE_IMAGE, sceneIndex = sceneIndex))
+            }
+        }
+        val usedExpressionIds = scenes.flatMap { scene -> scene.turns.map { it.expressionId } }.toSet()
+        expressions.filter { it.id in usedExpressionIds && it.imageUrl.isNullOrBlank() }.forEach { expression ->
+            add(StudyBuildElement(StudyBuildElementKind.TALK_EXPRESSION, expressionId = expression.id))
+        }
+        scenes.forEachIndexed { sceneIndex, scene ->
+            scene.turns.forEachIndexed { turnIndex, turn ->
+                if (turn.characterAudioUrl.isNullOrBlank()) {
+                    add(
+                        StudyBuildElement(
+                            StudyBuildElementKind.TALK_AUDIO,
+                            sceneIndex = sceneIndex,
+                            turnIndex = turnIndex,
+                            audioKind = StudyTalkAudioKind.CHARACTER_LINE,
+                        ),
+                    )
+                }
+                if (turn.replyAudioUrl.isNullOrBlank()) {
+                    add(
+                        StudyBuildElement(
+                            StudyBuildElementKind.TALK_AUDIO,
+                            sceneIndex = sceneIndex,
+                            turnIndex = turnIndex,
+                            audioKind = StudyTalkAudioKind.REPLY,
+                        ),
+                    )
+                }
+            }
+        }
+    }
+}
 
 internal fun retryStudyTalkTurn(progress: StudyTalkProgress): StudyTalkProgress =
     progress.copy(phase = StudyTalkPhase.THINK)
@@ -151,12 +193,25 @@ internal fun StudyTalkTab(
         val turn = scene.turns.getOrNull(turnIndex) ?: return@Div
         val speaker = session.characters.firstOrNull { it.id == turn.speakerCharacterId }
         val expression = world.expressions.firstOrNull { it.id == turn.expressionId }
+        val backgroundImageUrl = scene.backgroundImageUrl
         val characterImageUrl = expression?.imageUrl
+        var backgroundLoaded by remember(backgroundImageUrl) { mutableStateOf(false) }
         var characterLoaded by remember(characterImageUrl) { mutableStateOf(false) }
+        var characterEntered by remember(characterImageUrl) { mutableStateOf(false) }
         var characterTapAnimation by remember(characterImageUrl) { mutableStateOf(false) }
+
+        LaunchedEffect(backgroundImageUrl) {
+            backgroundLoaded = false
+            val imageUrl = backgroundImageUrl ?: return@LaunchedEffect
+            val preloader = document.createElement("img") as HTMLImageElement
+            preloader.onload = { _: Event -> backgroundLoaded = true }
+            preloader.src = imageUrl
+            if (preloader.complete) backgroundLoaded = true
+        }
 
         LaunchedEffect(characterImageUrl) {
             characterLoaded = false
+            characterEntered = false
             characterTapAnimation = false
             val imageUrl = characterImageUrl ?: return@LaunchedEffect
             val preloader = document.createElement("img") as HTMLImageElement
@@ -178,17 +233,22 @@ internal fun StudyTalkTab(
             classes(Styles.studyTalkStage)
             attr("aria-label", "${scene.title}: ${speaker?.name.orEmpty()}")
         }) {
-            Img(src = requireNotNull(scene.backgroundImageUrl), alt = scene.title, attrs = {
-                classes(Styles.studyTalkBackground)
-                attr("aria-hidden", "true")
-            })
+            if (backgroundLoaded && backgroundImageUrl != null) {
+                Img(src = backgroundImageUrl, alt = scene.title, attrs = {
+                    classes(Styles.studyTalkBackground)
+                    classes(Styles.studyTalkBackgroundVisible)
+                    attr("aria-hidden", "true")
+                })
+            }
             Div(attrs = { classes(Styles.studyTalkVignette) })
             if (characterLoaded && characterImageUrl != null) {
                 Button(attrs = {
                     classes(Styles.studyTalkCharacterButton)
+                    if (characterTapAnimation) classes(Styles.studyTalkCharacterTapped)
                     attr("type", "button")
                     attr("aria-label", copy.listen)
                     onClick {
+                        characterEntered = true
                         characterTapAnimation = true
                         window.setTimeout({ characterTapAnimation = false }, 380)
                         val audioUrl = turn.characterAudioUrl.orEmpty()
@@ -199,7 +259,12 @@ internal fun StudyTalkTab(
                     Img(src = characterImageUrl, alt = speaker?.name.orEmpty(), attrs = {
                         classes(Styles.studyTalkCharacter)
                         classes(Styles.studyTalkCharacterVisible)
-                        if (characterTapAnimation) classes(Styles.studyTalkCharacterTapped)
+                        if (!characterEntered) classes(Styles.studyTalkCharacterEntering)
+                        ref { element ->
+                            val onEnterEnd: (Event) -> Unit = { characterEntered = true }
+                            element.addEventListener("animationend", onEnterEnd)
+                            onDispose { element.removeEventListener("animationend", onEnterEnd) }
+                        }
                     })
                 }
             }
