@@ -1231,6 +1231,7 @@ enum class StudyBuildStatus { PREPARING, BUILDING, COMPLETE, PARTIAL }
 data class StudyBuildState(
     val status: StudyBuildStatus,
     val failed: List<StudyBuildElement> = emptyList(),
+    val failureReasons: Map<String, String> = emptyMap(),
     val inFlight: List<StudyBuildElement> = emptyList(),
     val attempts: Map<String, Int> = emptyMap(),
     val updatedAt: Long = 0,

@@ -18,6 +18,7 @@ import apap.oneverandah.api.StudyStoryCharacter
 import apap.oneverandah.api.StudyToken
 import apap.oneverandah.api.StudyTokenStatus
 import apap.oneverandah.api.StudyWordRecallLine
+import apap.oneverandah.images.qwen.QwenException
 import kotlinx.coroutines.CompletableDeferred
 import kotlinx.coroutines.CoroutineScope
 import kotlinx.coroutines.Dispatchers
@@ -100,7 +101,10 @@ class StudyBuildServiceTest {
             val talkWorld = assertNotNull(completed.session.talkWorld)
             assertEquals(6, talkWorld.scenes.size)
             assertTrue(talkWorld.scenes.all { it.turns.size in 3..6 && !it.backgroundImageUrl.isNullOrBlank() })
-            assertTrue(talkWorld.expressions.isNotEmpty() && talkWorld.expressions.all { !it.imageUrl.isNullOrBlank() })
+            val usedExpressionIds = talkWorld.scenes.flatMap { it.turns }.map { it.expressionId }.toSet()
+            assertTrue(usedExpressionIds.isNotEmpty())
+            assertTrue(talkWorld.expressions.filter { it.id in usedExpressionIds }.all { !it.imageUrl.isNullOrBlank() })
+            assertTrue(talkWorld.expressions.filter { it.id !in usedExpressionIds }.all { it.imageUrl.isNullOrBlank() })
             assertTrue(talkWorld.scenes.flatMap { it.turns }.all {
                 !it.characterAudioUrl.isNullOrBlank() && !it.replyAudioUrl.isNullOrBlank()
             })
@@ -202,13 +206,15 @@ class StudyBuildServiceTest {
             val partial = awaitTerminal(service, created.id)
             assertEquals(StudyBuildStatus.PARTIAL, partial.build?.status)
             assertTrue(partial.build?.failed?.any { it.kind in IMAGE_ELEMENTS } == true)
+            val selectedFailure = partial.build!!.failed.first()
+            assertContains(partial.build!!.failureReasons[selectedFailure.key].orEmpty(), "temporary image failure")
 
             images.fail.set(false)
-            val selectedFailure = partial.build!!.failed.first()
             service.retry(token, created.id, StudyBuildRetryRequest(elements = listOf(selectedFailure)))
             val retriedOne = awaitTerminal(service, created.id)
             assertEquals(StudyBuildStatus.PARTIAL, retriedOne.build?.status)
             assertFalse(retriedOne.build?.failed.orEmpty().any { it.key == selectedFailure.key })
+            assertFalse(retriedOne.build?.failureReasons.orEmpty().containsKey(selectedFailure.key))
             assertTrue(retriedOne.build?.failed.isNullOrEmpty().not())
 
             assertNotNull(service.retry(token, created.id, StudyBuildRetryRequest()))
@@ -218,6 +224,70 @@ class StudyBuildServiceTest {
             assertTrue(completed.session.sentences.single().imageUrl?.isNotBlank() == true)
             assertTrue(completed.session.characters.single().imageUrl?.isNotBlank() == true)
             assertTrue(completed.session.playScenarios.all { !it.imageUrl.isNullOrBlank() })
+        } finally {
+            scope.cancel()
+        }
+    }
+
+    @Test
+    fun `failure explanations redact provider URLs and inline image data`() {
+        val reason = StudyBuildFailureReason.display(
+            IllegalStateException(
+                "request failed https://provider.example/job?signature=secret data:image/png;base64,verylongpayload",
+            ),
+        )
+
+        assertTrue(reason.length <= StudyBuildFailureReason.MAX_DISPLAY_LENGTH)
+        assertFalse(reason.contains("https://"))
+        assertFalse(reason.contains("verylongpayload"))
+        assertFalse(reason.contains("signature=secret"))
+    }
+
+    @Test
+    fun `failure explanations identify interrupted connections and provider statuses`() {
+        assertEquals(
+            "The provider connection was interrupted before the request completed.",
+            StudyBuildFailureReason.display(IllegalStateException("The server prematurely closed the connection")),
+        )
+        assertEquals(
+            "The image provider rejected the request (HTTP 503).",
+            StudyBuildFailureReason.display(
+                QwenException("Qwen submit failed (503 Service Unavailable): {\"providerDetail\":\"private response\"}"),
+            ),
+        )
+    }
+
+    @Test
+    fun `Talk assets build when a character portrait is unavailable`() = runBlocking {
+        val scope = CoroutineScope(SupervisorJob() + Dispatchers.Default)
+        val repository = InMemoryStudySessionsRepository()
+        val devices = DeviceService(InMemoryDeviceRepository())
+        val token = devices.issueToken().deviceToken
+        val events = CopyOnWriteArrayList<String>()
+        val images = FakeBuildImageGenerator(events).apply { failPortraits.set(true) }
+        val (_, service) = harness(
+            repository,
+            devices,
+            FakeBuildStudyAi(events),
+            images,
+            scope,
+        )
+        try {
+            val created = service.create(
+                token,
+                StudyBuildRequest(text = "Please say hello in Vietnamese.", languageTag = "en", sourceMessageId = "talk-without-portrait"),
+            )
+            val result = awaitTerminal(service, created.id)
+
+            assertEquals(StudyBuildStatus.PARTIAL, result.build?.status)
+            assertTrue(result.build?.failed.orEmpty().any { it.kind == StudyBuildElementKind.PORTRAIT })
+            val world = assertNotNull(result.session.talkWorld)
+            assertTrue(world.scenes.all { !it.backgroundImageUrl.isNullOrBlank() })
+            val usedExpressionIds = world.scenes.flatMap { it.turns }.map { it.expressionId }.toSet()
+            assertTrue(world.expressions.filter { it.id in usedExpressionIds }.all { !it.imageUrl.isNullOrBlank() })
+            assertTrue(world.scenes.flatMap { it.turns }.all {
+                !it.characterAudioUrl.isNullOrBlank() && !it.replyAudioUrl.isNullOrBlank()
+            })
         } finally {
             scope.cancel()
         }
@@ -470,12 +540,16 @@ class StudyBuildServiceTest {
         private val imageCounter = AtomicInteger()
         private val portraitUrls = ConcurrentHashMap.newKeySet<String>()
         val referenceImageCalls = AtomicInteger()
+        val failPortraits = AtomicBoolean(false)
 
         override suspend fun generate(prompt: String, referenceImageUrls: List<String>): String {
             if (referenceImageUrls.isNotEmpty()) {
                 check(referenceImageUrls.all { it in portraitUrls })
                 referenceImageCalls.incrementAndGet()
                 events += "reference-image"
+            }
+            if (failPortraits.get() && prompt.contains("Character reference portrait")) {
+                error("portrait provider temporarily unavailable")
             }
             if (fail.get()) error("temporary image failure")
             val url = "https://img/${imageCounter.incrementAndGet()}"

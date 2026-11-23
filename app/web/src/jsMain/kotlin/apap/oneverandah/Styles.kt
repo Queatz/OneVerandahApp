@@ -533,6 +533,11 @@ object Styles {
     const val studyTalkAnswer = "study-talk-answer"
     const val studyTalkActions = "study-talk-actions"
     const val studyTalkStatus = "study-talk-status"
+    const val studyTalkBuildHeader = "study-talk-build-header"
+    const val studyTalkBuildProgress = "study-talk-build-progress"
+    const val studyTalkProgressBar = "study-talk-progress-bar"
+    const val studyTalkProgressFill = "study-talk-progress-fill"
+    const val studyTalkProgressBreakdown = "study-talk-progress-breakdown"
     const val studyTalkComplete = "study-talk-complete"
     const val studySentenceBlock = "study-sentence-block"
     const val studySentenceImage = "study-sentence-image"
@@ -4464,12 +4469,49 @@ object Styles {
             gap: 8px;
         }
         .${studyTalkStatus} {
-            display: inline-flex;
-            align-items: center;
+            display: flex;
+            flex-direction: column;
+            align-items: stretch;
             gap: 8px;
             color: var(--md-sys-color-on-surface-variant);
         }
-        .${studyTalkStatus} .${materialSymbols} { animation: spin 1.2s linear infinite; }
+        .${studyTalkBuildHeader} {
+            display: flex;
+            align-items: center;
+            gap: 8px;
+        }
+        .${studyTalkStatus} .${studyTalkBuildHeader} .${materialSymbols} { animation: spin 1.2s linear infinite; }
+        .${studyTalkBuildProgress} {
+            display: flex;
+            flex-direction: column;
+            gap: 8px;
+            width: 100%;
+        }
+        .${studyTalkProgressBar} {
+            width: 100%;
+            height: 9px;
+            overflow: hidden;
+            border-radius: 999px;
+            background: color-mix(in srgb, var(--md-sys-color-primary) 16%, var(--md-sys-color-surface-variant));
+        }
+        .${studyTalkProgressFill} {
+            height: 100%;
+            border-radius: inherit;
+            background: var(--md-sys-color-primary);
+            transition: width 240ms ease;
+        }
+        .${studyTalkProgressBreakdown} {
+            display: grid;
+            grid-template-columns: repeat(auto-fit, minmax(140px, 1fr));
+            gap: 4px 12px;
+            color: var(--md-sys-color-on-surface-variant);
+            font-size: 12px;
+            line-height: 1.4;
+            overflow-wrap: anywhere;
+        }
+        @media (prefers-reduced-motion: reduce) {
+            .${studyTalkProgressFill} { transition: none; }
+        }
         .${studyTalkComplete} {
             display: flex;
             flex-direction: column;

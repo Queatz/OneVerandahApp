@@ -7,9 +7,14 @@ import androidx.compose.runtime.mutableStateOf
 import androidx.compose.runtime.remember
 import androidx.compose.runtime.setValue
 import apap.oneverandah.Styles
+import apap.oneverandah.api.StudyBuildState
 import apap.oneverandah.api.StudySessionResponse
 import apap.oneverandah.api.StudyTalkWorld
+import apap.oneverandah.api.STUDY_TALK_MAX_TURNS_PER_SCENE
+import apap.oneverandah.api.STUDY_TALK_MIN_TURNS_PER_SCENE
+import apap.oneverandah.api.STUDY_TALK_SCENE_COUNT
 import apap.oneverandah.components.MaterialSymbol
+import apap.oneverandah.i18n.StudyTalkStrings
 import apap.oneverandah.i18n.UiStrings
 import org.jetbrains.compose.web.dom.Button
 import org.jetbrains.compose.web.dom.Div
@@ -48,6 +53,7 @@ internal fun advanceStudyTalkTurn(progress: StudyTalkProgress, world: StudyTalkW
 @Composable
 internal fun StudyTalkTab(
     session: StudySessionResponse,
+    buildState: StudyBuildState?,
     failed: Boolean,
     canRetry: Boolean,
     strings: UiStrings,
@@ -79,29 +85,8 @@ internal fun StudyTalkTab(
         }
 
         if (world == null || !world.hasAllTalkAssets()) {
-            Div(attrs = {
-                classes(Styles.studyTalkStatus)
-                attr("role", if (failed) "alert" else "status")
-                attr("aria-live", "polite")
-            }) {
-                if (failed) {
-                    MaterialSymbol("error")
-                    Span { Text(copy.error) }
-                    if (canRetry) {
-                        Button(attrs = {
-                            classes(Styles.savedItemAction)
-                            attr("type", "button")
-                            onClick { onRetry() }
-                        }) {
-                            MaterialSymbol("refresh")
-                            Text(copy.retry)
-                        }
-                    }
-                } else {
-                    MaterialSymbol("progress_activity")
-                    Span { Text(copy.loading) }
-                }
-            }
+            val failureReason = buildState.talkFailureReason()
+            StudyTalkBuildStatus(world, failed, canRetry, failureReason, copy, onRetry)
             return@Div
         }
 
@@ -245,10 +230,215 @@ internal fun StudyTalkTab(
     }
 }
 
+@Composable
+private fun StudyTalkBuildStatus(
+    world: StudyTalkWorld?,
+    failed: Boolean,
+    canRetry: Boolean,
+    failureReason: String?,
+    copy: StudyTalkStrings,
+    onRetry: () -> Unit,
+) {
+    val progress = world.studyTalkBuildProgress()
+    Div(attrs = {
+        classes(Styles.studyTalkStatus)
+        attr("role", if (failed) "alert" else "status")
+        attr("aria-live", "polite")
+    }) {
+        if (failed) {
+            StudyTalkBuildHeader("error", copy.error)
+            Span { Text(copy.failureDetails(failureReason ?: copy.incompleteFailure)) }
+            if (canRetry) StudyTalkRetryButton(copy.retry, onRetry)
+        } else {
+            StudyTalkBuildHeader(
+                "progress_activity",
+                if (progress.scriptReady) copy.loading else copy.scriptLoading,
+            )
+        }
+        StudyTalkProgressBar(progress, copy)
+    }
+}
+
+@Composable
+private fun StudyTalkBuildHeader(icon: String, label: String) {
+    Div(attrs = { classes(Styles.studyTalkBuildHeader) }) {
+        MaterialSymbol(icon)
+        Span { Text(label) }
+    }
+}
+
+@Composable
+private fun StudyTalkRetryButton(label: String, onRetry: () -> Unit) {
+    Button(attrs = {
+        classes(Styles.savedItemAction)
+        attr("type", "button")
+        onClick { onRetry() }
+    }) {
+        MaterialSymbol("refresh")
+        Text(label)
+    }
+}
+
+@Composable
+private fun StudyTalkProgressBar(progress: StudyTalkBuildProgress, copy: StudyTalkStrings) {
+    Div(attrs = { classes(Styles.studyTalkBuildProgress) }) {
+        Div(attrs = {
+            classes(Styles.studyTalkProgressBar)
+            attr("role", "progressbar")
+            attr("aria-label", copy.progressBarLabel)
+            attr("aria-valuemin", "0")
+            attr("aria-valuemax", "100")
+            attr("aria-valuenow", progress.percent.toString())
+        }) {
+            Div(attrs = {
+                classes(Styles.studyTalkProgressFill)
+                attr("style", "width: ${progress.percent}%")
+            })
+        }
+        Span { Text(copy.stepCount(progress.completedSteps, progress.totalSteps)) }
+        if (progress.hasWorld) StudyTalkProgressBreakdown(progress.assets, copy)
+    }
+}
+
+@Composable
+private fun StudyTalkProgressBreakdown(progress: StudyTalkAssetProgress, copy: StudyTalkStrings) {
+    Div(attrs = { classes(Styles.studyTalkProgressBreakdown) }) {
+        Span { Text(copy.sceneBackgroundProgress(progress.backgrounds.ready, progress.backgrounds.total)) }
+        Span { Text(copy.expressionProgress(progress.expressions.ready, progress.expressions.total)) }
+        Span { Text(copy.audioProgress(progress.audio.ready, progress.audio.total)) }
+    }
+}
+
+internal fun StudyBuildState?.talkFailureReason(): String? =
+    this?.let { state ->
+        state.failed.firstOrNull { it.kind.isStudyTalkKind() }?.let { state.failureReasons[it.key] }
+    }
+
+internal fun apap.oneverandah.api.StudyBuildElementKind.isStudyTalkKind(): Boolean = when (this) {
+    apap.oneverandah.api.StudyBuildElementKind.CHARACTERS,
+    apap.oneverandah.api.StudyBuildElementKind.PORTRAIT,
+    apap.oneverandah.api.StudyBuildElementKind.TALK_WORLD,
+    apap.oneverandah.api.StudyBuildElementKind.TALK_SCENE_IMAGE,
+    apap.oneverandah.api.StudyBuildElementKind.TALK_EXPRESSION,
+    apap.oneverandah.api.StudyBuildElementKind.TALK_AUDIO -> true
+
+    else -> false
+}
+
 internal fun StudyTalkWorld.hasAllTalkAssets(): Boolean =
-    scenes.size == 6 &&
-        scenes.all { scene ->
-            !scene.backgroundImageUrl.isNullOrBlank() && scene.turns.isNotEmpty() && scene.turns.all { turn ->
-                !turn.characterAudioUrl.isNullOrBlank() && !turn.replyAudioUrl.isNullOrBlank()
-            }
-        } && expressions.isNotEmpty() && expressions.all { !it.imageUrl.isNullOrBlank() }
+    studyTalkAssetProgress()?.let { it.ready == it.total } == true
+
+internal data class StudyTalkAssetGroupProgress(val ready: Int, val total: Int)
+
+internal data class StudyTalkAssetProgress(
+    val backgrounds: StudyTalkAssetGroupProgress,
+    val expressions: StudyTalkAssetGroupProgress,
+    val audio: StudyTalkAssetGroupProgress,
+) {
+    val ready: Int get() = backgrounds.ready + expressions.ready + audio.ready
+    val total: Int get() = backgrounds.total + expressions.total + audio.total
+    val percent: Int get() = (ready * 100 / total).coerceIn(0, 100)
+}
+
+internal const val STUDY_TALK_PREPARATION_STEP_COUNT = 1 + STUDY_TALK_SCENE_COUNT + 1 + STUDY_TALK_SCENE_COUNT
+
+internal data class StudyTalkBuildProgress(
+    val completedSteps: Int,
+    val totalSteps: Int = STUDY_TALK_PREPARATION_STEP_COUNT,
+    val scriptReady: Boolean,
+    val hasWorld: Boolean,
+    val assets: StudyTalkAssetProgress,
+    val audioScenesReady: Int,
+) {
+    val percent: Int get() = (completedSteps * 100 / totalSteps).coerceIn(0, 100)
+}
+
+internal fun StudyTalkWorld?.studyTalkBuildProgress(): StudyTalkBuildProgress {
+    val scriptReady = this?.isValidTalkScript() == true
+    val assetProgress = this?.let { world ->
+        StudyTalkAssetProgress(
+            backgrounds = StudyTalkAssetGroupProgress(
+                ready = world.scenes.take(STUDY_TALK_SCENE_COUNT).count { !it.backgroundImageUrl.isNullOrBlank() },
+                total = STUDY_TALK_SCENE_COUNT,
+            ),
+            expressions = run {
+                val usedIds = world.scenes.flatMap { it.turns }.map { it.expressionId }.toSet()
+                val byId = world.expressions.associateBy { it.id }
+                StudyTalkAssetGroupProgress(
+                    ready = usedIds.count { !byId[it]?.imageUrl.isNullOrBlank() },
+                    total = usedIds.size,
+                )
+            },
+            audio = world.scenes.flatMap { it.turns }.let { turns ->
+                StudyTalkAssetGroupProgress(
+                    ready = turns.sumOf { turn ->
+                        listOf(turn.characterAudioUrl, turn.replyAudioUrl).count { !it.isNullOrBlank() }
+                    },
+                    total = turns.size * 2,
+                )
+            },
+        )
+    } ?: StudyTalkAssetProgress(
+        backgrounds = StudyTalkAssetGroupProgress(0, STUDY_TALK_SCENE_COUNT),
+        expressions = StudyTalkAssetGroupProgress(0, 0),
+        audio = StudyTalkAssetGroupProgress(0, 0),
+    )
+    val audioScenesReady = this?.scenes.orEmpty().take(STUDY_TALK_SCENE_COUNT).count { scene ->
+        scene.turns.isNotEmpty() && scene.turns.all { turn ->
+            !turn.characterAudioUrl.isNullOrBlank() && !turn.replyAudioUrl.isNullOrBlank()
+        }
+    }
+    val completedSteps = (if (scriptReady) 1 else 0) + assetProgress.backgrounds.ready +
+        (if (scriptReady && assetProgress.expressions.ready == assetProgress.expressions.total) 1 else 0) +
+        audioScenesReady
+    return StudyTalkBuildProgress(
+        completedSteps = completedSteps.coerceAtMost(STUDY_TALK_PREPARATION_STEP_COUNT),
+        scriptReady = scriptReady,
+        hasWorld = this != null,
+        assets = assetProgress,
+        audioScenesReady = audioScenesReady,
+    )
+}
+
+internal fun StudyTalkWorld.studyTalkAssetProgress(): StudyTalkAssetProgress? {
+    if (!isValidTalkScript()) return null
+    val usedExpressionIds = scenes.flatMap { it.turns }.map { it.expressionId }.toSet()
+    val requiredExpressions = expressions.filter { it.id in usedExpressionIds }
+    val turns = scenes.flatMap { it.turns }
+
+    return StudyTalkAssetProgress(
+        backgrounds = StudyTalkAssetGroupProgress(
+            ready = scenes.count { !it.backgroundImageUrl.isNullOrBlank() },
+            total = scenes.size,
+        ),
+        expressions = StudyTalkAssetGroupProgress(
+            ready = requiredExpressions.count { !it.imageUrl.isNullOrBlank() },
+            total = requiredExpressions.size,
+        ),
+        audio = StudyTalkAssetGroupProgress(
+            ready = turns.sumOf { turn ->
+                listOf(turn.characterAudioUrl, turn.replyAudioUrl).count { !it.isNullOrBlank() }
+            },
+            total = turns.size * 2,
+        ),
+    )
+}
+
+private fun StudyTalkWorld.isValidTalkScript(): Boolean {
+    if (scenes.size != STUDY_TALK_SCENE_COUNT) return false
+    if (scenes.any { it.id.isBlank() || it.title.isBlank() || it.description.isBlank() }) return false
+    if (scenes.map { it.id }.distinct().size != scenes.size) return false
+    if (scenes.any { it.turns.size !in STUDY_TALK_MIN_TURNS_PER_SCENE..STUDY_TALK_MAX_TURNS_PER_SCENE }) return false
+    val turns = scenes.flatMap { it.turns }
+    if (turns.map { it.id }.any(String::isBlank) || turns.map { it.id }.distinct().size != turns.size) return false
+    val usedExpressionIds = turns.map { it.expressionId }.toSet()
+    if (usedExpressionIds.any(String::isBlank)) return false
+    val usedExpressions = expressions.filter { it.id in usedExpressionIds }
+    if (usedExpressionIds.isEmpty() || usedExpressions.size != usedExpressionIds.size) return false
+    val expressionsById = usedExpressions.associateBy { it.id }
+    return turns.all { turn ->
+        turn.speakerCharacterId.isNotBlank() && turn.expressionId.isNotBlank() &&
+            turn.characterLine.isNotBlank() && turn.intention.isNotBlank() && turn.reply.isNotBlank() &&
+            expressionsById[turn.expressionId]?.characterId == turn.speakerCharacterId
+    }
+}

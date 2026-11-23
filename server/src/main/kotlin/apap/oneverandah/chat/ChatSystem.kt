@@ -12,11 +12,15 @@ import apap.oneverandah.http.shortHttpClient
 import apap.oneverandah.http.websocketHttpClient
 import apap.oneverandah.images.storage.StorageService
 import apap.oneverandah.images.storage.applyBinaryImageMask
+import apap.oneverandah.logging.SafeFailureDiagnostics
 import io.ktor.client.HttpClient
+import kotlinx.coroutines.CancellationException
+import kotlinx.coroutines.CoroutineName
 import kotlinx.coroutines.CoroutineScope
 import kotlinx.coroutines.Dispatchers
 import kotlinx.coroutines.SupervisorJob
 import kotlinx.coroutines.cancel
+import kotlinx.coroutines.currentCoroutineContext
 import org.slf4j.LoggerFactory
 import java.io.File
 import java.util.UUID
@@ -53,6 +57,33 @@ class ChatSystem(
 
     companion object {
         private val log = LoggerFactory.getLogger(ChatSystem::class.java)
+
+        private suspend fun <T> logTalkImageStage(stage: String, action: suspend () -> T): T {
+            val context = currentCoroutineContext()[CoroutineName]?.name ?: "study-build context unavailable"
+            val startedAt = System.nanoTime()
+            log.info("Study Talk image stage started: context={} stage={}", context, stage)
+            return try {
+                action().also {
+                    log.info(
+                        "Study Talk image stage completed: context={} stage={} elapsedMs={}",
+                        context,
+                        stage,
+                        (System.nanoTime() - startedAt) / 1_000_000,
+                    )
+                }
+            } catch (cancelled: CancellationException) {
+                throw cancelled
+            } catch (error: Exception) {
+                log.warn(
+                    "Study Talk image stage failed: context={} stage={} elapsedMs={} diagnostics={}",
+                    context,
+                    stage,
+                    (System.nanoTime() - startedAt) / 1_000_000,
+                    SafeFailureDiagnostics.describe(error),
+                )
+                throw error
+            }
+        }
 
         suspend fun create(
             config: AppConfig,
@@ -127,16 +158,25 @@ class ChatSystem(
                         referenceImageUrls: List<String>,
                         maskPrompt: String,
                     ): String {
-                        val generated = qwen.generate(prompt, referenceImageUrls)
+                        val generated = logTalkImageStage("portrait_generation") {
+                            qwen.generate(prompt, referenceImageUrls)
+                        }
                         val portrait = if (qwen.kind == "placeholder") {
                             generated
                         } else {
-                            applyBinaryImageMask(generated, qwen.generateMask(generated, maskPrompt))
+                            val mask = logTalkImageStage("mask_generation") {
+                                qwen.generateMask(generated, maskPrompt)
+                            }
+                            logTalkImageStage("mask_compositing") {
+                                applyBinaryImageMask(generated, mask)
+                            }
                         }
-                        return storage.upload(
-                            "study/story/talk/characters/${UUID.randomUUID()}.${portrait.extension}",
-                            portrait,
-                        )
+                        return logTalkImageStage("portrait_storage") {
+                            storage.upload(
+                                "study/story/talk/characters/${UUID.randomUUID()}.${portrait.extension}",
+                                portrait,
+                            )
+                        }
                     }
                 }
             } else {

@@ -427,7 +427,7 @@ class StudyBuildTasks(
         val world = record.session.talkWorld ?: return
         val scene = world.scenes.getOrNull(sceneIndex) ?: return
         if (!scene.backgroundImageUrl.isNullOrBlank()) return
-        val imageUrl = studyService.renderTalkSceneBackground(world, scene, record.session.characters)
+        val imageUrl = studyService.renderTalkSceneBackground(world, scene)
         val updated = store.update(record.id) { current ->
             val currentWorld = current.session.talkWorld ?: return@update current
             val currentScene = currentWorld.scenes.getOrNull(sceneIndex) ?: return@update current
@@ -436,8 +436,7 @@ class StudyBuildTasks(
                 currentScene.id != scene.id ||
                 currentScene.title != scene.title ||
                 currentScene.description != scene.description ||
-                !sameTalkTurns(currentScene.turns, scene.turns) ||
-                !sameTalkCharacterInputs(current.session.characters, record.session.characters, includePortrait = true)
+                !sameTalkTurns(currentScene.turns, scene.turns)
             ) return@update current
             if (!currentScene.backgroundImageUrl.isNullOrBlank()) return@update current
             current.copy(
@@ -458,7 +457,9 @@ class StudyBuildTasks(
         val world = record.session.talkWorld ?: return
         val expression = world.expressions.firstOrNull { it.id == expressionId } ?: return
         if (!expression.imageUrl.isNullOrBlank()) return
-        val character = record.session.characters.firstOrNull { it.id == expression.characterId } ?: return
+        val character = requireNotNull(record.session.characters.firstOrNull { it.id == expression.characterId }) {
+            "Talk expression '$expressionId' references missing character '${expression.characterId}'."
+        }
         val imageUrl = studyService.renderTalkExpression(expression, character)
         val updated = store.update(record.id) { current ->
             val currentWorld = current.session.talkWorld ?: return@update current

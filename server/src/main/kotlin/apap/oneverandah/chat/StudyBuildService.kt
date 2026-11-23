@@ -186,6 +186,7 @@ class StudyBuildService(
                         StudyBuildStatus.BUILDING
                     },
                     failed = build.failed.filterNot { it.key in selectedKeys },
+                    failureReasons = build.failureReasons - selectedKeys,
                     attempts = build.attempts - selectedKeys,
                     updatedAt = clock(),
                 ),
@@ -248,6 +249,11 @@ class StudyBuildService(
                     current.copy(
                         build = build.copy(
                             failed = (build.failed + exhausted).distinctBy { it.key },
+                            failureReasons = build.failureReasons + exhausted
+                                .filterNot { it.key in build.failureReasons }
+                                .associate { element ->
+                                    element.key to "Automatic retries were exhausted before a failure detail was recorded."
+                                },
                             updatedAt = clock(),
                         ),
                     )

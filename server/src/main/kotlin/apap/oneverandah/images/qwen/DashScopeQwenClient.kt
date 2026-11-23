@@ -2,6 +2,7 @@ package apap.oneverandah.images.qwen
 
 import apap.oneverandah.config.QwenImageConfig
 import apap.oneverandah.images.storage.GeneratedImage
+import apap.oneverandah.logging.SafeFailureDiagnostics
 import io.ktor.client.HttpClient
 import io.ktor.client.call.body
 import io.ktor.client.plugins.HttpRequestTimeoutException
@@ -22,8 +23,11 @@ import io.ktor.http.Headers
 import io.ktor.http.HttpHeaders
 import io.ktor.http.contentType
 import io.ktor.http.isSuccess
+import kotlinx.coroutines.CancellationException
+import kotlinx.coroutines.CoroutineName
 import kotlinx.coroutines.async
 import kotlinx.coroutines.coroutineScope
+import kotlinx.coroutines.currentCoroutineContext
 import kotlinx.coroutines.delay
 import kotlinx.coroutines.sync.Mutex
 import kotlinx.coroutines.sync.withLock
@@ -128,6 +132,43 @@ class DashScopeQwenClient(
                 refs.map { url -> async { ensureDashScopeAccessible(url) } }.map { it.await() }
             }
             generateWithReferences(prompt, accessible)
+        }
+    }
+
+    override suspend fun generateMask(image: GeneratedImage, prompt: String): GeneratedImage =
+        diagnosticStage("prepare and generate binary mask") {
+            val uploadImage = shrinkForDashScope(image)
+            val fileName = "talk-mask-${UUID.randomUUID()}.${uploadImage.extension}"
+            val reference = uploadToDashScopeTemp(uploadImage, fileName)
+            generate(prompt, listOf(reference))
+        }
+
+    private suspend fun <T> diagnosticStage(operation: String, action: suspend () -> T): T {
+        val context = currentCoroutineContext()[CoroutineName]?.name
+            ?.takeIf { it.startsWith("study-build ") }
+            ?: return action()
+        val startedAt = System.nanoTime()
+        log.info("Qwen provider operation started: context={} operation={}", context, operation)
+        return try {
+            action().also {
+                log.info(
+                    "Qwen provider operation completed: context={} operation={} elapsedMs={}",
+                    context,
+                    operation,
+                    (System.nanoTime() - startedAt) / 1_000_000,
+                )
+            }
+        } catch (cancelled: CancellationException) {
+            throw cancelled
+        } catch (error: Exception) {
+            log.warn(
+                "Qwen provider operation failed: context={} operation={} elapsedMs={} diagnostics={}",
+                context,
+                operation,
+                (System.nanoTime() - startedAt) / 1_000_000,
+                SafeFailureDiagnostics.describe(error),
+            )
+            throw error
         }
     }
 
@@ -256,12 +297,14 @@ class DashScopeQwenClient(
             )
         }
 
-        val response: HttpResponse = withTransientHttpRetry {
-            client.post(endpoint) {
-                header(HttpHeaders.Authorization, "Bearer ${config.apiKey}")
-                if (usesOss) header(HEADER_OSS_RESOLVE, "enable")
-                contentType(ContentType.Application.Json)
-                setBody(json.encodeToString(JsonObject.serializer(), requestBody))
+        val response: HttpResponse = diagnosticStage("multimodal image generation request") {
+            withTransientHttpRetry(operation = "multimodal image generation request") {
+                client.post(endpoint) {
+                    header(HttpHeaders.Authorization, "Bearer ${config.apiKey}")
+                    if (usesOss) header(HEADER_OSS_RESOLVE, "enable")
+                    contentType(ContentType.Application.Json)
+                    setBody(json.encodeToString(JsonObject.serializer(), requestBody))
+                }
             }
         }
         val text = response.bodyAsText()
@@ -287,13 +330,15 @@ class DashScopeQwenClient(
         requestBody: JsonObject,
         usesOssUrls: Boolean,
     ): String {
-        val response: HttpResponse = withTransientHttpRetry {
-            client.post(endpoint) {
-                header(HttpHeaders.Authorization, "Bearer ${config.apiKey}")
-                header(HEADER_ASYNC, "enable")
-                if (usesOssUrls) header(HEADER_OSS_RESOLVE, "enable")
-                contentType(ContentType.Application.Json)
-                setBody(json.encodeToString(JsonObject.serializer(), requestBody))
+        val response: HttpResponse = diagnosticStage("image generation submit request") {
+            withTransientHttpRetry(operation = "image generation submit request") {
+                client.post(endpoint) {
+                    header(HttpHeaders.Authorization, "Bearer ${config.apiKey}")
+                    header(HEADER_ASYNC, "enable")
+                    if (usesOssUrls) header(HEADER_OSS_RESOLVE, "enable")
+                    contentType(ContentType.Application.Json)
+                    setBody(json.encodeToString(JsonObject.serializer(), requestBody))
+                }
             }
         }
 
@@ -307,34 +352,35 @@ class DashScopeQwenClient(
             ?: throw QwenException("Qwen submit returned no task_id: $text")
     }
 
-    private suspend fun pollForResult(taskId: String, submitEndpoint: String): String {
-        val tasksBaseUrl = apiRootFromEndpoint(submitEndpoint) + "/tasks/"
-        repeat(maxPollAttempts) {
-            val response: HttpResponse = withTransientHttpRetry {
-                client.get(tasksBaseUrl + taskId) {
-                    header(HttpHeaders.Authorization, "Bearer ${config.apiKey}")
+    private suspend fun pollForResult(taskId: String, submitEndpoint: String): String =
+        diagnosticStage("poll image generation result") {
+            val tasksBaseUrl = apiRootFromEndpoint(submitEndpoint) + "/tasks/"
+            repeat(maxPollAttempts) {
+                val response: HttpResponse = withTransientHttpRetry(operation = "image generation status poll") {
+                    client.get(tasksBaseUrl + taskId) {
+                        header(HttpHeaders.Authorization, "Bearer ${config.apiKey}")
+                    }
+                }
+                val text = response.bodyAsText()
+                if (!response.status.isSuccess()) {
+                    throw QwenException("Qwen poll failed (${response.status}): $text")
+                }
+                val output = json.parseToJsonElement(text).jsonObject["output"]?.jsonObject
+                    ?: throw QwenException("Qwen poll returned no output: $text")
+                when (output["task_status"]?.jsonPrimitive?.content) {
+                    "SUCCEEDED" -> {
+                        extractAsyncResultUrl(output)?.let { return@diagnosticStage it }
+                        throw QwenException("Qwen task succeeded but returned no url: $text")
+                    }
+
+                    "FAILED", "CANCELED", "UNKNOWN" ->
+                        throw QwenException("Qwen task $taskId failed: $text")
+
+                    else -> delay(pollIntervalMs) // PENDING / RUNNING
                 }
             }
-            val text = response.bodyAsText()
-            if (!response.status.isSuccess()) {
-                throw QwenException("Qwen poll failed (${response.status}): $text")
-            }
-            val output = json.parseToJsonElement(text).jsonObject["output"]?.jsonObject
-                ?: throw QwenException("Qwen poll returned no output: $text")
-            when (output["task_status"]?.jsonPrimitive?.content) {
-                "SUCCEEDED" -> {
-                    extractAsyncResultUrl(output)?.let { return it }
-                    throw QwenException("Qwen task succeeded but returned no url: $text")
-                }
-
-                "FAILED", "CANCELED", "UNKNOWN" ->
-                    throw QwenException("Qwen task $taskId failed: $text")
-
-                else -> delay(pollIntervalMs) // PENDING / RUNNING
-            }
+            throw QwenException("Qwen task $taskId did not complete within timeout")
         }
-        throw QwenException("Qwen task $taskId did not complete within timeout")
-    }
 
     private fun extractAsyncResultUrl(output: JsonObject): String? {
         output["results"]?.jsonArray
@@ -383,18 +429,19 @@ class DashScopeQwenClient(
         return null
     }
 
-    private suspend fun download(url: String): GeneratedImage {
-        val response: HttpResponse = withTransientHttpRetry {
-            client.get(url) { fileTransferTimeout() }
+    private suspend fun download(url: String): GeneratedImage =
+        diagnosticStage("download generated image") {
+            val response: HttpResponse = withTransientHttpRetry(operation = "generated image download request") {
+                client.get(url) { fileTransferTimeout() }
+            }
+            if (!response.status.isSuccess()) {
+                throw QwenException("Failed to download generated image ($url): ${response.status}")
+            }
+            val bytes: ByteArray = response.body()
+            val extension = url.substringAfterLast('.', "png").substringBefore('?').ifBlank { "png" }
+            val contentType = contentTypeForExtension(extension)
+            GeneratedImage(bytes = bytes, contentType = contentType, extension = extension)
         }
-        if (!response.status.isSuccess()) {
-            throw QwenException("Failed to download generated image ($url): ${response.status}")
-        }
-        val bytes: ByteArray = response.body()
-        val extension = url.substringAfterLast('.', "png").substringBefore('?').ifBlank { "png" }
-        val contentType = contentTypeForExtension(extension)
-        return GeneratedImage(bytes = bytes, contentType = contentType, extension = extension)
-    }
 
     /**
      * Ensures [url] is something DashScope's servers can fetch.
@@ -411,27 +458,29 @@ class DashScopeQwenClient(
         if (trimmed.startsWith("oss://")) return trimmed
 
         dashScopeRefCache[trimmed]?.let { cached ->
-            log.debug("Using cached DashScope reference for {}", trimmed)
+            log.debug("Using cached DashScope reference image")
             return cached
         }
 
         val lock = dashScopeRefLocks.getOrPut(trimmed) { Mutex() }
         return lock.withLock {
             dashScopeRefCache[trimmed]?.let { cached ->
-                log.debug("Using cached DashScope reference for {}", trimmed)
+                log.debug("Using cached DashScope reference image")
                 return@withLock cached
             }
 
-            val image = loadReferenceImage(trimmed)?.let { shrinkForDashScope(it) }
+            val image = diagnosticStage("load character reference image") {
+                loadReferenceImage(trimmed)
+            }?.let { shrinkForDashScope(it) }
                 ?: throw QwenException(
-                    "Cannot load reference image for Qwen R2I: $trimmed. " +
+                    "Cannot load reference image for Qwen R2I. " +
                         "Upload failed or the file is not reachable from the server.",
                 )
             val guessed = guessFileName(trimmed, image.extension)
             val fileName = guessed.substringBeforeLast('.', guessed) + "." + image.extension
             val ossUrl = uploadToDashScopeTemp(image, fileName)
             dashScopeRefCache[trimmed] = ossUrl
-            log.info("Re-hosted reference image for DashScope: {} → {}", trimmed, ossUrl)
+            log.info("Re-hosted reference image for DashScope (extension={})", image.extension)
             ossUrl
         }
     }
@@ -452,9 +501,11 @@ class DashScopeQwenClient(
 
         // HTTP(S) fetch (public OSS, CDN, or this server if reachable).
         if (url.startsWith("http://", ignoreCase = true) || url.startsWith("https://", ignoreCase = true)) {
-            return runCatching {
-                val response: HttpResponse = withTransientHttpRetry {
-                    client.get(url) { fileTransferTimeout() }
+            return try {
+                val response: HttpResponse = diagnosticStage("download character reference image") {
+                    withTransientHttpRetry(operation = "reference image download request") {
+                        client.get(url) { fileTransferTimeout() }
+                    }
                 }
                 if (!response.status.isSuccess()) {
                     null
@@ -463,28 +514,40 @@ class DashScopeQwenClient(
                     val ext = url.substringAfterLast('.', "png").substringBefore('?').ifBlank { "png" }
                     GeneratedImage(bytes = bytes, contentType = contentTypeForExtension(ext), extension = ext)
                 }
-            }.getOrNull()
+            } catch (cancelled: CancellationException) {
+                throw cancelled
+            } catch (_: Exception) {
+                null
+            }
         }
 
         return null
     }
 
     private suspend fun <T> withTransientHttpRetry(
+        operation: String,
         attempts: Int = 3,
         block: suspend () -> T,
     ): T {
+        val startedAt = System.nanoTime()
+        val context = currentCoroutineContext()[CoroutineName]?.name ?: "unscoped"
         var last: Throwable? = null
         repeat(attempts) { attempt ->
             try {
                 return block()
+            } catch (cancelled: CancellationException) {
+                throw cancelled
             } catch (e: Throwable) {
                 last = e
                 if (!isTransientHttpClose(e) || attempt == attempts - 1) throw e
                 log.warn(
-                    "Retrying Qwen HTTP after transient close (attempt {}/{}): {}",
+                    "Retrying Qwen HTTP operation after transient close: context={} operation={} attempt={}/{} elapsedMs={} diagnostics={}",
+                    context,
+                    operation,
                     attempt + 1,
                     attempts,
-                    e.message,
+                    (System.nanoTime() - startedAt) / 1_000_000,
+                    SafeFailureDiagnostics.describe(e),
                 )
                 delay(400L * (attempt + 1))
             }
@@ -510,12 +573,19 @@ class DashScopeQwenClient(
      * Uploads bytes into DashScope's free 48h temporary OSS and returns `oss://…`.
      * Callers must send `X-DashScope-OssResourceResolve: enable` on model calls.
      */
-    private suspend fun uploadToDashScopeTemp(image: GeneratedImage, fileName: String): String {
-        val policyResponse: HttpResponse = client.get(uploadsBaseUrl) {
-            header(HttpHeaders.Authorization, "Bearer ${config.apiKey}")
-            header(HttpHeaders.ContentType, ContentType.Application.Json.toString())
-            parameter("action", "getPolicy")
-            parameter("model", config.r2iModel)
+    private suspend fun uploadToDashScopeTemp(image: GeneratedImage, fileName: String): String =
+        diagnosticStage("temporary image upload") {
+            uploadToDashScopeTempInternal(image, fileName)
+        }
+
+    private suspend fun uploadToDashScopeTempInternal(image: GeneratedImage, fileName: String): String {
+        val policyResponse: HttpResponse = diagnosticStage("temporary upload policy request") {
+            client.get(uploadsBaseUrl) {
+                header(HttpHeaders.Authorization, "Bearer ${config.apiKey}")
+                header(HttpHeaders.ContentType, ContentType.Application.Json.toString())
+                parameter("action", "getPolicy")
+                parameter("model", config.r2iModel)
+            }
         }
         val policyText = policyResponse.bodyAsText()
         if (!policyResponse.status.isSuccess()) {
@@ -540,34 +610,37 @@ class DashScopeQwenClient(
         val safeName = fileName.replace(Regex("[^A-Za-z0-9._-]"), "_").ifBlank { "ref.png" }
         val key = "$uploadDir/$safeName"
 
-        val uploadResponse = withTransientHttpRetry {
-            client.submitFormWithBinaryData(
-                url = uploadHost,
-                formData = formData {
-                    append("OSSAccessKeyId", ossAccessKeyId)
-                    append("Signature", signature)
-                    append("policy", policy)
-                    append("x-oss-object-acl", acl)
-                    append("x-oss-forbid-overwrite", forbidOverwrite)
-                    append("key", key)
-                    append("success_action_status", "200")
-                    append(
-                        "file",
-                        image.bytes,
-                        Headers.build {
-                            append(HttpHeaders.ContentType, image.contentType)
-                            append(HttpHeaders.ContentDisposition, "filename=\"$safeName\"")
-                        },
-                    )
-                },
-            ) {
-                fileTransferTimeout()
+        val uploadResponse = diagnosticStage("temporary image bytes upload") {
+            val response = withTransientHttpRetry(operation = "temporary image upload request") {
+                client.submitFormWithBinaryData(
+                    url = uploadHost,
+                    formData = formData {
+                        append("OSSAccessKeyId", ossAccessKeyId)
+                        append("Signature", signature)
+                        append("policy", policy)
+                        append("x-oss-object-acl", acl)
+                        append("x-oss-forbid-overwrite", forbidOverwrite)
+                        append("key", key)
+                        append("success_action_status", "200")
+                        append(
+                            "file",
+                            image.bytes,
+                            Headers.build {
+                                append(HttpHeaders.ContentType, image.contentType)
+                                append(HttpHeaders.ContentDisposition, "filename=\"$safeName\"")
+                            },
+                        )
+                    },
+                ) {
+                    fileTransferTimeout()
+                }
             }
-        }
-        if (!uploadResponse.status.isSuccess()) {
-            throw QwenException(
-                "DashScope temp upload failed (${uploadResponse.status}): ${uploadResponse.bodyAsText()}",
-            )
+            if (!response.status.isSuccess()) {
+                throw QwenException(
+                    "DashScope temp upload failed (${response.status}): ${response.bodyAsText()}",
+                )
+            }
+            response
         }
         return "oss://$key"
     }

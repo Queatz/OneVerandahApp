@@ -2,6 +2,9 @@ package apap.oneverandah.images.qwen
 
 import apap.oneverandah.config.QwenImageConfig
 import apap.oneverandah.images.storage.GeneratedImage
+import ch.qos.logback.classic.Logger
+import ch.qos.logback.classic.spi.ILoggingEvent
+import ch.qos.logback.core.read.ListAppender
 import io.ktor.client.HttpClient
 import io.ktor.client.engine.mock.MockEngine
 import io.ktor.client.engine.mock.respond
@@ -17,11 +20,14 @@ import io.ktor.http.headersOf
 import io.ktor.utils.io.ByteChannel
 import io.ktor.utils.io.ByteReadChannel
 import io.ktor.utils.io.readRemaining
+import kotlinx.coroutines.CancellationException
+import kotlinx.coroutines.CoroutineName
 import kotlinx.coroutines.async
 import kotlinx.coroutines.awaitAll
 import kotlinx.coroutines.coroutineScope
 import kotlinx.coroutines.delay
 import kotlinx.coroutines.runBlocking
+import kotlinx.coroutines.withContext
 import kotlinx.io.readByteArray
 import java.awt.image.BufferedImage
 import java.io.ByteArrayInputStream
@@ -90,6 +96,145 @@ class DashScopeQwenClientTest {
                 endpoint = "https://dashscope.aliyuncs.com/api/v1/services/aigc/text2image/image-synthesis",
             ),
         )
+    }
+
+    @Test
+    fun `generateMask uploads portrait bytes directly to temporary storage`() = runBlocking {
+        var uploadBody = ""
+        var generationBody = ""
+        val engine = MockEngine { request ->
+            val url = request.url.toString()
+            when {
+                url.contains("/uploads") -> respond(
+                    content = """
+                        {"data":{"upload_host":"https://upload.example.test/oss","upload_dir":"dashscope-instant/mask-test","oss_access_key_id":"AKIATEST","signature":"sig","policy":"pol"}}
+                    """.trimIndent(),
+                    status = HttpStatusCode.OK,
+                    headers = headersOf(HttpHeaders.ContentType, "application/json"),
+                )
+                url.contains("upload.example.test") -> {
+                    uploadBody = readBodyText(request.body)
+                    respondOk("OK")
+                }
+                url.contains("multimodal-generation") -> {
+                    generationBody = readBodyText(request.body)
+                    respond(
+                        content = """
+                            {"output":{"choices":[{"finish_reason":"stop","message":{"role":"assistant","content":[{"image":"https://dashscope-result.example.test/mask.png","type":"image"}]}}]}}
+                        """.trimIndent(),
+                        status = HttpStatusCode.OK,
+                        headers = headersOf(HttpHeaders.ContentType, "application/json"),
+                    )
+                }
+                url.contains("dashscope-result.example.test") -> respond(
+                    content = ByteReadChannel(byteArrayOf(8, 8, 8)),
+                    status = HttpStatusCode.OK,
+                    headers = headersOf(HttpHeaders.ContentType, "image/png"),
+                )
+                else -> error("Unexpected request: $url")
+            }
+        }
+        val client = HttpClient(engine)
+        val qwen = DashScopeQwenClient(
+            config = QwenImageConfig(
+                endpoint = "https://dashscope.aliyuncs.com/api/v1/services/aigc/text2image/image-synthesis",
+                apiKey = "test-key",
+                model = "wan2.2-t2i-flash",
+                r2iEndpoint = "https://dashscope.aliyuncs.com/api/v1/services/aigc/multimodal-generation/generation",
+                r2iModel = "wan2.7-image",
+            ),
+            client = client,
+        )
+
+        val result = qwen.generateMask(
+            GeneratedImage(byteArrayOf(1, 2, 3), "image/png", "png"),
+            "Create a binary mask.",
+        )
+
+        assertTrue(uploadBody.contains("talk-mask-"), "mask image should use the dedicated temporary upload path")
+        assertTrue(generationBody.contains("oss://dashscope-instant/mask-test/talk-mask-"))
+        assertTrue(!generationBody.contains("data:image/"), "mask reference should not be serialized as a data URL")
+        assertTrue(result.bytes.contentEquals(byteArrayOf(8, 8, 8)))
+        client.close()
+    }
+
+    @Test
+    fun `generateMask failure logs the provider stage with build context and redacts signed urls`() = runBlocking {
+        val engine = MockEngine {
+            throw java.io.EOFException(
+                "Provider connection interrupted at https://signed.example.test/policy?Signature=do-not-log",
+            )
+        }
+        val client = HttpClient(engine)
+        val qwen = DashScopeQwenClient(
+            config = QwenImageConfig(
+                endpoint = "https://dashscope.aliyuncs.com/api/v1/services/aigc/text2image/image-synthesis",
+                apiKey = "test-key",
+                model = "wan2.2-t2i-flash",
+                r2iEndpoint = "https://dashscope.aliyuncs.com/api/v1/services/aigc/multimodal-generation/generation",
+                r2iModel = "wan2.7-image",
+            ),
+            client = client,
+        )
+        val logger = org.slf4j.LoggerFactory.getLogger(DashScopeQwenClient::class.java) as Logger
+        val appender = ListAppender<ILoggingEvent>().apply {
+            context = logger.loggerContext
+            start()
+        }
+        logger.addAppender(appender)
+
+        try {
+            val failure = runCatching {
+                withContext(CoroutineName("study-build session=study-1 element=TALK_EXPRESSION:main-neutral attempt=1")) {
+                    qwen.generateMask(
+                        GeneratedImage(byteArrayOf(1, 2, 3), "image/png", "png"),
+                        "Create a binary mask.",
+                    )
+                }
+            }.exceptionOrNull()
+            assertNotNull(failure, "expected the mocked upload policy connection to fail")
+
+            val messages = appender.list.map { it.formattedMessage }
+            assertTrue(messages.any { it.contains("operation started") && it.contains("temporary upload policy request") })
+            val failureMessage = messages.first { it.contains("operation failed") && it.contains("temporary upload policy request") }
+            assertTrue(failureMessage.contains("study-build session=study-1 element=TALK_EXPRESSION:main-neutral attempt=1"))
+            assertTrue(failureMessage.contains("EOFException"), failureMessage)
+            assertTrue(failureMessage.contains("[URL]"), failureMessage)
+            assertTrue(!failureMessage.contains("do-not-log"), failureMessage)
+        } finally {
+            logger.detachAppender(appender)
+            appender.stop()
+            client.close()
+        }
+    }
+
+    @Test
+    fun `reference download cancellation propagates without retrying`() = runBlocking {
+        var requests = 0
+        val client = HttpClient(MockEngine {
+            requests += 1
+            throw CancellationException("study build cancelled")
+        })
+        val qwen = DashScopeQwenClient(
+            config = QwenImageConfig(
+                endpoint = "https://dashscope.aliyuncs.com/api/v1/services/aigc/text2image/image-synthesis",
+                apiKey = "test-key",
+                model = "wan2.2-t2i-flash",
+                r2iEndpoint = "https://dashscope.aliyuncs.com/api/v1/services/aigc/multimodal-generation/generation",
+                r2iModel = "wan2.7-image",
+            ),
+            client = client,
+        )
+
+        try {
+            val failure = runCatching {
+                qwen.generate("Create a portrait.", listOf("https://reference.example.test/portrait.png"))
+            }.exceptionOrNull()
+            assertTrue(failure is CancellationException, "expected cancellation, got $failure")
+            assertEquals(1, requests, "cancellation should not be retried or converted to a missing reference")
+        } finally {
+            client.close()
+        }
     }
 
     @Test

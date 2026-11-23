@@ -4,15 +4,72 @@ import apap.oneverandah.api.StudyBuildElement
 import apap.oneverandah.api.StudyBuildElementKind
 import apap.oneverandah.api.StudyBuildEvent
 import apap.oneverandah.api.StudyBuildStatus
+import apap.oneverandah.logging.SafeFailureDiagnostics
 import kotlinx.coroutines.CancellationException
+import kotlinx.coroutines.CoroutineName
 import kotlinx.coroutines.CoroutineScope
 import kotlinx.coroutines.delay
 import kotlinx.coroutines.isActive
 import kotlinx.coroutines.launch
 import kotlinx.coroutines.selects.select
+import kotlinx.coroutines.withContext
 import java.util.concurrent.ConcurrentHashMap
 import java.util.concurrent.atomic.AtomicBoolean
 import org.slf4j.LoggerFactory
+
+internal object StudyBuildFailureReason {
+    const val MAX_DISPLAY_LENGTH = 240
+
+    fun display(error: Throwable): String {
+        val chain = generateSequence(error) { it.cause }.take(6).toList()
+        val messages = chain.mapNotNull { it.message?.takeIf(String::isNotBlank) }
+        val combined = messages.joinToString(" ")
+        val lower = combined.lowercase()
+        if (
+            chain.any { it.javaClass.simpleName in setOf("SocketException", "SocketTimeoutException", "EOFException", "ClosedChannelException") } ||
+            listOf("prematurely closed", "connection reset", "broken pipe", "connection abort").any(lower::contains)
+        ) {
+            return "The provider connection was interrupted before the request completed."
+        }
+        if (chain.any { it.javaClass.simpleName.contains("Timeout", ignoreCase = true) }) {
+            return "The provider did not respond before the request timed out."
+        }
+        if (chain.any { it.javaClass.simpleName == "QwenException" }) {
+            val status = Regex("\\((4\\d\\d|5\\d\\d)(?:\\s+[^)]*)?\\)").find(combined)?.groupValues?.get(1)
+            val qwenMessage = messages.firstOrNull().orEmpty().lowercase()
+            return when {
+                status != null -> "The image provider rejected the request (HTTP $status)."
+                "cannot load reference image" in qwenMessage -> "The image provider could not load its reference image."
+                "upload policy" in qwenMessage || "temp upload failed" in qwenMessage ->
+                    "The temporary image upload to the provider failed."
+                "returned no image" in qwenMessage -> "The image provider returned no image for this task."
+                "returned no task_id" in qwenMessage -> "The image provider did not return a task identifier."
+                "did not complete within timeout" in qwenMessage -> "The image provider task exceeded its time limit."
+                "task " in qwenMessage && " failed" in qwenMessage ->
+                    "The image provider reported that image generation failed."
+                "returned no output" in qwenMessage -> "The image provider response did not contain output data."
+                else -> "The image provider rejected or could not complete the request."
+            }
+        }
+        if (chain.any { it.javaClass.simpleName.contains("Serialization") || it.javaClass.simpleName.contains("JsonDecoding") }) {
+            return "The provider returned a response that could not be parsed."
+        }
+
+        val safeMessage = combined
+            .replace(Regex("(?i)data:[^\\s,]+;base64,[^\\s]+"), "[image data]")
+            .replace(Regex("(?i)(?:https?|oss)://[^\\s]+"), "[URL]")
+            .replace(Regex("(?i)(authorization|api[_-]?key|token|secret|signature)\\s*[:=]\\s*[^\\s,;]+"), "$1=[redacted]")
+            .replace(Regex("(?s)\\s*:\\s*(?:\\{|\\[|<html\\b).*$", RegexOption.IGNORE_CASE), "")
+            .replace(Regex("\\s+"), " ")
+            .trim()
+            .take(MAX_DISPLAY_LENGTH)
+        return if (safeMessage.isBlank()) {
+            "${error.javaClass.simpleName.ifBlank { "BuildException"}}: no safe error detail was available."
+        } else {
+            "${error.javaClass.simpleName.ifBlank { "BuildException"}}: $safeMessage"
+        }.take(MAX_DISPLAY_LENGTH)
+    }
+}
 
 class StudyBuildQueue(
     private val store: StudySessionStore,
@@ -121,8 +178,11 @@ class StudyBuildQueue(
         publishBuild(task.sessionId)
 
         var failure: Exception? = null
+        val attemptStartedAt = System.nanoTime()
         try {
-            executor.execute(task)
+            withContext(CoroutineName("study-build session=${task.sessionId} element=${task.element.key} attempt=$attempt")) {
+                executor.execute(task)
+            }
         } catch (cancelled: CancellationException) {
             throw cancelled
         } catch (error: Exception) {
@@ -130,37 +190,42 @@ class StudyBuildQueue(
         } finally {
             running.remove(task.key)
         }
+        val elapsedMs = (System.nanoTime() - attemptStartedAt) / 1_000_000
 
         if (failure == null) {
             finish(task)
         } else {
-            handleFailure(task, attempt, failure)
+            handleFailure(task, attempt, elapsedMs, failure)
         }
         publishBuild(task.sessionId)
         if (scope.isActive) {
             runCatching { onTaskSettled(task.sessionId) }
                 .onFailure { error ->
                     log.error(
-                        "Study build planning failed for {}: {}",
+                        "Study build planning failed for {}: diagnostics={}",
                         task.sessionId,
-                        error.message
+                        SafeFailureDiagnostics.describe(error),
                     )
                 }
         }
     }
 
-    private suspend fun handleFailure(task: StudyBuildTask, attempt: Int, error: Exception) {
+    private suspend fun handleFailure(task: StudyBuildTask, attempt: Int, elapsedMs: Long, error: Exception) {
         if (attempt < attemptLimit) {
             val delayMillis = retryBackoffMillis.getOrElse(attempt - 1) {
                 retryBackoffMillis.lastOrNull() ?: 0L
             }
             log.warn(
-                "Study build element {} for {} failed on attempt {}; retrying in {}ms: {}",
+                "Study build element {} ({}) for {} failed on attempt {}/{}; elapsedMs={}; retrying in {}ms; failure={}; diagnostics={}",
                 task.element.key,
+                task.element.kind,
                 task.sessionId,
                 attempt,
+                attemptLimit,
+                elapsedMs,
                 delayMillis,
-                error.message,
+                StudyBuildFailureReason.display(error),
+                SafeFailureDiagnostics.describe(error),
             )
             scope.launch {
                 delay(delayMillis.coerceAtLeast(0L))
@@ -175,16 +240,22 @@ class StudyBuildQueue(
             current.copy(
                 build = build.copy(
                     failed = failed,
+                    failureReasons = build.failureReasons +
+                            (task.element.key to StudyBuildFailureReason.display(error)),
                     updatedAt = clock(),
                 ),
             )
         }
         log.error(
-            "Study build element {} for {} failed after {} attempts: {}",
+            "Study build element {} ({}) for {} failed after {}/{} attempts; elapsedMs={}; failure={}; diagnostics={}",
             task.element.key,
+            task.element.kind,
             task.sessionId,
             attempt,
-            error.message,
+            attemptLimit,
+            elapsedMs,
+            StudyBuildFailureReason.display(error),
+            SafeFailureDiagnostics.describe(error),
         )
         finish(task)
     }

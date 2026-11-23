@@ -178,44 +178,49 @@ class StudyBuildPlanner(
         if (session.sentences.isEmpty() || session.characters.isEmpty()) return emptyList()
         val world = session.talkWorld ?: return listOf(StudyBuildElement(StudyBuildElementKind.TALK_WORLD))
         val elements = mutableListOf<StudyBuildElement>()
-        val characterById = session.characters.associateBy { it.id }
-        if (supportsTalkImages && session.characters.all { !it.imageUrl.isNullOrBlank() }) {
+        if (supportsTalkImages) {
             world.scenes.forEachIndexed { sceneIndex, scene ->
-                if (scene.backgroundImageUrl.isNullOrBlank()) {
-                    elements += StudyBuildElement(
-                        StudyBuildElementKind.TALK_SCENE_IMAGE,
-                        sceneIndex = sceneIndex,
-                    )
+                val element = StudyBuildElement(
+                    StudyBuildElementKind.TALK_SCENE_IMAGE,
+                    sceneIndex = sceneIndex,
+                )
+                if (scene.backgroundImageUrl.isNullOrBlank() && !isFailed(record, element)) {
+                    elements += element
                 }
             }
-            world.expressions.forEach { expression ->
-                val character = characterById[expression.characterId]
-                if (character != null && !character.imageUrl.isNullOrBlank() && expression.imageUrl.isNullOrBlank()) {
-                    elements += StudyBuildElement(
-                        StudyBuildElementKind.TALK_EXPRESSION,
-                        expressionId = expression.id,
-                    )
+            val usedExpressionIds = world.scenes.flatMap { scene ->
+                scene.turns.map { it.expressionId }
+            }.toSet()
+            world.expressions.filter { it.id in usedExpressionIds }.forEach { expression ->
+                val element = StudyBuildElement(
+                    StudyBuildElementKind.TALK_EXPRESSION,
+                    expressionId = expression.id,
+                )
+                if (expression.imageUrl.isNullOrBlank() && !isFailed(record, element)) {
+                    elements += element
                 }
             }
         }
         if (supportsTalkAudio) {
             world.scenes.forEachIndexed { sceneIndex, scene ->
                 scene.turns.forEachIndexed { turnIndex, turn ->
-                    if (turn.characterAudioUrl.isNullOrBlank()) {
-                        elements += StudyBuildElement(
-                            kind = StudyBuildElementKind.TALK_AUDIO,
-                            sceneIndex = sceneIndex,
-                            turnIndex = turnIndex,
-                            audioKind = StudyTalkAudioKind.CHARACTER_LINE,
-                        )
+                    val characterAudio = StudyBuildElement(
+                        kind = StudyBuildElementKind.TALK_AUDIO,
+                        sceneIndex = sceneIndex,
+                        turnIndex = turnIndex,
+                        audioKind = StudyTalkAudioKind.CHARACTER_LINE,
+                    )
+                    if (turn.characterAudioUrl.isNullOrBlank() && !isFailed(record, characterAudio)) {
+                        elements += characterAudio
                     }
-                    if (turn.replyAudioUrl.isNullOrBlank()) {
-                        elements += StudyBuildElement(
-                            kind = StudyBuildElementKind.TALK_AUDIO,
-                            sceneIndex = sceneIndex,
-                            turnIndex = turnIndex,
-                            audioKind = StudyTalkAudioKind.REPLY,
-                        )
+                    val replyAudio = StudyBuildElement(
+                        kind = StudyBuildElementKind.TALK_AUDIO,
+                        sceneIndex = sceneIndex,
+                        turnIndex = turnIndex,
+                        audioKind = StudyTalkAudioKind.REPLY,
+                    )
+                    if (turn.replyAudioUrl.isNullOrBlank() && !isFailed(record, replyAudio)) {
+                        elements += replyAudio
                     }
                 }
             }

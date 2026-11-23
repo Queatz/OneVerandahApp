@@ -115,6 +115,14 @@ data class StudyTalkStrings(
     val next: String,
     val complete: String,
     val restart: String,
+    val scriptLoading: String,
+    val progressBarLabel: String,
+    val sceneBackgroundProgress: (ready: Int, total: Int) -> String,
+    val expressionProgress: (ready: Int, total: Int) -> String,
+    val audioProgress: (ready: Int, total: Int) -> String,
+    val stepCount: (done: Int, total: Int) -> String,
+    val failureDetails: (reason: String) -> String,
+    val incompleteFailure: String,
 )
 
 /**
@@ -859,6 +867,13 @@ private fun studyTalkStrings(languageName: String): StudyTalkStrings = when (lan
         speakPrompt = "Hãy nói thành tiếng. Ứng dụng không dùng micrô.", reveal = "Xem câu trả lời",
         answerLabel = "Câu trả lời", replayAnswer = "Nghe câu trả lời", good = "Mình nói đúng",
         tryAgain = "Thử lại lượt này", next = "Tiếp tục", complete = "Hoàn thành thế giới!", restart = "Chơi lại",
+        scriptLoading = "Đang viết kịch bản hội thoại…", progressBarLabel = "Tiến độ chuẩn bị thế giới hội thoại",
+        sceneBackgroundProgress = { ready, total -> "Cảnh nền: $ready/$total" },
+        expressionProgress = { ready, total -> "Biểu cảm: $ready/$total" },
+        audioProgress = { ready, total -> "Đoạn thoại: $ready/$total" },
+        stepCount = { done, total -> "Bước chuẩn bị: $done/$total" },
+        failureDetails = { reason -> "Lý do: $reason" },
+        incompleteFailure = "Một phần kịch bản hoặc nội dung đa phương tiện bắt buộc vẫn còn thiếu.",
     )
     "中文" -> StudyTalkStrings(
         tab = "对话", title = "对话练习", loading = "正在准备对话世界…", error = "无法准备这个世界。", retry = "重试",
@@ -867,6 +882,13 @@ private fun studyTalkStrings(languageName: String): StudyTalkStrings = when (lan
         intentionLabel = "你想说什么？", speakPrompt = "请大声说出来。本应用不会使用麦克风。", reveal = "显示答案",
         answerLabel = "答案", replayAnswer = "播放答案", good = "我说对了", tryAgain = "再试一次", next = "继续",
         complete = "世界完成！", restart = "重新开始",
+        scriptLoading = "正在编写对话脚本…", progressBarLabel = "对话世界准备进度",
+        sceneBackgroundProgress = { ready, total -> "场景背景：$ready/$total" },
+        expressionProgress = { ready, total -> "角色表情：$ready/$total" },
+        audioProgress = { ready, total -> "语音片段：$ready/$total" },
+        stepCount = { done, total -> "准备步骤：$done/$total" },
+        failureDetails = { reason -> "原因：$reason" },
+        incompleteFailure = "仍缺少必需的脚本或媒体内容。",
     )
     "日本語" -> StudyTalkStrings(
         tab = "会話", title = "会話を練習", loading = "会話の世界を準備しています…", error = "この世界を準備できませんでした。", retry = "再試行",
@@ -875,6 +897,13 @@ private fun studyTalkStrings(languageName: String): StudyTalkStrings = when (lan
         intentionLabel = "何と言いたいですか？", speakPrompt = "声に出して答えてください。マイクは使用しません。", reveal = "答えを見る",
         answerLabel = "答え", replayAnswer = "答えを再生", good = "うまく言えた", tryAgain = "もう一度挑戦", next = "続ける",
         complete = "世界をクリアしました！", restart = "もう一度",
+        scriptLoading = "会話の台本を作成しています…", progressBarLabel = "会話の世界の準備状況",
+        sceneBackgroundProgress = { ready, total -> "背景：$ready/$total" },
+        expressionProgress = { ready, total -> "表情：$ready/$total" },
+        audioProgress = { ready, total -> "音声：$ready/$total" },
+        stepCount = { done, total -> "準備ステップ：$done/$total" },
+        failureDetails = { reason -> "理由：$reason" },
+        incompleteFailure = "必要な会話台本またはメディアが不足しています。",
     )
     "한국어" -> StudyTalkStrings(
         tab = "대화", title = "대화 연습", loading = "대화 세계를 준비하는 중…", error = "이 세계를 준비할 수 없습니다.", retry = "다시 시도",
@@ -883,6 +912,13 @@ private fun studyTalkStrings(languageName: String): StudyTalkStrings = when (lan
         intentionLabel = "무엇을 말하고 싶나요?", speakPrompt = "소리 내어 말해 보세요. 마이크는 사용하지 않습니다.", reveal = "답 보기",
         answerLabel = "답", replayAnswer = "답 다시 듣기", good = "잘 말했어요", tryAgain = "이 차례 다시 하기", next = "계속",
         complete = "세계를 완료했어요!", restart = "다시 시작",
+        scriptLoading = "대화 대본을 만드는 중…", progressBarLabel = "대화 세계 준비 진행률",
+        sceneBackgroundProgress = { ready, total -> "장면 배경: $ready/$total" },
+        expressionProgress = { ready, total -> "표정: $ready/$total" },
+        audioProgress = { ready, total -> "음성: $ready/$total" },
+        stepCount = { done, total -> "준비 단계: $done/$total" },
+        failureDetails = { reason -> "이유: $reason" },
+        incompleteFailure = "필요한 대화 대본이나 미디어가 아직 부족합니다.",
     )
     "Русский" -> StudyTalkStrings(
         tab = "Диалог", title = "Практика диалога", loading = "Готовим мир диалогов…", error = "Не удалось подготовить этот мир.", retry = "Повторить",
@@ -891,6 +927,13 @@ private fun studyTalkStrings(languageName: String): StudyTalkStrings = when (lan
         intentionLabel = "Что вы хотите сказать?", speakPrompt = "Скажите ответ вслух. Микрофон не используется.", reveal = "Показать ответ",
         answerLabel = "Ответ", replayAnswer = "Прослушать ответ", good = "У меня получилось", tryAgain = "Повторить реплику", next = "Продолжить",
         complete = "Мир пройден!", restart = "Начать заново",
+        scriptLoading = "Составляем сценарий диалога…", progressBarLabel = "Подготовка мира диалогов",
+        sceneBackgroundProgress = { ready, total -> "Фоны сцен: $ready/$total" },
+        expressionProgress = { ready, total -> "Эмоции персонажей: $ready/$total" },
+        audioProgress = { ready, total -> "Аудиофрагменты: $ready/$total" },
+        stepCount = { done, total -> "Этапы подготовки: $done/$total" },
+        failureDetails = { reason -> "Причина: $reason" },
+        incompleteFailure = "Не хватает сценария или необходимых медиафайлов.",
     )
     "Español" -> StudyTalkStrings(
         tab = "Diálogo", title = "Practica el diálogo", loading = "Preparando el mundo…", error = "No se pudo preparar este mundo.", retry = "Reintentar",
@@ -899,6 +942,13 @@ private fun studyTalkStrings(languageName: String): StudyTalkStrings = when (lan
         intentionLabel = "¿Qué quieres decir?", speakPrompt = "Di la respuesta en voz alta. La aplicación no usa el micrófono.", reveal = "Mostrar respuesta",
         answerLabel = "Respuesta", replayAnswer = "Reproducir respuesta", good = "Lo dije bien", tryAgain = "Repetir este turno", next = "Continuar",
         complete = "¡Mundo completado!", restart = "Volver a empezar",
+        scriptLoading = "Preparando el guion del diálogo…", progressBarLabel = "Progreso de preparación del mundo",
+        sceneBackgroundProgress = { ready, total -> "Fondos: $ready/$total" },
+        expressionProgress = { ready, total -> "Expresiones: $ready/$total" },
+        audioProgress = { ready, total -> "Audios: $ready/$total" },
+        stepCount = { done, total -> "Pasos de preparación: $done/$total" },
+        failureDetails = { reason -> "Motivo: $reason" },
+        incompleteFailure = "Falta parte del guion o algún recurso multimedia necesario.",
     )
     "Deutsch" -> StudyTalkStrings(
         tab = "Dialog", title = "Dialog üben", loading = "Dialogwelt wird vorbereitet…", error = "Diese Welt konnte nicht vorbereitet werden.", retry = "Erneut versuchen",
@@ -907,6 +957,13 @@ private fun studyTalkStrings(languageName: String): StudyTalkStrings = when (lan
         intentionLabel = "Was möchtest du sagen?", speakPrompt = "Sprich deine Antwort laut aus. Das Mikrofon wird nicht verwendet.", reveal = "Antwort zeigen",
         answerLabel = "Antwort", replayAnswer = "Antwort abspielen", good = "Das war richtig", tryAgain = "Diese Runde wiederholen", next = "Weiter",
         complete = "Welt abgeschlossen!", restart = "Neu starten",
+        scriptLoading = "Dialogskript wird erstellt…", progressBarLabel = "Fortschritt bei der Vorbereitung der Dialogwelt",
+        sceneBackgroundProgress = { ready, total -> "Szenenhintergründe: $ready/$total" },
+        expressionProgress = { ready, total -> "Figurenausdrücke: $ready/$total" },
+        audioProgress = { ready, total -> "Audio: $ready/$total" },
+        stepCount = { done, total -> "Vorbereitungsschritte: $done/$total" },
+        failureDetails = { reason -> "Grund: $reason" },
+        incompleteFailure = "Das erforderliche Skript oder Medienmaterial fehlt teilweise.",
     )
     "မြန်မာစာ" -> StudyTalkStrings(
         tab = "စကားပြော", title = "စကားပြောလေ့ကျင့်ရန်", loading = "စကားပြောကမ္ဘာကို ပြင်ဆင်နေသည်…", error = "ဤကမ္ဘာကို ပြင်ဆင်၍မရပါ။", retry = "ထပ်ကြိုးစားရန်",
@@ -915,6 +972,13 @@ private fun studyTalkStrings(languageName: String): StudyTalkStrings = when (lan
         intentionLabel = "ဘာပြောချင်ပါသလဲ?", speakPrompt = "အသံထွက်ပြောပါ။ မိုက်ခရိုဖုန်းကို အသုံးမပြုပါ။", reveal = "အဖြေပြရန်",
         answerLabel = "အဖြေ", replayAnswer = "အဖြေကို ပြန်ဖွင့်ရန်", good = "မှန်ကန်စွာ ပြောခဲ့သည်", tryAgain = "ဤအလှည့်ကို ထပ်လုပ်ရန်", next = "ဆက်ရန်",
         complete = "ကမ္ဘာပြီးပါပြီ!", restart = "ပြန်စရန်",
+        scriptLoading = "စကားပြောဇာတ်ညွှန်းကို ရေးဆွဲနေသည်…", progressBarLabel = "စကားပြောကမ္ဘာ ပြင်ဆင်မှု တိုးတက်မှု",
+        sceneBackgroundProgress = { ready, total -> "နောက်ခံပုံများ: $ready/$total" },
+        expressionProgress = { ready, total -> "မျက်နှာအမူအရာများ: $ready/$total" },
+        audioProgress = { ready, total -> "အသံဖိုင်များ: $ready/$total" },
+        stepCount = { done, total -> "ပြင်ဆင်မှုအဆင့်များ: $done/$total" },
+        failureDetails = { reason -> "အကြောင်းရင်း: $reason" },
+        incompleteFailure = "လိုအပ်သော ဇာတ်ညွှန်း သို့မဟုတ် မီဒီယာအချို့ ပျောက်နေသည်။",
     )
     else -> StudyTalkStrings(
         tab = "Talk", title = "Practice the conversation", loading = "Preparing your Talk world…",
@@ -926,6 +990,13 @@ private fun studyTalkStrings(languageName: String): StudyTalkStrings = when (lan
         speakPrompt = "Say your reply out loud. The microphone is never used.", reveal = "Reveal the answer",
         answerLabel = "Answer", replayAnswer = "Play answer again", good = "I said it well",
         tryAgain = "Try this turn again", next = "Continue", complete = "World complete!", restart = "Play again",
+        scriptLoading = "Writing the conversation script…", progressBarLabel = "Talk world preparation progress",
+        sceneBackgroundProgress = { ready, total -> "Scene backgrounds: $ready/$total" },
+        expressionProgress = { ready, total -> "Character expressions: $ready/$total" },
+        audioProgress = { ready, total -> "Audio clips: $ready/$total" },
+        stepCount = { done, total -> "Preparation steps: $done/$total" },
+        failureDetails = { reason -> "Reason: $reason" },
+        incompleteFailure = "Some required script or media is still missing.",
     )
 }
 

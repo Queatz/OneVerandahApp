@@ -909,11 +909,10 @@ class StudyService(
     suspend fun renderTalkSceneBackground(
         world: StudyTalkWorld,
         scene: StudyTalkScene,
-        characters: List<StudyStoryCharacter>,
     ): String =
         renderStudyImage(
             prompt = talkSceneBackgroundPrompt(world, scene),
-            referenceImageUrls = characters.mapNotNull { it.imageUrl?.takeIf(String::isNotBlank) },
+            referenceImageUrls = emptyList(),
             label = "Talk scene background (${scene.title})",
         )
 

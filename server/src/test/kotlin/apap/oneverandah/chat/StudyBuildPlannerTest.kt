@@ -157,6 +157,29 @@ class StudyBuildPlannerTest {
     }
 
     @Test
+    fun `older Talk world builds backgrounds and used expressions despite an unrelated missing portrait`() {
+        val source = completeTalkWorld()
+        val world = source.copy(
+            scenes = source.scenes.map { it.copy(backgroundImageUrl = null) },
+            expressions = source.expressions.map { it.copy(imageUrl = null) },
+        )
+        val saved = record(
+            state = StudyBuildState(status = StudyBuildStatus.PARTIAL),
+            currentSession = session(
+                sentences = listOf(StudySentence("Xin.", emptyList())),
+                characters = listOf(
+                    StudyStoryCharacter("main", "Lan", "main", "Neighbor"),
+                    StudyStoryCharacter("other", "Kim", "friend", "Friend"),
+                ),
+                talkWorld = world,
+            ),
+        )
+        val tasks = planner.plan(saved).map { it.element }
+        assertEquals(6, tasks.count { it.kind == StudyBuildElementKind.TALK_SCENE_IMAGE })
+        assertEquals(listOf("main-neutral"), tasks.filter { it.kind == StudyBuildElementKind.TALK_EXPRESSION }.map { it.expressionId })
+    }
+
+    @Test
     fun `word images wait until dissection and character design work settles`() {
         val partiallyDissected = record(
             state = StudyBuildState(status = StudyBuildStatus.BUILDING),

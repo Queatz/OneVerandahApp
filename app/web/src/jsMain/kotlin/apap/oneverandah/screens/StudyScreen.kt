@@ -1269,6 +1269,7 @@ fun StudyScreen(
                 wordImageFailed = studyWordImageFailed.toMap(),
                 charactersLoading = studyTarget?.id?.let { studyCharactersInFlight[it] == true } == true,
                 examFailed = studyTarget?.id?.let { studyExamFailed[it] == true } == true,
+                talkBuildState = studyTarget?.id?.let { studyBuildStateByMessageId[it] },
                 talkFailed = studyTarget?.id?.let { targetId ->
                     val build = studyBuildStateByMessageId[targetId]
                     val world = studyCache[targetId]?.talkWorld
@@ -1873,6 +1874,7 @@ private fun StudySessionPane(
     wordImageFailed: Map<String, Boolean>,
     charactersLoading: Boolean,
     examFailed: Boolean,
+    talkBuildState: StudyBuildState?,
     exactText: Boolean,
     buildStatus: StudyBuildStatus?,
     playLoading: Boolean,
@@ -1943,6 +1945,7 @@ private fun StudySessionPane(
                         playLoading = playLoading,
                         playFailed = playFailed,
                         examFailed = examFailed,
+                        talkBuildState = talkBuildState,
                         talkFailed = talkFailed,
                         talkCanRetry = talkCanRetry,
                         onRetryTalk = onRetryTalk,
@@ -2067,6 +2070,7 @@ private fun StudySessionContent(
     playLoading: Boolean,
     playFailed: Boolean,
     examFailed: Boolean,
+    talkBuildState: StudyBuildState?,
     talkFailed: Boolean,
     talkCanRetry: Boolean,
     onRetryExam: () -> Unit,
@@ -2617,6 +2621,7 @@ private fun StudySessionContent(
             StudySessionMode.TALK -> {
                 StudyTalkTab(
                     session = session,
+                    buildState = talkBuildState,
                     failed = talkFailed,
                     canRetry = talkCanRetry,
                     strings = strings,
@@ -2904,17 +2909,6 @@ private fun StudySessionMode.skillPracticed(strings: UiStrings): String = when (
     StudySessionMode.PLAY -> strings.chatPlaySkill
     StudySessionMode.TALK -> strings.chatTalkSkill
     StudySessionMode.TEST -> strings.chatTestSkill
-}
-
-private fun StudyBuildElementKind.isStudyTalkKind(): Boolean = when (this) {
-    StudyBuildElementKind.CHARACTERS,
-    StudyBuildElementKind.PORTRAIT,
-    StudyBuildElementKind.TALK_WORLD,
-    StudyBuildElementKind.TALK_SCENE_IMAGE,
-    StudyBuildElementKind.TALK_EXPRESSION,
-    StudyBuildElementKind.TALK_AUDIO -> true
-
-    else -> false
 }
 
 private fun studyExamLevelLabel(level: Int, strings: UiStrings): String = when (level) {
