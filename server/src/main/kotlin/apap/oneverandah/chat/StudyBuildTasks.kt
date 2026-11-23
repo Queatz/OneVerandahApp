@@ -13,7 +13,6 @@ import apap.oneverandah.api.StudySessionRequest
 import apap.oneverandah.api.StudyStoryCharacter
 import apap.oneverandah.api.StudyTokenStatus
 import apap.oneverandah.api.StudyTalkAudioKind
-import apap.oneverandah.api.StudyTalkTurn
 import apap.oneverandah.api.isTenRoundExam
 import apap.oneverandah.model.Language
 import org.slf4j.LoggerFactory
@@ -72,17 +71,23 @@ class StudyBuildTasks(
                 null
             }
 
-            StudyBuildElementKind.TALK_SCENE_IMAGE -> world?.scenes
-                ?.getOrNull(task.element.sceneIndex ?: -1)
-                ?.backgroundImageUrl
-                ?.takeIf(String::isNullOrBlank)
-                ?.let { "Talk scene image generation completed but did not produce an image URL." }
+            StudyBuildElementKind.TALK_SCENE_IMAGE -> {
+                val scene = world?.scenes?.getOrNull(task.element.sceneIndex ?: -1)
+                if (scene == null || scene.backgroundImageUrl.isNullOrBlank()) {
+                    "Talk scene image generation completed but did not produce an image URL."
+                } else {
+                    null
+                }
+            }
 
-            StudyBuildElementKind.TALK_EXPRESSION -> world?.expressions
-                ?.firstOrNull { it.id == task.element.expressionId }
-                ?.imageUrl
-                ?.takeIf(String::isNullOrBlank)
-                ?.let { "Talk expression generation completed but did not produce an image URL." }
+            StudyBuildElementKind.TALK_EXPRESSION -> {
+                val expression = world?.expressions?.firstOrNull { it.id == task.element.expressionId }
+                if (expression == null || expression.imageUrl.isNullOrBlank()) {
+                    "Talk expression generation completed but did not produce an image URL."
+                } else {
+                    null
+                }
+            }
 
             StudyBuildElementKind.TALK_AUDIO -> {
                 val turn = world?.scenes?.getOrNull(task.element.sceneIndex ?: -1)
@@ -92,8 +97,11 @@ class StudyBuildTasks(
                     StudyTalkAudioKind.REPLY -> turn?.replyAudioUrl
                     null -> null
                 }
-                audioUrl?.takeIf(String::isNullOrBlank)
-                    ?.let { "Talk audio generation completed but did not produce an audio URL." }
+                if (audioUrl.isNullOrBlank()) {
+                    "Talk audio generation completed but did not produce an audio URL."
+                } else {
+                    null
+                }
             }
 
             else -> null
@@ -475,20 +483,18 @@ class StudyBuildTasks(
         val imageUrl = studyService.renderTalkSceneBackground(world, scene)
         val updated = store.update(record.id) { current ->
             val currentWorld = current.session.talkWorld ?: return@update current
-            val currentScene = currentWorld.scenes.getOrNull(sceneIndex) ?: return@update current
+            val currentScene = currentWorld.scenes.firstOrNull { it.id == scene.id } ?: return@update current
             if (
                 currentWorld.setting != world.setting ||
-                currentScene.id != scene.id ||
                 currentScene.title != scene.title ||
-                currentScene.description != scene.description ||
-                !sameTalkTurns(currentScene.turns, scene.turns)
+                currentScene.description != scene.description
             ) return@update current
             if (!currentScene.backgroundImageUrl.isNullOrBlank()) return@update current
             current.copy(
                 session = current.session.copy(
                     talkWorld = currentWorld.copy(
-                        scenes = currentWorld.scenes.mapIndexed { index, item ->
-                            if (index == sceneIndex) item.copy(backgroundImageUrl = imageUrl) else item
+                        scenes = currentWorld.scenes.map { item ->
+                            if (item.id == scene.id) item.copy(backgroundImageUrl = imageUrl) else item
                         },
                     ),
                 ),
@@ -513,7 +519,7 @@ class StudyBuildTasks(
             if (
                 currentExpression.characterId != expression.characterId ||
                 currentExpression.emotion != expression.emotion ||
-                !sameTalkCharacterInputs(listOfNotNull(currentCharacter), listOf(character), includePortrait = true)
+                currentCharacter == null
             ) return@update current
             if (!currentExpression.imageUrl.isNullOrBlank()) return@update current
             current.copy(
@@ -534,7 +540,8 @@ class StudyBuildTasks(
         val turnIndex = requireNotNull(task.element.turnIndex)
         val audioKind = requireNotNull(task.element.audioKind)
         val world = record.session.talkWorld ?: return
-        val turn = world.scenes.getOrNull(sceneIndex)?.turns?.getOrNull(turnIndex) ?: return
+        val scene = world.scenes.getOrNull(sceneIndex) ?: return
+        val turn = scene.turns.getOrNull(turnIndex) ?: return
         val currentUrl = when (audioKind) {
             StudyTalkAudioKind.CHARACTER_LINE -> turn.characterAudioUrl
             StudyTalkAudioKind.REPLY -> turn.replyAudioUrl
@@ -551,9 +558,8 @@ class StudyBuildTasks(
                 return@update current
             }
             val currentWorld = current.session.talkWorld ?: return@update current
-            val currentScene = currentWorld.scenes.getOrNull(sceneIndex) ?: return@update current
-            val currentTurn = currentScene.turns.getOrNull(turnIndex) ?: return@update current
-            if (!sameTalkTurns(listOf(currentTurn), listOf(turn))) return@update current
+            val currentScene = currentWorld.scenes.firstOrNull { it.id == scene.id } ?: return@update current
+            val currentTurn = currentScene.turns.firstOrNull { it.id == turn.id } ?: return@update current
             val alreadyGenerated = when (audioKind) {
                 StudyTalkAudioKind.CHARACTER_LINE -> currentTurn.characterAudioUrl
                 StudyTalkAudioKind.REPLY -> currentTurn.replyAudioUrl
@@ -562,10 +568,10 @@ class StudyBuildTasks(
             current.copy(
                 session = current.session.copy(
                     talkWorld = currentWorld.copy(
-                        scenes = currentWorld.scenes.mapIndexed { index, item ->
-                            if (index != sceneIndex) item else item.copy(
-                                turns = item.turns.mapIndexed { indexInScene, currentItem ->
-                                    if (indexInScene != turnIndex) currentItem else when (audioKind) {
+                        scenes = currentWorld.scenes.map { item ->
+                            if (item.id != scene.id) item else item.copy(
+                                turns = item.turns.map { currentItem ->
+                                    if (currentItem.id != turn.id) currentItem else when (audioKind) {
                                         StudyTalkAudioKind.CHARACTER_LINE -> currentItem.copy(characterAudioUrl = audioUrl)
                                         StudyTalkAudioKind.REPLY -> currentItem.copy(replyAudioUrl = audioUrl)
                                     }
@@ -590,16 +596,10 @@ class StudyBuildTasks(
         current: List<apap.oneverandah.api.StudySentence>,
         source: List<apap.oneverandah.api.StudySentence>,
     ): Boolean = current.size == source.size && current.zip(source).all { (left, right) ->
-        left.text == right.text && left.translation == right.translation &&
+        left.text == right.text &&
                 left.tokens.size == right.tokens.size && left.tokens.zip(right.tokens).all { (leftToken, rightToken) ->
             leftToken.text == rightToken.text &&
-                    leftToken.status == rightToken.status &&
-                    leftToken.literalMeaning == rightToken.literalMeaning &&
-                    leftToken.register == rightToken.register &&
-                    leftToken.contextualMeaning == rightToken.contextualMeaning &&
-                    leftToken.nearSynonyms == rightToken.nearSynonyms &&
-                    leftToken.exampleSentences == rightToken.exampleSentences &&
-                    leftToken.needConversation == rightToken.needConversation
+                    (leftToken.status == StudyTokenStatus.PLAIN) == (rightToken.status == StudyTokenStatus.PLAIN)
         }
     }
 
@@ -612,12 +612,6 @@ class StudyBuildTasks(
                 (!includePortrait || left.imageUrl == right.imageUrl)
     }
 
-    private fun sameTalkTurns(current: List<StudyTalkTurn>, source: List<StudyTalkTurn>): Boolean =
-        current.size == source.size && current.zip(source).all { (left, right) ->
-            left.id == right.id && left.speakerCharacterId == right.speakerCharacterId &&
-                    left.expressionId == right.expressionId && left.characterLine == right.characterLine &&
-                    left.intention == right.intention && left.reply == right.reply
-        }
 
     private fun isComplete(record: SavedStudySessionRecord, task: StudyBuildTask): Boolean = when (task.element.kind) {
         StudyBuildElementKind.PREPARE -> record.buildRequest == null

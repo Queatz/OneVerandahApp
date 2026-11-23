@@ -545,6 +545,22 @@ object Styles {
     const val studyTalkProgressBar = "study-talk-progress-bar"
     const val studyTalkProgressFill = "study-talk-progress-fill"
     const val studyTalkProgressBreakdown = "study-talk-progress-breakdown"
+    const val studyTalkPreparationSteps = "study-talk-preparation-steps"
+    const val studyTalkPreparationStep = "study-talk-preparation-step"
+    const val studyTalkPreparationStepStatus = "study-talk-preparation-step-status"
+    const val studyTalkPreparationComplete = "study-talk-preparation-complete"
+    const val studyTalkPreparationRunning = "study-talk-preparation-running"
+    const val studyTalkPreparationFailed = "study-talk-preparation-failed"
+    const val studyTalkPreparationUpcoming = "study-talk-preparation-upcoming"
+    const val studyTalkJournal = "study-talk-journal"
+    const val studyTalkJournalTitle = "study-talk-journal-title"
+    const val studyTalkJournalEmpty = "study-talk-journal-empty"
+    const val studyTalkJournalEntries = "study-talk-journal-entries"
+    const val studyTalkJournalEntry = "study-talk-journal-entry"
+    const val studyTalkJournalEntryHeading = "study-talk-journal-entry-heading"
+    const val studyTalkJournalOutcome = "study-talk-journal-outcome"
+    const val studyTalkJournalMetadata = "study-talk-journal-metadata"
+    const val studyTalkJournalDetail = "study-talk-journal-detail"
     const val studyTalkComplete = "study-talk-complete"
     const val studySentenceBlock = "study-sentence-block"
     const val studySentenceImage = "study-sentence-image"
@@ -4616,6 +4632,67 @@ object Styles {
             line-height: 1.4;
             overflow-wrap: anywhere;
         }
+        .${studyTalkPreparationSteps} {
+            display: grid;
+            grid-template-columns: repeat(auto-fit, minmax(min(100%, 260px), 1fr));
+            gap: 6px;
+            width: 100%;
+        }
+        .${studyTalkPreparationStep} {
+            display: flex;
+            align-items: center;
+            gap: 8px;
+            min-width: 0;
+            padding: 8px 10px;
+            border: 1px solid var(--md-sys-color-outline-variant);
+            border-radius: 10px;
+            font-size: 13px;
+        }
+        .${studyTalkPreparationStep} > span:nth-child(2) { flex: 1; overflow-wrap: anywhere; }
+        .${studyTalkPreparationStepStatus} { font-size: 11px; white-space: nowrap; }
+        .${studyTalkPreparationComplete} { color: var(--md-sys-color-primary); }
+        .${studyTalkPreparationRunning} { color: var(--md-sys-color-secondary); }
+        .${studyTalkPreparationRunning} .${materialSymbols} { animation: spin 1.2s linear infinite; }
+        .${studyTalkPreparationFailed} { color: var(--md-sys-color-error); }
+        .${studyTalkPreparationUpcoming} { color: var(--md-sys-color-on-surface-variant); }
+        .${studyTalkJournal} {
+            display: flex;
+            flex-direction: column;
+            gap: 6px;
+            width: 100%;
+            padding-top: 8px;
+            border-top: 1px solid var(--md-sys-color-outline-variant);
+        }
+        .${studyTalkJournalTitle} { margin: 0; font-weight: 700; }
+        .${studyTalkJournalEmpty} { margin: 0; font-size: 12px; color: var(--md-sys-color-on-surface-variant); }
+        .${studyTalkJournalEntries} {
+            display: flex;
+            flex-direction: column;
+            gap: 6px;
+            max-height: 360px;
+            overflow-y: auto;
+            padding-right: 4px;
+        }
+        .${studyTalkJournalEntry} {
+            display: flex;
+            flex-direction: column;
+            gap: 3px;
+            padding: 8px 10px;
+            border-radius: 9px;
+            background: color-mix(in srgb, var(--md-sys-color-surface-variant) 55%, transparent);
+            font-size: 12px;
+            overflow-wrap: anywhere;
+        }
+        .${studyTalkJournalEntryHeading}, .${studyTalkJournalMetadata} {
+            display: flex;
+            flex-wrap: wrap;
+            align-items: center;
+            gap: 4px 10px;
+        }
+        .${studyTalkJournalEntryHeading} { justify-content: space-between; font-weight: 600; }
+        .${studyTalkJournalOutcome} { color: var(--md-sys-color-primary); }
+        .${studyTalkJournalMetadata}, .${studyTalkJournalDetail} { color: var(--md-sys-color-on-surface-variant); }
+        .${studyTalkJournalDetail} { margin: 0; line-height: 1.4; }
         @media (prefers-reduced-motion: reduce) {
             .${studyTalkProgressFill} { transition: none; }
             .${studyTalkBackgroundVisible} { animation: none; opacity: 1; }

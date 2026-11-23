@@ -3,6 +3,8 @@ package apap.oneverandah.chat
 import apap.oneverandah.api.StudyBuildElement
 import apap.oneverandah.api.StudyBuildElementKind
 import apap.oneverandah.api.StudyBuildEvent
+import apap.oneverandah.api.StudyBuildJournalEntry
+import apap.oneverandah.api.StudyBuildJournalOutcome
 import apap.oneverandah.api.StudyBuildStatus
 import apap.oneverandah.images.qwen.QwenException
 import apap.oneverandah.logging.SafeFailureDiagnostics
@@ -183,6 +185,12 @@ class StudyBuildQueue(
                     status = status,
                     attempts = build.attempts + (task.element.key to attempt),
                     updatedAt = clock(),
+                    journal = (build.journal + StudyBuildJournalEntry(
+                        timestamp = clock(),
+                        element = task.element,
+                        outcome = StudyBuildJournalOutcome.STARTED,
+                        attempt = attempt,
+                    )).takeLast(MAX_JOURNAL_ENTRIES),
                 ),
             )
         }
@@ -218,6 +226,12 @@ class StudyBuildQueue(
         val elapsedMs = (System.nanoTime() - attemptStartedAt) / 1_000_000
 
         if (failure == null) {
+            appendJournal(
+                task,
+                StudyBuildJournalOutcome.SUCCEEDED,
+                attempt,
+                elapsedMs,
+            )
             finish(task)
         } else {
             handleFailure(task, attempt, elapsedMs, failure)
@@ -252,6 +266,13 @@ class StudyBuildQueue(
                 StudyBuildFailureReason.display(error),
                 SafeFailureDiagnostics.describe(error),
             )
+            appendJournal(
+                task,
+                StudyBuildJournalOutcome.RETRYING,
+                attempt,
+                elapsedMs,
+                "${StudyBuildFailureReason.display(error)} Retrying in ${delayMillis.coerceAtLeast(0L)} ms.",
+            )
             scope.launch {
                 delay(delayMillis.coerceAtLeast(0L))
                 if (scope.isActive && queued[task.key] == task) send(task)
@@ -268,6 +289,14 @@ class StudyBuildQueue(
                     failureReasons = build.failureReasons +
                             (task.element.key to StudyBuildFailureReason.display(error)),
                     updatedAt = clock(),
+                    journal = (build.journal + StudyBuildJournalEntry(
+                        timestamp = clock(),
+                        element = task.element,
+                        outcome = StudyBuildJournalOutcome.FAILED,
+                        attempt = attempt,
+                        elapsedMs = elapsedMs,
+                        detail = StudyBuildFailureReason.display(error),
+                    )).takeLast(MAX_JOURNAL_ENTRIES),
                 ),
             )
         }
@@ -294,6 +323,31 @@ class StudyBuildQueue(
         )
     }
 
+    private suspend fun appendJournal(
+        task: StudyBuildTask,
+        outcome: StudyBuildJournalOutcome,
+        attempt: Int,
+        elapsedMs: Long,
+        detail: String? = null,
+    ) {
+        store.update(task.sessionId) { current ->
+            val build = current.build ?: return@update null
+            current.copy(
+                build = build.copy(
+                    journal = (build.journal + StudyBuildJournalEntry(
+                        timestamp = clock(),
+                        element = task.element,
+                        outcome = outcome,
+                        attempt = attempt,
+                        elapsedMs = elapsedMs,
+                        detail = detail,
+                    )).takeLast(MAX_JOURNAL_ENTRIES),
+                    updatedAt = clock(),
+                ),
+            )
+        }
+    }
+
     private fun finish(task: StudyBuildTask) {
         queued.remove(task.key, task)
     }
@@ -310,5 +364,6 @@ class StudyBuildQueue(
     companion object {
         val DEFAULT_RETRY_BACKOFF_MILLIS = listOf(2_000L, 10_000L, 30_000L)
         const val DEFAULT_TASK_TIMEOUT_MILLIS = 5 * 60 * 1_000L
+        const val MAX_JOURNAL_ENTRIES = 300
     }
 }

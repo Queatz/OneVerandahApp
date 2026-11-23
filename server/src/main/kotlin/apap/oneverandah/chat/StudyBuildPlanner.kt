@@ -197,7 +197,13 @@ class StudyBuildPlanner(
             val usedExpressionIds = world.scenes.flatMap { scene ->
                 scene.turns.map { it.expressionId }
             }.toSet()
-            world.expressions.filter { it.id in usedExpressionIds }.forEach { expression ->
+            val settledPortraitCharacterIds = session.characters.filter { character ->
+                !character.imageUrl.isNullOrBlank() ||
+                        isFailed(record, StudyBuildElement(StudyBuildElementKind.PORTRAIT, characterId = character.id))
+            }.mapTo(mutableSetOf()) { it.id }
+            world.expressions.filter {
+                it.id in usedExpressionIds && it.characterId in settledPortraitCharacterIds
+            }.forEach { expression ->
                 val element = StudyBuildElement(
                     StudyBuildElementKind.TALK_EXPRESSION,
                     expressionId = expression.id,

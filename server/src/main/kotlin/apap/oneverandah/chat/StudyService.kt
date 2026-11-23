@@ -73,6 +73,7 @@ import kotlinx.coroutines.withContext
 import org.slf4j.LoggerFactory
 
 private const val playScenarioCount = 4
+private const val STUDY_TALK_GENERATION_ATTEMPTS = 3
 private val studyTalkWordSeparator = Regex("[\\p{P}\\p{S}]+")
 private val studyTalkBackgroundForbiddenWords = setOf(
     "person", "people", "someone", "somebody", "anyone", "man", "men", "woman", "women", "child", "children",
@@ -86,11 +87,33 @@ private val studyTalkBackgroundForbiddenWords = setOf(
     "labels", "sign", "signs", "signage", "logo", "logos", "watermark", "watermarks", "printed", "print",
     "menu", "newspaper", "poster", "notice", "billboard", "placard",
 )
+private val studyTalkBackgroundForbiddenPattern = Regex(
+    "\\b(?:${studyTalkBackgroundForbiddenWords.joinToString("|") { Regex.escape(it) }})\\b",
+    RegexOption.IGNORE_CASE,
+)
 
 private fun studyTalkWords(value: String): List<String> = value.lowercase()
     .replace(studyTalkWordSeparator, " ")
     .split(Regex("\\s+"))
     .filter(String::isNotEmpty)
+
+private fun sanitizeTalkScenery(description: String, fallback: String = "An unoccupied location with quiet light and architectural detail."): String = description
+    .replace(studyTalkBackgroundForbiddenPattern, " ")
+    .replace(Regex("\\s+"), " ")
+    .trim()
+    .ifBlank { fallback }
+
+private fun uniqueTalkText(value: String, fallback: String, used: MutableSet<String>): String {
+    val base = value.trim().ifBlank { fallback }
+    var candidate = base
+    var suffix = 2
+    fun normalized(text: String): String = studyTalkWords(text).joinToString(" ").ifBlank { text.lowercase() }
+    while (!used.add(normalized(candidate))) {
+        candidate = "$base ($suffix)"
+        suffix++
+    }
+    return candidate
+}
 
 data class StudyGenerationRequest(
     val text: String,
@@ -859,7 +882,6 @@ class StudyService(
     }
 
     suspend fun talkWorld(request: StudyTalkGenerationRequest): StudyTalkWorld {
-        val generated = aiClient.generateTalkWorld(request)
         val characters = request.characters.ifEmpty {
             defaultStoryCharacters(request.text).map { design ->
                 StudyStoryCharacter(
@@ -870,6 +892,7 @@ class StudyService(
                 )
             }
         }
+        require(characters.isNotEmpty()) { "Study Talk requires at least one character" }
         val emotions = listOf("neutral", "happy", "curious", "concerned")
         val expressions = characters.flatMap { character ->
             emotions.map { emotion ->
@@ -883,56 +906,90 @@ class StudyService(
         val knownCharacters = characters.map { it.id }.toSet()
         val vocabulary = request.sentences.flatMap { sentence ->
             sentence.tokens.filter { it.status != StudyTokenStatus.PLAIN }.map { it.text.trim() }
-        }.filter { it.isNotEmpty() }
+        }.filter { it.isNotEmpty() && !looksLikePunctuationOnly(it) }
         val vocabularyWords = vocabulary.flatMap(::studyTalkWords).toSet()
-        require(generated.scenes.size == STUDY_TALK_SCENE_COUNT) {
-            "Study Talk requires exactly $STUDY_TALK_SCENE_COUNT scenes"
-        }
-        val scenes = generated.scenes.mapIndexed { sceneIndex, scene ->
-            require(scene.turns.size in STUDY_TALK_MIN_TURNS_PER_SCENE..STUDY_TALK_MAX_TURNS_PER_SCENE) {
-                "Study Talk scene ${sceneIndex + 1} must contain $STUDY_TALK_MIN_TURNS_PER_SCENE..$STUDY_TALK_MAX_TURNS_PER_SCENE turns"
-            }
-            require(scene.title.isNotBlank() && scene.description.isNotBlank()) {
-                "Study Talk scene ${sceneIndex + 1} requires a title and description"
-            }
-            require(studyTalkWords(scene.description).none { it in studyTalkBackgroundForbiddenWords }) {
-                "Study Talk scene ${sceneIndex + 1} must describe empty scenery only"
-            }
-            val turns = scene.turns.mapIndexed { turnIndex, turn ->
-                require(turn.characterLine.isNotBlank() && turn.intention.isNotBlank() && turn.reply.isNotBlank()) {
-                    "Study Talk turn ${sceneIndex + 1}.${turnIndex + 1} contains a blank line"
+        var lastFailure: IllegalArgumentException? = null
+        repeat(STUDY_TALK_GENERATION_ATTEMPTS) { attempt ->
+            try {
+                val generated = aiClient.generateTalkWorld(request)
+                require(generated.scenes.size == STUDY_TALK_SCENE_COUNT) {
+                    "Study Talk requires exactly $STUDY_TALK_SCENE_COUNT scenes"
                 }
-                require(vocabularyWords.isEmpty() || studyTalkWords(turn.reply).any { it in vocabularyWords }) {
-                    "Study Talk turn ${sceneIndex + 1}.${turnIndex + 1} reply must use a word from the study pool"
+                val usedTitles = mutableSetOf<String>()
+                val usedDescriptions = mutableSetOf<String>()
+                val scenes = generated.scenes.mapIndexed { sceneIndex, scene ->
+                    require(scene.turns.size in STUDY_TALK_MIN_TURNS_PER_SCENE..STUDY_TALK_MAX_TURNS_PER_SCENE) {
+                        "Study Talk scene ${sceneIndex + 1} must contain $STUDY_TALK_MIN_TURNS_PER_SCENE..$STUDY_TALK_MAX_TURNS_PER_SCENE turns"
+                    }
+                    val defaultTitle = "Scene ${sceneIndex + 1}"
+                    val title = uniqueTalkText(sanitizeTalkScenery(scene.title, defaultTitle), defaultTitle, usedTitles)
+                    val scenery = sanitizeTalkScenery(scene.description)
+                    val description = uniqueTalkText(
+                        scenery,
+                        "An unoccupied location with quiet light and architectural detail.",
+                        usedDescriptions,
+                    )
+                    val turns = scene.turns.mapIndexed { turnIndex, turn ->
+                        require(turn.characterLine.isNotBlank() && turn.intention.isNotBlank() && turn.reply.isNotBlank()) {
+                            "Study Talk turn ${sceneIndex + 1}.${turnIndex + 1} contains a blank line"
+                        }
+                        val speakerId = turn.speakerCharacterId.takeIf { it in knownCharacters }
+                            ?: characters.first().id
+                        val emotion = turn.expressionId.substringAfterLast('-').lowercase()
+                            .takeIf { it in emotions } ?: "neutral"
+                        val reply = if (vocabularyWords.isEmpty() || studyTalkWords(turn.reply).any { it in vocabularyWords }) {
+                            turn.reply.trim()
+                        } else {
+                            val word = vocabulary.first()
+                            val base = turn.reply.trim().trimEnd('.', '!', '?', ',', ';', ':')
+                            "$base $word."
+                        }
+                        require(vocabularyWords.isEmpty() || studyTalkWords(reply).any { it in vocabularyWords }) {
+                            "Study Talk turn ${sceneIndex + 1}.${turnIndex + 1} reply must use a word from the study pool"
+                        }
+                        turn.copy(
+                            id = "scene-${sceneIndex + 1}-turn-${turnIndex + 1}",
+                            speakerCharacterId = speakerId,
+                            expressionId = "$speakerId-$emotion",
+                            reply = reply,
+                        )
+                    }
+                    scene.copy(
+                        id = "scene-${sceneIndex + 1}",
+                        title = title,
+                        description = description,
+                        turns = turns,
+                    )
                 }
-                val speakerId = turn.speakerCharacterId.takeIf { it in knownCharacters }
-                    ?: characters.first().id
-                val emotion = turn.expressionId.substringAfterLast('-').lowercase()
-                    .takeIf { it in emotions } ?: "neutral"
-                turn.copy(
-                    id = "scene-${sceneIndex + 1}-turn-${turnIndex + 1}",
-                    speakerCharacterId = speakerId,
-                    expressionId = "$speakerId-$emotion",
+                require(scenes.map { studyTalkWords(it.title).joinToString(" ").ifBlank { it.title.trim().lowercase() } }
+                    .distinct().size == scenes.size) {
+                    "Study Talk requires distinct scene titles"
+                }
+                require(scenes.map { studyTalkWords(it.description).joinToString(" ").ifBlank { it.description.trim().lowercase() } }
+                    .distinct().size == scenes.size) {
+                    "Study Talk requires distinct scene descriptions"
+                }
+                require(scenes.map(::studyTalkConversationFingerprint).distinct().size == scenes.size) {
+                    "Study Talk requires different conversations in every scene"
+                }
+                return generated.copy(
+                    setting = generated.setting.trim().ifBlank { "A connected neighborhood story" },
+                    scenes = scenes,
+                    expressions = expressions,
                 )
+            } catch (failure: IllegalArgumentException) {
+                lastFailure = failure
+                if (attempt < STUDY_TALK_GENERATION_ATTEMPTS - 1) {
+                    log.warn(
+                        "Study Talk world validation failed on generation attempt {}/{}: {}",
+                        attempt + 1,
+                        STUDY_TALK_GENERATION_ATTEMPTS,
+                        failure.message,
+                    )
+                }
             }
-            scene.copy(id = "scene-${sceneIndex + 1}", turns = turns)
         }
-        require(scenes.map { studyTalkWords(it.title).joinToString(" ").ifBlank { it.title.trim().lowercase() } }
-            .distinct().size == scenes.size) {
-            "Study Talk requires distinct scene titles"
-        }
-        require(scenes.map { studyTalkWords(it.description).joinToString(" ").ifBlank { it.description.trim().lowercase() } }
-            .distinct().size == scenes.size) {
-            "Study Talk requires distinct scene descriptions"
-        }
-        require(scenes.map(::studyTalkConversationFingerprint).distinct().size == scenes.size) {
-            "Study Talk requires different conversations in every scene"
-        }
-        return generated.copy(
-            setting = generated.setting.trim().ifBlank { "A connected neighborhood story" },
-            scenes = scenes,
-            expressions = expressions,
-        )
+        throw requireNotNull(lastFailure)
     }
 
     suspend fun renderTalkSceneBackground(
@@ -1636,7 +1693,7 @@ private fun talkEmotionDescription(emotion: String): String = when (emotion) {
     else -> "calm, friendly neutral expression"
 }
 
-private fun fallbackStudyTalkWorld(request: StudyTalkGenerationRequest): StudyTalkWorld {
+internal fun fallbackStudyTalkWorld(request: StudyTalkGenerationRequest): StudyTalkWorld {
     val sceneLocations = listOf(
         "The Apartment Lobby" to "A sunlit apartment lobby with a front desk, potted plants, and glass entrance doors.",
         "A Corner Café" to "A cozy corner café with a pastry counter, two small tables, and a rain-streaked window.",

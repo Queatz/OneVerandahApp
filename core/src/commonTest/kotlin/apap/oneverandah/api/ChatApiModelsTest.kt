@@ -779,6 +779,26 @@ class ChatApiModelsTest {
     @Test
     fun `study build events round trip with type discriminator`() {
         val eventJson = Json { classDiscriminator = "type" }
+        val element = StudyBuildElement(
+            kind = StudyBuildElementKind.TALK_AUDIO,
+            sceneIndex = 1,
+            turnIndex = 2,
+            audioKind = StudyTalkAudioKind.REPLY,
+        )
+        val buildState = StudyBuildState(
+            status = StudyBuildStatus.BUILDING,
+            journal = listOf(
+                StudyBuildJournalEntry(
+                    timestamp = 30L,
+                    element = element,
+                    outcome = StudyBuildJournalOutcome.RETRYING,
+                    attempt = 2,
+                    elapsedMs = 450L,
+                    detail = "Provider connection interrupted; retry scheduled.",
+                ),
+            ),
+            automaticRevives = mapOf(element.key to 1),
+        )
         val snapshot = SavedStudySession(
             id = "study-1",
             languageTag = "en",
@@ -787,12 +807,12 @@ class ChatApiModelsTest {
             session = StudySessionResponse(text = "Hello.", textLanguageTag = "en", sentences = emptyList()),
             createdAt = 10L,
             updatedAt = 20L,
-            build = StudyBuildState(status = StudyBuildStatus.BUILDING),
+            build = buildState,
         )
         val events = listOf(
             StudyBuildEvent.Snapshot(snapshot),
             StudyBuildEvent.SentenceImage(index = 0, imageUrl = "https://img/hello"),
-            StudyBuildEvent.Build(StudyBuildState(status = StudyBuildStatus.PARTIAL)),
+            StudyBuildEvent.Build(buildState),
             StudyBuildEvent.Heartbeat,
             StudyBuildEvent.Done,
         )
@@ -802,6 +822,7 @@ class ChatApiModelsTest {
             assertEquals(event, eventJson.decodeFromString<StudyBuildEvent>(encoded))
             assertTrue(encoded.contains("\"type\""))
         }
+        assertEquals(StudyBuildState(status = StudyBuildStatus.BUILDING), json.decodeFromString<StudyBuildState>("""{"status":"BUILDING"}"""))
     }
 
     @Test

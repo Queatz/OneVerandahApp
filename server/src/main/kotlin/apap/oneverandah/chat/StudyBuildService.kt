@@ -3,6 +3,8 @@ package apap.oneverandah.chat
 import apap.oneverandah.api.SavedStudySession
 import apap.oneverandah.api.StudyBuildElementKind
 import apap.oneverandah.api.StudyBuildEvent
+import apap.oneverandah.api.StudyBuildJournalEntry
+import apap.oneverandah.api.StudyBuildJournalOutcome
 import apap.oneverandah.api.StudyBuildMode
 import apap.oneverandah.api.StudyBuildRequest
 import apap.oneverandah.api.StudyBuildRetryRequest
@@ -20,10 +22,14 @@ import kotlinx.coroutines.cancel
 import kotlinx.coroutines.coroutineScope
 import kotlinx.coroutines.flow.Flow
 import kotlinx.coroutines.flow.first
+import kotlinx.coroutines.delay
+import kotlinx.coroutines.isActive
+import kotlinx.coroutines.launch
 import kotlinx.coroutines.sync.Mutex
 import kotlinx.coroutines.sync.withLock
 import java.util.UUID
 import java.util.concurrent.ConcurrentHashMap
+import java.util.concurrent.atomic.AtomicBoolean
 
 class StudyBuildService(
     private val repository: StudySessionsRepository,
@@ -48,6 +54,7 @@ class StudyBuildService(
         supportsTalkAudio = talkAudioGenerator != null,
     )
     private val planningLocks = ConcurrentHashMap<String, Mutex>()
+    private val recoveryStarted = AtomicBoolean(false)
     private val queue = StudyBuildQueue(
         store = store,
         executor = StudyBuildTasks(store, studyService, sessionsService, speechService, talkAudioGenerator),
@@ -140,7 +147,6 @@ class StudyBuildService(
                 )
             } ?: return null
         }
-        record = reviveIncompleteTalkElements(key, record) ?: return null
         if (
             (record.build?.status == StudyBuildStatus.COMPLETE || record.build?.status == StudyBuildStatus.PARTIAL) &&
             planner.plan(record).any {
@@ -194,6 +200,15 @@ class StudyBuildService(
                     failed = build.failed.filterNot { it.key in selectedKeys },
                     failureReasons = build.failureReasons - selectedKeys,
                     attempts = build.attempts - selectedKeys,
+                    journal = (build.journal + selected.map { element ->
+                        StudyBuildJournalEntry(
+                            timestamp = clock(),
+                            element = element,
+                            outcome = StudyBuildJournalOutcome.REVIVED,
+                            attempt = build.attempts[element.key] ?: 0,
+                            detail = "Manually retried by the user.",
+                        )
+                    }).takeLast(StudyBuildQueue.MAX_JOURNAL_ENTRIES),
                     updatedAt = clock(),
                 ),
             )
@@ -204,39 +219,21 @@ class StudyBuildService(
         return getSession(key)?.build
     }
 
-    private suspend fun reviveIncompleteTalkElements(
-        id: String,
-        record: SavedStudySessionRecord,
-    ): SavedStudySessionRecord? {
-        val incompleteKeys = planner.incompleteTalkElements(record).mapTo(mutableSetOf()) { it.key }
-        val activeKeys = queue.activeElements(id).mapTo(mutableSetOf()) { it.key }
-        val keysToRevive = incompleteKeys - activeKeys
-        if (keysToRevive.isEmpty()) return record
-        return store.update(id, immediate = true) { current ->
-            val build = current.build ?: return@update null
-            val currentMissingKeys = planner.incompleteTalkElements(current).mapTo(mutableSetOf()) { it.key }
-            val currentActiveKeys = queue.activeElements(id).mapTo(mutableSetOf()) { it.key }
-            val reviveKeys = keysToRevive.intersect(currentMissingKeys) - currentActiveKeys
-            if (reviveKeys.isEmpty()) return@update current
-            current.copy(
-                build = build.copy(
-                    status = if (build.status == StudyBuildStatus.COMPLETE || build.status == StudyBuildStatus.PARTIAL) {
-                        StudyBuildStatus.BUILDING
-                    } else {
-                        build.status
-                    },
-                    failed = build.failed.filterNot { it.key in reviveKeys },
-                    failureReasons = build.failureReasons - reviveKeys,
-                    attempts = build.attempts - reviveKeys,
-                    updatedAt = clock(),
-                ),
-            )
+    suspend fun resumeAll() {
+        queue.start()
+        resumeIncompleteSessions()
+        if (recoveryStarted.compareAndSet(false, true)) {
+            scope.launch {
+                while (isActive) {
+                    delay(RECOVERY_INTERVAL_MILLIS)
+                    runCatching { resumeIncompleteSessions() }
+                }
+            }
         }
     }
 
-    suspend fun resumeAll() {
-        queue.start()
-        repository.listIncompleteBuilds().forEach { ensureBuilding(it, lowPriority = true) }
+    private suspend fun resumeIncompleteSessions() {
+        repository.listIncompleteBuilds().forEach { id -> ensureBuilding(id, lowPriority = true) }
     }
 
     suspend fun getSession(id: String): SavedStudySession? {
@@ -277,6 +274,7 @@ class StudyBuildService(
         val lock = planningLocks.computeIfAbsent(id) { Mutex() }
         lock.withLock {
             var record = store.findById(id) ?: return@withLock
+            record = reviveRetryableTalkFailures(id, record) ?: return@withLock
             val activeKeys = queue.activeElements(id).mapTo(mutableSetOf()) { it.key }
             val exhausted = planner.exhausted(record).filterNot { it.key in activeKeys }
             if (exhausted.isNotEmpty()) {
@@ -298,8 +296,27 @@ class StudyBuildService(
                     id,
                     StudyBuildEvent.Build(record.build!!.copy(inFlight = queue.activeElements(id))),
                 )
+                record = reviveRetryableTalkFailures(id, record) ?: return@withLock
             }
             val tasks = planner.plan(record)
+            if (tasks.isNotEmpty() || queue.hasActive(id)) {
+                val build = record.build ?: return@withLock
+                if (build.status == StudyBuildStatus.COMPLETE || build.status == StudyBuildStatus.PARTIAL) {
+                    record = store.update(id, immediate = true) { current ->
+                        val currentBuild = current.build ?: return@update null
+                        current.copy(
+                            build = currentBuild.copy(
+                                status = if (tasks.any { it.element.kind == StudyBuildElementKind.PREPARE }) {
+                                    StudyBuildStatus.PREPARING
+                                } else {
+                                    StudyBuildStatus.BUILDING
+                                },
+                                updatedAt = clock(),
+                            ),
+                        )
+                    } ?: return@withLock
+                }
+            }
             queue.enqueue(
                 tasks,
                 priorityOverride = if (lowPriority) StudyBuildTaskPriority.LOW else null,
@@ -321,6 +338,70 @@ class StudyBuildService(
                 store.publish(id, StudyBuildEvent.Done)
             }
         }
+    }
+
+    private suspend fun reviveRetryableTalkFailures(
+        id: String,
+        record: SavedStudySessionRecord,
+    ): SavedStudySessionRecord? {
+        val build = record.build ?: return record
+        val missingKeys = planner.incompleteTalkElements(record).mapTo(mutableSetOf()) { it.key }
+        val activeKeys = queue.activeElements(id).mapTo(mutableSetOf()) { it.key }
+        val eligible = build.failed.filter { element ->
+            element.key in missingKeys && element.key !in activeKeys &&
+                    element.kind.isTalkBuildElement() &&
+                    (build.automaticRevives[element.key] ?: 0) < MAX_AUTOMATIC_TALK_REVIVES &&
+                    !isPermanentTalkFailure(build.failureReasons[element.key].orEmpty())
+        }
+        if (eligible.isEmpty()) return record
+
+        return store.update(id, immediate = true) { current ->
+            val currentBuild = current.build ?: return@update null
+            val currentMissingKeys = planner.incompleteTalkElements(current).mapTo(mutableSetOf()) { it.key }
+            val currentActiveKeys = queue.activeElements(id).mapTo(mutableSetOf()) { it.key }
+            val revive = eligible.filter { element ->
+                element.key in currentMissingKeys && element.key !in currentActiveKeys &&
+                        (currentBuild.automaticRevives[element.key] ?: 0) < MAX_AUTOMATIC_TALK_REVIVES &&
+                        !isPermanentTalkFailure(currentBuild.failureReasons[element.key].orEmpty())
+            }
+            if (revive.isEmpty()) return@update current
+            val keys = revive.mapTo(mutableSetOf()) { it.key }
+            val revivalEntries = revive.map { element ->
+                val count = (currentBuild.automaticRevives[element.key] ?: 0) + 1
+                StudyBuildJournalEntry(
+                    timestamp = clock(),
+                    element = element,
+                    outcome = StudyBuildJournalOutcome.REVIVED,
+                    attempt = currentBuild.attempts[element.key] ?: 0,
+                    detail = "Automatic Talk retry $count of $MAX_AUTOMATIC_TALK_REVIVES scheduled.",
+                )
+            }
+            current.copy(
+                build = currentBuild.copy(
+                    status = StudyBuildStatus.BUILDING,
+                    failed = currentBuild.failed.filterNot { it.key in keys },
+                    failureReasons = currentBuild.failureReasons - keys,
+                    attempts = currentBuild.attempts - keys,
+                    automaticRevives = currentBuild.automaticRevives + revive.associate { element ->
+                        element.key to (currentBuild.automaticRevives[element.key] ?: 0) + 1
+                    },
+                    journal = (currentBuild.journal + revivalEntries).takeLast(StudyBuildQueue.MAX_JOURNAL_ENTRIES),
+                    updatedAt = clock(),
+                ),
+            )
+        }
+    }
+
+    private fun isPermanentTalkFailure(reason: String): Boolean =
+        listOf("did not produce", "not configured").any { it in reason.lowercase() }
+
+    private fun apap.oneverandah.api.StudyBuildElementKind.isTalkBuildElement(): Boolean = when (this) {
+        StudyBuildElementKind.TALK_WORLD,
+        StudyBuildElementKind.TALK_SCENE_IMAGE,
+        StudyBuildElementKind.TALK_EXPRESSION,
+        StudyBuildElementKind.TALK_AUDIO -> true
+
+        else -> false
     }
 
     private suspend fun publishBuild(id: String) {
@@ -362,5 +443,10 @@ class StudyBuildService(
             build = StudyBuildState(status = status, updatedAt = now),
             buildRequest = request.takeIf { it.mode != StudyBuildMode.EXACT },
         )
+    }
+
+    companion object {
+        const val MAX_AUTOMATIC_TALK_REVIVES = 2
+        const val RECOVERY_INTERVAL_MILLIS = 60_000L
     }
 }

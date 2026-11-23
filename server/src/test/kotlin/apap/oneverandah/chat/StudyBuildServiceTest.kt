@@ -42,24 +42,20 @@ import kotlinx.coroutines.runBlocking
 
 class StudyBuildServiceTest {
     @Test
-    fun `talk generation rejects replies outside the study vocabulary pool`() = runBlocking {
+    fun `talk generation repairs replies outside the study vocabulary pool`() = runBlocking {
         val ai = FakeBuildStudyAi(CopyOnWriteArrayList(), invalidTalkReply = true)
         val study = StudyService(aiClient = ai)
-        val failure = assertFailsWith<IllegalArgumentException> {
-            study.talkWorld(
-                StudyTalkGenerationRequest(
-                    text = "I go.",
-                    textLanguageTag = "vi",
-                    languageTag = "en",
-                    sentences = listOf(
-                        StudySentence("I go.", listOf(StudyToken("I", StudyTokenStatus.READY))),
-                    ),
-                    characters = listOf(StudyStoryCharacter("main", "Lan", "main", "A neighbor.")),
-                ),
-            )
-        }
+        val world = study.talkWorld(
+            StudyTalkGenerationRequest(
+                text = "I go.",
+                textLanguageTag = "vi",
+                languageTag = "en",
+                sentences = listOf(StudySentence("I go.", listOf(StudyToken("I", StudyTokenStatus.READY)))),
+                characters = listOf(StudyStoryCharacter("main", "Lan", "main", "A neighbor.")),
+            ),
+        )
 
-        assertContains(failure.message.orEmpty(), "study pool")
+        assertTrue(world.scenes.flatMap { it.turns }.all { "i" in it.reply.lowercase() })
     }
 
     @Test
@@ -115,7 +111,7 @@ class StudyBuildServiceTest {
     }
 
     @Test
-    fun `talk generation rejects people and dialogue references in scene backgrounds`() = runBlocking {
+    fun `talk generation removes people and dialogue references from scene backgrounds`() = runBlocking {
         val study = StudyService(
             aiClient = FakeBuildStudyAi(
                 events = CopyOnWriteArrayList(),
@@ -123,21 +119,19 @@ class StudyBuildServiceTest {
             ),
         )
 
-        val failure = assertFailsWith<IllegalArgumentException> {
-            study.talkWorld(
-                StudyTalkGenerationRequest(
-                    text = "Xin chào.",
-                    textLanguageTag = "vi",
-                    languageTag = "en",
-                    sentences = listOf(
-                        StudySentence("Xin chào.", listOf(StudyToken("Xin", StudyTokenStatus.READY))),
-                    ),
-                    characters = listOf(StudyStoryCharacter("main", "Lan", "main", "A neighbor.")),
-                ),
-            )
-        }
+        val world = study.talkWorld(
+            StudyTalkGenerationRequest(
+                text = "Xin chào.",
+                textLanguageTag = "vi",
+                languageTag = "en",
+                sentences = listOf(StudySentence("Xin chào.", listOf(StudyToken("Xin", StudyTokenStatus.READY)))),
+                characters = listOf(StudyStoryCharacter("main", "Lan", "main", "A neighbor.")),
+            ),
+        )
 
-        assertContains(failure.message.orEmpty(), "empty scenery")
+        val description = world.scenes[2].description.lowercase()
+        assertTrue(description.isNotBlank())
+        assertFalse(listOf("people", "speak", "speech", "bubbles").any(description::contains))
     }
 
     @Test
@@ -223,6 +217,47 @@ class StudyBuildServiceTest {
             assertEquals(originalWorld.expressions, restoredWorld.expressions)
             assertEquals(audioCallsBeforeBackfill, audioCalls.get())
             assertEquals(talkCallsBeforeBackfill, ai.talkWorldCalls.get())
+        } finally {
+            scope.cancel()
+        }
+    }
+
+    @Test
+    fun `Talk world is saved when token meanings and examples change during generation`() = runBlocking {
+        val scope = CoroutineScope(SupervisorJob() + Dispatchers.Default)
+        val repository = InMemoryStudySessionsRepository()
+        val devices = DeviceService(InMemoryDeviceRepository())
+        val token = devices.issueToken().deviceToken
+        val events = CopyOnWriteArrayList<String>()
+        val gate = CompletableDeferred<Unit>()
+        val ai = FakeBuildStudyAi(events, talkWorldGate = gate)
+        val (sessions, service) = harness(repository, devices, ai, FakeBuildImageGenerator(events), scope)
+        try {
+            val created = service.create(
+                token,
+                StudyBuildRequest(text = "Hello.", languageTag = "en", sourceMessageId = "talk-input-enrichment"),
+            )
+            withTimeout(2_000L) { ai.talkWorldStarted.await() }
+            sessions.sessionStore.update(created.id, immediate = true) { current ->
+                val changedSentences = current.session.sentences.map { sentence ->
+                    sentence.copy(tokens = sentence.tokens.map { studyToken ->
+                        if (studyToken.status == StudyTokenStatus.PLAIN) studyToken else studyToken.copy(
+                            status = StudyTokenStatus.ERROR,
+                            literalMeaning = "Updated literal meaning",
+                            contextualMeaning = "Updated context",
+                            exampleSentences = studyToken.exampleSentences + StudyExampleSentence("Updated example.", "Updated translation."),
+                            needConversation = listOf(StudyWordRecallLine("Lan", "___", "___")),
+                        )
+                    })
+                }
+                current.copy(session = current.session.copy(sentences = changedSentences))
+            }
+            gate.complete(Unit)
+
+            val completed = awaitTerminal(service, created.id)
+
+            assertNotNull(completed.session.talkWorld)
+            assertEquals(StudyBuildStatus.COMPLETE, completed.build?.status)
         } finally {
             scope.cancel()
         }
@@ -394,7 +429,7 @@ class StudyBuildServiceTest {
     }
 
     @Test
-    fun `ensure building revives exhausted missing talk backgrounds`() = runBlocking {
+    fun `startup recovery revives exhausted missing talk backgrounds without opening the tab`() = runBlocking {
         val scope = CoroutineScope(SupervisorJob() + Dispatchers.Default)
         val repository = InMemoryStudySessionsRepository()
         val devices = DeviceService(InMemoryDeviceRepository())
@@ -430,7 +465,7 @@ class StudyBuildServiceTest {
                 )
             }
 
-            service.ensureBuilding(created.id)
+            service.resumeAll()
             val rebuilt = awaitTerminal(service, created.id)
 
             assertTrue(rebuilt.session.talkWorld?.scenes?.first()?.backgroundImageUrl.isNullOrBlank().not())
@@ -585,6 +620,7 @@ class StudyBuildServiceTest {
         private val characterLineWithoutVocabulary: Boolean = false,
         private val duplicateTalkConversations: Boolean = false,
         private val talkDescriptionWithPeople: Boolean = false,
+        private val talkWorldGate: CompletableDeferred<Unit>? = null,
     ) : StudyAiClient {
         val skeletonCalls = AtomicInteger()
         val talkWorldCalls = AtomicInteger()
@@ -592,6 +628,7 @@ class StudyBuildServiceTest {
         val translationStarted = CompletableDeferred<Unit>()
         val skeletonStarted = CompletableDeferred<Unit>()
         val skeletonFinished = CompletableDeferred<Unit>()
+        val talkWorldStarted = CompletableDeferred<Unit>()
 
         override suspend fun generateStudyIntent(request: StudyGenerationRequest): String =
             "Prepared: ${request.text}"
@@ -713,6 +750,8 @@ class StudyBuildServiceTest {
         override suspend fun generateTalkWorld(request: StudyTalkGenerationRequest): StudyTalkWorld {
             events += "talk-world"
             talkWorldCalls.incrementAndGet()
+            talkWorldStarted.complete(Unit)
+            talkWorldGate?.await()
             val speakerId = request.characters.first().id
             val sourceSentence = request.sentences.first().text
             val locations = listOf("Apartment lobby", "Corner café", "Flower market", "Riverside walk", "Community garden", "Train platform")

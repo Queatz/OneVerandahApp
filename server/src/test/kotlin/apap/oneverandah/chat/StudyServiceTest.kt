@@ -21,6 +21,7 @@ import apap.oneverandah.api.StudySentence
 import apap.oneverandah.api.StudySentenceImageRequest
 import apap.oneverandah.api.StudyStoryCharacter
 import apap.oneverandah.api.StudyStoryCharactersRequest
+import apap.oneverandah.api.StudyTalkWorld
 import apap.oneverandah.api.StudySessionRequest
 import apap.oneverandah.api.StudySessionResponse
 import apap.oneverandah.api.StudyTranslateRequest
@@ -76,6 +77,53 @@ class StudyServiceTest {
         assertTrue(world.scenes.flatMap { it.turns }.all { turn ->
             turn.reply.contains("xin", ignoreCase = true) || turn.reply.contains("chào", ignoreCase = true)
         })
+    }
+
+    @Test
+    fun `Talk world repairs scenery vocabulary and duplicate labels without discarding scenes`() = runBlocking {
+        val request = StudyTalkGenerationRequest(
+            text = "Xin chào.",
+            textLanguageTag = "vi",
+            languageTag = "en",
+            sentences = listOf(StudySentence("Xin chào.", listOf(StudyToken("Xin", StudyTokenStatus.READY)))),
+            characters = listOf(StudyStoryCharacter("main", "Lan", "main", "A neighbor.")),
+        )
+        val valid = fallbackStudyTalkWorld(request)
+        val malformedButRepairable = valid.copy(
+            scenes = valid.scenes.mapIndexed { index, scene ->
+                when (index) {
+                    0 -> scene.copy(description = "A person chats beside a sign.", turns = scene.turns.map { it.copy(reply = "I understand.") })
+                    1 -> scene.copy(title = valid.scenes.first().title, description = valid.scenes.first().description)
+                    else -> scene
+                }
+            },
+        )
+        val ai = FakeStudyAiClient(talkWorldResult = malformedButRepairable)
+
+        val world = StudyService(ai).talkWorld(request)
+
+        assertEquals(1, ai.talkWorldCalls)
+        assertEquals(6, world.scenes.size)
+        assertEquals(6, world.scenes.map { it.title }.distinct().size)
+        assertEquals(6, world.scenes.map { it.description }.distinct().size)
+        assertTrue(world.scenes.first().description.split(Regex("\\W+")).none { it.lowercase() in setOf("person", "chat", "sign") })
+        assertTrue(world.scenes.first().turns.all { "xin" in it.reply.lowercase() })
+    }
+
+    @Test
+    fun `Talk world retries structurally incomplete AI output internally`() = runBlocking {
+        val request = StudyTalkGenerationRequest(
+            text = "Xin chào.",
+            textLanguageTag = "vi",
+            languageTag = "en",
+            sentences = listOf(StudySentence("Xin chào.", listOf(StudyToken("Xin", StudyTokenStatus.READY)))),
+            characters = listOf(StudyStoryCharacter("main", "Lan", "main", "A neighbor.")),
+        )
+        val incomplete = fallbackStudyTalkWorld(request).copy(scenes = fallbackStudyTalkWorld(request).scenes.dropLast(1))
+        val ai = FakeStudyAiClient(talkWorldResult = incomplete)
+
+        assertFailsWith<IllegalArgumentException> { StudyService(ai).talkWorld(request) }
+        assertEquals(3, ai.talkWorldCalls)
     }
 
     @Test
@@ -2010,6 +2058,7 @@ internal class FakeStudyAiClient(
     private val examJudgment: StudyExamJudgment = StudyExamJudgment(points = 2, feedback = "Clear answer."),
     private val examSceneFailure: Boolean = false,
     private val chunkFailure: Boolean = false,
+    private val talkWorldResult: StudyTalkWorld? = null,
 ) : StudyAiClient {
     var lastExtractRequest: StudyGenerationRequest? = null
     var lastIntentRequest: StudyGenerationRequest? = null
@@ -2029,6 +2078,7 @@ internal class FakeStudyAiClient(
     var lastExamSceneRequest: StudyExamSceneGenerationRequest? = null
     val examBeatRequests = mutableListOf<StudyExamBeatJudgmentRequest>()
     var studySessionNameCalls = 0
+    var talkWorldCalls = 0
 
     companion object {
         const val INTENDED_SCENE =
@@ -2120,6 +2170,11 @@ internal class FakeStudyAiClient(
         lastExamSceneRequest = request
         if (examSceneFailure) throw IllegalArgumentException("Qwen study exam beat missing source sentence")
         return examScene
+    }
+
+    override suspend fun generateTalkWorld(request: StudyTalkGenerationRequest): StudyTalkWorld {
+        talkWorldCalls++
+        return talkWorldResult ?: fallbackStudyTalkWorld(request)
     }
 
     override suspend fun evaluateExamBeat(request: StudyExamBeatJudgmentRequest): StudyExamJudgment {

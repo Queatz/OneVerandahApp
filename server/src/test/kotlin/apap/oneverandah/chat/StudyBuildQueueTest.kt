@@ -2,6 +2,7 @@ package apap.oneverandah.chat
 
 import apap.oneverandah.api.StudyBuildElement
 import apap.oneverandah.api.StudyBuildElementKind
+import apap.oneverandah.api.StudyBuildJournalOutcome
 import apap.oneverandah.api.StudyBuildState
 import apap.oneverandah.api.StudyBuildStatus
 import apap.oneverandah.api.StudySessionResponse
@@ -101,8 +102,23 @@ class StudyBuildQueueTest {
             queue.start()
             queue.enqueue(listOf(task))
             withTimeout(2_000L) { succeeded.await() }
+            withTimeout(2_000L) {
+                while (store.findById("study-1")?.build?.journal?.lastOrNull()?.outcome != StudyBuildJournalOutcome.SUCCEEDED) {
+                    delay(5L)
+                }
+            }
             assertEquals(2, store.findById("study-1")?.build?.attempts?.get(task.element.key))
             assertTrue(store.findById("study-1")?.build?.failed.isNullOrEmpty())
+            assertEquals(
+                listOf(
+                    StudyBuildJournalOutcome.STARTED,
+                    StudyBuildJournalOutcome.RETRYING,
+                    StudyBuildJournalOutcome.STARTED,
+                    StudyBuildJournalOutcome.SUCCEEDED,
+                ),
+                store.findById("study-1")?.build?.journal?.map { it.outcome },
+            )
+            assertTrue(store.findById("study-1")?.build?.journal?.last()?.elapsedMs != null)
             val retryLog = appender.list.first { it.formattedMessage.contains("retrying in") }.formattedMessage
             assertTrue(retryLog.contains("TALK_EXPRESSION:main-neutral"), retryLog)
             assertTrue(retryLog.contains("attempt 1/3"), retryLog)

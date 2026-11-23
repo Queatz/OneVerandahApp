@@ -123,6 +123,24 @@ data class StudyTalkStrings(
     val stepCount: (done: Int, total: Int) -> String,
     val failureDetails: (reason: String) -> String,
     val incompleteFailure: String,
+    val scriptStep: String,
+    val sceneBackgroundStep: String,
+    val expressionStep: String,
+    val sceneAudioStep: String,
+    val journalTitle: String,
+    val journalEmpty: String,
+    val journalStarted: String,
+    val journalSucceeded: String,
+    val journalFailed: String,
+    val journalRetrying: String,
+    val journalRevived: String,
+    val journalAttempt: (attempt: Int) -> String,
+    val journalElapsed: (milliseconds: Long) -> String,
+    val characterLineAudio: String,
+    val learnerReplyAudio: String,
+    val stepCompleted: String,
+    val stepRunning: String,
+    val stepUpcoming: String,
 )
 
 /**
@@ -874,6 +892,12 @@ private fun studyTalkStrings(languageName: String): StudyTalkStrings = when (lan
         stepCount = { done, total -> "Bước chuẩn bị: $done/$total" },
         failureDetails = { reason -> "Lý do: $reason" },
         incompleteFailure = "Một phần kịch bản hoặc nội dung đa phương tiện bắt buộc vẫn còn thiếu.",
+        scriptStep = "Kịch bản", sceneBackgroundStep = "Cảnh nền", expressionStep = "Biểu cảm", sceneAudioStep = "Âm thanh cảnh",
+        journalTitle = "Nhật ký tạo nội dung", journalEmpty = "Chưa có sự kiện tạo nội dung.",
+        journalStarted = "Đã bắt đầu", journalSucceeded = "Thành công", journalFailed = "Thất bại", journalRetrying = "Đang thử lại", journalRevived = "Đã lên lịch thử lại",
+        journalAttempt = { attempt -> "Lần thử: $attempt" }, journalElapsed = { milliseconds -> "$milliseconds ms" },
+        characterLineAudio = "Lời thoại nhân vật", learnerReplyAudio = "Lời đáp của người học",
+        stepCompleted = "Hoàn tất", stepRunning = "Đang thực hiện", stepUpcoming = "Đang chờ",
     )
     "中文" -> StudyTalkStrings(
         tab = "对话", title = "对话练习", loading = "正在准备对话世界…", error = "无法准备这个世界。", retry = "重试",
@@ -889,6 +913,12 @@ private fun studyTalkStrings(languageName: String): StudyTalkStrings = when (lan
         stepCount = { done, total -> "准备步骤：$done/$total" },
         failureDetails = { reason -> "原因：$reason" },
         incompleteFailure = "仍缺少必需的脚本或媒体内容。",
+        scriptStep = "脚本", sceneBackgroundStep = "场景背景", expressionStep = "表情", sceneAudioStep = "场景音频",
+        journalTitle = "构建日志", journalEmpty = "尚无构建事件。",
+        journalStarted = "已开始", journalSucceeded = "成功", journalFailed = "失败", journalRetrying = "正在重试", journalRevived = "已安排重试",
+        journalAttempt = { attempt -> "尝试次数：$attempt" }, journalElapsed = { milliseconds -> "$milliseconds 毫秒" },
+        characterLineAudio = "角色台词", learnerReplyAudio = "学习者回复",
+        stepCompleted = "已完成", stepRunning = "进行中", stepUpcoming = "等待中",
     )
     "日本語" -> StudyTalkStrings(
         tab = "会話", title = "会話を練習", loading = "会話の世界を準備しています…", error = "この世界を準備できませんでした。", retry = "再試行",
@@ -904,6 +934,12 @@ private fun studyTalkStrings(languageName: String): StudyTalkStrings = when (lan
         stepCount = { done, total -> "準備ステップ：$done/$total" },
         failureDetails = { reason -> "理由：$reason" },
         incompleteFailure = "必要な会話台本またはメディアが不足しています。",
+        scriptStep = "台本", sceneBackgroundStep = "シーン背景", expressionStep = "表情", sceneAudioStep = "シーン音声",
+        journalTitle = "生成ログ", journalEmpty = "生成イベントはまだありません。",
+        journalStarted = "開始", journalSucceeded = "成功", journalFailed = "失敗", journalRetrying = "再試行中", journalRevived = "再試行を予約",
+        journalAttempt = { attempt -> "試行: $attempt" }, journalElapsed = { milliseconds -> "$milliseconds ミリ秒" },
+        characterLineAudio = "キャラクターの台詞", learnerReplyAudio = "学習者の返答",
+        stepCompleted = "完了", stepRunning = "進行中", stepUpcoming = "待機中",
     )
     "한국어" -> StudyTalkStrings(
         tab = "대화", title = "대화 연습", loading = "대화 세계를 준비하는 중…", error = "이 세계를 준비할 수 없습니다.", retry = "다시 시도",
@@ -919,6 +955,12 @@ private fun studyTalkStrings(languageName: String): StudyTalkStrings = when (lan
         stepCount = { done, total -> "준비 단계: $done/$total" },
         failureDetails = { reason -> "이유: $reason" },
         incompleteFailure = "필요한 대화 대본이나 미디어가 아직 부족합니다.",
+        scriptStep = "대본", sceneBackgroundStep = "장면 배경", expressionStep = "표정", sceneAudioStep = "장면 오디오",
+        journalTitle = "빌드 기록", journalEmpty = "아직 빌드 이벤트가 없습니다.",
+        journalStarted = "시작됨", journalSucceeded = "성공", journalFailed = "실패", journalRetrying = "재시도 중", journalRevived = "재시도 예약됨",
+        journalAttempt = { attempt -> "시도: $attempt" }, journalElapsed = { milliseconds -> "$milliseconds ms" },
+        characterLineAudio = "캐릭터 대사", learnerReplyAudio = "학습자 답변",
+        stepCompleted = "완료", stepRunning = "진행 중", stepUpcoming = "대기 중",
     )
     "Русский" -> StudyTalkStrings(
         tab = "Диалог", title = "Практика диалога", loading = "Готовим мир диалогов…", error = "Не удалось подготовить этот мир.", retry = "Повторить",
@@ -934,6 +976,12 @@ private fun studyTalkStrings(languageName: String): StudyTalkStrings = when (lan
         stepCount = { done, total -> "Этапы подготовки: $done/$total" },
         failureDetails = { reason -> "Причина: $reason" },
         incompleteFailure = "Не хватает сценария или необходимых медиафайлов.",
+        scriptStep = "Сценарий", sceneBackgroundStep = "Фон сцены", expressionStep = "Эмоции", sceneAudioStep = "Аудио сцены",
+        journalTitle = "Журнал сборки", journalEmpty = "Событий сборки пока нет.",
+        journalStarted = "Начато", journalSucceeded = "Успешно", journalFailed = "Ошибка", journalRetrying = "Повтор", journalRevived = "Повтор запланирован",
+        journalAttempt = { attempt -> "Попытка: $attempt" }, journalElapsed = { milliseconds -> "$milliseconds мс" },
+        characterLineAudio = "Реплика персонажа", learnerReplyAudio = "Ответ ученика",
+        stepCompleted = "Готово", stepRunning = "Выполняется", stepUpcoming = "Ожидает",
     )
     "Español" -> StudyTalkStrings(
         tab = "Diálogo", title = "Practica el diálogo", loading = "Preparando el mundo…", error = "No se pudo preparar este mundo.", retry = "Reintentar",
@@ -949,6 +997,12 @@ private fun studyTalkStrings(languageName: String): StudyTalkStrings = when (lan
         stepCount = { done, total -> "Pasos de preparación: $done/$total" },
         failureDetails = { reason -> "Motivo: $reason" },
         incompleteFailure = "Falta parte del guion o algún recurso multimedia necesario.",
+        scriptStep = "Guion", sceneBackgroundStep = "Fondo de escena", expressionStep = "Expresiones", sceneAudioStep = "Audio de escena",
+        journalTitle = "Registro de creación", journalEmpty = "Aún no hay eventos de creación.",
+        journalStarted = "Iniciado", journalSucceeded = "Correcto", journalFailed = "Fallido", journalRetrying = "Reintentando", journalRevived = "Reintento programado",
+        journalAttempt = { attempt -> "Intento: $attempt" }, journalElapsed = { milliseconds -> "$milliseconds ms" },
+        characterLineAudio = "Línea del personaje", learnerReplyAudio = "Respuesta del alumno",
+        stepCompleted = "Completado", stepRunning = "En curso", stepUpcoming = "En espera",
     )
     "Deutsch" -> StudyTalkStrings(
         tab = "Dialog", title = "Dialog üben", loading = "Dialogwelt wird vorbereitet…", error = "Diese Welt konnte nicht vorbereitet werden.", retry = "Erneut versuchen",
@@ -964,6 +1018,12 @@ private fun studyTalkStrings(languageName: String): StudyTalkStrings = when (lan
         stepCount = { done, total -> "Vorbereitungsschritte: $done/$total" },
         failureDetails = { reason -> "Grund: $reason" },
         incompleteFailure = "Das erforderliche Skript oder Medienmaterial fehlt teilweise.",
+        scriptStep = "Skript", sceneBackgroundStep = "Szenenhintergrund", expressionStep = "Ausdrücke", sceneAudioStep = "Szenen-Audio",
+        journalTitle = "Erstellungsprotokoll", journalEmpty = "Noch keine Erstellungsereignisse.",
+        journalStarted = "Gestartet", journalSucceeded = "Erfolgreich", journalFailed = "Fehlgeschlagen", journalRetrying = "Wird erneut versucht", journalRevived = "Erneuter Versuch geplant",
+        journalAttempt = { attempt -> "Versuch: $attempt" }, journalElapsed = { milliseconds -> "$milliseconds ms" },
+        characterLineAudio = "Charakterzeile", learnerReplyAudio = "Antwort des Lernenden",
+        stepCompleted = "Abgeschlossen", stepRunning = "In Bearbeitung", stepUpcoming = "Ausstehend",
     )
     "မြန်မာစာ" -> StudyTalkStrings(
         tab = "စကားပြော", title = "စကားပြောလေ့ကျင့်ရန်", loading = "စကားပြောကမ္ဘာကို ပြင်ဆင်နေသည်…", error = "ဤကမ္ဘာကို ပြင်ဆင်၍မရပါ။", retry = "ထပ်ကြိုးစားရန်",
@@ -979,6 +1039,12 @@ private fun studyTalkStrings(languageName: String): StudyTalkStrings = when (lan
         stepCount = { done, total -> "ပြင်ဆင်မှုအဆင့်များ: $done/$total" },
         failureDetails = { reason -> "အကြောင်းရင်း: $reason" },
         incompleteFailure = "လိုအပ်သော ဇာတ်ညွှန်း သို့မဟုတ် မီဒီယာအချို့ ပျောက်နေသည်။",
+        scriptStep = "ဇာတ်ညွှန်း", sceneBackgroundStep = "မြင်ကွင်းနောက်ခံ", expressionStep = "မျက်နှာအမူအရာ", sceneAudioStep = "မြင်ကွင်းအသံ",
+        journalTitle = "တည်ဆောက်မှုမှတ်တမ်း", journalEmpty = "တည်ဆောက်မှုဖြစ်စဉ် မရှိသေးပါ။",
+        journalStarted = "စတင်သည်", journalSucceeded = "အောင်မြင်သည်", journalFailed = "မအောင်မြင်ပါ", journalRetrying = "ပြန်ကြိုးစားနေသည်", journalRevived = "ပြန်ကြိုးစားရန် စီစဉ်ထားသည်",
+        journalAttempt = { attempt -> "ကြိုးစားမှု: $attempt" }, journalElapsed = { milliseconds -> "$milliseconds ms" },
+        characterLineAudio = "ဇာတ်ကောင်၏ စကား", learnerReplyAudio = "သင်ယူသူ၏ အဖြေ",
+        stepCompleted = "ပြီးပြီ", stepRunning = "လုပ်ဆောင်နေသည်", stepUpcoming = "စောင့်ဆိုင်းနေသည်",
     )
     else -> StudyTalkStrings(
         tab = "Talk", title = "Practice the conversation", loading = "Preparing your Talk world…",
@@ -997,6 +1063,12 @@ private fun studyTalkStrings(languageName: String): StudyTalkStrings = when (lan
         stepCount = { done, total -> "Preparation steps: $done/$total" },
         failureDetails = { reason -> "Reason: $reason" },
         incompleteFailure = "Some required script or media is still missing.",
+        scriptStep = "Conversation script", sceneBackgroundStep = "Scene background", expressionStep = "Character expressions", sceneAudioStep = "Scene audio",
+        journalTitle = "Build journal", journalEmpty = "No build events yet.",
+        journalStarted = "Started", journalSucceeded = "Succeeded", journalFailed = "Failed", journalRetrying = "Retrying", journalRevived = "Retry scheduled",
+        journalAttempt = { attempt -> "Attempt $attempt" }, journalElapsed = { milliseconds -> "$milliseconds ms" },
+        characterLineAudio = "Character line", learnerReplyAudio = "Learner reply",
+        stepCompleted = "Complete", stepRunning = "In progress", stepUpcoming = "Waiting",
     )
 }
 

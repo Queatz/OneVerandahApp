@@ -1228,6 +1228,19 @@ enum class StudyTalkAudioKind { CHARACTER_LINE, REPLY }
 enum class StudyBuildStatus { PREPARING, BUILDING, COMPLETE, PARTIAL }
 
 @Serializable
+enum class StudyBuildJournalOutcome { STARTED, SUCCEEDED, FAILED, RETRYING, REVIVED }
+
+@Serializable
+data class StudyBuildJournalEntry(
+    val timestamp: Long,
+    val element: StudyBuildElement,
+    val outcome: StudyBuildJournalOutcome,
+    val attempt: Int = 0,
+    val elapsedMs: Long? = null,
+    val detail: String? = null,
+)
+
+@Serializable
 data class StudyBuildState(
     val status: StudyBuildStatus,
     val failed: List<StudyBuildElement> = emptyList(),
@@ -1235,6 +1248,8 @@ data class StudyBuildState(
     val inFlight: List<StudyBuildElement> = emptyList(),
     val attempts: Map<String, Int> = emptyMap(),
     val updatedAt: Long = 0,
+    val journal: List<StudyBuildJournalEntry> = emptyList(),
+    val automaticRevives: Map<String, Int> = emptyMap(),
 )
 
 @Serializable

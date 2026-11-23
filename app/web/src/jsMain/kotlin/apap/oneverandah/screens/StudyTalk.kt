@@ -11,6 +11,8 @@ import androidx.compose.runtime.setValue
 import apap.oneverandah.Styles
 import apap.oneverandah.api.StudyBuildElement
 import apap.oneverandah.api.StudyBuildElementKind
+import apap.oneverandah.api.StudyBuildJournalEntry
+import apap.oneverandah.api.StudyBuildJournalOutcome
 import apap.oneverandah.api.StudyBuildState
 import apap.oneverandah.api.StudySessionResponse
 import apap.oneverandah.api.StudyTalkAudioKind
@@ -33,6 +35,7 @@ import org.jetbrains.compose.web.dom.Text
 import org.w3c.dom.HTMLElement
 import org.w3c.dom.HTMLImageElement
 import org.w3c.dom.events.Event
+import kotlin.js.Date
 
 internal enum class StudyTalkPhase { LISTEN, THINK, REVEAL, COMPLETE }
 
@@ -185,7 +188,7 @@ internal fun StudyTalkTab(
 
         if (world == null || !world.hasAllTalkAssets()) {
             val failureReason = buildState.talkFailureReason()
-            StudyTalkBuildStatus(world, failed, canRetry, failureReason, copy, onRetry)
+            StudyTalkBuildStatus(world, buildState, failed, canRetry, failureReason, copy, onRetry)
             return@Div
         }
 
@@ -356,6 +359,7 @@ internal fun StudyTalkTab(
 @Composable
 private fun StudyTalkBuildStatus(
     world: StudyTalkWorld?,
+    buildState: StudyBuildState?,
     failed: Boolean,
     canRetry: Boolean,
     failureReason: String?,
@@ -379,6 +383,8 @@ private fun StudyTalkBuildStatus(
             )
         }
         StudyTalkProgressBar(progress, copy)
+        StudyTalkPreparationSteps(world.studyTalkPreparationSteps(buildState), copy)
+        StudyTalkBuildJournal(buildState?.journal.orEmpty(), copy)
     }
 }
 
@@ -421,6 +427,171 @@ private fun StudyTalkProgressBar(progress: StudyTalkBuildProgress, copy: StudyTa
         Span { Text(copy.stepCount(progress.completedSteps, progress.totalSteps)) }
         if (progress.hasWorld) StudyTalkProgressBreakdown(progress.assets, copy)
     }
+}
+
+internal enum class StudyTalkPreparationStatus { COMPLETE, RUNNING, FAILED, UPCOMING }
+
+internal enum class StudyTalkPreparationKind { SCRIPT, SCENE_BACKGROUND, EXPRESSIONS, SCENE_AUDIO }
+
+internal data class StudyTalkPreparationStep(
+    val kind: StudyTalkPreparationKind,
+    val sceneIndex: Int? = null,
+    val status: StudyTalkPreparationStatus,
+)
+
+internal fun StudyTalkWorld?.studyTalkPreparationSteps(buildState: StudyBuildState?): List<StudyTalkPreparationStep> {
+    fun isRunning(predicate: (StudyBuildElement) -> Boolean) = buildState?.inFlight.orEmpty().any(predicate)
+    fun hasFailed(predicate: (StudyBuildElement) -> Boolean) = buildState?.failed.orEmpty().any(predicate)
+    fun status(ready: Boolean, running: Boolean, failed: Boolean) = when {
+        ready -> StudyTalkPreparationStatus.COMPLETE
+        failed -> StudyTalkPreparationStatus.FAILED
+        running -> StudyTalkPreparationStatus.RUNNING
+        else -> StudyTalkPreparationStatus.UPCOMING
+    }
+
+    val scriptReady = this?.isValidTalkScript() == true
+    val steps = mutableListOf(
+        StudyTalkPreparationStep(
+            StudyTalkPreparationKind.SCRIPT,
+            status = status(
+                ready = scriptReady,
+                running = isRunning { it.kind == StudyBuildElementKind.TALK_WORLD },
+                failed = hasFailed { it.kind == StudyBuildElementKind.TALK_WORLD },
+            ),
+        ),
+    )
+    repeat(STUDY_TALK_SCENE_COUNT) { sceneIndex ->
+        val scene = this?.scenes?.getOrNull(sceneIndex)
+        steps += StudyTalkPreparationStep(
+            StudyTalkPreparationKind.SCENE_BACKGROUND,
+            sceneIndex,
+            status(
+                ready = !scene?.backgroundImageUrl.isNullOrBlank(),
+                running = isRunning { it.kind == StudyBuildElementKind.TALK_SCENE_IMAGE && it.sceneIndex == sceneIndex },
+                failed = hasFailed { it.kind == StudyBuildElementKind.TALK_SCENE_IMAGE && it.sceneIndex == sceneIndex },
+            ),
+        )
+    }
+    val usedExpressionIds = this?.scenes.orEmpty().flatMap { scene -> scene.turns.map { it.expressionId } }.toSet()
+    val expressionById = this?.expressions.orEmpty().associateBy { it.id }
+    steps += StudyTalkPreparationStep(
+        StudyTalkPreparationKind.EXPRESSIONS,
+        status = status(
+            ready = scriptReady && usedExpressionIds.isNotEmpty() &&
+                    usedExpressionIds.all { !expressionById[it]?.imageUrl.isNullOrBlank() },
+            running = isRunning { it.kind == StudyBuildElementKind.TALK_EXPRESSION },
+            failed = hasFailed { it.kind == StudyBuildElementKind.TALK_EXPRESSION },
+        ),
+    )
+    repeat(STUDY_TALK_SCENE_COUNT) { sceneIndex ->
+        val scene = this?.scenes?.getOrNull(sceneIndex)
+        steps += StudyTalkPreparationStep(
+            StudyTalkPreparationKind.SCENE_AUDIO,
+            sceneIndex,
+            status(
+                ready = scene != null && scene.turns.isNotEmpty() && scene.turns.all { turn ->
+                    !turn.characterAudioUrl.isNullOrBlank() && !turn.replyAudioUrl.isNullOrBlank()
+                },
+                running = isRunning { it.kind == StudyBuildElementKind.TALK_AUDIO && it.sceneIndex == sceneIndex },
+                failed = hasFailed { it.kind == StudyBuildElementKind.TALK_AUDIO && it.sceneIndex == sceneIndex },
+            ),
+        )
+    }
+    return steps
+}
+
+@Composable
+private fun StudyTalkPreparationSteps(steps: List<StudyTalkPreparationStep>, copy: StudyTalkStrings) {
+    Div(attrs = { classes(Styles.studyTalkPreparationSteps) }) {
+        steps.forEach { step ->
+            val labelText = when (step.kind) {
+                StudyTalkPreparationKind.SCRIPT -> copy.scriptStep
+                StudyTalkPreparationKind.SCENE_BACKGROUND -> "${copy.sceneBackgroundStep} ${(step.sceneIndex ?: 0) + 1}"
+                StudyTalkPreparationKind.EXPRESSIONS -> copy.expressionStep
+                StudyTalkPreparationKind.SCENE_AUDIO -> "${copy.sceneAudioStep} ${(step.sceneIndex ?: 0) + 1}"
+            }
+            val label = when (step.status) {
+                StudyTalkPreparationStatus.COMPLETE -> copy.stepCompleted
+                StudyTalkPreparationStatus.RUNNING -> copy.stepRunning
+                StudyTalkPreparationStatus.FAILED -> copy.journalFailed
+                StudyTalkPreparationStatus.UPCOMING -> copy.stepUpcoming
+            }
+            val icon = when (step.status) {
+                StudyTalkPreparationStatus.COMPLETE -> "check_circle"
+                StudyTalkPreparationStatus.RUNNING -> "progress_activity"
+                StudyTalkPreparationStatus.FAILED -> "error"
+                StudyTalkPreparationStatus.UPCOMING -> "radio_button_unchecked"
+            }
+            Div(attrs = {
+                classes(Styles.studyTalkPreparationStep)
+                classes(when (step.status) {
+                    StudyTalkPreparationStatus.COMPLETE -> Styles.studyTalkPreparationComplete
+                    StudyTalkPreparationStatus.RUNNING -> Styles.studyTalkPreparationRunning
+                    StudyTalkPreparationStatus.FAILED -> Styles.studyTalkPreparationFailed
+                    StudyTalkPreparationStatus.UPCOMING -> Styles.studyTalkPreparationUpcoming
+                })
+            }) {
+                MaterialSymbol(icon)
+                Span { Text(labelText) }
+                Span(attrs = { classes(Styles.studyTalkPreparationStepStatus) }) { Text(label) }
+            }
+        }
+    }
+}
+
+@Composable
+private fun StudyTalkBuildJournal(entries: List<StudyBuildJournalEntry>, copy: StudyTalkStrings) {
+    Div(attrs = { classes(Styles.studyTalkJournal) }) {
+        P(attrs = { classes(Styles.studyTalkJournalTitle) }) { Text(copy.journalTitle) }
+        if (entries.isEmpty()) {
+            P(attrs = { classes(Styles.studyTalkJournalEmpty) }) { Text(copy.journalEmpty) }
+        } else {
+            Div(attrs = { classes(Styles.studyTalkJournalEntries) }) {
+                entries.asReversed().forEach { entry ->
+                    val timestamp = remember(entry.timestamp) { Date(entry.timestamp.toDouble()).toLocaleTimeString() }
+                    Div(attrs = { classes(Styles.studyTalkJournalEntry) }) {
+                        Div(attrs = { classes(Styles.studyTalkJournalEntryHeading) }) {
+                            Span { Text(entry.element.studyTalkJournalLabel(copy)) }
+                            Span(attrs = { classes(Styles.studyTalkJournalOutcome) }) {
+                                Text(entry.outcome.studyTalkJournalLabel(copy))
+                            }
+                        }
+                        Div(attrs = { classes(Styles.studyTalkJournalMetadata) }) {
+                            Span { Text(timestamp) }
+                            if (entry.attempt > 0) Span { Text(copy.journalAttempt(entry.attempt)) }
+                            entry.elapsedMs?.let { elapsed -> Span { Text(copy.journalElapsed(elapsed)) } }
+                        }
+                        entry.detail?.takeIf(String::isNotBlank)?.let { detail ->
+                            P(attrs = { classes(Styles.studyTalkJournalDetail) }) { Text(detail) }
+                        }
+                    }
+                }
+            }
+        }
+    }
+}
+
+private fun StudyBuildElement.studyTalkJournalLabel(copy: StudyTalkStrings): String = when (kind) {
+    StudyBuildElementKind.TALK_WORLD -> copy.scriptStep
+    StudyBuildElementKind.TALK_SCENE_IMAGE -> "${copy.sceneBackgroundStep} ${(sceneIndex ?: 0) + 1}"
+    StudyBuildElementKind.TALK_EXPRESSION -> "${copy.expressionStep}: ${expressionId.orEmpty()}"
+    StudyBuildElementKind.TALK_AUDIO -> {
+        val audioLabel = when (audioKind) {
+            StudyTalkAudioKind.CHARACTER_LINE -> copy.characterLineAudio
+            StudyTalkAudioKind.REPLY -> copy.learnerReplyAudio
+            null -> copy.sceneAudioStep
+        }
+        "${copy.sceneAudioStep} ${(sceneIndex ?: 0) + 1} · ${turnIndex?.plus(1) ?: "?"} · $audioLabel"
+    }
+    else -> kind.name.replace('_', ' ').lowercase()
+}
+
+private fun StudyBuildJournalOutcome.studyTalkJournalLabel(copy: StudyTalkStrings): String = when (this) {
+    StudyBuildJournalOutcome.STARTED -> copy.journalStarted
+    StudyBuildJournalOutcome.SUCCEEDED -> copy.journalSucceeded
+    StudyBuildJournalOutcome.FAILED -> copy.journalFailed
+    StudyBuildJournalOutcome.RETRYING -> copy.journalRetrying
+    StudyBuildJournalOutcome.REVIVED -> copy.journalRevived
 }
 
 @Composable

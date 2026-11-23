@@ -194,7 +194,12 @@ class InMemoryStudySessionsRepository : StudySessionsRepository {
             items.values
                 .filter {
                     it.build?.status == apap.oneverandah.api.StudyBuildStatus.PREPARING ||
-                            it.build?.status == apap.oneverandah.api.StudyBuildStatus.BUILDING
+                            it.build?.status == apap.oneverandah.api.StudyBuildStatus.BUILDING ||
+                            (
+                                (it.build?.status == apap.oneverandah.api.StudyBuildStatus.COMPLETE ||
+                                        it.build?.status == apap.oneverandah.api.StudyBuildStatus.PARTIAL) &&
+                                        StudyBuildPlanner().incompleteTalkElements(it).isNotEmpty()
+                                )
                 }
                 .map { it.id }
         }

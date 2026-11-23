@@ -157,7 +157,7 @@ class StudyBuildPlannerTest {
     }
 
     @Test
-    fun `older Talk world builds backgrounds and used expressions despite an unrelated missing portrait`() {
+    fun `older Talk world waits for the used character portrait before building its expression`() {
         val source = completeTalkWorld()
         val world = source.copy(
             scenes = source.scenes.map { it.copy(backgroundImageUrl = null) },
@@ -176,7 +176,18 @@ class StudyBuildPlannerTest {
         )
         val tasks = planner.plan(saved).map { it.element }
         assertEquals(6, tasks.count { it.kind == StudyBuildElementKind.TALK_SCENE_IMAGE })
-        assertEquals(listOf("main-neutral"), tasks.filter { it.kind == StudyBuildElementKind.TALK_EXPRESSION }.map { it.expressionId })
+        assertTrue(tasks.none { it.kind == StudyBuildElementKind.TALK_EXPRESSION })
+
+        val portraitFailed = saved.copy(
+            build = requireNotNull(saved.build).copy(
+                failed = listOf(StudyBuildElement(StudyBuildElementKind.PORTRAIT, characterId = "main")),
+            ),
+        )
+        assertEquals(
+            listOf("main-neutral"),
+            planner.plan(portraitFailed).filter { it.element.kind == StudyBuildElementKind.TALK_EXPRESSION }
+                .map { it.element.expressionId },
+        )
     }
 
     @Test
@@ -261,7 +272,15 @@ class StudyBuildPlannerTest {
                 sentences = listOf(
                     StudySentence("Xin.", listOf(StudyToken("Xin", StudyTokenStatus.READY, literalMeaning = "hello"))),
                 ),
-                characters = listOf(StudyStoryCharacter("main", "Lan", "main", "Young neighbor", "https://img/portrait")),
+                characters = listOf(
+                    StudyStoryCharacter(
+                        "main",
+                        "Lan",
+                        "main",
+                        "Young neighbor",
+                        imageUrl = "https://img/portrait",
+                    ),
+                ),
                 talkWorld = world,
             ),
         )

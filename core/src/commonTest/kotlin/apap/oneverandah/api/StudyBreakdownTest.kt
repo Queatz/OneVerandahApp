@@ -68,7 +68,7 @@ class StudyBreakdownTest {
         ).normalizedOrNull()
 
         assertNotNull(normalized)
-        assertEquals(listOf(1, 3, 4, 5, 5), normalized.sentences.toSortedMap().values.map { it.step })
+        assertEquals(listOf(1, 3, 4, 5, 5), normalized.sentences.toList().sortedBy { it.first }.map { it.second.step })
         assertTrue(normalized.sentences.getValue(4).completed)
         assertTrue(normalized.sentences.values.all { it.schemaVersion == 2 })
         assertEquals(null, StudyBreakdownProgress(

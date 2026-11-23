@@ -5,11 +5,13 @@ import apap.oneverandah.api.StudyBuildElement
 import apap.oneverandah.api.StudyBuildElementKind
 import apap.oneverandah.api.StudyBuildState
 import apap.oneverandah.api.StudyBuildStatus
+import apap.oneverandah.api.StudyTalkAudioKind
 import apap.oneverandah.api.StudyTalkScene
 import apap.oneverandah.api.StudyTalkTurn
 import apap.oneverandah.api.StudyTalkWorld
 import kotlin.test.Test
 import kotlin.test.assertEquals
+import kotlin.test.assertTrue
 
 class StudyTalkTest {
     @Test
@@ -181,6 +183,42 @@ class StudyTalkTest {
         val malformed = completedWorld.copy(scenes = completedWorld.scenes.dropLast(1)).studyTalkBuildProgress()
         assertEquals(false, malformed.scriptReady)
         assertEquals(false, malformed.percent == 100)
+    }
+
+    @Test
+    fun `preparation checklist shows all fourteen steps and live task states`() {
+        val source = sampleTalkWorld()
+        val background = StudyBuildElement(StudyBuildElementKind.TALK_SCENE_IMAGE, sceneIndex = 0)
+        val audio = StudyBuildElement(
+            StudyBuildElementKind.TALK_AUDIO,
+            sceneIndex = 2,
+            turnIndex = 0,
+            audioKind = StudyTalkAudioKind.REPLY,
+        )
+        val state = StudyBuildState(
+            status = StudyBuildStatus.BUILDING,
+            inFlight = listOf(background),
+            failed = listOf(audio),
+        )
+
+        val steps = source.studyTalkPreparationSteps(state)
+
+        assertEquals(14, steps.size)
+        assertEquals(StudyTalkPreparationStatus.COMPLETE, steps.first().status)
+        assertEquals(StudyTalkPreparationStatus.RUNNING, steps[1].status)
+        assertEquals(StudyTalkPreparationStatus.UPCOMING, steps[2].status)
+        assertEquals(StudyTalkPreparationStatus.FAILED, steps[10].status)
+
+        val completed = source.copy(
+            scenes = source.scenes.map { scene ->
+                scene.copy(
+                    backgroundImageUrl = "background.png",
+                    turns = scene.turns.map { it.copy(characterAudioUrl = "character.mp3", replyAudioUrl = "reply.mp3") },
+                )
+            },
+            expressions = source.expressions.map { it.copy(imageUrl = "expression.png") },
+        ).studyTalkPreparationSteps(null)
+        assertTrue(completed.all { it.status == StudyTalkPreparationStatus.COMPLETE })
     }
 
     @Test

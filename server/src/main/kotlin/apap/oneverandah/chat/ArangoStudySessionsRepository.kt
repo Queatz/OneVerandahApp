@@ -186,7 +186,45 @@ class ArangoStudySessionsRepository private constructor(
         val body = buildJsonObject {
             put(
                 "query",
-                "FOR doc IN $collection FILTER doc.build.status IN [\"PREPARING\", \"BUILDING\"] RETURN doc._key",
+                """
+                FOR doc IN $collection
+                  FILTER doc.build.status IN ["PREPARING", "BUILDING"]
+                    OR (
+                      doc.build.status IN ["COMPLETE", "PARTIAL"]
+                      AND (
+                        doc.session.talkWorld == null
+                        OR LENGTH(
+                          FOR scene IN NOT_NULL(doc.session.talkWorld.scenes, [])
+                            FILTER NOT IS_STRING(scene.backgroundImageUrl)
+                              OR TRIM(TO_STRING(NOT_NULL(scene.backgroundImageUrl, ""))) == ""
+                            RETURN 1
+                        ) > 0
+                        OR LENGTH(
+                          FOR scene IN NOT_NULL(doc.session.talkWorld.scenes, [])
+                            FOR turn IN NOT_NULL(scene.turns, [])
+                            FILTER NOT IS_STRING(turn.characterAudioUrl)
+                              OR TRIM(TO_STRING(NOT_NULL(turn.characterAudioUrl, ""))) == ""
+                              OR NOT IS_STRING(turn.replyAudioUrl)
+                              OR TRIM(TO_STRING(NOT_NULL(turn.replyAudioUrl, ""))) == ""
+                            RETURN 1
+                        ) > 0
+                        OR LENGTH(
+                          FOR scene IN NOT_NULL(doc.session.talkWorld.scenes, [])
+                            FOR turn IN NOT_NULL(scene.turns, [])
+                            LET expression = FIRST(
+                              FOR item IN NOT_NULL(doc.session.talkWorld.expressions, [])
+                                FILTER item.id == turn.expressionId
+                                RETURN item
+                            )
+                            FILTER expression == null
+                              OR NOT IS_STRING(expression.imageUrl)
+                              OR TRIM(TO_STRING(NOT_NULL(expression.imageUrl, ""))) == ""
+                            RETURN 1
+                        ) > 0
+                      )
+                    )
+                  RETURN doc._key
+                """.trimIndent(),
             )
             put("bindVars", buildJsonObject {})
         }
