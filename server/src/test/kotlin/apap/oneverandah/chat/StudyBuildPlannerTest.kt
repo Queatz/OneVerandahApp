@@ -14,6 +14,10 @@ import apap.oneverandah.api.StudyChunk
 import apap.oneverandah.api.StudySentence
 import apap.oneverandah.api.StudySessionResponse
 import apap.oneverandah.api.StudyStoryCharacter
+import apap.oneverandah.api.StudyTalkExpression
+import apap.oneverandah.api.StudyTalkScene
+import apap.oneverandah.api.StudyTalkTurn
+import apap.oneverandah.api.StudyTalkWorld
 import apap.oneverandah.api.StudyToken
 import apap.oneverandah.api.StudyTokenStatus
 import kotlin.test.Test
@@ -79,6 +83,7 @@ class StudyBuildPlannerTest {
                 StudyBuildElementKind.WORD_IMAGE,
                 StudyBuildElementKind.CHUNKS,
                 StudyBuildElementKind.WORD_RECALL_SCENARIOS,
+                StudyBuildElementKind.TALK_WORLD,
             ),
             planner.plan(dissected).map { it.element.kind }.toSet(),
         )
@@ -101,6 +106,7 @@ class StudyBuildPlannerTest {
                 StudyBuildElementKind.WORD_IMAGE, StudyBuildElementKind.SENTENCE_IMAGE,
                 StudyBuildElementKind.PLAY_SCENARIOS, StudyBuildElementKind.EXAM,
                 StudyBuildElementKind.CHUNKS, StudyBuildElementKind.WORD_RECALL_SCENARIOS,
+                StudyBuildElementKind.TALK_WORLD,
             ),
             planner.plan(portraitReady).map { it.element.kind }.toSet(),
         )
@@ -142,6 +148,7 @@ class StudyBuildPlannerTest {
                     apap.oneverandah.api.StudyPlayScenario("play-1", "At a market."),
                 ),
                 examScene = tenRoundExam(),
+                talkWorld = completeTalkWorld(),
             ),
             name = "Greeting",
         )
@@ -266,6 +273,7 @@ class StudyBuildPlannerTest {
         characters: List<StudyStoryCharacter> = emptyList(),
         playScenarios: List<apap.oneverandah.api.StudyPlayScenario> = emptyList(),
         examScene: StudyExamScene? = null,
+        talkWorld: StudyTalkWorld? = null,
     ) = StudySessionResponse(
         text = text,
         textLanguageTag = "vi",
@@ -273,6 +281,7 @@ class StudyBuildPlannerTest {
         characters = characters,
         playScenarios = playScenarios,
         examScene = examScene,
+        talkWorld = talkWorld,
     )
 
     private fun tenRoundExam() = StudyExamScene(
@@ -301,6 +310,33 @@ class StudyBuildPlannerTest {
                     sourceSentence = "Xin.",
                 ),
             )
+        },
+    )
+
+    private fun completeTalkWorld() = StudyTalkWorld(
+        setting = "A friendly neighborhood",
+        scenes = List(6) { sceneIndex ->
+            StudyTalkScene(
+                id = "scene-${sceneIndex + 1}",
+                title = "Scene ${sceneIndex + 1}",
+                description = "A connected moment",
+                backgroundImageUrl = "https://img/scene-${sceneIndex + 1}",
+                turns = List(3) { turnIndex ->
+                    StudyTalkTurn(
+                        id = "turn-${turnIndex + 1}",
+                        speakerCharacterId = "main",
+                        expressionId = "main-neutral",
+                        characterLine = "Xin.",
+                        intention = "I want to say hello.",
+                        reply = "Xin.",
+                        characterAudioUrl = "https://audio/character",
+                        replyAudioUrl = "https://audio/reply",
+                    )
+                },
+            )
+        },
+        expressions = listOf("neutral", "happy", "curious", "concerned").map { emotion ->
+            StudyTalkExpression("main-$emotion", "main", emotion, "https://img/$emotion")
         },
     )
 }

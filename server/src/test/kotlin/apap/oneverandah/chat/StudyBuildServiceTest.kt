@@ -11,6 +11,10 @@ import apap.oneverandah.api.StudyExamScene
 import apap.oneverandah.api.StudyExampleSentence
 import apap.oneverandah.api.StudySentence
 import apap.oneverandah.api.StudySessionResponse
+import apap.oneverandah.api.StudyTalkScene
+import apap.oneverandah.api.StudyTalkTurn
+import apap.oneverandah.api.StudyTalkWorld
+import apap.oneverandah.api.StudyStoryCharacter
 import apap.oneverandah.api.StudyToken
 import apap.oneverandah.api.StudyTokenStatus
 import apap.oneverandah.api.StudyWordRecallLine
@@ -27,12 +31,34 @@ import java.util.concurrent.atomic.AtomicBoolean
 import java.util.concurrent.atomic.AtomicInteger
 import kotlin.test.Test
 import kotlin.test.assertEquals
+import kotlin.test.assertContains
 import kotlin.test.assertFalse
+import kotlin.test.assertFailsWith
 import kotlin.test.assertNotNull
 import kotlin.test.assertTrue
 import kotlinx.coroutines.runBlocking
 
 class StudyBuildServiceTest {
+    @Test
+    fun `talk generation rejects replies outside the study vocabulary pool`() = runBlocking {
+        val ai = FakeBuildStudyAi(CopyOnWriteArrayList(), invalidTalkReply = true)
+        val study = StudyService(aiClient = ai)
+        val failure = assertFailsWith<IllegalArgumentException> {
+            study.talkWorld(
+                StudyTalkGenerationRequest(
+                    text = "Xin chào.",
+                    textLanguageTag = "vi",
+                    languageTag = "en",
+                    sentences = listOf(
+                        StudySentence("Xin chào.", listOf(StudyToken("Xin", StudyTokenStatus.READY))),
+                    ),
+                    characters = listOf(StudyStoryCharacter("main", "Lan", "main", "A neighbor.")),
+                ),
+            )
+        }
+
+        assertContains(failure.message.orEmpty(), "study pool")
+    }
     @Test
     fun `build completes without a client and duplicate create reuses the record`() = runBlocking {
         val scope = CoroutineScope(SupervisorJob() + Dispatchers.Default)
@@ -42,7 +68,8 @@ class StudyBuildServiceTest {
         val events = CopyOnWriteArrayList<String>()
         val ai = FakeBuildStudyAi(events)
         val images = FakeBuildImageGenerator(events)
-        val (_, service) = harness(repository, devices, ai, images, scope)
+        val audioCalls = AtomicInteger()
+        val (sessions, service) = harness(repository, devices, ai, images, scope, audioCalls = audioCalls)
         try {
             val request = StudyBuildRequest(
                 text = "Please say hello in Vietnamese.",
@@ -70,6 +97,13 @@ class StudyBuildServiceTest {
             assertEquals(4, completed.session.playScenarios.size)
             assertTrue(completed.session.playScenarios.all { !it.imageUrl.isNullOrBlank() })
             assertTrue(completed.session.examScene?.let { it.beats.size == 20 } == true)
+            val talkWorld = assertNotNull(completed.session.talkWorld)
+            assertEquals(6, talkWorld.scenes.size)
+            assertTrue(talkWorld.scenes.all { it.turns.size in 3..6 && !it.backgroundImageUrl.isNullOrBlank() })
+            assertTrue(talkWorld.expressions.isNotEmpty() && talkWorld.expressions.all { !it.imageUrl.isNullOrBlank() })
+            assertTrue(talkWorld.scenes.flatMap { it.turns }.all {
+                !it.characterAudioUrl.isNullOrBlank() && !it.replyAudioUrl.isNullOrBlank()
+            })
             assertEquals(1, ai.skeletonCalls.get())
             assertTrue(images.referenceImageCalls.get() >= 5)
             assertTrue(events.indexOf("portrait-image") in 0 until events.indexOf("reference-image"))
@@ -84,6 +118,27 @@ class StudyBuildServiceTest {
             val rebuilt = awaitTerminal(service, reset.id)
             assertEquals("fr", rebuilt.languageTag)
             assertEquals(2, ai.skeletonCalls.get())
+
+            val originalWorld = assertNotNull(rebuilt.session.talkWorld)
+            val audioCallsBeforeBackfill = audioCalls.get()
+            val talkCallsBeforeBackfill = ai.talkWorldCalls.get()
+            val missingBackgroundWorld = originalWorld.copy(
+                scenes = originalWorld.scenes.mapIndexed { index, scene ->
+                    if (index == 0) scene.copy(backgroundImageUrl = null) else scene
+                },
+            )
+            sessions.sessionStore.update(reset.id) { current ->
+                current.copy(session = current.session.copy(talkWorld = missingBackgroundWorld))
+            }
+            service.create(token, request.copy(languageTag = "fr"))
+            val backfilled = awaitTerminal(service, reset.id)
+            val restoredWorld = assertNotNull(backfilled.session.talkWorld)
+            assertTrue(!restoredWorld.scenes.first().backgroundImageUrl.isNullOrBlank())
+            assertEquals(originalWorld.scenes.drop(1), restoredWorld.scenes.drop(1))
+            assertEquals(originalWorld.scenes.first().turns, restoredWorld.scenes.first().turns)
+            assertEquals(originalWorld.expressions, restoredWorld.expressions)
+            assertEquals(audioCallsBeforeBackfill, audioCalls.get())
+            assertEquals(talkCallsBeforeBackfill, ai.talkWorldCalls.get())
         } finally {
             scope.cancel()
         }
@@ -203,6 +258,7 @@ class StudyBuildServiceTest {
         images: FakeBuildImageGenerator,
         scope: CoroutineScope,
         maxAttempts: Int = 3,
+        audioCalls: AtomicInteger? = null,
     ): Pair<StudySessionsService, StudyBuildService> {
         val store = StudySessionStore(repository, scope = scope)
         val sessions = StudySessionsService(
@@ -222,6 +278,10 @@ class StudyBuildServiceTest {
             imageWorkers = 3,
             maxAttempts = maxAttempts,
             retryBackoffMillis = listOf(5L, 5L, 5L),
+            talkAudioGenerator = StudyTalkAudioGenerator { _, _ ->
+                val index = audioCalls?.incrementAndGet() ?: 1
+                "https://audio/$index"
+            },
         )
         return sessions to builder
     }
@@ -240,8 +300,10 @@ class StudyBuildServiceTest {
         private val events: MutableList<String>,
         private val translationGate: CompletableDeferred<Unit>? = null,
         private val skeletonGate: CompletableDeferred<Unit>? = null,
+        private val invalidTalkReply: Boolean = false,
     ) : StudyAiClient {
         val skeletonCalls = AtomicInteger()
+        val talkWorldCalls = AtomicInteger()
         val translationCalls = AtomicInteger()
         val translationStarted = CompletableDeferred<Unit>()
         val skeletonStarted = CompletableDeferred<Unit>()
@@ -364,6 +426,33 @@ class StudyBuildServiceTest {
             )
         }
 
+        override suspend fun generateTalkWorld(request: StudyTalkGenerationRequest): StudyTalkWorld {
+            events += "talk-world"
+            talkWorldCalls.incrementAndGet()
+            val speakerId = request.characters.first().id
+            val sourceSentence = request.sentences.first().text
+            return StudyTalkWorld(
+                setting = "A connected neighborhood story.",
+                scenes = List(6) { sceneIndex ->
+                    StudyTalkScene(
+                        id = "scene-${sceneIndex + 1}",
+                        title = "Scene ${sceneIndex + 1}",
+                        description = "A friendly moment in the neighborhood.",
+                        turns = List(3) { turnIndex ->
+                            StudyTalkTurn(
+                                id = "turn-${turnIndex + 1}",
+                                speakerCharacterId = speakerId,
+                                expressionId = "$speakerId-happy",
+                                characterLine = sourceSentence,
+                                intention = "I want to say hello.",
+                                reply = if (invalidTalkReply) "A reply outside the study pool." else sourceSentence,
+                            )
+                        },
+                    )
+                },
+            )
+        }
+
         override suspend fun evaluateWriteAttempt(request: StudyWriteCheckGenerationRequest) =
             StudyWriteFeedback("Clear.")
 
@@ -404,6 +493,8 @@ class StudyBuildServiceTest {
             StudyBuildElementKind.PORTRAIT,
             StudyBuildElementKind.SENTENCE_IMAGE,
             StudyBuildElementKind.PLAY_COVER,
+            StudyBuildElementKind.TALK_SCENE_IMAGE,
+            StudyBuildElementKind.TALK_EXPRESSION,
         )
     }
 }

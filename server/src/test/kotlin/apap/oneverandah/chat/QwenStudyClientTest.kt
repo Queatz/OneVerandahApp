@@ -21,6 +21,7 @@ import kotlin.test.Test
 import kotlin.test.assertContains
 import kotlin.test.assertEquals
 import kotlin.test.assertFailsWith
+import kotlin.test.assertTrue
 import kotlinx.coroutines.runBlocking
 import kotlinx.serialization.json.Json
 import kotlinx.serialization.json.jsonObject
@@ -788,6 +789,41 @@ class QwenStudyClientTest {
         client.close()
     }
 
+    @Test
+    fun `study Talk generation uses the regular model and bilingual study materials`() = runBlocking {
+        val requestBodies = mutableListOf<String>()
+        val engine = MockEngine { request ->
+            requestBodies += (request.body as OutgoingContent.ByteArrayContent).bytes().decodeToString()
+            respond(
+                content = qwenChatResponse(talkWorldJson()),
+                status = HttpStatusCode.OK,
+                headers = headersOf(HttpHeaders.ContentType, "application/json"),
+            )
+        }
+        val client = HttpClient(engine)
+        val ai = DashScopeStudyAiClient(qwenConfig(), client)
+
+        val world = ai.generateTalkWorld(
+            StudyTalkGenerationRequest(
+                text = "Xin chào.",
+                textLanguageTag = "vi",
+                languageTag = "en",
+                sentences = listOf(StudySentence(text = "Xin chào.", tokens = emptyList())),
+                characters = listOf(StudyStoryCharacter("main", "Lan", "main", "A neighbor.")),
+            ),
+        )
+
+        assertEquals(6, world.scenes.size)
+        assertTrue(world.scenes.all { it.turns.size == 3 })
+        assertEquals("Xin chào.", world.scenes.first().turns.first().reply)
+        assertContains(requestBodies.single(), "qwen3.8-flash")
+        assertContains(requestBodies.single(), "\"enable_thinking\":false")
+        assertContains(requestBodies.single(), "intention must be first-person self-talk in English")
+        assertContains(requestBodies.single(), "Use the study sentence structures and vocabulary")
+        assertContains(requestBodies.single(), "Full source text for theme continuity")
+        client.close()
+    }
+
     private fun examGenerationContent(callIndex: Int): String? =
         if (callIndex == 1) examSceneJson() else null
 
@@ -801,6 +837,16 @@ class QwenStudyClientTest {
             )
         }.joinToString(",")
         return """{"id":"market-scene","setting":"At the neighborhood market.","outline":[$outline],"beats":[$beats]}"""
+    }
+
+    private fun talkWorldJson(): String {
+        val scenes = (1..6).joinToString(",") { sceneIndex ->
+            val turns = (1..3).joinToString(",") { turnIndex ->
+                """{"id":"turn-$turnIndex","speakerCharacterId":"main","expressionId":"main-happy","characterLine":"Xin chào.","intention":"I want to say hello.","reply":"Xin chào."}"""
+            }
+            """{"id":"scene-$sceneIndex","title":"Scene $sceneIndex","description":"A connected neighborhood moment.","turns":[$turns]}"""
+        }
+        return """{"setting":"A friendly neighborhood.","scenes":[$scenes]}"""
     }
 
     private fun qwenConfig() = QwenChatConfig(

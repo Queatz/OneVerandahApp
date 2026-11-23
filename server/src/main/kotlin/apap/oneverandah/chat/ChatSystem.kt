@@ -1,14 +1,17 @@
 package apap.oneverandah.chat
 
+import apap.oneverandah.api.SpeechRequest
 import apap.oneverandah.config.AppConfig
 import apap.oneverandah.data.Catalog
 import apap.oneverandah.images.qwen.DashScopeQwenClient
 import apap.oneverandah.images.qwen.PlaceholderQwenClient
 import apap.oneverandah.images.qwen.QwenClient
+import apap.oneverandah.images.storage.GeneratedImage
 import apap.oneverandah.http.longRunningHttpClient
 import apap.oneverandah.http.shortHttpClient
 import apap.oneverandah.http.websocketHttpClient
 import apap.oneverandah.images.storage.StorageService
+import apap.oneverandah.images.storage.applyBinaryImageMask
 import io.ktor.client.HttpClient
 import kotlinx.coroutines.CoroutineScope
 import kotlinx.coroutines.Dispatchers
@@ -111,11 +114,30 @@ class ChatSystem(
                 } else {
                     PlaceholderQwenClient()
                 }
-                StudyPlaygroundImageGenerator { prompt, referenceImageUrls ->
-                    val generated = qwen.generate(prompt, referenceImageUrls)
-                    val folder = if (referenceImageUrls.isEmpty()) "study/playground" else "study/story"
-                    val objectKey = "$folder/${UUID.randomUUID()}.${generated.extension}"
-                    storage.upload(objectKey, generated)
+                object : StudyPlaygroundImageGenerator {
+                    override suspend fun generate(prompt: String, referenceImageUrls: List<String>): String {
+                        val generated = qwen.generate(prompt, referenceImageUrls)
+                        val folder = if (referenceImageUrls.isEmpty()) "study/playground" else "study/story"
+                        val objectKey = "$folder/${UUID.randomUUID()}.${generated.extension}"
+                        return storage.upload(objectKey, generated)
+                    }
+
+                    override suspend fun generateMaskedPortrait(
+                        prompt: String,
+                        referenceImageUrls: List<String>,
+                        maskPrompt: String,
+                    ): String {
+                        val generated = qwen.generate(prompt, referenceImageUrls)
+                        val portrait = if (qwen.kind == "placeholder") {
+                            generated
+                        } else {
+                            applyBinaryImageMask(generated, qwen.generateMask(generated, maskPrompt))
+                        }
+                        return storage.upload(
+                            "study/story/talk/characters/${UUID.randomUUID()}.${portrait.extension}",
+                            portrait,
+                        )
+                    }
                 }
             } else {
                 log.warn(
@@ -148,12 +170,35 @@ class ChatSystem(
                     log.info("TTS speech cache enabled at {}", File(config.ttsCacheDir).absolutePath)
                 },
             )
+            val talkAudioGenerator = storage?.let { assetStorage ->
+                StudyTalkAudioGenerator { text, languageTag ->
+                    val speech = requireNotNull(
+                        speechService.synthesize(SpeechRequest(text = text, languageTag = languageTag)),
+                    ) { "Talk audio synthesis returned no audio" }
+                    val extension = when (speech.contentType.substringBefore(';').lowercase()) {
+                        "audio/mpeg", "audio/mp3", "audio/x-mpeg" -> "mp3"
+                        "audio/wav", "audio/x-wav" -> "wav"
+                        "audio/ogg" -> "ogg"
+                        "audio/webm" -> "webm"
+                        else -> "bin"
+                    }
+                    assetStorage.upload(
+                        "study/talk/audio/${UUID.randomUUID()}.$extension",
+                        GeneratedImage(
+                            bytes = speech.bytes,
+                            contentType = speech.contentType,
+                            extension = extension,
+                        ),
+                    )
+                }
+            }
             val studyBuildService = StudyBuildService(
                 repository = studySessionsRepository,
                 deviceService = deviceService,
                 sessionsService = studySessionsService,
                 studyService = studyService,
                 speechService = speechService,
+                talkAudioGenerator = talkAudioGenerator,
                 scope = scope,
                 config = config,
             )

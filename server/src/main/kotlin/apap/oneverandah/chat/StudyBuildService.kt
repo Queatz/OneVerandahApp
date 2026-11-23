@@ -38,14 +38,19 @@ class StudyBuildService(
     private val idGenerator: () -> String = { UUID.randomUUID().toString() },
     private val clock: () -> Long = System::currentTimeMillis,
     speechService: SpeechService? = null,
+    talkAudioGenerator: StudyTalkAudioGenerator? = null,
 ) {
     private val store = sessionsService.sessionStore
     private val attemptLimit = maxAttempts.coerceAtLeast(1)
-    private val planner = StudyBuildPlanner(attemptLimit)
+    private val planner = StudyBuildPlanner(
+        maxAttempts = attemptLimit,
+        supportsTalkImages = studyService.supportsTalkImages,
+        supportsTalkAudio = talkAudioGenerator != null,
+    )
     private val planningLocks = ConcurrentHashMap<String, Mutex>()
     private val queue = StudyBuildQueue(
         store = store,
-        executor = StudyBuildTasks(store, studyService, sessionsService, speechService),
+        executor = StudyBuildTasks(store, studyService, sessionsService, speechService, talkAudioGenerator),
         scope = scope,
         textWorkers = textWorkers,
         imageWorkers = imageWorkers,
@@ -65,6 +70,7 @@ class StudyBuildService(
         idGenerator: () -> String = { UUID.randomUUID().toString() },
         clock: () -> Long = System::currentTimeMillis,
         speechService: SpeechService? = null,
+        talkAudioGenerator: StudyTalkAudioGenerator? = null,
     ) : this(
         repository = repository,
         deviceService = deviceService,
@@ -77,6 +83,7 @@ class StudyBuildService(
         idGenerator = idGenerator,
         clock = clock,
         speechService = speechService,
+        talkAudioGenerator = talkAudioGenerator,
     )
 
     suspend fun create(rawDeviceToken: String?, rawRequest: StudyBuildRequest): SavedStudySession {
@@ -138,7 +145,11 @@ class StudyBuildService(
             planner.plan(record).any {
                 it.element.kind == StudyBuildElementKind.EXAMPLE_DISSECT ||
                         it.element.kind == StudyBuildElementKind.CHUNKS ||
-                        it.element.kind == StudyBuildElementKind.WORD_RECALL_SCENARIOS
+                        it.element.kind == StudyBuildElementKind.WORD_RECALL_SCENARIOS ||
+                        it.element.kind == StudyBuildElementKind.TALK_WORLD ||
+                        it.element.kind == StudyBuildElementKind.TALK_SCENE_IMAGE ||
+                        it.element.kind == StudyBuildElementKind.TALK_EXPRESSION ||
+                        it.element.kind == StudyBuildElementKind.TALK_AUDIO
             }
         ) {
             record = store.update(key, immediate = true) { current ->

@@ -91,8 +91,9 @@ class StudyBuildRoutesTest {
             scope = scope,
             textWorkers = 1,
             imageWorkers = 1,
-            maxAttempts = 1,
+            maxAttempts = 3,
             retryBackoffMillis = listOf(1L),
+            talkAudioGenerator = StudyTalkAudioGenerator { text, _ -> "https://audio/${text.hashCode()}" },
         )
         val ownerGrade = StudyExamGrade(4, 5, 3, "Owner grade.", 100L)
         sessions.sessionStore.create(
@@ -164,7 +165,12 @@ class StudyBuildRoutesTest {
             assertTrue(createdSession.id.isNotBlank())
             assertTrue(createdSession.build != null)
             assertTrue(createdSession.session.sentences.isEmpty())
-            assertEquals(StudyBuildStatus.COMPLETE, awaitTerminal(builds, createdSession.id).build?.status)
+            val createdComplete = awaitTerminal(builds, createdSession.id)
+            assertEquals(
+                StudyBuildStatus.COMPLETE,
+                createdComplete.build?.status,
+                "Failed elements: ${createdComplete.build?.failed}",
+            )
 
             val stream = client.get("/api/chat/study/sessions/complete-session/events") {
                 header(DEVICE_TOKEN_HEADER, token)
@@ -181,6 +187,12 @@ class StudyBuildRoutesTest {
             assertEquals("complete-session", (events.first() as StudyBuildEvent.Snapshot).session.id)
             assertEquals(ownerGrade, (events.first() as StudyBuildEvent.Snapshot).session.examGrade)
             assertEquals(StudyBuildEvent.Done, events.last())
+            assertTrue(events.any { it is StudyBuildEvent.TalkWorld })
+            val backfilledWorld = requireNotNull(awaitTerminal(builds, "complete-session").session.talkWorld)
+            assertEquals(6, backfilledWorld.scenes.size)
+            assertTrue(backfilledWorld.scenes.all { scene ->
+                !scene.backgroundImageUrl.isNullOrBlank() && scene.turns.all { !it.characterAudioUrl.isNullOrBlank() }
+            })
 
             val foreignStream = client.get("/api/chat/study/sessions/complete-session/events") {
                 header(DEVICE_TOKEN_HEADER, otherToken)
@@ -246,6 +258,7 @@ class StudyBuildRoutesTest {
             textWorkers = 1,
             imageWorkers = 1,
             retryBackoffMillis = listOf(1L),
+            talkAudioGenerator = StudyTalkAudioGenerator { text, _ -> "https://audio/${text.hashCode()}" },
         )
         application {
             install(ContentNegotiation) { json(json) }

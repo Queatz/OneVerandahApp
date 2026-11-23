@@ -5,6 +5,7 @@ import apap.oneverandah.api.StudyBuildElementKind
 import apap.oneverandah.api.StudyBuildStatus
 import apap.oneverandah.api.StudyTokenStatus
 import apap.oneverandah.api.isTenRoundExam
+import apap.oneverandah.api.StudyTalkAudioKind
 
 enum class StudyBuildTaskPool { TEXT, IMAGE }
 
@@ -22,6 +23,8 @@ data class StudyBuildTask(
             StudyBuildElementKind.WORD_IMAGE,
             StudyBuildElementKind.SENTENCE_IMAGE,
             StudyBuildElementKind.PLAY_COVER,
+            StudyBuildElementKind.TALK_SCENE_IMAGE,
+            StudyBuildElementKind.TALK_EXPRESSION,
                 -> StudyBuildTaskPool.IMAGE
 
             else -> StudyBuildTaskPool.TEXT
@@ -34,7 +37,11 @@ data class StudyBuildTask(
         }
 }
 
-class StudyBuildPlanner(private val maxAttempts: Int = 3) {
+class StudyBuildPlanner(
+    private val maxAttempts: Int = 3,
+    private val supportsTalkImages: Boolean = true,
+    private val supportsTalkAudio: Boolean = true,
+) {
     fun plan(record: SavedStudySessionRecord): List<StudyBuildTask> =
         pendingElements(record)
             .filter { element ->
@@ -52,7 +59,8 @@ class StudyBuildPlanner(private val maxAttempts: Int = 3) {
     private fun pendingElements(record: SavedStudySessionRecord): List<StudyBuildElement> {
         val state = record.build ?: return emptyList()
         if (state.status == StudyBuildStatus.COMPLETE || state.status == StudyBuildStatus.PARTIAL) {
-            return pendingChunkBuilds(record) + pendingExampleDissections(record) + pendingWordRecallScenarios(record)
+            return pendingChunkBuilds(record) + pendingExampleDissections(record) +
+                    pendingWordRecallScenarios(record) + pendingTalkBuilds(record)
         }
 
         if (record.session.sentences.isEmpty()) {
@@ -160,7 +168,58 @@ class StudyBuildPlanner(private val maxAttempts: Int = 3) {
         if (dissectionsSettled && castSettled && record.session.examScene?.isTenRoundExam() != true) {
             elements += StudyBuildElement(StudyBuildElementKind.EXAM)
         }
+        if (dissectionsSettled && charactersDesigned) elements += pendingTalkBuilds(record)
 
+        return elements
+    }
+
+    private fun pendingTalkBuilds(record: SavedStudySessionRecord): List<StudyBuildElement> {
+        val session = record.session
+        if (session.sentences.isEmpty() || session.characters.isEmpty()) return emptyList()
+        val world = session.talkWorld ?: return listOf(StudyBuildElement(StudyBuildElementKind.TALK_WORLD))
+        val elements = mutableListOf<StudyBuildElement>()
+        val characterById = session.characters.associateBy { it.id }
+        if (supportsTalkImages && session.characters.all { !it.imageUrl.isNullOrBlank() }) {
+            world.scenes.forEachIndexed { sceneIndex, scene ->
+                if (scene.backgroundImageUrl.isNullOrBlank()) {
+                    elements += StudyBuildElement(
+                        StudyBuildElementKind.TALK_SCENE_IMAGE,
+                        sceneIndex = sceneIndex,
+                    )
+                }
+            }
+            world.expressions.forEach { expression ->
+                val character = characterById[expression.characterId]
+                if (character != null && !character.imageUrl.isNullOrBlank() && expression.imageUrl.isNullOrBlank()) {
+                    elements += StudyBuildElement(
+                        StudyBuildElementKind.TALK_EXPRESSION,
+                        expressionId = expression.id,
+                    )
+                }
+            }
+        }
+        if (supportsTalkAudio) {
+            world.scenes.forEachIndexed { sceneIndex, scene ->
+                scene.turns.forEachIndexed { turnIndex, turn ->
+                    if (turn.characterAudioUrl.isNullOrBlank()) {
+                        elements += StudyBuildElement(
+                            kind = StudyBuildElementKind.TALK_AUDIO,
+                            sceneIndex = sceneIndex,
+                            turnIndex = turnIndex,
+                            audioKind = StudyTalkAudioKind.CHARACTER_LINE,
+                        )
+                    }
+                    if (turn.replyAudioUrl.isNullOrBlank()) {
+                        elements += StudyBuildElement(
+                            kind = StudyBuildElementKind.TALK_AUDIO,
+                            sceneIndex = sceneIndex,
+                            turnIndex = turnIndex,
+                            audioKind = StudyTalkAudioKind.REPLY,
+                        )
+                    }
+                }
+            }
+        }
         return elements
     }
 

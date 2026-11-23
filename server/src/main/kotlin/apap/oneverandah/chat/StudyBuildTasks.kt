@@ -10,7 +10,10 @@ import apap.oneverandah.api.StudyExamSceneRequest
 import apap.oneverandah.api.StudyPlayScenariosRequest
 import apap.oneverandah.api.StudySentenceImageRequest
 import apap.oneverandah.api.StudySessionRequest
+import apap.oneverandah.api.StudyStoryCharacter
 import apap.oneverandah.api.StudyTokenStatus
+import apap.oneverandah.api.StudyTalkAudioKind
+import apap.oneverandah.api.StudyTalkTurn
 import apap.oneverandah.api.isTenRoundExam
 import apap.oneverandah.model.Language
 import org.slf4j.LoggerFactory
@@ -24,6 +27,7 @@ class StudyBuildTasks(
     private val studyService: StudyService,
     private val studySessionsService: StudySessionsService,
     private val speechService: SpeechService? = null,
+    private val talkAudioGenerator: StudyTalkAudioGenerator? = null,
 ) : StudyBuildTaskExecutor {
     private val log = LoggerFactory.getLogger(StudyBuildTasks::class.java)
     override suspend fun execute(task: StudyBuildTask) {
@@ -45,6 +49,10 @@ class StudyBuildTasks(
             StudyBuildElementKind.PLAY_SCENARIOS -> designPlayScenarios(record)
             StudyBuildElementKind.PLAY_COVER -> renderPlayCover(record, task)
             StudyBuildElementKind.EXAM -> generateExam(record)
+            StudyBuildElementKind.TALK_WORLD -> generateTalkWorld(record)
+            StudyBuildElementKind.TALK_SCENE_IMAGE -> renderTalkSceneImage(record, task)
+            StudyBuildElementKind.TALK_EXPRESSION -> renderTalkExpression(record, task)
+            StudyBuildElementKind.TALK_AUDIO -> renderTalkAudio(record, task)
         }
     }
 
@@ -395,6 +403,176 @@ class StudyBuildTasks(
         }
     }
 
+    private suspend fun generateTalkWorld(record: SavedStudySessionRecord) {
+        if (record.session.talkWorld != null) return
+        val world = studyService.talkWorld(
+            StudyTalkGenerationRequest(
+                text = record.text,
+                textLanguageTag = record.textLanguageTag,
+                languageTag = record.languageTag,
+                sentences = record.session.sentences,
+                characters = record.session.characters,
+            ),
+        )
+        val updated = store.update(record.id) { current ->
+            if (!sameTalkGenerationInput(current, record)) return@update current
+            if (current.session.talkWorld != null) return@update current
+            current.copy(session = current.session.copy(talkWorld = world))
+        } ?: return
+        updated.session.talkWorld?.let { store.publish(record.id, StudyBuildEvent.TalkWorld(it)) }
+    }
+
+    private suspend fun renderTalkSceneImage(record: SavedStudySessionRecord, task: StudyBuildTask) {
+        val sceneIndex = requireNotNull(task.element.sceneIndex)
+        val world = record.session.talkWorld ?: return
+        val scene = world.scenes.getOrNull(sceneIndex) ?: return
+        if (!scene.backgroundImageUrl.isNullOrBlank()) return
+        val imageUrl = studyService.renderTalkSceneBackground(world, scene, record.session.characters)
+        val updated = store.update(record.id) { current ->
+            val currentWorld = current.session.talkWorld ?: return@update current
+            val currentScene = currentWorld.scenes.getOrNull(sceneIndex) ?: return@update current
+            if (
+                currentWorld.setting != world.setting ||
+                currentScene.id != scene.id ||
+                currentScene.title != scene.title ||
+                currentScene.description != scene.description ||
+                !sameTalkTurns(currentScene.turns, scene.turns) ||
+                !sameTalkCharacterInputs(current.session.characters, record.session.characters, includePortrait = true)
+            ) return@update current
+            if (!currentScene.backgroundImageUrl.isNullOrBlank()) return@update current
+            current.copy(
+                session = current.session.copy(
+                    talkWorld = currentWorld.copy(
+                        scenes = currentWorld.scenes.mapIndexed { index, item ->
+                            if (index == sceneIndex) item.copy(backgroundImageUrl = imageUrl) else item
+                        },
+                    ),
+                ),
+            )
+        } ?: return
+        updated.session.talkWorld?.let { store.publish(record.id, StudyBuildEvent.TalkWorld(it)) }
+    }
+
+    private suspend fun renderTalkExpression(record: SavedStudySessionRecord, task: StudyBuildTask) {
+        val expressionId = requireNotNull(task.element.expressionId)
+        val world = record.session.talkWorld ?: return
+        val expression = world.expressions.firstOrNull { it.id == expressionId } ?: return
+        if (!expression.imageUrl.isNullOrBlank()) return
+        val character = record.session.characters.firstOrNull { it.id == expression.characterId } ?: return
+        val imageUrl = studyService.renderTalkExpression(expression, character)
+        val updated = store.update(record.id) { current ->
+            val currentWorld = current.session.talkWorld ?: return@update current
+            val currentExpression = currentWorld.expressions.firstOrNull { it.id == expressionId } ?: return@update current
+            val currentCharacter = current.session.characters.firstOrNull { it.id == character.id }
+            if (
+                currentExpression.characterId != expression.characterId ||
+                currentExpression.emotion != expression.emotion ||
+                !sameTalkCharacterInputs(listOfNotNull(currentCharacter), listOf(character), includePortrait = true)
+            ) return@update current
+            if (!currentExpression.imageUrl.isNullOrBlank()) return@update current
+            current.copy(
+                session = current.session.copy(
+                    talkWorld = currentWorld.copy(
+                        expressions = currentWorld.expressions.map { item ->
+                            if (item.id == expressionId) item.copy(imageUrl = imageUrl) else item
+                        },
+                    ),
+                ),
+            )
+        } ?: return
+        updated.session.talkWorld?.let { store.publish(record.id, StudyBuildEvent.TalkWorld(it)) }
+    }
+
+    private suspend fun renderTalkAudio(record: SavedStudySessionRecord, task: StudyBuildTask) {
+        val sceneIndex = requireNotNull(task.element.sceneIndex)
+        val turnIndex = requireNotNull(task.element.turnIndex)
+        val audioKind = requireNotNull(task.element.audioKind)
+        val world = record.session.talkWorld ?: return
+        val turn = world.scenes.getOrNull(sceneIndex)?.turns?.getOrNull(turnIndex) ?: return
+        val currentUrl = when (audioKind) {
+            StudyTalkAudioKind.CHARACTER_LINE -> turn.characterAudioUrl
+            StudyTalkAudioKind.REPLY -> turn.replyAudioUrl
+        }
+        if (!currentUrl.isNullOrBlank()) return
+        val text = when (audioKind) {
+            StudyTalkAudioKind.CHARACTER_LINE -> turn.characterLine
+            StudyTalkAudioKind.REPLY -> turn.reply
+        }
+        val audioUrl = requireNotNull(talkAudioGenerator) { "Study Talk audio storage is not configured" }
+            .generate(text, record.textLanguageTag)
+        val updated = store.update(record.id) { current ->
+            if (current.languageTag != record.languageTag || current.textLanguageTag != record.textLanguageTag) {
+                return@update current
+            }
+            val currentWorld = current.session.talkWorld ?: return@update current
+            val currentScene = currentWorld.scenes.getOrNull(sceneIndex) ?: return@update current
+            val currentTurn = currentScene.turns.getOrNull(turnIndex) ?: return@update current
+            if (!sameTalkTurns(listOf(currentTurn), listOf(turn))) return@update current
+            val alreadyGenerated = when (audioKind) {
+                StudyTalkAudioKind.CHARACTER_LINE -> currentTurn.characterAudioUrl
+                StudyTalkAudioKind.REPLY -> currentTurn.replyAudioUrl
+            }
+            if (!alreadyGenerated.isNullOrBlank()) return@update current
+            current.copy(
+                session = current.session.copy(
+                    talkWorld = currentWorld.copy(
+                        scenes = currentWorld.scenes.mapIndexed { index, item ->
+                            if (index != sceneIndex) item else item.copy(
+                                turns = item.turns.mapIndexed { indexInScene, currentItem ->
+                                    if (indexInScene != turnIndex) currentItem else when (audioKind) {
+                                        StudyTalkAudioKind.CHARACTER_LINE -> currentItem.copy(characterAudioUrl = audioUrl)
+                                        StudyTalkAudioKind.REPLY -> currentItem.copy(replyAudioUrl = audioUrl)
+                                    }
+                                },
+                            )
+                        },
+                    ),
+                ),
+            )
+        } ?: return
+        updated.session.talkWorld?.let { store.publish(record.id, StudyBuildEvent.TalkWorld(it)) }
+    }
+
+    private fun sameTalkGenerationInput(current: SavedStudySessionRecord, source: SavedStudySessionRecord): Boolean =
+        current.text == source.text &&
+                current.textLanguageTag == source.textLanguageTag &&
+                current.languageTag == source.languageTag &&
+                sameTalkSentenceInputs(current.session.sentences, source.session.sentences) &&
+                sameTalkCharacterInputs(current.session.characters, source.session.characters, includePortrait = false)
+
+    private fun sameTalkSentenceInputs(
+        current: List<apap.oneverandah.api.StudySentence>,
+        source: List<apap.oneverandah.api.StudySentence>,
+    ): Boolean = current.size == source.size && current.zip(source).all { (left, right) ->
+        left.text == right.text && left.translation == right.translation &&
+                left.tokens.size == right.tokens.size && left.tokens.zip(right.tokens).all { (leftToken, rightToken) ->
+            leftToken.text == rightToken.text &&
+                    leftToken.status == rightToken.status &&
+                    leftToken.literalMeaning == rightToken.literalMeaning &&
+                    leftToken.register == rightToken.register &&
+                    leftToken.contextualMeaning == rightToken.contextualMeaning &&
+                    leftToken.nearSynonyms == rightToken.nearSynonyms &&
+                    leftToken.exampleSentences == rightToken.exampleSentences &&
+                    leftToken.needConversation == rightToken.needConversation
+        }
+    }
+
+    private fun sameTalkCharacterInputs(
+        current: List<StudyStoryCharacter>,
+        source: List<StudyStoryCharacter>,
+        includePortrait: Boolean,
+    ): Boolean = current.size == source.size && current.zip(source).all { (left, right) ->
+        left.id == right.id && left.name == right.name && left.role == right.role && left.description == right.description &&
+                (!includePortrait || left.imageUrl == right.imageUrl)
+    }
+
+    private fun sameTalkTurns(current: List<StudyTalkTurn>, source: List<StudyTalkTurn>): Boolean =
+        current.size == source.size && current.zip(source).all { (left, right) ->
+            left.id == right.id && left.speakerCharacterId == right.speakerCharacterId &&
+                    left.expressionId == right.expressionId && left.characterLine == right.characterLine &&
+                    left.intention == right.intention && left.reply == right.reply
+        }
+
     private fun isComplete(record: SavedStudySessionRecord, task: StudyBuildTask): Boolean = when (task.element.kind) {
         StudyBuildElementKind.PREPARE -> record.buildRequest == null
         StudyBuildElementKind.SKELETON -> record.session.sentences.isNotEmpty()
@@ -435,5 +613,20 @@ class StudyBuildTasks(
             .firstOrNull { it.id == task.element.scenarioId }?.imageUrl.isNullOrBlank()
 
         StudyBuildElementKind.EXAM -> record.session.examScene?.isTenRoundExam() == true
+        StudyBuildElementKind.TALK_WORLD -> record.session.talkWorld != null
+        StudyBuildElementKind.TALK_SCENE_IMAGE -> !record.session.talkWorld?.scenes
+            ?.getOrNull(task.element.sceneIndex ?: -1)?.backgroundImageUrl.isNullOrBlank()
+        StudyBuildElementKind.TALK_EXPRESSION -> !record.session.talkWorld?.expressions
+            ?.firstOrNull { it.id == task.element.expressionId }?.imageUrl.isNullOrBlank()
+        StudyBuildElementKind.TALK_AUDIO -> {
+            val turn = record.session.talkWorld?.scenes?.getOrNull(task.element.sceneIndex ?: -1)
+                ?.turns?.getOrNull(task.element.turnIndex ?: -1)
+            val url = when (task.element.audioKind) {
+                StudyTalkAudioKind.CHARACTER_LINE -> turn?.characterAudioUrl
+                StudyTalkAudioKind.REPLY -> turn?.replyAudioUrl
+                null -> null
+            }
+            !url.isNullOrBlank()
+        }
     }
 }

@@ -10,6 +10,10 @@ import apap.oneverandah.api.StudyPlaySpeaker
 import apap.oneverandah.api.StudySentence
 import apap.oneverandah.api.StudySessionResponse
 import apap.oneverandah.api.StudyStoryCharacter
+import apap.oneverandah.api.StudyTalkExpression
+import apap.oneverandah.api.StudyTalkScene
+import apap.oneverandah.api.StudyTalkTurn
+import apap.oneverandah.api.StudyTalkWorld
 import apap.oneverandah.api.StudyToken
 import apap.oneverandah.api.StudyTokenStatus
 import apap.oneverandah.api.StudyWordRecallLine
@@ -20,6 +24,30 @@ class StudySessionMergeTest {
     @Test
     fun `stale client save cannot downgrade server fields and keeps longer play history`() {
         val exam = StudyExamScene(id = "server-exam", setting = "At the market.")
+        val talkWorld = StudyTalkWorld(
+            setting = "Server setting",
+            scenes = listOf(
+                StudyTalkScene(
+                    id = "scene-1",
+                    title = "Server scene",
+                    description = "Server story",
+                    backgroundImageUrl = "https://img/background",
+                    turns = listOf(
+                        StudyTalkTurn(
+                            id = "turn-1",
+                            speakerCharacterId = "main",
+                            expressionId = "main-happy",
+                            characterLine = "Xin chào.",
+                            intention = "I want to say hello.",
+                            reply = "Xin chào.",
+                            characterAudioUrl = "https://audio/character",
+                            replyAudioUrl = "https://audio/reply",
+                        ),
+                    ),
+                ),
+            ),
+            expressions = listOf(StudyTalkExpression("main-happy", "main", "happy", "https://img/expression")),
+        )
         val build = StudyBuildState(status = StudyBuildStatus.BUILDING, attempts = mapOf("DISSECT:0" to 1))
         val serverMessage = StudyPlayChatMessage(
             speaker = StudyPlaySpeaker.OTHER,
@@ -75,6 +103,7 @@ class StudySessionMergeTest {
                 ),
                 practiceSentences = listOf(StudyExampleSentence("Server practice.", "Old practice.")),
                 examScene = exam,
+                talkWorld = talkWorld,
             ),
             build = build,
         )
@@ -111,6 +140,10 @@ class StudySessionMergeTest {
                     ),
                 ),
                 practiceSentences = listOf(StudyExampleSentence("Client practice.", "New practice.")),
+                talkWorld = talkWorld.copy(
+                    setting = "Stale client setting",
+                    scenes = talkWorld.scenes.map { it.copy(backgroundImageUrl = "https://img/stale-background") },
+                ),
             ),
         )
 
@@ -142,6 +175,7 @@ class StudySessionMergeTest {
         assertEquals("https://img/message", scenario.messages.first().imageUrl)
         assertEquals(incoming.session.practiceSentences, merged.session.practiceSentences)
         assertEquals(exam, merged.session.examScene)
+        assertEquals(talkWorld, merged.session.talkWorld)
         assertEquals(build, merged.build)
         assertEquals(stored.createdAt, merged.createdAt)
     }
@@ -164,6 +198,7 @@ class StudySessionMergeTest {
                         ),
                     ),
                 ),
+                talkWorld = StudyTalkWorld("Old world", emptyList()),
             ),
             build = StudyBuildState(status = StudyBuildStatus.COMPLETE),
         )
@@ -177,6 +212,7 @@ class StudySessionMergeTest {
                         tokens = listOf(StudyToken(text = "Hello", status = StudyTokenStatus.PENDING)),
                     ),
                 ),
+                talkWorld = StudyTalkWorld("Stale client world", emptyList()),
             ),
             languageTag = "fr",
         )
@@ -184,6 +220,25 @@ class StudySessionMergeTest {
         val merged = StudySessionMerge.mergeClientSave(stored, incoming)
 
         assertEquals(StudyTokenStatus.PENDING, merged.session.sentences.single().tokens.single().status)
+        assertEquals(null, merged.build)
+        assertEquals(null, merged.session.talkWorld)
+    }
+
+    @Test
+    fun `same language save with changed text clears stale Talk world`() {
+        val oldWorld = StudyTalkWorld("Old lesson", emptyList())
+        val stored = record(
+            StudySessionResponse("Old text", "vi", emptyList(), talkWorld = oldWorld),
+            build = StudyBuildState(status = StudyBuildStatus.COMPLETE),
+        )
+        val incoming = record(
+            StudySessionResponse("New text", "vi", emptyList(), talkWorld = oldWorld),
+        )
+
+        val merged = StudySessionMerge.mergeClientSave(stored, incoming)
+
+        assertEquals("New text", merged.text)
+        assertEquals(null, merged.session.talkWorld)
         assertEquals(null, merged.build)
     }
 

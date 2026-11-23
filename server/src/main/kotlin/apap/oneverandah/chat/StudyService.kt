@@ -48,6 +48,13 @@ import apap.oneverandah.api.StudyStoryCharactersRequest
 import apap.oneverandah.api.StudyStoryCharactersResponse
 import apap.oneverandah.api.StudyToken
 import apap.oneverandah.api.StudyTokenStatus
+import apap.oneverandah.api.StudyTalkExpression
+import apap.oneverandah.api.StudyTalkScene
+import apap.oneverandah.api.StudyTalkTurn
+import apap.oneverandah.api.StudyTalkWorld
+import apap.oneverandah.api.STUDY_TALK_MAX_TURNS_PER_SCENE
+import apap.oneverandah.api.STUDY_TALK_MIN_TURNS_PER_SCENE
+import apap.oneverandah.api.STUDY_TALK_SCENE_COUNT
 import apap.oneverandah.api.StudyWordRecallLine
 import apap.oneverandah.api.StudyWordImageRequest
 import apap.oneverandah.api.StudyWordImageResponse
@@ -234,6 +241,14 @@ data class StudyExpressGenerateGenerationRequest(
     val previousSentences: List<String> = emptyList(),
 )
 
+data class StudyTalkGenerationRequest(
+    val text: String,
+    val textLanguageTag: String,
+    val languageTag: String,
+    val sentences: List<StudySentence>,
+    val characters: List<StudyStoryCharacter>,
+)
+
 /** Designed cast member before portrait jobs are attached. */
 data class StudyCharacterDesign(
     val id: String,
@@ -248,6 +263,16 @@ data class StudyCharacterDesign(
  */
 fun interface StudyPlaygroundImageGenerator {
     suspend fun generate(prompt: String, referenceImageUrls: List<String>): String
+
+    suspend fun generateMaskedPortrait(
+        prompt: String,
+        referenceImageUrls: List<String>,
+        maskPrompt: String,
+    ): String = generate("$prompt\n\n$maskPrompt", referenceImageUrls)
+}
+
+fun interface StudyTalkAudioGenerator {
+    suspend fun generate(text: String, languageTag: String): String
 }
 
 interface StudyAiClient {
@@ -304,6 +329,9 @@ interface StudyAiClient {
     suspend fun generateExamScene(request: StudyExamSceneGenerationRequest): StudyExamScene =
         throw UnsupportedOperationException("Study exam scene generation is not supported")
 
+    suspend fun generateTalkWorld(request: StudyTalkGenerationRequest): StudyTalkWorld =
+        fallbackStudyTalkWorld(request)
+
     suspend fun evaluateExamBeat(request: StudyExamBeatJudgmentRequest): StudyExamJudgment =
         StudyExamJudgment(points = 0, feedback = "")
 
@@ -323,6 +351,8 @@ class StudyService(
     private val clock: () -> Long = System::currentTimeMillis,
 ) {
     private val log = LoggerFactory.getLogger(StudyService::class.java)
+
+    val supportsTalkImages: Boolean get() = imageGenerator != null
 
     /** Shared async job store for playground stills, character portraits, and sentence visuals. */
     private val studyImages = ConcurrentHashMap<String, StudyPlaygroundImageResponse>()
@@ -808,6 +838,111 @@ class StudyService(
         }
         val references = request.characters.mapNotNull { it.imageUrl?.trim()?.takeIf(String::isNotEmpty) }
         return renderStudyImage(playCoverPrompt(request, scenario), references, "play scenario cover")
+    }
+
+    suspend fun talkWorld(request: StudyTalkGenerationRequest): StudyTalkWorld {
+        val generated = aiClient.generateTalkWorld(request)
+        val characters = request.characters.ifEmpty {
+            defaultStoryCharacters(request.text).map { design ->
+                StudyStoryCharacter(
+                    id = design.id,
+                    name = design.name,
+                    role = design.role,
+                    description = design.description,
+                )
+            }
+        }
+        val emotions = listOf("neutral", "happy", "curious", "concerned")
+        val expressions = characters.flatMap { character ->
+            emotions.map { emotion ->
+                StudyTalkExpression(
+                    id = "${character.id}-$emotion",
+                    characterId = character.id,
+                    emotion = emotion,
+                )
+            }
+        }
+        val knownCharacters = characters.map { it.id }.toSet()
+        val vocabulary = request.sentences.flatMap { sentence ->
+            sentence.tokens.filter { it.status != StudyTokenStatus.PLAIN }.map { it.text.trim() }
+        }.filter { it.isNotEmpty() }
+        require(generated.scenes.size == STUDY_TALK_SCENE_COUNT) {
+            "Study Talk requires exactly $STUDY_TALK_SCENE_COUNT scenes"
+        }
+        val scenes = generated.scenes.mapIndexed { sceneIndex, scene ->
+            require(scene.turns.size in STUDY_TALK_MIN_TURNS_PER_SCENE..STUDY_TALK_MAX_TURNS_PER_SCENE) {
+                "Study Talk scene ${sceneIndex + 1} must contain $STUDY_TALK_MIN_TURNS_PER_SCENE..$STUDY_TALK_MAX_TURNS_PER_SCENE turns"
+            }
+            require(scene.title.isNotBlank() && scene.description.isNotBlank()) {
+                "Study Talk scene ${sceneIndex + 1} requires a title and description"
+            }
+            val turns = scene.turns.mapIndexed { turnIndex, turn ->
+                require(turn.characterLine.isNotBlank() && turn.intention.isNotBlank() && turn.reply.isNotBlank()) {
+                    "Study Talk turn ${sceneIndex + 1}.${turnIndex + 1} contains a blank line"
+                }
+                val speakerId = turn.speakerCharacterId.takeIf { it in knownCharacters }
+                    ?: characters.first().id
+                val emotion = turn.expressionId.substringAfterLast('-').lowercase()
+                    .takeIf { it in emotions } ?: "neutral"
+                require(
+                    vocabulary.isEmpty() ||
+                            vocabulary.any { turn.characterLine.contains(it, ignoreCase = true) } &&
+                            vocabulary.any { turn.reply.contains(it, ignoreCase = true) },
+                ) {
+                    "Study Talk exchange ${sceneIndex + 1}.${turnIndex + 1} must use a word from the study pool"
+                }
+                turn.copy(
+                    id = "scene-${sceneIndex + 1}-turn-${turnIndex + 1}",
+                    speakerCharacterId = speakerId,
+                    expressionId = "$speakerId-$emotion",
+                )
+            }
+            scene.copy(id = "scene-${sceneIndex + 1}", turns = turns)
+        }
+        return generated.copy(
+            setting = generated.setting.trim().ifBlank { "A connected neighborhood story" },
+            scenes = scenes,
+            expressions = expressions,
+        )
+    }
+
+    suspend fun renderTalkSceneBackground(
+        world: StudyTalkWorld,
+        scene: StudyTalkScene,
+        characters: List<StudyStoryCharacter>,
+    ): String =
+        renderStudyImage(
+            prompt = talkSceneBackgroundPrompt(world, scene),
+            referenceImageUrls = characters.mapNotNull { it.imageUrl?.takeIf(String::isNotBlank) },
+            label = "Talk scene background (${scene.title})",
+        )
+
+    suspend fun renderTalkExpression(
+        expression: StudyTalkExpression,
+        character: StudyStoryCharacter,
+    ): String {
+        val prompt = talkExpressionPrompt(character, expression.emotion)
+        return requireNotNull(imageGenerator) { "Study images are not configured" }.generateMaskedPortrait(
+            prompt = prompt,
+            referenceImageUrls = listOfNotNull(character.imageUrl?.takeIf { it.isNotBlank() }),
+            maskPrompt = STUDY_PERSON_MASK_PROMPT,
+        )
+    }
+
+    private fun talkSceneBackgroundPrompt(world: StudyTalkWorld, scene: StudyTalkScene): String = buildString {
+        appendLine("Create a cinematic visual-novel background plate for a language-learning story.")
+        appendLine("World: ${world.setting}")
+        appendLine("Scene: ${scene.title}. ${scene.description}")
+        appendLine("Show the environment only: no people, no characters, no text, no speech bubbles.")
+        appendLine("Wide landscape composition, warm illustrated realism, clear depth and readable space for character overlays.")
+    }
+
+    private fun talkExpressionPrompt(character: StudyStoryCharacter, emotion: String): String = buildString {
+        appendLine("Create a full-body visual-novel character sprite of ${character.name}.")
+        appendLine("Preserve this character's identity and appearance: ${character.description}")
+        appendLine("Expression and pose: ${talkEmotionDescription(emotion)}.")
+        appendLine("Show one person only, centered, head to toe, facing slightly toward the viewer.")
+        appendLine("Plain white background; no props, no text, no frame, no shadow beyond the person's outline.")
     }
 
     private suspend fun playCoverPrompt(
@@ -1461,6 +1596,60 @@ internal fun playScenarioVisualPrompt(
     intendedScene = intendedScene,
     characters = characters.toImageCharacters(),
 )
+
+internal val STUDY_PERSON_MASK_PROMPT = """
+Generate a perfect binary segmentation mask of the person in this image.
+White (#FFFFFF) = every pixel belonging to the person (including all internal details, lines, shadows, textures, crown).
+Black (#000000) = everything else (background only).
+No grays. No transparency. No missing internal elements.
+The mask must be completely solid white inside the person's outline - no lines or gaps should appear transparent/black within the figure.
+Preserve exact original dimensions and positioning.
+""".trimIndent()
+
+private fun talkEmotionDescription(emotion: String): String = when (emotion) {
+    "happy" -> "warm, open smile and relaxed shoulders"
+    "curious" -> "attentive, curious eyes and a slight forward lean"
+    "concerned" -> "gentle concern, thoughtful eyes, and a reassuring posture"
+    else -> "calm, friendly neutral expression"
+}
+
+private fun fallbackStudyTalkWorld(request: StudyTalkGenerationRequest): StudyTalkWorld {
+    val characters = request.characters.ifEmpty {
+        defaultStoryCharacters(request.text).map { design ->
+            StudyStoryCharacter(
+                id = design.id,
+                name = design.name,
+                role = design.role,
+                description = design.description,
+            )
+        }
+    }
+    val sentences = request.sentences.filter { it.text.isNotBlank() }
+    require(sentences.isNotEmpty()) { "Study Talk requires at least one source sentence" }
+    return StudyTalkWorld(
+        setting = "A friendly neighborhood connected by everyday conversations",
+        scenes = List(STUDY_TALK_SCENE_COUNT) { sceneIndex ->
+            val turns = List(STUDY_TALK_MIN_TURNS_PER_SCENE) { turnIndex ->
+                val sentence = sentences[(sceneIndex + turnIndex) % sentences.size]
+                val character = characters[(sceneIndex + turnIndex) % characters.size]
+                StudyTalkTurn(
+                    id = "scene-${sceneIndex + 1}-turn-${turnIndex + 1}",
+                    speakerCharacterId = character.id,
+                    expressionId = "${character.id}-${listOf("neutral", "happy", "curious")[turnIndex % 3]}",
+                    characterLine = sentence.text,
+                    intention = sentence.translation.ifBlank { "I want to reply politely." },
+                    reply = sentence.text,
+                )
+            }
+            StudyTalkScene(
+                id = "scene-${sceneIndex + 1}",
+                title = listOf("The Arrival", "A Friendly Offer", "Around the Corner", "A Small Request", "A Shared Moment", "See You Soon")[sceneIndex],
+                description = "A connected everyday moment that gives the learner a reason to use the study phrases.",
+                turns = turns,
+            )
+        },
+    )
+}
 
 private fun List<StudyStoryCharacter>.toImageCharacters(): List<PromptFactory.CharacterRef> =
     map { character ->

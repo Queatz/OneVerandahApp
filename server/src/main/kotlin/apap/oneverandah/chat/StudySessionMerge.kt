@@ -20,9 +20,12 @@ object StudySessionMerge {
         val session = if (sameBuildContext) {
             mergeSession(stored.session, incoming.session)
         } else if (sameLanguage) {
-            incoming.session.copy(examScene = stored.session.examScene ?: incoming.session.examScene)
+            incoming.session.copy(
+                examScene = stored.session.examScene ?: incoming.session.examScene,
+                talkWorld = null,
+            )
         } else {
-            incoming.session
+            incoming.session.copy(talkWorld = null)
         }
         return incoming.copy(
             id = stored.id,
@@ -88,6 +91,7 @@ object StudySessionMerge {
             playScenarios = scenarios,
             practiceSentences = incoming.practiceSentences,
             examScene = stored.examScene ?: incoming.examScene,
+            talkWorld = stored.talkWorld ?: incoming.talkWorld,
         )
     }
 

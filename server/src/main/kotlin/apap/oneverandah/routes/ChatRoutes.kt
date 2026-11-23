@@ -508,6 +508,12 @@ fun Route.chatRoutes(
                             while (true) {
                                 val event = withTimeoutOrNull(STUDY_BUILD_HEARTBEAT_MILLIS) { channel.receive() }
                                 if (event == null) {
+                                    val latest = studyBuildService.getSession(id)
+                                    val status = latest?.build?.status
+                                    if (status == StudyBuildStatus.COMPLETE || status == StudyBuildStatus.PARTIAL) {
+                                        writeEvent(StudyBuildEvent.Done)
+                                        return@coroutineScope
+                                    }
                                     writeEvent(StudyBuildEvent.Heartbeat)
                                 } else {
                                     writeEvent(event)

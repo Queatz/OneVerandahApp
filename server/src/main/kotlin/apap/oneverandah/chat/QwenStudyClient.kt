@@ -13,6 +13,12 @@ import apap.oneverandah.api.StudySessionResponse
 import apap.oneverandah.api.StudyTranslateRequest
 import apap.oneverandah.api.StudyToken
 import apap.oneverandah.api.StudyTokenStatus
+import apap.oneverandah.api.StudyTalkScene
+import apap.oneverandah.api.StudyTalkTurn
+import apap.oneverandah.api.StudyTalkWorld
+import apap.oneverandah.api.STUDY_TALK_MAX_TURNS_PER_SCENE
+import apap.oneverandah.api.STUDY_TALK_MIN_TURNS_PER_SCENE
+import apap.oneverandah.api.STUDY_TALK_SCENE_COUNT
 import apap.oneverandah.api.StudyWordRecallLine
 import apap.oneverandah.config.QwenChatConfig
 import apap.oneverandah.model.Language
@@ -920,6 +926,61 @@ class DashScopeStudyAiClient(
             elapsedMs(startedAt),
         )
         return scene.copy(beats = beats)
+    }
+
+    override suspend fun generateTalkWorld(request: StudyTalkGenerationRequest): StudyTalkWorld {
+        val content = complete(
+            systemPrompt = talkWorldSystemPrompt(request),
+            userContent = talkWorldMaterials(request),
+            label = "study Talk world",
+            temperature = 0.65,
+            enableThinking = false,
+        )
+        return QwenStudyTalkParser.parse(content).also { world ->
+            require(world.scenes.size == STUDY_TALK_SCENE_COUNT) {
+                "Qwen study Talk must contain $STUDY_TALK_SCENE_COUNT scenes"
+            }
+            world.scenes.forEachIndexed { index, scene ->
+                require(scene.turns.size in STUDY_TALK_MIN_TURNS_PER_SCENE..STUDY_TALK_MAX_TURNS_PER_SCENE) {
+                    "Qwen study Talk scene ${index + 1} has an invalid number of turns"
+                }
+            }
+        }
+    }
+
+    private fun talkWorldSystemPrompt(request: StudyTalkGenerationRequest): String = buildString {
+        appendLine("You design a visual-novel language practice world from a study lesson.")
+        appendLine("Return JSON only with: setting, scenes[].{id,title,description,turns[].{id,speakerCharacterId,expressionId,characterLine,intention,reply}}.")
+        appendLine("Return exactly $STUDY_TALK_SCENE_COUNT connected scenes and $STUDY_TALK_MIN_TURNS_PER_SCENE to $STUDY_TALK_MAX_TURNS_PER_SCENE turns in every scene.")
+        appendLine("characterLine and reply must be natural spoken ${languageName(request.textLanguageTag)}.")
+        appendLine("intention must be first-person self-talk in ${languageName(request.languageTag)} that clearly describes what the learner wants to say.")
+        appendLine("Use the study sentence structures and vocabulary; each reply must include at least one word from the provided study pool.")
+        appendLine("Do not introduce advanced grammar or content vocabulary not present in the lesson. Keep every line short and speakable.")
+        appendLine("speakerCharacterId must be an id from the allowed cast. expressionId must be '<character id>-neutral', '-happy', '-curious', or '-concerned'.")
+        appendLine("Each turn is one exchange: the characterLine is heard without a transcript, then the learner responds to the intention with reply.")
+        appendLine("Keep the six scene titles and descriptions related as one small story. Do not include image prompts, audio, markdown, or commentary.")
+    }
+
+    private fun talkWorldMaterials(request: StudyTalkGenerationRequest): String = buildString {
+        appendLine("Study/source language: ${languageName(request.textLanguageTag)} (${request.textLanguageTag})")
+        appendLine("Learner UI language: ${languageName(request.languageTag)} (${request.languageTag})")
+        appendLine()
+        appendLine("Allowed cast only:")
+        request.characters.forEach { character ->
+            appendLine("- id=${character.id}; name=${character.name}; role=${character.role}; appearance=${character.description}")
+        }
+        appendLine()
+        appendLine("Study sentence patterns and vocabulary:")
+        request.sentences.forEachIndexed { index, sentence ->
+            appendLine("${index + 1}. ${sentence.text}")
+            sentence.tokens.filter { it.status != StudyTokenStatus.PLAIN }.forEach { token ->
+                appendLine("   ${token.text} — ${token.contextualMeaning.ifBlank { token.literalMeaning }}")
+                token.exampleSentences.forEach { example -> appendLine("   Example: ${example.text}") }
+            }
+        }
+        appendLine()
+        appendLine("Full source text for theme continuity:")
+        append(request.text)
     }
 
     private fun examSceneMaterials(request: StudyExamSceneGenerationRequest): String = buildString {

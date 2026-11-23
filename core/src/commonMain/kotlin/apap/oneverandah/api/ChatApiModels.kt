@@ -245,7 +245,51 @@ data class StudySessionResponse(
     val practiceSentences: List<StudyExampleSentence> = emptyList(),
     /** Fixed character-led exam script, generated lazily when Test is first opened. */
     val examScene: StudyExamScene? = null,
+    /** Server-built visual-novel Talk world; learner progress is deliberately not stored here. */
+    val talkWorld: StudyTalkWorld? = null,
 )
+
+@Serializable
+data class StudyTalkWorld(
+    val setting: String,
+    val scenes: List<StudyTalkScene>,
+    val expressions: List<StudyTalkExpression> = emptyList(),
+)
+
+@Serializable
+data class StudyTalkScene(
+    val id: String,
+    val title: String,
+    val description: String,
+    val backgroundImageUrl: String? = null,
+    val turns: List<StudyTalkTurn>,
+)
+
+@Serializable
+data class StudyTalkTurn(
+    val id: String,
+    val speakerCharacterId: String,
+    val expressionId: String,
+    /** Spoken line from a character; the Talk UI never displays this as a transcript. */
+    val characterLine: String,
+    /** First-person intention in the learner's UI language. */
+    val intention: String,
+    val reply: String,
+    val characterAudioUrl: String? = null,
+    val replyAudioUrl: String? = null,
+)
+
+@Serializable
+data class StudyTalkExpression(
+    val id: String,
+    val characterId: String,
+    val emotion: String,
+    val imageUrl: String? = null,
+)
+
+const val STUDY_TALK_SCENE_COUNT = 6
+const val STUDY_TALK_MIN_TURNS_PER_SCENE = 3
+const val STUDY_TALK_MAX_TURNS_PER_SCENE = 6
 
 @Serializable
 enum class StudyExamBeatKind {
@@ -1142,6 +1186,10 @@ enum class StudyBuildElementKind {
     PLAY_SCENARIOS,
     PLAY_COVER,
     EXAM,
+    TALK_WORLD,
+    TALK_SCENE_IMAGE,
+    TALK_EXPRESSION,
+    TALK_AUDIO,
 }
 
 @Serializable
@@ -1151,6 +1199,10 @@ data class StudyBuildElement(
     val tokenIndex: Int? = null,
     val characterId: String? = null,
     val scenarioId: String? = null,
+    val sceneIndex: Int? = null,
+    val turnIndex: Int? = null,
+    val expressionId: String? = null,
+    val audioKind: StudyTalkAudioKind? = null,
 ) {
     val key: String
         get() = when (kind) {
@@ -1162,9 +1214,15 @@ data class StudyBuildElement(
             StudyBuildElementKind.WORD_IMAGE -> "${kind.name}:${sentenceIndex ?: -1}:${tokenIndex ?: -1}"
             StudyBuildElementKind.PORTRAIT -> "${kind.name}:${characterId.orEmpty()}"
             StudyBuildElementKind.PLAY_COVER -> "${kind.name}:${scenarioId.orEmpty()}"
+            StudyBuildElementKind.TALK_SCENE_IMAGE -> "${kind.name}:${sceneIndex ?: -1}"
+            StudyBuildElementKind.TALK_EXPRESSION -> "${kind.name}:${expressionId.orEmpty()}"
+            StudyBuildElementKind.TALK_AUDIO -> "${kind.name}:${sceneIndex ?: -1}:${turnIndex ?: -1}:${audioKind?.name.orEmpty()}"
             else -> kind.name
         }
 }
+
+@Serializable
+enum class StudyTalkAudioKind { CHARACTER_LINE, REPLY }
 
 @Serializable
 enum class StudyBuildStatus { PREPARING, BUILDING, COMPLETE, PARTIAL }
@@ -1203,6 +1261,9 @@ sealed interface StudyBuildEvent {
 
     @Serializable
     data class ExamScene(val scene: StudyExamScene) : StudyBuildEvent
+
+    @Serializable
+    data class TalkWorld(val world: StudyTalkWorld) : StudyBuildEvent
 
     @Serializable
     data class Renamed(val name: String) : StudyBuildEvent

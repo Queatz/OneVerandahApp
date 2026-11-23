@@ -54,6 +54,7 @@ import apap.oneverandah.api.StudyPlayTurnRequest
 import apap.oneverandah.api.StudyPlaygroundImageStatus
 import apap.oneverandah.api.StudySentence
 import apap.oneverandah.api.StudySessionResponse
+import apap.oneverandah.api.StudyTalkWorld
 import apap.oneverandah.api.sentenceImageUrls
 import apap.oneverandah.api.StudyStoryCharacter
 import apap.oneverandah.api.StudyToken
@@ -454,6 +455,42 @@ fun StudyScreen(
         }
     }
 
+    fun applyStudyTalkWorld(messageId: String, incoming: StudyTalkWorld) {
+        val current = studyCache[messageId] ?: return
+        val existing = current.talkWorld
+        val oldScenes = existing?.scenes.orEmpty().associateBy { it.id }
+        val oldExpressions = existing?.expressions.orEmpty().associateBy { it.id }
+        val merged = incoming.copy(
+            setting = incoming.setting.ifBlank { existing?.setting.orEmpty() },
+            scenes = incoming.scenes.map { scene ->
+                val oldScene = oldScenes[scene.id]
+                scene.copy(
+                    backgroundImageUrl = oldScene?.backgroundImageUrl?.takeIf(String::isNotBlank)
+                        ?: scene.backgroundImageUrl,
+                    turns = scene.turns.map { turn ->
+                        val oldTurn = oldScene?.turns?.firstOrNull { it.id == turn.id }
+                        turn.copy(
+                            characterAudioUrl = oldTurn?.characterAudioUrl?.takeIf(String::isNotBlank)
+                                ?: turn.characterAudioUrl,
+                            replyAudioUrl = oldTurn?.replyAudioUrl?.takeIf(String::isNotBlank)
+                                ?: turn.replyAudioUrl,
+                        )
+                    },
+                )
+            },
+            expressions = incoming.expressions.map { expression ->
+                expression.copy(
+                    imageUrl = oldExpressions[expression.id]?.imageUrl?.takeIf(String::isNotBlank)
+                        ?: expression.imageUrl,
+                )
+            },
+        )
+        if (merged == existing) return
+        val updated = current.copy(talkWorld = merged)
+        studyCache[messageId] = updated
+        if (studyTarget?.id == messageId) studySession = updated
+    }
+
 
     fun applyStudySentenceImage(
         messageId: String,
@@ -602,6 +639,10 @@ fun StudyScreen(
                 StudyBuildElementKind.PLAY_COVER,
                 -> studyPlayInFlight[messageId] = true
                 StudyBuildElementKind.EXAM -> studyExamInFlight[messageId] = true
+                StudyBuildElementKind.TALK_WORLD,
+                StudyBuildElementKind.TALK_SCENE_IMAGE,
+                StudyBuildElementKind.TALK_EXPRESSION,
+                StudyBuildElementKind.TALK_AUDIO,
                 StudyBuildElementKind.PREPARE,
                 StudyBuildElementKind.SKELETON,
                 StudyBuildElementKind.NAME,
@@ -632,6 +673,10 @@ fun StudyScreen(
                 StudyBuildElementKind.PORTRAIT,
                 -> studyPlayFailed[messageId] = true
                 StudyBuildElementKind.EXAM -> studyExamFailed[messageId] = true
+                StudyBuildElementKind.TALK_WORLD,
+                StudyBuildElementKind.TALK_SCENE_IMAGE,
+                StudyBuildElementKind.TALK_EXPRESSION,
+                StudyBuildElementKind.TALK_AUDIO,
                 StudyBuildElementKind.PREPARE,
                 StudyBuildElementKind.SKELETON,
                 -> if (session?.sentences.isNullOrEmpty() && studyTarget?.id == messageId) {
@@ -778,6 +823,7 @@ fun StudyScreen(
             is StudyBuildEvent.Characters -> applyStudyCharacters(messageId, event.characters)
             is StudyBuildEvent.PlayScenarios -> applyPlayScenarios(messageId, event.scenarios)
             is StudyBuildEvent.ExamScene -> applyExamScene(messageId, event.scene)
+            is StudyBuildEvent.TalkWorld -> applyStudyTalkWorld(messageId, event.world)
             is StudyBuildEvent.Renamed -> {
                 val id = studyPersistedBySourceId[messageId] ?: return
                 studySessionItems = studySessionItems.map { if (it.id == id) it.copy(name = event.name) else it }
@@ -1223,6 +1269,17 @@ fun StudyScreen(
                 wordImageFailed = studyWordImageFailed.toMap(),
                 charactersLoading = studyTarget?.id?.let { studyCharactersInFlight[it] == true } == true,
                 examFailed = studyTarget?.id?.let { studyExamFailed[it] == true } == true,
+                talkFailed = studyTarget?.id?.let { targetId ->
+                    val build = studyBuildStateByMessageId[targetId]
+                    val world = studyCache[targetId]?.talkWorld
+                        ?: studySession?.takeIf { studyTarget?.id == targetId }?.talkWorld
+                    val terminal = build?.status == StudyBuildStatus.COMPLETE || build?.status == StudyBuildStatus.PARTIAL
+                    build?.failed.orEmpty().any { it.kind.isStudyTalkKind() } ||
+                            (terminal && world?.hasAllTalkAssets() != true)
+                } == true,
+                talkCanRetry = studyTarget?.id?.let { targetId ->
+                    studyBuildStateByMessageId[targetId]?.failed.orEmpty().any { it.kind.isStudyTalkKind() }
+                } == true,
                 exactText = studyStartExact,
                 buildStatus = studyTarget?.id?.let { studyBuildStateByMessageId[it]?.status },
                 playLoading = studyTarget?.id?.let { studyPlayInFlight[it] == true } == true,
@@ -1259,6 +1316,12 @@ fun StudyScreen(
                         target.id,
                         listOf(StudyBuildElement(StudyBuildElementKind.EXAM)),
                     )
+                },
+                onRetryTalk = {
+                    val target = studyTarget ?: return@StudySessionPane
+                    val failed = studyBuildStateByMessageId[target.id]?.failed.orEmpty()
+                        .filter { it.kind.isStudyTalkKind() }
+                    if (failed.isNotEmpty()) retryStudyBuildElements(target.id, failed)
                 },
                 onPlayScenarioUpdate = { scenarioId, transform ->
                     val targetId = studyTarget?.id ?: return@StudySessionPane
@@ -1821,6 +1884,9 @@ private fun StudySessionPane(
     onRetryWordImage: (Int, Int) -> Unit,
     onRetryPlay: () -> Unit,
     onRetryExam: () -> Unit,
+    talkFailed: Boolean,
+    talkCanRetry: Boolean,
+    onRetryTalk: () -> Unit,
     onPlayScenarioUpdate: (String, (StudyPlayScenario) -> StudyPlayScenario) -> Unit,
     onPlayMessageImage: (scenarioId: String, imageId: String, imageUrl: String?) -> Unit,
     onPracticeSentences: (List<StudyExampleSentence>) -> Unit,
@@ -1877,6 +1943,9 @@ private fun StudySessionPane(
                         playLoading = playLoading,
                         playFailed = playFailed,
                         examFailed = examFailed,
+                        talkFailed = talkFailed,
+                        talkCanRetry = talkCanRetry,
+                        onRetryTalk = onRetryTalk,
                         onRetryExam = onRetryExam,
                         strings = strings,
                         onRetrySentence = onRetrySentence,
@@ -1998,7 +2067,10 @@ private fun StudySessionContent(
     playLoading: Boolean,
     playFailed: Boolean,
     examFailed: Boolean,
+    talkFailed: Boolean,
+    talkCanRetry: Boolean,
     onRetryExam: () -> Unit,
+    onRetryTalk: () -> Unit,
     strings: UiStrings,
     onRetrySentence: (Int) -> Unit,
     onRetryImage: (Int) -> Unit,
@@ -2542,6 +2614,15 @@ private fun StudySessionContent(
                     onMessageImage = onPlayMessageImage,
                 )
             }
+            StudySessionMode.TALK -> {
+                StudyTalkTab(
+                    session = session,
+                    failed = talkFailed,
+                    canRetry = talkCanRetry,
+                    strings = strings,
+                    onRetry = onRetryTalk,
+                )
+            }
             StudySessionMode.TEST -> {
                 StudyTestTab(
                     session = session,
@@ -2617,7 +2698,7 @@ internal fun StudySentenceVisual(
     }
 }
 
-private enum class StudySessionMode { ALL, WATCH, STUDY, STORY, ADVENTURE, VISUALIZE, WORDS, LISTEN, SPEAK, RECALL, READ, WRITE, EXPRESS, PLAY, TEST }
+private enum class StudySessionMode { ALL, WATCH, STUDY, STORY, ADVENTURE, VISUALIZE, WORDS, LISTEN, SPEAK, RECALL, READ, WRITE, EXPRESS, PLAY, TALK, TEST }
 
 internal enum class StudySpeakPhase { READY, LISTENING, SPEAKING, REVIEW }
 
@@ -2802,6 +2883,7 @@ private fun StudySessionMode.tabLabel(strings: UiStrings): String = when (this) 
     StudySessionMode.WRITE -> strings.chatWriteTab
     StudySessionMode.EXPRESS -> strings.chatExpressTab
     StudySessionMode.PLAY -> strings.chatPlayTab
+    StudySessionMode.TALK -> strings.chatTalk.tab
     StudySessionMode.TEST -> strings.chatTestTab
 }
 
@@ -2820,7 +2902,19 @@ private fun StudySessionMode.skillPracticed(strings: UiStrings): String = when (
     StudySessionMode.WRITE -> strings.chatWriteSkill
     StudySessionMode.EXPRESS -> strings.chatExpressSkill
     StudySessionMode.PLAY -> strings.chatPlaySkill
+    StudySessionMode.TALK -> strings.chatTalkSkill
     StudySessionMode.TEST -> strings.chatTestSkill
+}
+
+private fun StudyBuildElementKind.isStudyTalkKind(): Boolean = when (this) {
+    StudyBuildElementKind.CHARACTERS,
+    StudyBuildElementKind.PORTRAIT,
+    StudyBuildElementKind.TALK_WORLD,
+    StudyBuildElementKind.TALK_SCENE_IMAGE,
+    StudyBuildElementKind.TALK_EXPRESSION,
+    StudyBuildElementKind.TALK_AUDIO -> true
+
+    else -> false
 }
 
 private fun studyExamLevelLabel(level: Int, strings: UiStrings): String = when (level) {

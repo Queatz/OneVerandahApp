@@ -519,6 +519,21 @@ object Styles {
     const val studyPlayLineOther = "study-play-line-other"
     const val studyPlaySpeaker = "study-play-speaker"
     const val studyPlayStatus = "study-play-status"
+    const val studyTalkBlock = "study-talk-block"
+    const val studyTalkHeader = "study-talk-header"
+    const val studyTalkTitle = "study-talk-title"
+    const val studyTalkProgress = "study-talk-progress"
+    const val studyTalkStage = "study-talk-stage"
+    const val studyTalkBackground = "study-talk-background"
+    const val studyTalkVignette = "study-talk-vignette"
+    const val studyTalkCharacter = "study-talk-character"
+    const val studyTalkIndicator = "study-talk-indicator"
+    const val studyTalkIntent = "study-talk-intent"
+    const val studyTalkPrompt = "study-talk-prompt"
+    const val studyTalkAnswer = "study-talk-answer"
+    const val studyTalkActions = "study-talk-actions"
+    const val studyTalkStatus = "study-talk-status"
+    const val studyTalkComplete = "study-talk-complete"
     const val studySentenceBlock = "study-sentence-block"
     const val studySentenceImage = "study-sentence-image"
     const val studySentenceImagePlaceholder = "study-sentence-image-placeholder"
@@ -4345,6 +4360,130 @@ object Styles {
             color: var(--md-sys-color-on-surface-variant);
         }
         .${studyPlayStatus} .${materialSymbols} { animation: spin 1.2s linear infinite; }
+        .${studyTalkBlock} {
+            display: flex;
+            flex-direction: column;
+            gap: 12px;
+            padding: 14px;
+            border-radius: 20px;
+            background: color-mix(in srgb, var(--md-sys-color-primary) 5%, var(--md-sys-color-surface));
+        }
+        .${studyTalkHeader} {
+            display: flex;
+            align-items: center;
+            justify-content: space-between;
+            gap: 12px;
+        }
+        .${studyTalkTitle} { margin: 0; font-size: 18px; }
+        .${studyTalkProgress} {
+            margin: 0;
+            font-size: 13px;
+            color: var(--md-sys-color-on-surface-variant);
+        }
+        .${studyTalkStage} {
+            position: relative;
+            isolation: isolate;
+            display: flex;
+            align-items: flex-end;
+            justify-content: center;
+            width: 100%;
+            aspect-ratio: 16 / 9;
+            min-height: 260px;
+            max-height: 540px;
+            overflow: hidden;
+            border-radius: 18px;
+            background: linear-gradient(135deg, #81765e, #27384a);
+        }
+        .${studyTalkBackground}, .${studyTalkVignette} {
+            position: absolute;
+            inset: 0;
+            width: 100%;
+            height: 100%;
+        }
+        .${studyTalkBackground} { z-index: -2; object-fit: cover; }
+        .${studyTalkVignette} {
+            z-index: -1;
+            background: linear-gradient(180deg, #00000018 20%, #00000012 52%, #00000088 100%);
+        }
+        .${studyTalkCharacter} {
+            position: absolute;
+            bottom: 0;
+            left: 50%;
+            max-width: 62%;
+            max-height: 90%;
+            width: auto;
+            height: auto;
+            object-fit: contain;
+            object-position: bottom center;
+            transform: translateX(-50%);
+            filter: drop-shadow(0 8px 18px #00000066);
+            pointer-events: none;
+        }
+        .${studyTalkIndicator} {
+            position: absolute;
+            left: 50%;
+            top: 16px;
+            display: flex;
+            align-items: center;
+            gap: 8px;
+            max-width: calc(100% - 24px);
+            padding: 9px 14px;
+            border: 1px solid #ffffff55;
+            border-radius: 999px;
+            color: #fff;
+            background: #101218b8;
+            backdrop-filter: blur(10px);
+            transform: translateX(-50%);
+        }
+        .${studyTalkIntent}, .${studyTalkPrompt}, .${studyTalkAnswer} {
+            padding: 14px 16px;
+            border-radius: 16px;
+            line-height: 1.5;
+        }
+        .${studyTalkIntent} {
+            margin: 0;
+            background: color-mix(in srgb, var(--md-sys-color-secondary) 12%, var(--md-sys-color-surface));
+            font-size: 17px;
+        }
+        .${studyTalkPrompt} {
+            margin: 0;
+            color: var(--md-sys-color-on-surface-variant);
+            background: var(--md-sys-color-surface-variant);
+        }
+        .${studyTalkAnswer} {
+            margin: 0;
+            font-size: 20px;
+            font-weight: 700;
+            background: color-mix(in srgb, var(--md-sys-color-primary) 13%, var(--md-sys-color-surface));
+        }
+        .${studyTalkActions} {
+            display: flex;
+            align-items: center;
+            justify-content: flex-end;
+            flex-wrap: wrap;
+            gap: 8px;
+        }
+        .${studyTalkStatus} {
+            display: inline-flex;
+            align-items: center;
+            gap: 8px;
+            color: var(--md-sys-color-on-surface-variant);
+        }
+        .${studyTalkStatus} .${materialSymbols} { animation: spin 1.2s linear infinite; }
+        .${studyTalkComplete} {
+            display: flex;
+            flex-direction: column;
+            align-items: center;
+            gap: 12px;
+            padding: 28px 16px;
+            text-align: center;
+        }
+        @media (max-width: 560px) {
+            .${studyTalkBlock} { padding: 10px; }
+            .${studyTalkStage} { aspect-ratio: 4 / 3; min-height: 240px; }
+            .${studyTalkCharacter} { max-width: 78%; max-height: 86%; }
+            .${studyTalkIndicator} { top: 10px; font-size: 13px; }
+        }
         .${studySessionHint} {
             font-size: 13px;
             color: var(--md-sys-color-on-surface-variant);

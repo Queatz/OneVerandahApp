@@ -94,6 +94,29 @@ class StudyVisualizeStrings(
     val collection: String,
 )
 
+data class StudyTalkStrings(
+    val tab: String,
+    val title: String,
+    val loading: String,
+    val error: String,
+    val retry: String,
+    val sceneProgress: (current: Int, total: Int) -> String,
+    val turnProgress: (current: Int, total: Int) -> String,
+    val listen: String,
+    val characterSpeaking: String,
+    val continueToIntention: String,
+    val intentionLabel: String,
+    val speakPrompt: String,
+    val reveal: String,
+    val answerLabel: String,
+    val replayAnswer: String,
+    val good: String,
+    val tryAgain: String,
+    val next: String,
+    val complete: String,
+    val restart: String,
+)
+
 /**
  * Bundle of every user-facing UI string (i.e. app "chrome": titles, buttons,
  * section headers). Catalog content (category/service names) is localized on
@@ -779,6 +802,7 @@ data class UiStrings(
     val chatSkillWriting: String = "Writing",
     val chatSkillSpeakingListening: String = "Speaking, Listening",
 ) {
+    val chatTalk: StudyTalkStrings get() = studyTalkStrings(languageName)
     val chatAllSkill: String get() = chatSkillEverything
     val chatWatchSkill: String get() = chatSkillListening
     val chatStudySkill: String get() = chatSkillReading
@@ -793,6 +817,7 @@ data class UiStrings(
     val chatWriteSkill: String get() = chatSkillWriting
     val chatExpressSkill: String get() = chatSkillRecall
     val chatPlaySkill: String get() = chatSkillRecall
+    val chatTalkSkill: String get() = chatSkillSpeakingListening
     val chatTestSkill: String get() = chatSkillSpeakingListening
     val chatTestTab: String get() = chatTest.tab
     val chatTestSceneLoading: String get() = chatTest.sceneLoading
@@ -821,6 +846,87 @@ data class UiStrings(
     val chatTestLevelIntermediate: String get() = chatTest.levelIntermediate
     val chatTestLevelAdvanced: String get() = chatTest.levelAdvanced
     val chatTestLevelNative: String get() = chatTest.levelNative
+}
+
+private fun studyTalkStrings(languageName: String): StudyTalkStrings = when (languageName) {
+    "Tiếng Việt" -> StudyTalkStrings(
+        tab = "Hội thoại", title = "Luyện hội thoại", loading = "Đang chuẩn bị thế giới hội thoại…",
+        error = "Không thể chuẩn bị thế giới này.", retry = "Thử lại",
+        sceneProgress = { current, total -> "Cảnh $current / $total" },
+        turnProgress = { current, total -> "Lượt $current / $total" },
+        listen = "Nghe nhân vật", characterSpeaking = "Nhân vật đang nói",
+        continueToIntention = "Tiếp tục", intentionLabel = "Bạn muốn nói gì?",
+        speakPrompt = "Hãy nói thành tiếng. Ứng dụng không dùng micrô.", reveal = "Xem câu trả lời",
+        answerLabel = "Câu trả lời", replayAnswer = "Nghe câu trả lời", good = "Mình nói đúng",
+        tryAgain = "Thử lại lượt này", next = "Tiếp tục", complete = "Hoàn thành thế giới!", restart = "Chơi lại",
+    )
+    "中文" -> StudyTalkStrings(
+        tab = "对话", title = "对话练习", loading = "正在准备对话世界…", error = "无法准备这个世界。", retry = "重试",
+        sceneProgress = { current, total -> "场景 $current / $total" }, turnProgress = { current, total -> "回合 $current / $total" },
+        listen = "听角色说话", characterSpeaking = "角色正在说话", continueToIntention = "继续",
+        intentionLabel = "你想说什么？", speakPrompt = "请大声说出来。本应用不会使用麦克风。", reveal = "显示答案",
+        answerLabel = "答案", replayAnswer = "播放答案", good = "我说对了", tryAgain = "再试一次", next = "继续",
+        complete = "世界完成！", restart = "重新开始",
+    )
+    "日本語" -> StudyTalkStrings(
+        tab = "会話", title = "会話を練習", loading = "会話の世界を準備しています…", error = "この世界を準備できませんでした。", retry = "再試行",
+        sceneProgress = { current, total -> "シーン $current / $total" }, turnProgress = { current, total -> "ターン $current / $total" },
+        listen = "登場人物の話を聞く", characterSpeaking = "登場人物が話しています", continueToIntention = "続ける",
+        intentionLabel = "何と言いたいですか？", speakPrompt = "声に出して答えてください。マイクは使用しません。", reveal = "答えを見る",
+        answerLabel = "答え", replayAnswer = "答えを再生", good = "うまく言えた", tryAgain = "もう一度挑戦", next = "続ける",
+        complete = "世界をクリアしました！", restart = "もう一度",
+    )
+    "한국어" -> StudyTalkStrings(
+        tab = "대화", title = "대화 연습", loading = "대화 세계를 준비하는 중…", error = "이 세계를 준비할 수 없습니다.", retry = "다시 시도",
+        sceneProgress = { current, total -> "장면 $current / $total" }, turnProgress = { current, total -> "차례 $current / $total" },
+        listen = "등장인물 듣기", characterSpeaking = "등장인물이 말하고 있어요", continueToIntention = "계속",
+        intentionLabel = "무엇을 말하고 싶나요?", speakPrompt = "소리 내어 말해 보세요. 마이크는 사용하지 않습니다.", reveal = "답 보기",
+        answerLabel = "답", replayAnswer = "답 다시 듣기", good = "잘 말했어요", tryAgain = "이 차례 다시 하기", next = "계속",
+        complete = "세계를 완료했어요!", restart = "다시 시작",
+    )
+    "Русский" -> StudyTalkStrings(
+        tab = "Диалог", title = "Практика диалога", loading = "Готовим мир диалогов…", error = "Не удалось подготовить этот мир.", retry = "Повторить",
+        sceneProgress = { current, total -> "Сцена $current из $total" }, turnProgress = { current, total -> "Реплика $current из $total" },
+        listen = "Слушать персонажа", characterSpeaking = "Персонаж говорит", continueToIntention = "Продолжить",
+        intentionLabel = "Что вы хотите сказать?", speakPrompt = "Скажите ответ вслух. Микрофон не используется.", reveal = "Показать ответ",
+        answerLabel = "Ответ", replayAnswer = "Прослушать ответ", good = "У меня получилось", tryAgain = "Повторить реплику", next = "Продолжить",
+        complete = "Мир пройден!", restart = "Начать заново",
+    )
+    "Español" -> StudyTalkStrings(
+        tab = "Diálogo", title = "Practica el diálogo", loading = "Preparando el mundo…", error = "No se pudo preparar este mundo.", retry = "Reintentar",
+        sceneProgress = { current, total -> "Escena $current de $total" }, turnProgress = { current, total -> "Turno $current de $total" },
+        listen = "Escuchar al personaje", characterSpeaking = "El personaje está hablando", continueToIntention = "Continuar",
+        intentionLabel = "¿Qué quieres decir?", speakPrompt = "Di la respuesta en voz alta. La aplicación no usa el micrófono.", reveal = "Mostrar respuesta",
+        answerLabel = "Respuesta", replayAnswer = "Reproducir respuesta", good = "Lo dije bien", tryAgain = "Repetir este turno", next = "Continuar",
+        complete = "¡Mundo completado!", restart = "Volver a empezar",
+    )
+    "Deutsch" -> StudyTalkStrings(
+        tab = "Dialog", title = "Dialog üben", loading = "Dialogwelt wird vorbereitet…", error = "Diese Welt konnte nicht vorbereitet werden.", retry = "Erneut versuchen",
+        sceneProgress = { current, total -> "Szene $current von $total" }, turnProgress = { current, total -> "Runde $current von $total" },
+        listen = "Figur anhören", characterSpeaking = "Die Figur spricht", continueToIntention = "Weiter",
+        intentionLabel = "Was möchtest du sagen?", speakPrompt = "Sprich deine Antwort laut aus. Das Mikrofon wird nicht verwendet.", reveal = "Antwort zeigen",
+        answerLabel = "Antwort", replayAnswer = "Antwort abspielen", good = "Das war richtig", tryAgain = "Diese Runde wiederholen", next = "Weiter",
+        complete = "Welt abgeschlossen!", restart = "Neu starten",
+    )
+    "မြန်မာစာ" -> StudyTalkStrings(
+        tab = "စကားပြော", title = "စကားပြောလေ့ကျင့်ရန်", loading = "စကားပြောကမ္ဘာကို ပြင်ဆင်နေသည်…", error = "ဤကမ္ဘာကို ပြင်ဆင်၍မရပါ။", retry = "ထပ်ကြိုးစားရန်",
+        sceneProgress = { current, total -> "ဇာတ်ဝင်ခန်း $current / $total" }, turnProgress = { current, total -> "အလှည့် $current / $total" },
+        listen = "ဇာတ်ကောင်ကို နားထောင်ရန်", characterSpeaking = "ဇာတ်ကောင် ပြောနေသည်", continueToIntention = "ဆက်ရန်",
+        intentionLabel = "ဘာပြောချင်ပါသလဲ?", speakPrompt = "အသံထွက်ပြောပါ။ မိုက်ခရိုဖုန်းကို အသုံးမပြုပါ။", reveal = "အဖြေပြရန်",
+        answerLabel = "အဖြေ", replayAnswer = "အဖြေကို ပြန်ဖွင့်ရန်", good = "မှန်ကန်စွာ ပြောခဲ့သည်", tryAgain = "ဤအလှည့်ကို ထပ်လုပ်ရန်", next = "ဆက်ရန်",
+        complete = "ကမ္ဘာပြီးပါပြီ!", restart = "ပြန်စရန်",
+    )
+    else -> StudyTalkStrings(
+        tab = "Talk", title = "Practice the conversation", loading = "Preparing your Talk world…",
+        error = "Couldn't prepare this world.", retry = "Retry",
+        sceneProgress = { current, total -> "Scene $current of $total" },
+        turnProgress = { current, total -> "Turn $current of $total" },
+        listen = "Listen to the character", characterSpeaking = "The character is speaking",
+        continueToIntention = "Continue", intentionLabel = "What do you want to say?",
+        speakPrompt = "Say your reply out loud. The microphone is never used.", reveal = "Reveal the answer",
+        answerLabel = "Answer", replayAnswer = "Play answer again", good = "I said it well",
+        tryAgain = "Try this turn again", next = "Continue", complete = "World complete!", restart = "Play again",
+    )
 }
 
 private val English = UiStrings(
