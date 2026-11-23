@@ -520,16 +520,21 @@ object Styles {
     const val studyPlaySpeaker = "study-play-speaker"
     const val studyPlayStatus = "study-play-status"
     const val studyTalkBlock = "study-talk-block"
+    const val studyTalkShell = "study-talk-shell"
+    const val studyTalkFullscreen = "study-talk-fullscreen"
     const val studyTalkHeader = "study-talk-header"
+    const val studyTalkIconButton = "study-talk-icon-button"
     const val studyTalkTitle = "study-talk-title"
     const val studyTalkProgress = "study-talk-progress"
     const val studyTalkStage = "study-talk-stage"
     const val studyTalkBackground = "study-talk-background"
     const val studyTalkVignette = "study-talk-vignette"
+    const val studyTalkHud = "study-talk-hud"
+    const val studyTalkCharacterButton = "study-talk-character-button"
     const val studyTalkCharacter = "study-talk-character"
-    const val studyTalkIndicator = "study-talk-indicator"
+    const val studyTalkCharacterVisible = "study-talk-character-visible"
+    const val studyTalkCharacterTapped = "study-talk-character-tapped"
     const val studyTalkIntent = "study-talk-intent"
-    const val studyTalkPrompt = "study-talk-prompt"
     const val studyTalkAnswer = "study-talk-answer"
     const val studyTalkActions = "study-talk-actions"
     const val studyTalkStatus = "study-talk-status"
@@ -4373,12 +4378,46 @@ object Styles {
             border-radius: 20px;
             background: color-mix(in srgb, var(--md-sys-color-primary) 5%, var(--md-sys-color-surface));
         }
+        .${studyTalkFullscreen} {
+            position: fixed;
+            inset: 0;
+            z-index: 70;
+            width: 100%;
+            height: 100vh;
+            height: 100dvh;
+            max-height: 100dvh;
+            min-height: 0;
+            box-sizing: border-box;
+            padding: max(14px, env(safe-area-inset-top)) max(14px, env(safe-area-inset-right)) max(14px, env(safe-area-inset-bottom)) max(14px, env(safe-area-inset-left));
+            overflow: auto;
+            border: 0;
+            border-radius: 0;
+            background: radial-gradient(circle at 50% 0%, #36566a 0, #182630 42%, #10191f 100%);
+            color: #f7fbfa;
+        }
         .${studyTalkHeader} {
             display: flex;
             align-items: center;
             justify-content: space-between;
             gap: 12px;
         }
+        .${studyTalkIconButton} {
+            display: grid;
+            place-items: center;
+            min-width: 42px;
+            min-height: 42px;
+            padding: 0 10px;
+            border: 1px solid rgba(255,255,255,.2);
+            border-radius: 15px;
+            background: rgba(255,255,255,.1);
+            color: #fff;
+            font: inherit;
+            font-size: 20px;
+            cursor: pointer;
+            transition: transform 140ms ease, background 140ms ease;
+        }
+        .${studyTalkIconButton}:hover { background: rgba(255,255,255,.18); }
+        .${studyTalkIconButton}:active { transform: scale(.94); }
         .${studyTalkTitle} { margin: 0; font-size: 18px; }
         .${studyTalkProgress} {
             margin: 0;
@@ -4392,12 +4431,19 @@ object Styles {
             align-items: flex-end;
             justify-content: center;
             width: 100%;
+            flex: 0 0 auto;
             aspect-ratio: 16 / 9;
             min-height: 260px;
             max-height: 540px;
             overflow: hidden;
             border-radius: 18px;
             background: linear-gradient(135deg, #81765e, #27384a);
+        }
+        .${studyTalkFullscreen} .${studyTalkStage} {
+            flex: 1 1 auto;
+            min-height: 0;
+            max-height: none;
+            aspect-ratio: auto;
         }
         .${studyTalkBackground}, .${studyTalkVignette} {
             position: absolute;
@@ -4410,37 +4456,74 @@ object Styles {
             z-index: -1;
             background: linear-gradient(180deg, #00000018 20%, #00000012 52%, #00000088 100%);
         }
+        .${studyTalkCharacterButton} {
+            position: absolute;
+            inset: 0;
+            width: 100%;
+            height: 100%;
+            padding: 0;
+            border: 0;
+            background: transparent;
+            pointer-events: none;
+        }
+        .${studyTalkCharacterButton}:focus-visible {
+            outline: 3px solid #fff;
+            outline-offset: -5px;
+        }
+        .${studyTalkHud} {
+            position: absolute;
+            right: 0;
+            bottom: 0;
+            left: 0;
+            z-index: 2;
+            display: flex;
+            flex-direction: column;
+            gap: 8px;
+            box-sizing: border-box;
+            width: 100%;
+            padding: 42px clamp(12px, 3vw, 28px) clamp(12px, 2vw, 20px);
+            color: #fff;
+            pointer-events: none;
+            background: linear-gradient(180deg, transparent, rgba(9, 14, 18, .78) 28%, rgba(9, 14, 18, .94));
+        }
+        .${studyTalkHud} > * { pointer-events: auto; }
+        .${studyTalkHud} .${studyTalkIntent},
+        .${studyTalkHud} .${studyTalkAnswer} {
+            color: #17212a;
+            background: rgba(255, 255, 255, .94);
+        }
         .${studyTalkCharacter} {
             position: absolute;
-            bottom: 0;
+            bottom: -100%;
             left: 50%;
-            max-width: 62%;
-            max-height: 90%;
+            max-width: none;
+            max-height: none;
             width: auto;
-            height: auto;
+            height: 200%;
             object-fit: contain;
             object-position: bottom center;
             transform: translateX(-50%);
             filter: drop-shadow(0 8px 18px #00000066);
-            pointer-events: none;
+            pointer-events: auto;
+            cursor: pointer;
+            opacity: 0;
         }
-        .${studyTalkIndicator} {
-            position: absolute;
-            left: 50%;
-            top: 16px;
-            display: flex;
-            align-items: center;
-            gap: 8px;
-            max-width: calc(100% - 24px);
-            padding: 9px 14px;
-            border: 1px solid #ffffff55;
-            border-radius: 999px;
-            color: #fff;
-            background: #101218b8;
-            backdrop-filter: blur(10px);
-            transform: translateX(-50%);
+        .${studyTalkCharacterVisible} {
+            opacity: 1;
+            animation: study-talk-character-enter 650ms cubic-bezier(.2, .75, .25, 1) both;
         }
-        .${studyTalkIntent}, .${studyTalkPrompt}, .${studyTalkAnswer} {
+        .${studyTalkCharacterTapped} {
+            animation: study-talk-character-tap 380ms ease-out;
+        }
+        @keyframes study-talk-character-enter {
+            from { opacity: 0; transform: translate(-50%, 28px) scale(.98); }
+            to { opacity: 1; transform: translate(-50%, 0) scale(1); }
+        }
+        @keyframes study-talk-character-tap {
+            0%, 100% { transform: translateX(-50%) scale(1); }
+            42% { transform: translateX(-50%) translateY(-7px) scale(1.035); }
+        }
+        .${studyTalkIntent}, .${studyTalkAnswer} {
             padding: 14px 16px;
             border-radius: 16px;
             line-height: 1.5;
@@ -4449,24 +4532,35 @@ object Styles {
             margin: 0;
             background: color-mix(in srgb, var(--md-sys-color-secondary) 12%, var(--md-sys-color-surface));
             font-size: 17px;
-        }
-        .${studyTalkPrompt} {
-            margin: 0;
-            color: var(--md-sys-color-on-surface-variant);
-            background: var(--md-sys-color-surface-variant);
+            font-style: italic;
         }
         .${studyTalkAnswer} {
+            display: block;
+            width: 100%;
             margin: 0;
+            border: 1px solid color-mix(in srgb, var(--md-sys-color-primary) 18%, transparent);
             font-size: 20px;
             font-weight: 700;
+            font-family: inherit;
+            text-align: left;
+            color: var(--md-sys-color-on-surface);
             background: color-mix(in srgb, var(--md-sys-color-primary) 13%, var(--md-sys-color-surface));
+            cursor: pointer;
+            transition: transform 140ms ease, background 140ms ease;
         }
+        .${studyTalkAnswer}:hover { background: color-mix(in srgb, var(--md-sys-color-primary) 19%, var(--md-sys-color-surface)); }
+        .${studyTalkAnswer}:active { transform: scale(.99); }
         .${studyTalkActions} {
             display: flex;
             align-items: center;
             justify-content: flex-end;
-            flex-wrap: wrap;
+            flex-wrap: nowrap;
             gap: 8px;
+        }
+        .${studyTalkActions} > button {
+            flex: 1 1 0;
+            width: auto;
+            min-width: 0;
         }
         .${studyTalkStatus} {
             display: flex;
@@ -4511,6 +4605,10 @@ object Styles {
         }
         @media (prefers-reduced-motion: reduce) {
             .${studyTalkProgressFill} { transition: none; }
+            .${studyTalkCharacterVisible}, .${studyTalkCharacterTapped} {
+                animation: none;
+                opacity: 1;
+            }
         }
         .${studyTalkComplete} {
             display: flex;
@@ -4523,8 +4621,7 @@ object Styles {
         @media (max-width: 560px) {
             .${studyTalkBlock} { padding: 10px; }
             .${studyTalkStage} { aspect-ratio: 4 / 3; min-height: 240px; }
-            .${studyTalkCharacter} { max-width: 78%; max-height: 86%; }
-            .${studyTalkIndicator} { top: 10px; font-size: 13px; }
+            .${studyTalkCharacter} { height: 185%; }
         }
         .${studySessionHint} {
             font-size: 13px;
@@ -4693,6 +4790,7 @@ object Styles {
             padding: 8px 11px;
             border-radius: 12px;
             background: var(--md-sys-color-surface-variant);
+            cursor: pointer;
         }
         .${studyBreakdownConversationSpeaker} {
             margin: 0 0 2px;

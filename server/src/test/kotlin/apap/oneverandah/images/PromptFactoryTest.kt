@@ -15,6 +15,22 @@ class PromptFactoryTest {
     }
 
     @Test
+    fun forTalkSceneBackground_isOneEmptyWideLocationPlate() {
+        val prompt = PromptFactory.forTalkSceneBackground(
+            setting = "A quiet neighborhood",
+            title = "The Flower Market",
+            description = "An outdoor flower stall beneath a striped awning.",
+        )
+
+        assertContains(prompt, "The Flower Market")
+        assertContains(prompt, "one specific location")
+        assertContains(prompt, "no people, human figures, faces, silhouettes")
+        assertContains(prompt, "No speech bubbles, dialogue balloons")
+        assertContains(prompt, PromptFactory.NO_TEXT)
+        assertTrue(!prompt.contains("High quality square image"))
+    }
+
+    @Test
     fun forWord_leadsWithIntendedSceneAndOmitsSourceWord() {
         val prompt = PromptFactory.forWord(
             "A neighbor waves from a sunlit apartment doorway, warm cinematic medium shot",

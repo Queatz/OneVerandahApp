@@ -2,9 +2,11 @@ package apap.oneverandah.screens
 
 import androidx.compose.runtime.Composable
 import androidx.compose.runtime.DisposableEffect
+import androidx.compose.runtime.LaunchedEffect
 import androidx.compose.runtime.getValue
 import androidx.compose.runtime.mutableStateOf
 import androidx.compose.runtime.remember
+import androidx.compose.runtime.rememberUpdatedState
 import androidx.compose.runtime.setValue
 import apap.oneverandah.Styles
 import apap.oneverandah.api.StudyBuildState
@@ -16,14 +18,20 @@ import apap.oneverandah.api.STUDY_TALK_SCENE_COUNT
 import apap.oneverandah.components.MaterialSymbol
 import apap.oneverandah.i18n.StudyTalkStrings
 import apap.oneverandah.i18n.UiStrings
+import kotlinx.browser.document
+import kotlinx.browser.window
+import org.jetbrains.compose.web.attributes.ref
 import org.jetbrains.compose.web.dom.Button
 import org.jetbrains.compose.web.dom.Div
 import org.jetbrains.compose.web.dom.Img
 import org.jetbrains.compose.web.dom.P
 import org.jetbrains.compose.web.dom.Span
 import org.jetbrains.compose.web.dom.Text
+import org.w3c.dom.HTMLElement
+import org.w3c.dom.HTMLImageElement
+import org.w3c.dom.events.Event
 
-internal enum class StudyTalkPhase { LISTEN, INTENTION, SPEAK, REVEAL, COMPLETE }
+internal enum class StudyTalkPhase { LISTEN, THINK, REVEAL, COMPLETE }
 
 internal data class StudyTalkProgress(
     val sceneIndex: Int = 0,
@@ -32,7 +40,7 @@ internal data class StudyTalkProgress(
 )
 
 internal fun retryStudyTalkTurn(progress: StudyTalkProgress): StudyTalkProgress =
-    progress.copy(phase = StudyTalkPhase.INTENTION)
+    progress.copy(phase = StudyTalkPhase.THINK)
 
 internal fun advanceStudyTalkTurn(progress: StudyTalkProgress, world: StudyTalkWorld): StudyTalkProgress {
     val scene = world.scenes.getOrNull(progress.sceneIndex) ?: return progress.copy(phase = StudyTalkPhase.COMPLETE)
@@ -65,12 +73,47 @@ internal fun StudyTalkTab(
     var turnIndex by remember(session.text, session.textLanguageTag) { mutableStateOf(0) }
     var phase by remember(session.text, session.textLanguageTag) { mutableStateOf(StudyTalkPhase.LISTEN) }
     var listenedTurnId by remember(session.text, session.textLanguageTag) { mutableStateOf<String?>(null) }
+    var talkElement by remember { mutableStateOf<HTMLElement?>(null) }
+    var isFullscreen by remember { mutableStateOf(false) }
+    val latestFullscreen by rememberUpdatedState(isFullscreen)
+    val latestElement by rememberUpdatedState(talkElement)
 
     DisposableEffect(Unit) {
-        onDispose { stopActiveStudyAudio() }
+        val onKey: (Event) -> Unit = { event ->
+            val key = event.asDynamic().key as? String
+            if ((key == "Escape" || key == "Esc") && latestFullscreen) {
+                isFullscreen = false
+                exitWatchFullscreen()
+            }
+        }
+        val onFullscreen: (Event) -> Unit = {
+            val current = currentFullscreenElement()
+            val element = latestElement
+            when {
+                element != null && current === element -> isFullscreen = true
+                latestFullscreen && current == null -> isFullscreen = false
+            }
+        }
+        window.addEventListener("keydown", onKey)
+        document.addEventListener("fullscreenchange", onFullscreen)
+        document.addEventListener("webkitfullscreenchange", onFullscreen)
+        onDispose {
+            window.removeEventListener("keydown", onKey)
+            document.removeEventListener("fullscreenchange", onFullscreen)
+            document.removeEventListener("webkitfullscreenchange", onFullscreen)
+            if (latestElement != null && currentFullscreenElement() === latestElement) exitWatchFullscreen()
+            stopActiveStudyAudio()
+        }
     }
 
-    Div(attrs = { classes(Styles.studyTalkBlock) }) {
+    Div(attrs = {
+        classes(Styles.studyTalkBlock, Styles.studyTalkShell)
+        if (isFullscreen) classes(Styles.studyTalkFullscreen)
+        ref { element ->
+            talkElement = element
+            onDispose { if (talkElement === element) talkElement = null }
+        }
+    }) {
         Div(attrs = { classes(Styles.studyTalkHeader) }) {
             P(attrs = { classes(Styles.studyTalkTitle) }) { Text(copy.title) }
             world?.scenes?.getOrNull(sceneIndex)?.let { scene ->
@@ -82,6 +125,20 @@ internal fun StudyTalkTab(
                     Text(copy.turnProgress(turnIndex + 1, scene.turns.size))
                 }
             }
+            Button(attrs = {
+                classes(Styles.studyTalkIconButton)
+                attr("type", "button")
+                attr("aria-label", if (isFullscreen) strings.chatWatchExitFullscreen else strings.chatWatchFullscreen)
+                attr("aria-pressed", isFullscreen.toString())
+                onClick {
+                    if (isFullscreen) {
+                        isFullscreen = false
+                        exitWatchFullscreen()
+                    } else {
+                        talkElement?.let(::requestWatchFullscreen)
+                    }
+                }
+            }) { Text(if (isFullscreen) "⤢" else "⛶") }
         }
 
         if (world == null || !world.hasAllTalkAssets()) {
@@ -94,6 +151,28 @@ internal fun StudyTalkTab(
         val turn = scene.turns.getOrNull(turnIndex) ?: return@Div
         val speaker = session.characters.firstOrNull { it.id == turn.speakerCharacterId }
         val expression = world.expressions.firstOrNull { it.id == turn.expressionId }
+        val characterImageUrl = expression?.imageUrl
+        var characterLoaded by remember(characterImageUrl) { mutableStateOf(false) }
+        var characterTapAnimation by remember(characterImageUrl) { mutableStateOf(false) }
+
+        LaunchedEffect(characterImageUrl) {
+            characterLoaded = false
+            characterTapAnimation = false
+            val imageUrl = characterImageUrl ?: return@LaunchedEffect
+            val preloader = document.createElement("img") as HTMLImageElement
+            preloader.onload = { _: Event -> characterLoaded = true }
+            preloader.src = imageUrl
+            if (preloader.complete) characterLoaded = true
+        }
+
+        LaunchedEffect(phase, turn.id, turn.characterAudioUrl) {
+            if (phase == StudyTalkPhase.LISTEN) {
+                val audioUrl = turn.characterAudioUrl.orEmpty()
+                if (audioUrl.isNotBlank()) {
+                    playAudio(audioUrl, restart = true, onStarted = { listenedTurnId = turn.id })
+                }
+            }
+        }
 
         Div(attrs = {
             classes(Styles.studyTalkStage)
@@ -104,125 +183,104 @@ internal fun StudyTalkTab(
                 attr("aria-hidden", "true")
             })
             Div(attrs = { classes(Styles.studyTalkVignette) })
-            expression?.imageUrl?.let { imageUrl ->
-                Img(src = imageUrl, alt = speaker?.name.orEmpty(), attrs = {
-                    classes(Styles.studyTalkCharacter)
-                })
-            }
-            if (phase == StudyTalkPhase.LISTEN) {
-                Div(attrs = { classes(Styles.studyTalkIndicator) }) {
-                    MaterialSymbol("graphic_eq")
-                    Span { Text(copy.characterSpeaking) }
-                }
-            }
-        }
-
-        when (phase) {
-            StudyTalkPhase.LISTEN -> {
-                Div(attrs = { classes(Styles.studyTalkActions) }) {
-                    Button(attrs = {
-                        classes(Styles.savedItemAction)
-                        attr("type", "button")
-                        onClick {
-                            val audioUrl = turn.characterAudioUrl.orEmpty()
-                            if (isStudyAudioPlaying(audioUrl)) stopActiveStudyAudio()
-                            else playAudio(audioUrl, restart = true)
-                            listenedTurnId = turn.id
-                        }
-                    }) {
-                        MaterialSymbol(if (isStudyAudioPlaying(turn.characterAudioUrl)) "pause" else "volume_up")
-                        Text(copy.listen)
+            if (characterLoaded && characterImageUrl != null) {
+                Button(attrs = {
+                    classes(Styles.studyTalkCharacterButton)
+                    attr("type", "button")
+                    attr("aria-label", copy.listen)
+                    onClick {
+                        characterTapAnimation = true
+                        window.setTimeout({ characterTapAnimation = false }, 380)
+                        val audioUrl = turn.characterAudioUrl.orEmpty()
+                        listenedTurnId = turn.id
+                        playAudio(audioUrl, restart = true, onStarted = { listenedTurnId = turn.id })
                     }
-                    Button(attrs = {
-                        classes(Styles.btnPrimary)
-                        attr("type", "button")
-                        if (listenedTurnId != turn.id) attr("disabled", "")
-                        onClick { phase = StudyTalkPhase.INTENTION }
-                    }) { Text(copy.continueToIntention) }
+                }) {
+                    Img(src = characterImageUrl, alt = speaker?.name.orEmpty(), attrs = {
+                        classes(Styles.studyTalkCharacter)
+                        classes(Styles.studyTalkCharacterVisible)
+                        if (characterTapAnimation) classes(Styles.studyTalkCharacterTapped)
+                    })
                 }
             }
 
-            StudyTalkPhase.INTENTION -> {
-                Span { Text(copy.intentionLabel) }
-                P(attrs = { classes(Styles.studyTalkIntent) }) { Text(turn.intention) }
-                Div(attrs = { classes(Styles.studyTalkActions) }) {
-                    Button(attrs = {
-                        classes(Styles.btnPrimary)
-                        attr("type", "button")
-                        onClick { phase = StudyTalkPhase.SPEAK }
-                    }) { Text(copy.continueToIntention) }
-                }
-            }
-
-            StudyTalkPhase.SPEAK -> {
-                P(attrs = { classes(Styles.studyTalkPrompt) }) { Text(copy.speakPrompt) }
-                Div(attrs = { classes(Styles.studyTalkActions) }) {
-                    Button(attrs = {
-                        classes(Styles.btnPrimary)
-                        attr("type", "button")
-                        onClick {
-                            phase = StudyTalkPhase.REVEAL
-                            playAudio(turn.replyAudioUrl.orEmpty(), restart = true)
+            Div(attrs = { classes(Styles.studyTalkHud) }) {
+                when (phase) {
+                    StudyTalkPhase.LISTEN -> {
+                        Div(attrs = { classes(Styles.studyTalkActions) }) {
+                            Button(attrs = {
+                                classes(Styles.btnPrimary)
+                                attr("type", "button")
+                                if (listenedTurnId != turn.id) attr("disabled", "")
+                                onClick { phase = StudyTalkPhase.THINK }
+                            }) { Text(copy.continueToIntention) }
                         }
-                    }) {
-                        MaterialSymbol("visibility")
-                        Text(copy.reveal)
                     }
-                }
-            }
 
-            StudyTalkPhase.REVEAL -> {
-                Span { Text(copy.answerLabel) }
-                P(attrs = { classes(Styles.studyTalkAnswer) }) { Text(turn.reply) }
-                Div(attrs = { classes(Styles.studyTalkActions) }) {
-                    Button(attrs = {
-                        classes(Styles.savedItemAction)
-                        attr("type", "button")
-                        onClick {
-                            val audioUrl = turn.replyAudioUrl.orEmpty()
-                            if (isStudyAudioPlaying(audioUrl)) stopActiveStudyAudio()
-                            else playAudio(audioUrl, restart = true)
+                    StudyTalkPhase.THINK -> {
+                        Span { Text(copy.intentionLabel) }
+                        P(attrs = { classes(Styles.studyTalkIntent) }) { Text(turn.intention) }
+                        Div(attrs = { classes(Styles.studyTalkActions) }) {
+                            Button(attrs = {
+                                classes(Styles.btnPrimary)
+                                attr("type", "button")
+                                onClick {
+                                    phase = StudyTalkPhase.REVEAL
+                                    playAudio(turn.replyAudioUrl.orEmpty(), restart = true)
+                                }
+                            }) {
+                                MaterialSymbol("visibility")
+                                Text(copy.reveal)
+                            }
                         }
-                    }) {
-                        MaterialSymbol("volume_up")
-                        Text(copy.replayAnswer)
                     }
-                    Button(attrs = {
-                        classes(Styles.savedItemAction)
-                        attr("type", "button")
-                        onClick {
-                            val retry = retryStudyTalkTurn(StudyTalkProgress(sceneIndex, turnIndex, phase))
-                            phase = retry.phase
-                        }
-                    }) { Text(copy.tryAgain) }
-                    Button(attrs = {
-                        classes(Styles.btnPrimary)
-                        attr("type", "button")
-                        onClick {
-                            val next = advanceStudyTalkTurn(StudyTalkProgress(sceneIndex, turnIndex, phase), world)
-                            sceneIndex = next.sceneIndex
-                            turnIndex = next.turnIndex
-                            phase = next.phase
-                        }
-                    }) { Text(copy.good) }
-                }
-            }
 
-            StudyTalkPhase.COMPLETE -> {
-                Div(attrs = { classes(Styles.studyTalkComplete) }) {
-                    MaterialSymbol("auto_awesome")
-                    P { Text(copy.complete) }
-                    Button(attrs = {
-                        classes(Styles.btnPrimary)
-                        attr("type", "button")
-                        onClick {
-                            sceneIndex = 0
-                            turnIndex = 0
-                            phase = StudyTalkPhase.LISTEN
+                    StudyTalkPhase.REVEAL -> {
+                        Span { Text(copy.answerLabel) }
+                        Button(attrs = {
+                            classes(Styles.studyTalkAnswer)
+                            attr("type", "button")
+                            onClick { playAudio(turn.replyAudioUrl.orEmpty(), restart = true) }
+                        }) { Text(turn.reply) }
+                        Div(attrs = { classes(Styles.studyTalkActions) }) {
+                            Button(attrs = {
+                                classes(Styles.savedItemAction)
+                                attr("type", "button")
+                                onClick {
+                                    val retry = retryStudyTalkTurn(StudyTalkProgress(sceneIndex, turnIndex, phase))
+                                    phase = retry.phase
+                                }
+                            }) { Text(copy.tryAgain) }
+                            Button(attrs = {
+                                classes(Styles.btnPrimary)
+                                attr("type", "button")
+                                onClick {
+                                    val next = advanceStudyTalkTurn(StudyTalkProgress(sceneIndex, turnIndex, phase), world)
+                                    sceneIndex = next.sceneIndex
+                                    turnIndex = next.turnIndex
+                                    phase = next.phase
+                                }
+                            }) { Text(copy.good) }
                         }
-                    }) {
-                        MaterialSymbol("replay")
-                        Text(copy.restart)
+                    }
+
+                    StudyTalkPhase.COMPLETE -> {
+                        Div(attrs = { classes(Styles.studyTalkComplete) }) {
+                            MaterialSymbol("auto_awesome")
+                            P { Text(copy.complete) }
+                            Button(attrs = {
+                                classes(Styles.btnPrimary)
+                                attr("type", "button")
+                                onClick {
+                                    sceneIndex = 0
+                                    turnIndex = 0
+                                    phase = StudyTalkPhase.LISTEN
+                                }
+                            }) {
+                                MaterialSymbol("replay")
+                                Text(copy.restart)
+                            }
+                        }
                     }
                 }
             }

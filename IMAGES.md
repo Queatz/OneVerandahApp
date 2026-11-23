@@ -37,6 +37,10 @@ shared models in [`core/`](./core/src/commonMain/kotlin/apap/oneverandah/images)
 and the frontend integration in
 [`app/web/`](./app/web/src/jsMain/kotlin/apap/oneverandah).
 
+Talk scene backgrounds are wide, empty location plates: each scene depicts one
+distinct place, with no people, faces, silhouettes, speech bubbles, or visible
+text. Foreground sprites are generated separately and layered over the scene.
+
 ---
 
 ## 2. Quick start (development)

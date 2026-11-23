@@ -828,6 +828,8 @@ class QwenStudyClientTest {
         assertContains(requestBodies.single(), "intention must be first-person self-talk in English")
         assertContains(requestBodies.single(), "every learner reply must include at least one word")
         assertContains(requestBodies.single(), "A characterLine may be a natural reaction")
+        assertContains(requestBodies.single(), "all six locations distinct and visually varied")
+        assertContains(requestBodies.single(), "empty background directions only: no people")
         assertContains(requestBodies.single(), "Study vocabulary pool required in learner replies")
         assertContains(requestBodies.single(), "- Xin chào")
         assertContains(requestBodies.single(), "Full source text for theme continuity")

@@ -941,13 +941,8 @@ class StudyService(
         )
     }
 
-    private fun talkSceneBackgroundPrompt(world: StudyTalkWorld, scene: StudyTalkScene): String = buildString {
-        appendLine("Create a cinematic visual-novel background plate for a language-learning story.")
-        appendLine("World: ${world.setting}")
-        appendLine("Scene: ${scene.title}. ${scene.description}")
-        appendLine("Show the environment only: no people, no characters, no text, no speech bubbles.")
-        appendLine("Wide landscape composition, warm illustrated realism, clear depth and readable space for character overlays.")
-    }
+    private fun talkSceneBackgroundPrompt(world: StudyTalkWorld, scene: StudyTalkScene): String =
+        PromptFactory.forTalkSceneBackground(world.setting, scene.title, scene.description)
 
     private fun talkExpressionPrompt(character: StudyStoryCharacter, emotion: String): String = buildString {
         appendLine("Create a full-body visual-novel character sprite of ${character.name}.")
@@ -1626,6 +1621,14 @@ private fun talkEmotionDescription(emotion: String): String = when (emotion) {
 }
 
 private fun fallbackStudyTalkWorld(request: StudyTalkGenerationRequest): StudyTalkWorld {
+    val sceneLocations = listOf(
+        "The Apartment Lobby" to "A sunlit apartment lobby with a front desk, potted plants, and glass entrance doors.",
+        "A Corner Café" to "A cozy corner café with a pastry counter, two small tables, and a rain-streaked window.",
+        "The Flower Market" to "An outdoor flower stall beneath a striped awning on a lively market lane.",
+        "The Riverside Walk" to "A quiet riverside path with one wooden bench, willow trees, and a view of the water.",
+        "The Community Garden" to "A leafy community garden with raised beds, stepping stones, and a small tool shed.",
+        "The Train Platform" to "A bright train platform beneath a glass canopy, with tracks stretching into the distance.",
+    )
     val characters = request.characters.ifEmpty {
         defaultStoryCharacters(request.text).map { design ->
             StudyStoryCharacter(
@@ -1641,6 +1644,7 @@ private fun fallbackStudyTalkWorld(request: StudyTalkGenerationRequest): StudyTa
     return StudyTalkWorld(
         setting = "A friendly neighborhood connected by everyday conversations",
         scenes = List(STUDY_TALK_SCENE_COUNT) { sceneIndex ->
+            val (title, description) = sceneLocations[sceneIndex]
             val turns = List(STUDY_TALK_MIN_TURNS_PER_SCENE) { turnIndex ->
                 val sentence = sentences[(sceneIndex + turnIndex) % sentences.size]
                 val character = characters[(sceneIndex + turnIndex) % characters.size]
@@ -1655,8 +1659,8 @@ private fun fallbackStudyTalkWorld(request: StudyTalkGenerationRequest): StudyTa
             }
             StudyTalkScene(
                 id = "scene-${sceneIndex + 1}",
-                title = listOf("The Arrival", "A Friendly Offer", "Around the Corner", "A Small Request", "A Shared Moment", "See You Soon")[sceneIndex],
-                description = "A connected everyday moment that gives the learner a reason to use the study phrases.",
+                title = title,
+                description = description,
                 turns = turns,
             )
         },

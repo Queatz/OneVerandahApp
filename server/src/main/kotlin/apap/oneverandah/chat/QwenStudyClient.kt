@@ -953,6 +953,8 @@ class DashScopeStudyAiClient(
         appendLine("You design a visual-novel language practice world from a study lesson.")
         appendLine("Return JSON only with: setting, scenes[].{id,title,description,turns[].{id,speakerCharacterId,expressionId,characterLine,intention,reply}}.")
         appendLine("Return exactly $STUDY_TALK_SCENE_COUNT connected scenes and $STUDY_TALK_MIN_TURNS_PER_SCENE to $STUDY_TALK_MAX_TURNS_PER_SCENE turns in every scene.")
+        appendLine("Give every scene one specific conversation location; make all six locations distinct and visually varied rather than reusing a generic setting.")
+        appendLine("Scene descriptions are empty background directions only: no people, faces, silhouettes, portraits, speech bubbles, dialogue balloons, or visible text.")
         appendLine("characterLine and reply must be natural spoken ${languageName(request.textLanguageTag)}.")
         appendLine("intention must be first-person self-talk in ${languageName(request.languageTag)} that clearly describes what the learner wants to say.")
         appendLine("Use the study sentence structures and vocabulary. If the study vocabulary pool has entries, every learner reply must include at least one word from it.")

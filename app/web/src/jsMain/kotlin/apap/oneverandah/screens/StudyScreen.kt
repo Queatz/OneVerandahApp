@@ -6969,12 +6969,14 @@ internal fun stopActiveStudyAudio(clearPlaylist: Boolean = true) {
 private fun bindStudyAudioPlaybackState(
     element: HTMLAudioElement,
     url: String,
+    onStarted: (() -> Unit)? = null,
     onEnded: (() -> Unit)? = null,
 ) {
     element.asDynamic().onplay = {
         applyActiveStudyAudioRate(element)
         if (activeStudyAudio === element) {
             studyAudioPlayingUrl = url
+            onStarted?.invoke()
         }
     }
     element.asDynamic().onpause = {
@@ -7039,7 +7041,7 @@ private fun loadWatchAudioAt(
     if (play) {
         studyAudioPlayingUrl = url
     }
-    bindStudyAudioPlaybackState(element, url, onEnded)
+    bindStudyAudioPlaybackState(element, url, onEnded = onEnded)
     element.asDynamic().ontimeupdate = {
         if (activeStudyAudio === element) {
             val duration = element.duration
@@ -7079,6 +7081,7 @@ internal fun playAudio(
     playbackRate: Double = 1.0,
     onEnded: (() -> Unit)? = null,
     onDurationMs: ((Int) -> Unit)? = null,
+    onStarted: (() -> Unit)? = null,
 ) {
     val current = activeStudyAudio
     // Toggle: tapping the same sentence again pauses instead of restarting.
@@ -7102,7 +7105,7 @@ internal fun playAudio(
     activeStudyAudioUrl = url
     applyActiveStudyAudioRate(element)
     studyAudioPlayingUrl = url
-    bindStudyAudioPlaybackState(element, url, onEnded)
+    bindStudyAudioPlaybackState(element, url, onStarted = onStarted, onEnded = onEnded)
     startStudyAudioPlayback(element, url, onDurationMs)
 }
 

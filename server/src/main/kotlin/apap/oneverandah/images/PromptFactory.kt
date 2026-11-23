@@ -105,6 +105,22 @@ object PromptFactory {
         )
     }
 
+    fun forTalkSceneBackground(setting: String, title: String, description: String): String {
+        val scene = listOf(setting, title, description)
+            .map(String::trim)
+            .filter(String::isNotEmpty)
+            .joinToString(". ")
+        return buildString {
+            append("Create a wide cinematic visual-novel background plate for one conversation scene. ")
+            if (scene.isNotEmpty()) append("Depict exactly one specific location from this scene: $scene. ")
+            append("Make this location visibly distinct from the other scene locations; do not combine or montage places. ")
+            append("Show only the environment: no people, human figures, faces, silhouettes, bodies, portraits, or cast members. ")
+            append("No speech bubbles, dialogue balloons, or panels. ")
+            append("Use a wide landscape composition with clear depth and open foreground space for a separately layered sprite. ")
+            append("Art style: $ART_STYLE. $NO_TEXT")
+        }
+    }
+
     fun forCharacterPortrait(name: String, role: String, description: String): String {
         val roleLabel = when (role.lowercase()) {
             "secondary" -> "secondary supporting character"

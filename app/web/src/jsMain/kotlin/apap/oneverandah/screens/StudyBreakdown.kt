@@ -198,6 +198,9 @@ internal fun StudyBreakdown(
     val wordRecallIndex = drillProgress.wordRecallQueue.firstOrNull()
     val wordRecallToken = wordRecallIndex?.let(sentence.tokens::getOrNull)?.takeIf { it.isDissectable }
     val wordRecallConversation = wordRecallToken?.needConversation.orEmpty()
+    var revealedConversationMeanings by remember(sentenceIndex, wordRecallIndex) {
+        mutableStateOf(emptySet<Int>())
+    }
 
     BottomDialog(
         visible = true,
@@ -382,16 +385,27 @@ internal fun StudyBreakdown(
                         }
                     } else {
                         Div(attrs = { classes(Styles.studyBreakdownConversation) }) {
-                            wordRecallConversation.forEach { line ->
-                                Div(attrs = { classes(Styles.studyBreakdownConversationLine) }) {
+                            wordRecallConversation.forEachIndexed { lineIndex, line ->
+                                Div(attrs = {
+                                    classes(Styles.studyBreakdownConversationLine)
+                                    onClick {
+                                        revealedConversationMeanings = if (lineIndex in revealedConversationMeanings) {
+                                            revealedConversationMeanings - lineIndex
+                                        } else {
+                                            revealedConversationMeanings + lineIndex
+                                        }
+                                    }
+                                }) {
                                     P(attrs = { classes(Styles.studyBreakdownConversationSpeaker) }) {
                                         Text(line.speaker)
                                     }
                                     P(attrs = { classes(Styles.studyBreakdownConversationText) }) {
                                         Text(line.text)
                                     }
-                                    P(attrs = { classes(Styles.studyBreakdownConversationTranslation) }) {
-                                        Text(line.translation)
+                                    if (lineIndex in revealedConversationMeanings && line.translation.isNotBlank()) {
+                                        P(attrs = { classes(Styles.studyBreakdownConversationTranslation) }) {
+                                            Text(line.translation)
+                                        }
                                     }
                                 }
                             }
