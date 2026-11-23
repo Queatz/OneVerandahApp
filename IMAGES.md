@@ -111,6 +111,8 @@ The backend calls Alibaba Cloud **Model Studio / DashScope** text-to-image
    QWEN_R2I_MODEL=qwen-image-3.0
    # wan2.x-image pixel sizes bottom out around 768*768 (512 is rejected).
    QWEN_MULTIMODAL_SIZE=768*768
+   # Send shrunk multimodal references inline; set false to force temporary OSS uploads.
+   QWEN_INLINE_REFERENCES=true
    # Only used if you switch QWEN_MODEL back to a classic *-t2i* model.
    QWEN_T2I_SIZE=512*512
    QWEN_R2I_SIZE=512*512
@@ -127,11 +129,13 @@ The backend calls Alibaba Cloud **Model Studio / DashScope** text-to-image
 The client picks the right DashScope contract per model: classic async
 `text2image/image-synthesis` for `wanx` / `*-t2i*` if configured, and
 multimodal-generation (messages payload, sync or async) for `wan2.x-image`
-text-only and reference-grounded stills (default: `qwen-image-3.0`). Reference images re-hosted into
-DashScope temp storage are cached in-process so study story panels reuse the
-same character portraits without re-uploading each time. Failures are retried
-with exponential backoff; after `GENERATION_MAX_RETRIES` the image is marked
-`FAILED` and re-queued later by the scheduler. If `QWEN_API_KEY` is empty the
+text-only and reference-grounded stills (default: `qwen-image-3.0`). For
+multimodal reference calls, non-DashScope images are shrunk and sent inline as
+data URLs by default; repeated source URLs share a bounded in-process cache.
+Set `QWEN_INLINE_REFERENCES=false` to force the temporary OSS upload path, or
+when a provider rejects inline references. A structured HTTP 400
+`InvalidParameter*` response also triggers that compatibility fallback
+automatically; content-policy errors do not. If `QWEN_API_KEY` is empty the
 offline placeholder generator is used instead, so the pipeline always works.
 
 ---

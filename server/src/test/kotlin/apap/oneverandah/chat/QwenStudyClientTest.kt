@@ -7,6 +7,8 @@ import apap.oneverandah.api.StudyExampleToken
 import apap.oneverandah.api.StudyChunk
 import apap.oneverandah.api.StudySentence
 import apap.oneverandah.api.StudyStoryCharacter
+import apap.oneverandah.api.StudyToken
+import apap.oneverandah.api.StudyTokenStatus
 import apap.oneverandah.api.StudyWordRecallLine
 import apap.oneverandah.config.QwenChatConfig
 import io.ktor.client.HttpClient
@@ -808,7 +810,12 @@ class QwenStudyClientTest {
                 text = "Xin chào.",
                 textLanguageTag = "vi",
                 languageTag = "en",
-                sentences = listOf(StudySentence(text = "Xin chào.", tokens = emptyList())),
+                sentences = listOf(
+                    StudySentence(
+                        text = "Xin chào.",
+                        tokens = listOf(StudyToken(text = "Xin chào", status = StudyTokenStatus.READY)),
+                    ),
+                ),
                 characters = listOf(StudyStoryCharacter("main", "Lan", "main", "A neighbor.")),
             ),
         )
@@ -817,9 +824,12 @@ class QwenStudyClientTest {
         assertTrue(world.scenes.all { it.turns.size == 3 })
         assertEquals("Xin chào.", world.scenes.first().turns.first().reply)
         assertContains(requestBodies.single(), "qwen3.8-flash")
-        assertContains(requestBodies.single(), "\"enable_thinking\":false")
+        assertContains(requestBodies.single(), "\"enable_thinking\":true")
         assertContains(requestBodies.single(), "intention must be first-person self-talk in English")
-        assertContains(requestBodies.single(), "Use the study sentence structures and vocabulary")
+        assertContains(requestBodies.single(), "every learner reply must include at least one word")
+        assertContains(requestBodies.single(), "A characterLine may be a natural reaction")
+        assertContains(requestBodies.single(), "Study vocabulary pool required in learner replies")
+        assertContains(requestBodies.single(), "- Xin chào")
         assertContains(requestBodies.single(), "Full source text for theme continuity")
         client.close()
     }

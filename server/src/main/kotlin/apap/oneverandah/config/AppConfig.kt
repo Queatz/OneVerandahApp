@@ -126,6 +126,8 @@ data class QwenImageConfig(
      * `width*height`. Pixel sizes must be at least ~`768*768` on DashScope.
      */
     val multimodalSize: String = "768*768",
+    /** Send shrunk references as inline data URLs instead of temporary OSS uploads. */
+    val inlineReferenceImages: Boolean = true,
     /**
      * Output size for classic text-to-image models (`width*height`).
      * Only used when [model] is a classic wanx / `*-t2i*` model.
@@ -348,6 +350,7 @@ data class AppConfig(
                 r2iModel = source["QWEN_R2I_MODEL"] ?: "qwen-image-3.0",
                 promptExtend = source.bool("QWEN_PROMPT_EXTEND", false),
                 multimodalSize = source["QWEN_MULTIMODAL_SIZE"]?.takeIf { it.isNotBlank() } ?: "768*768",
+                inlineReferenceImages = source.bool("QWEN_INLINE_REFERENCES", true),
                 textToImageSize = source["QWEN_T2I_SIZE"]?.takeIf { it.isNotBlank() } ?: "512*512",
                 r2iSize = source["QWEN_R2I_SIZE"]?.takeIf { it.isNotBlank() } ?: "512*512",
             )

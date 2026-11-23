@@ -21,6 +21,7 @@ import io.ktor.client.statement.bodyAsText
 import io.ktor.http.ContentType
 import io.ktor.http.Headers
 import io.ktor.http.HttpHeaders
+import io.ktor.http.HttpStatusCode
 import io.ktor.http.contentType
 import io.ktor.http.isSuccess
 import kotlinx.coroutines.CancellationException
@@ -52,6 +53,7 @@ import java.io.File
 import java.net.SocketTimeoutException
 import java.net.URI
 import java.util.Base64
+import java.util.LinkedHashMap
 import java.util.UUID
 import java.util.concurrent.ConcurrentHashMap
 import javax.imageio.IIOImage
@@ -69,11 +71,9 @@ import javax.imageio.stream.MemoryCacheImageOutputStream
  *   models to classic `text2image/image-synthesis` yields DashScope
  *   `InvalidParameter: url error` (model/endpoint mismatch).
  * - Reference-to-image (apartment photos) uses the multimodal image model
- *   ([QwenImageConfig.r2iEndpoint] / [QwenImageConfig.r2iModel]), after first
- *   re-hosting any non-DashScope-reachable reference URLs into DashScope's
- *   temporary OSS (`oss://…`). Local storage URLs (localhost / private hosts /
- *   our own `/images/…` files) are unreadable by DashScope and were another
- *   cause of `InvalidParameter: url error`.
+ *   ([QwenImageConfig.r2iEndpoint] / [QwenImageConfig.r2iModel]). Non-DashScope
+ *   references are sent as shrunk inline data URLs by default; temporary OSS
+ *   re-hosting remains available as a compatibility fallback.
  */
 class DashScopeQwenClient(
     private val config: QwenImageConfig,
@@ -100,6 +100,11 @@ class DashScopeQwenClient(
      */
     private val dashScopeRefCache = ConcurrentHashMap<String, String>()
     private val dashScopeRefLocks = ConcurrentHashMap<String, Mutex>()
+    private val inlineRefCache = object : LinkedHashMap<String, String>(16, 0.75f, true) {
+        override fun removeEldestEntry(eldest: MutableMap.MutableEntry<String, String>?): Boolean = size > INLINE_REFERENCE_CACHE_SIZE
+    }
+    private val inlineRefLocks = ConcurrentHashMap<String, Mutex>()
+    private val tempUploadMutex = Mutex()
 
     private val uploadsBaseUrl: String =
         apiRootFromEndpoint(config.endpoint).ifBlank {
@@ -127,21 +132,93 @@ class DashScopeQwenClient(
                 download(imageUrl)
             }
         } else {
-            // Re-host refs in parallel and reuse cached oss:// URLs across panels.
-            val accessible = coroutineScope {
-                refs.map { url -> async { ensureDashScopeAccessible(url) } }.map { it.await() }
+            if (isMultimodalGenerationEndpoint(config.r2iEndpoint) && config.inlineReferenceImages) {
+                val inline = coroutineScope {
+                    refs.map { url -> async { prepareInlineReference(url) } }.map { it.await() }
+                }
+                try {
+                    generateWithReferences(prompt, inline)
+                } catch (rejection: QwenException) {
+                    if (!isInlineReferenceParameterRejection(rejection) || inline.none(::isDataUrl)) {
+                        throw rejection
+                    }
+                    log.warn(
+                        "DashScope rejected inline reference image; retrying with temporary OSS upload (providerCode={}, httpStatus={})",
+                        rejection.providerCode,
+                        rejection.httpStatus,
+                    )
+                    val uploaded = coroutineScope {
+                        refs.map { url -> async { ensureDashScopeAccessible(url) } }.map { it.await() }
+                    }
+                    generateWithReferences(prompt, uploaded)
+                }
+            } else {
+                // Re-host refs in parallel and reuse cached oss:// URLs across panels.
+                val accessible = coroutineScope {
+                    refs.map { url -> async { ensureDashScopeAccessible(url) } }.map { it.await() }
+                }
+                generateWithReferences(prompt, accessible)
             }
-            generateWithReferences(prompt, accessible)
         }
     }
 
     override suspend fun generateMask(image: GeneratedImage, prompt: String): GeneratedImage =
         diagnosticStage("prepare and generate binary mask") {
-            val uploadImage = shrinkForDashScope(image)
-            val fileName = "talk-mask-${UUID.randomUUID()}.${uploadImage.extension}"
-            val reference = uploadToDashScopeTemp(uploadImage, fileName)
+            val sourceUrl = image.sourceUrl?.trim()?.takeIf(::isDashScopeAccessibleUrl)
+            val reference = sourceUrl ?: if (
+                config.inlineReferenceImages && isMultimodalGenerationEndpoint(config.r2iEndpoint)
+            ) {
+                inlineReferenceDataUrl(shrinkForDashScope(image))
+            } else {
+                val uploadImage = shrinkForDashScope(image)
+                val fileName = "talk-mask-${UUID.randomUUID()}.${uploadImage.extension}"
+                uploadToDashScopeTemp(uploadImage, fileName)
+            }
             generate(prompt, listOf(reference))
         }
+
+    private suspend fun prepareInlineReference(url: String): String {
+        val trimmed = url.trim()
+        if (isDashScopeAccessibleUrl(trimmed)) return trimmed
+        if (trimmed.startsWith("data:", ignoreCase = true)) {
+            val decoded = decodeDataUrl(trimmed)
+                ?: throw QwenException("Cannot decode inline reference image")
+            return inlineReferenceDataUrl(shrinkForDashScope(decoded))
+        }
+
+        inlineReferenceCacheGet(trimmed)?.let { return it }
+        val lock = inlineRefLocks.getOrPut(trimmed) { Mutex() }
+        return lock.withLock {
+            inlineReferenceCacheGet(trimmed)?.let { return@withLock it }
+            val image = diagnosticStage("load reference image for inline request") {
+                loadReferenceImage(trimmed)
+            }?.let(::shrinkForDashScope)
+                ?: throw QwenException(
+                    "Cannot load reference image for Qwen multimodal generation. " +
+                        "The file is not reachable from the server.",
+                )
+            inlineReferenceDataUrl(image).also { inline ->
+                synchronized(inlineRefCache) { inlineRefCache[trimmed] = inline }
+            }
+        }
+    }
+
+    private fun inlineReferenceCacheGet(key: String): String? =
+        synchronized(inlineRefCache) { inlineRefCache[key] }
+
+    private suspend fun inlineReferenceDataUrl(image: GeneratedImage): String =
+        diagnosticStage("encode inline reference image (${image.bytes.size} bytes, ${image.contentType})") {
+            val contentType = image.contentType
+                .takeIf { it.startsWith("image/", ignoreCase = true) && '\n' !in it && '\r' !in it }
+                ?: contentTypeForExtension(image.extension)
+            "data:$contentType;base64,${Base64.getEncoder().encodeToString(image.bytes)}"
+        }
+
+    private fun isInlineReferenceParameterRejection(error: QwenException): Boolean =
+        error.httpStatus == HttpStatusCode.BadRequest.value &&
+            error.providerCode?.startsWith("InvalidParameter", ignoreCase = true) == true
+
+    private fun isDataUrl(value: String): Boolean = value.startsWith("data:", ignoreCase = true)
 
     private suspend fun <T> diagnosticStage(operation: String, action: suspend () -> T): T {
         val context = currentCoroutineContext()[CoroutineName]?.name
@@ -170,6 +247,67 @@ class DashScopeQwenClient(
             )
             throw error
         }
+    }
+
+    private suspend fun providerResponseError(
+        operation: String,
+        status: HttpStatusCode?,
+        body: String,
+    ): QwenException {
+        val details = parseProviderErrorDetails(body)
+        val message = buildString {
+            append(operation).append(" failed")
+            status?.let { append(" (HTTP ").append(it.value).append(')') }
+            val fields = listOfNotNull(
+                details.code?.let { "code=$it" },
+                details.message?.let { "message=$it" },
+                details.requestId?.let { "request_id=$it" },
+            )
+            if (fields.isNotEmpty()) append(" - ").append(fields.joinToString("; "))
+        }
+        val error = QwenException(
+            message = message,
+            providerCode = details.code,
+            providerMessage = details.message,
+            requestId = details.requestId,
+            httpStatus = status?.value,
+        )
+        val context = currentCoroutineContext()[CoroutineName]?.name
+            ?.takeIf { it.startsWith("study-build ") }
+        if (context != null) {
+            log.warn(
+                "Qwen provider returned an error response: context={} operation={} diagnostics={}",
+                context,
+                operation,
+                SafeFailureDiagnostics.describe(error),
+            )
+        }
+        return error
+    }
+
+    private fun parseProviderErrorDetails(body: String): QwenErrorDetails {
+        val root = runCatching { json.parseToJsonElement(body).jsonObject }.getOrNull()
+            ?: return QwenErrorDetails()
+        val output = runCatching { root["output"]?.jsonObject }.getOrNull()
+        val candidates = listOfNotNull(
+            root,
+            runCatching { root["error"]?.jsonObject }.getOrNull(),
+            output,
+            runCatching { output?.get("error")?.jsonObject }.getOrNull(),
+        )
+        fun field(vararg keys: String): String? = keys.firstNotNullOfOrNull { key ->
+            candidates.firstNotNullOfOrNull { candidate ->
+                runCatching { candidate.string(key) }
+                    .getOrNull()
+                    ?.let(SafeFailureDiagnostics::sanitizeMessage)
+                    ?.takeIf(String::isNotBlank)
+            }
+        }
+        return QwenErrorDetails(
+            code = field("code")?.take(100),
+            message = field("message")?.take(180),
+            requestId = field("request_id", "requestId")?.take(100),
+        )
     }
 
     /** Classic async text-to-image submit (`wanx` / `*-t2i*` style models). */
@@ -309,7 +447,7 @@ class DashScopeQwenClient(
         }
         val text = response.bodyAsText()
         if (!response.status.isSuccess()) {
-            throw QwenException("Qwen multimodal submit failed (${response.status}): $text")
+            throw providerResponseError("Qwen multimodal submit", response.status, text)
         }
 
         // Sync multimodal response: output.choices[].message.content[].image
@@ -322,7 +460,7 @@ class DashScopeQwenClient(
             val imageUrl = pollForResult(taskId, endpoint)
             return download(imageUrl)
         }
-        throw QwenException("Qwen multimodal returned no image url: $text")
+        throw QwenException("Qwen multimodal returned no image url")
     }
 
     private suspend fun submitAsyncTask(
@@ -344,12 +482,12 @@ class DashScopeQwenClient(
 
         val text = response.bodyAsText()
         if (!response.status.isSuccess()) {
-            throw QwenException("Qwen submit failed (${response.status}): $text")
+            throw providerResponseError("Qwen submit", response.status, text)
         }
         val output = json.parseToJsonElement(text).jsonObject["output"]?.jsonObject
-            ?: throw QwenException("Qwen submit returned no output: $text")
+            ?: throw QwenException("Qwen submit returned no output")
         return output["task_id"]?.jsonPrimitive?.content
-            ?: throw QwenException("Qwen submit returned no task_id: $text")
+            ?: throw QwenException("Qwen submit returned no task_id")
     }
 
     private suspend fun pollForResult(taskId: String, submitEndpoint: String): String =
@@ -363,18 +501,18 @@ class DashScopeQwenClient(
                 }
                 val text = response.bodyAsText()
                 if (!response.status.isSuccess()) {
-                    throw QwenException("Qwen poll failed (${response.status}): $text")
+                    throw providerResponseError("Qwen poll", response.status, text)
                 }
                 val output = json.parseToJsonElement(text).jsonObject["output"]?.jsonObject
-                    ?: throw QwenException("Qwen poll returned no output: $text")
+                    ?: throw QwenException("Qwen poll returned no output")
                 when (output["task_status"]?.jsonPrimitive?.content) {
                     "SUCCEEDED" -> {
                         extractAsyncResultUrl(output)?.let { return@diagnosticStage it }
-                        throw QwenException("Qwen task succeeded but returned no url: $text")
+                        throw QwenException("Qwen task succeeded but returned no url")
                     }
 
                     "FAILED", "CANCELED", "UNKNOWN" ->
-                        throw QwenException("Qwen task $taskId failed: $text")
+                        throw providerResponseError("Qwen task $taskId", null, text)
 
                     else -> delay(pollIntervalMs) // PENDING / RUNNING
                 }
@@ -440,22 +578,23 @@ class DashScopeQwenClient(
             val bytes: ByteArray = response.body()
             val extension = url.substringAfterLast('.', "png").substringBefore('?').ifBlank { "png" }
             val contentType = contentTypeForExtension(extension)
-            GeneratedImage(bytes = bytes, contentType = contentType, extension = extension)
+            GeneratedImage(bytes = bytes, contentType = contentType, extension = extension, sourceUrl = url)
         }
 
     /**
      * Ensures [url] is something DashScope's servers can fetch.
      *
-     * Already-hosted `oss://` temporary URLs are returned as-is. Everything else
-     * is loaded (HTTP, data-URL, or local `/images/` file) and re-uploaded into
-     * DashScope temporary storage so R2I never sees localhost / private URLs.
+     * Already-hosted `oss://` temporary URLs and DashScope result URLs are
+     * returned as-is. Other sources are loaded (HTTP, data-URL, or local
+     * `/images/` file) and re-uploaded so R2I never sees localhost / private URLs.
      *
      * Concurrent callers for the same source URL share one upload (study panels
      * often start in parallel with the same character portraits).
      */
     internal suspend fun ensureDashScopeAccessible(url: String): String {
         val trimmed = url.trim()
-        if (trimmed.startsWith("oss://")) return trimmed
+        if (isDashScopeAccessibleUrl(trimmed)) return trimmed
+        if (isDataUrl(trimmed)) return uploadReferenceToDashScope(trimmed)
 
         dashScopeRefCache[trimmed]?.let { cached ->
             log.debug("Using cached DashScope reference image")
@@ -469,20 +608,33 @@ class DashScopeQwenClient(
                 return@withLock cached
             }
 
-            val image = diagnosticStage("load character reference image") {
-                loadReferenceImage(trimmed)
-            }?.let { shrinkForDashScope(it) }
-                ?: throw QwenException(
-                    "Cannot load reference image for Qwen R2I. " +
-                        "Upload failed or the file is not reachable from the server.",
-                )
-            val guessed = guessFileName(trimmed, image.extension)
-            val fileName = guessed.substringBeforeLast('.', guessed) + "." + image.extension
-            val ossUrl = uploadToDashScopeTemp(image, fileName)
+            val ossUrl = uploadReferenceToDashScope(trimmed)
             dashScopeRefCache[trimmed] = ossUrl
-            log.info("Re-hosted reference image for DashScope (extension={})", image.extension)
             ossUrl
         }
+    }
+
+    private suspend fun uploadReferenceToDashScope(url: String): String {
+        val image = diagnosticStage("load character reference image") {
+            loadReferenceImage(url)
+        }?.let { shrinkForDashScope(it) }
+            ?: throw QwenException(
+                "Cannot load reference image for Qwen R2I. " +
+                    "Upload failed or the file is not reachable from the server.",
+            )
+        val guessed = guessFileName(url, image.extension)
+        val fileName = guessed.substringBeforeLast('.', guessed) + "." + image.extension
+        return uploadToDashScopeTemp(image, fileName).also {
+            log.info("Re-hosted reference image for DashScope (extension={})", image.extension)
+        }
+    }
+
+    private fun isDashScopeAccessibleUrl(url: String): Boolean {
+        if (url.startsWith("oss://", ignoreCase = true)) return true
+        val uri = runCatching { URI(url) }.getOrNull() ?: return false
+        val scheme = uri.scheme?.lowercase()
+        return scheme in setOf("http", "https") &&
+            uri.host?.contains("dashscope", ignoreCase = true) == true
     }
 
     private suspend fun loadReferenceImage(url: String): GeneratedImage? {
@@ -555,10 +707,17 @@ class DashScopeQwenClient(
         throw last ?: error("Qwen HTTP retry exhausted")
     }
 
-    /** OSS uploads/downloads can outlive the 5-minute API request budget. */
+    /** Generated image downloads can outlive the 5-minute API request budget. */
     private fun HttpRequestBuilder.fileTransferTimeout() {
         timeout {
             requestTimeoutMillis = HttpTimeoutConfig.INFINITE_TIMEOUT_MS
+        }
+    }
+
+    private fun HttpRequestBuilder.temporaryUploadTimeout() {
+        timeout {
+            requestTimeoutMillis = TEMP_UPLOAD_TIMEOUT_MS
+            socketTimeoutMillis = TEMP_UPLOAD_TIMEOUT_MS
         }
     }
 
@@ -574,8 +733,14 @@ class DashScopeQwenClient(
      * Callers must send `X-DashScope-OssResourceResolve: enable` on model calls.
      */
     private suspend fun uploadToDashScopeTemp(image: GeneratedImage, fileName: String): String =
-        diagnosticStage("temporary image upload") {
-            uploadToDashScopeTempInternal(image, fileName)
+        tempUploadMutex.withLock {
+            diagnosticStage("temporary image upload (${image.bytes.size} bytes, ${image.contentType})") {
+                withTransientHttpRetry(operation = "temporary upload policy and bytes upload") {
+                    val extension = fileName.substringAfterLast('.', "png")
+                    val name = fileName.removeSuffix(".$extension")
+                    uploadToDashScopeTempInternal(image, "$name-${UUID.randomUUID()}.$extension")
+                }
+            }
         }
 
     private suspend fun uploadToDashScopeTempInternal(image: GeneratedImage, fileName: String): String {
@@ -589,10 +754,10 @@ class DashScopeQwenClient(
         }
         val policyText = policyResponse.bodyAsText()
         if (!policyResponse.status.isSuccess()) {
-            throw QwenException("DashScope upload policy failed (${policyResponse.status}): $policyText")
+            throw providerResponseError("DashScope upload policy", policyResponse.status, policyText)
         }
         val data = json.parseToJsonElement(policyText).jsonObject["data"]?.jsonObject
-            ?: throw QwenException("DashScope upload policy missing data: $policyText")
+            ?: throw QwenException("DashScope upload policy response missing data")
 
         val uploadHost = data.string("upload_host")
             ?: throw QwenException("DashScope upload policy missing upload_host")
@@ -611,34 +776,30 @@ class DashScopeQwenClient(
         val key = "$uploadDir/$safeName"
 
         val uploadResponse = diagnosticStage("temporary image bytes upload") {
-            val response = withTransientHttpRetry(operation = "temporary image upload request") {
-                client.submitFormWithBinaryData(
-                    url = uploadHost,
-                    formData = formData {
-                        append("OSSAccessKeyId", ossAccessKeyId)
-                        append("Signature", signature)
-                        append("policy", policy)
-                        append("x-oss-object-acl", acl)
-                        append("x-oss-forbid-overwrite", forbidOverwrite)
-                        append("key", key)
-                        append("success_action_status", "200")
-                        append(
-                            "file",
-                            image.bytes,
-                            Headers.build {
-                                append(HttpHeaders.ContentType, image.contentType)
-                                append(HttpHeaders.ContentDisposition, "filename=\"$safeName\"")
-                            },
-                        )
-                    },
-                ) {
-                    fileTransferTimeout()
-                }
+            val response = client.submitFormWithBinaryData(
+                url = uploadHost,
+                formData = formData {
+                    append("OSSAccessKeyId", ossAccessKeyId)
+                    append("Signature", signature)
+                    append("policy", policy)
+                    append("x-oss-object-acl", acl)
+                    append("x-oss-forbid-overwrite", forbidOverwrite)
+                    append("key", key)
+                    append("success_action_status", "200")
+                    append(
+                        "file",
+                        image.bytes,
+                        Headers.build {
+                            append(HttpHeaders.ContentType, image.contentType)
+                            append(HttpHeaders.ContentDisposition, "filename=\"$safeName\"")
+                        },
+                    )
+                },
+            ) {
+                temporaryUploadTimeout()
             }
             if (!response.status.isSuccess()) {
-                throw QwenException(
-                    "DashScope temp upload failed (${response.status}): ${response.bodyAsText()}",
-                )
+                throw providerResponseError("DashScope temp upload", response.status, response.bodyAsText())
             }
             response
         }
@@ -649,6 +810,8 @@ class DashScopeQwenClient(
         private val log = LoggerFactory.getLogger(DashScopeQwenClient::class.java)
         private const val HEADER_ASYNC = "X-DashScope-Async"
         private const val HEADER_OSS_RESOLVE = "X-DashScope-OssResourceResolve"
+        private const val TEMP_UPLOAD_TIMEOUT_MS = 45_000L
+        private const val INLINE_REFERENCE_CACHE_SIZE = 16
         private const val DEFAULT_MULTIMODAL_ENDPOINT =
             "https://dashscope.aliyuncs.com/api/v1/services/aigc/multimodal-generation/generation"
 
@@ -848,5 +1011,17 @@ class DashScopeQwenClient(
     }
 }
 
+private data class QwenErrorDetails(
+    val code: String? = null,
+    val message: String? = null,
+    val requestId: String? = null,
+)
+
 /** Raised when the Qwen/DashScope API cannot produce an image. */
-class QwenException(message: String) : RuntimeException(message)
+class QwenException(
+    message: String,
+    val providerCode: String? = null,
+    val providerMessage: String? = null,
+    val requestId: String? = null,
+    val httpStatus: Int? = null,
+) : RuntimeException(message)

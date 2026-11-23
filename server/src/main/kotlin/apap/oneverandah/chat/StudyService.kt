@@ -73,6 +73,12 @@ import kotlinx.coroutines.withContext
 import org.slf4j.LoggerFactory
 
 private const val playScenarioCount = 4
+private val studyTalkWordSeparator = Regex("[\\p{P}\\p{S}]+")
+
+private fun studyTalkWords(value: String): List<String> = value.lowercase()
+    .replace(studyTalkWordSeparator, " ")
+    .split(Regex("\\s+"))
+    .filter { it.length > 1 }
 
 data class StudyGenerationRequest(
     val text: String,
@@ -866,6 +872,7 @@ class StudyService(
         val vocabulary = request.sentences.flatMap { sentence ->
             sentence.tokens.filter { it.status != StudyTokenStatus.PLAIN }.map { it.text.trim() }
         }.filter { it.isNotEmpty() }
+        val vocabularyWords = vocabulary.flatMap(::studyTalkWords).toSet()
         require(generated.scenes.size == STUDY_TALK_SCENE_COUNT) {
             "Study Talk requires exactly $STUDY_TALK_SCENE_COUNT scenes"
         }
@@ -884,11 +891,17 @@ class StudyService(
                     ?: characters.first().id
                 val emotion = turn.expressionId.substringAfterLast('-').lowercase()
                     .takeIf { it in emotions } ?: "neutral"
-                require(
-                    vocabulary.isEmpty() ||
-                            vocabulary.any { turn.characterLine.contains(it, ignoreCase = true) } &&
-                            vocabulary.any { turn.reply.contains(it, ignoreCase = true) },
-                ) {
+                val replyUsesStudyVocabulary = vocabularyWords.isEmpty() ||
+                    studyTalkWords(turn.reply).any(vocabularyWords::contains)
+                if (!replyUsesStudyVocabulary) {
+                    log.warn(
+                        "Study Talk exchange {}.{} failed study-pool validation (poolSize={})",
+                        sceneIndex + 1,
+                        turnIndex + 1,
+                        vocabularyWords.size,
+                    )
+                }
+                require(replyUsesStudyVocabulary) {
                     "Study Talk exchange ${sceneIndex + 1}.${turnIndex + 1} must use a word from the study pool"
                 }
                 turn.copy(

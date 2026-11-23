@@ -1,6 +1,7 @@
 package apap.oneverandah.chat
 
 import apap.oneverandah.api.DeviceTokenResponse
+import kotlinx.coroutines.CancellationException
 import kotlinx.coroutines.sync.Mutex
 import kotlinx.coroutines.sync.withLock
 import java.security.MessageDigest
@@ -71,7 +72,12 @@ class DeviceService(
         val record = repository.findByTokenHash(hashToken(token)) ?: return null
         if (record.revokedAt != null) return null
         val now = clock()
-        repository.touch(record.tokenHash, now)
+        try {
+            repository.touch(record.tokenHash, now)
+        } catch (cause: CancellationException) {
+            throw cause
+        } catch (_: Exception) {
+        }
         return record.copy(lastSeenAt = now)
     }
 

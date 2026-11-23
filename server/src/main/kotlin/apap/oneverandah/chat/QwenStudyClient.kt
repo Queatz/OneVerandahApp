@@ -934,7 +934,8 @@ class DashScopeStudyAiClient(
             userContent = talkWorldMaterials(request),
             label = "study Talk world",
             temperature = 0.65,
-            enableThinking = false,
+            enableThinking = true,
+            includeThinkingFlag = true,
         )
         return QwenStudyTalkParser.parse(content).also { world ->
             require(world.scenes.size == STUDY_TALK_SCENE_COUNT) {
@@ -954,7 +955,8 @@ class DashScopeStudyAiClient(
         appendLine("Return exactly $STUDY_TALK_SCENE_COUNT connected scenes and $STUDY_TALK_MIN_TURNS_PER_SCENE to $STUDY_TALK_MAX_TURNS_PER_SCENE turns in every scene.")
         appendLine("characterLine and reply must be natural spoken ${languageName(request.textLanguageTag)}.")
         appendLine("intention must be first-person self-talk in ${languageName(request.languageTag)} that clearly describes what the learner wants to say.")
-        appendLine("Use the study sentence structures and vocabulary; each reply must include at least one word from the provided study pool.")
+        appendLine("Use the study sentence structures and vocabulary. If the study vocabulary pool has entries, every learner reply must include at least one word from it.")
+        appendLine("A characterLine may be a natural reaction and does not need to include a study-pool word.")
         appendLine("Do not introduce advanced grammar or content vocabulary not present in the lesson. Keep every line short and speakable.")
         appendLine("speakerCharacterId must be an id from the allowed cast. expressionId must be '<character id>-neutral', '-happy', '-curious', or '-concerned'.")
         appendLine("Each turn is one exchange: the characterLine is heard without a transcript, then the learner responds to the intention with reply.")
@@ -969,6 +971,13 @@ class DashScopeStudyAiClient(
         request.characters.forEach { character ->
             appendLine("- id=${character.id}; name=${character.name}; role=${character.role}; appearance=${character.description}")
         }
+        appendLine()
+        appendLine("Study vocabulary pool required in learner replies:")
+        request.sentences.flatMap { sentence ->
+            sentence.tokens
+                .filter { it.status != StudyTokenStatus.PLAIN }
+                .map { it.text.trim() }
+        }.filter(String::isNotEmpty).distinct().forEach { appendLine("- $it") }
         appendLine()
         appendLine("Study sentence patterns and vocabulary:")
         request.sentences.forEachIndexed { index, sentence ->
@@ -1181,12 +1190,13 @@ class DashScopeStudyAiClient(
         temperature: Double = 0.2,
         model: String = config.chatModel,
         enableThinking: Boolean? = null,
+        includeThinkingFlag: Boolean = false,
     ): String {
         check(config.enabled) { "Qwen study requires QWEN_API_KEY" }
         val thinkingEnabled = enableThinking ?: (model != config.chatModel)
         val body = buildJsonObject {
             put("model", model)
-            if (!thinkingEnabled) put("enable_thinking", false)
+            if (!thinkingEnabled || includeThinkingFlag) put("enable_thinking", thinkingEnabled)
             put(
                 "messages",
                 buildJsonArray {

@@ -60,6 +60,33 @@ class StudyBuildServiceTest {
 
         assertContains(failure.message.orEmpty(), "study pool")
     }
+
+    @Test
+    fun `talk generation allows natural character lines and matches punctuated words from multiword pool entries`() = runBlocking {
+        val study = StudyService(
+            aiClient = FakeBuildStudyAi(
+                events = CopyOnWriteArrayList(),
+                characterLineWithoutVocabulary = true,
+            ),
+        )
+
+        val world = study.talkWorld(
+            StudyTalkGenerationRequest(
+                text = "XIN!",
+                textLanguageTag = "vi",
+                languageTag = "en",
+                sentences = listOf(
+                    StudySentence("XIN!", listOf(StudyToken("xin chào", StudyTokenStatus.READY))),
+                ),
+                characters = listOf(StudyStoryCharacter("main", "Lan", "main", "A neighbor.")),
+            ),
+        )
+
+        val turn = world.scenes.first().turns.first()
+        assertEquals("A natural greeting.", turn.characterLine)
+        assertEquals("XIN!", turn.reply)
+    }
+
     @Test
     fun `build completes without a client and duplicate create reuses the record`() = runBlocking {
         val scope = CoroutineScope(SupervisorJob() + Dispatchers.Default)
@@ -371,6 +398,7 @@ class StudyBuildServiceTest {
         private val translationGate: CompletableDeferred<Unit>? = null,
         private val skeletonGate: CompletableDeferred<Unit>? = null,
         private val invalidTalkReply: Boolean = false,
+        private val characterLineWithoutVocabulary: Boolean = false,
     ) : StudyAiClient {
         val skeletonCalls = AtomicInteger()
         val talkWorldCalls = AtomicInteger()
@@ -513,7 +541,7 @@ class StudyBuildServiceTest {
                                 id = "turn-${turnIndex + 1}",
                                 speakerCharacterId = speakerId,
                                 expressionId = "$speakerId-happy",
-                                characterLine = sourceSentence,
+                                characterLine = if (characterLineWithoutVocabulary) "A natural greeting." else sourceSentence,
                                 intention = "I want to say hello.",
                                 reply = if (invalidTalkReply) "A reply outside the study pool." else sourceSentence,
                             )

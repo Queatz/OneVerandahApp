@@ -4,6 +4,7 @@ import apap.oneverandah.api.StudyBuildElement
 import apap.oneverandah.api.StudyBuildElementKind
 import apap.oneverandah.api.StudyBuildEvent
 import apap.oneverandah.api.StudyBuildStatus
+import apap.oneverandah.images.qwen.QwenException
 import apap.oneverandah.logging.SafeFailureDiagnostics
 import kotlinx.coroutines.CancellationException
 import kotlinx.coroutines.CoroutineName
@@ -34,6 +35,18 @@ internal object StudyBuildFailureReason {
         if (chain.any { it.javaClass.simpleName.contains("Timeout", ignoreCase = true) }) {
             return "The provider did not respond before the request timed out."
         }
+        val qwenError = chain.filterIsInstance<QwenException>().firstOrNull()
+        val hasProviderDetails = listOf(qwenError?.providerCode, qwenError?.providerMessage, qwenError?.requestId)
+            .any { it != null }
+        if (qwenError != null && hasProviderDetails) {
+            return buildString {
+                append("Image provider error")
+                qwenError.httpStatus?.let { append(" (HTTP ").append(it).append(')') }
+                qwenError.providerCode?.let { append(" [").append(it).append(']') }
+                qwenError.providerMessage?.let { append(": ").append(it) }
+                qwenError.requestId?.let { append(" (request ID: ").append(it).append(')') }
+            }.take(MAX_DISPLAY_LENGTH)
+        }
         if (chain.any { it.javaClass.simpleName == "QwenException" }) {
             val status = Regex("\\((4\\d\\d|5\\d\\d)(?:\\s+[^)]*)?\\)").find(combined)?.groupValues?.get(1)
             val qwenMessage = messages.firstOrNull().orEmpty().lowercase()
@@ -59,7 +72,7 @@ internal object StudyBuildFailureReason {
             .replace(Regex("(?i)data:[^\\s,]+;base64,[^\\s]+"), "[image data]")
             .replace(Regex("(?i)(?:https?|oss)://[^\\s]+"), "[URL]")
             .replace(Regex("(?i)(authorization|api[_-]?key|token|secret|signature)\\s*[:=]\\s*[^\\s,;]+"), "$1=[redacted]")
-            .replace(Regex("(?s)\\s*:\\s*(?:\\{|\\[|<html\\b).*$", RegexOption.IGNORE_CASE), "")
+            .replace(Regex("(?s)\\s*:\\s*(?:\\{|\\[(?!URL\\])|<html\\b).*$", RegexOption.IGNORE_CASE), "")
             .replace(Regex("\\s+"), " ")
             .trim()
             .take(MAX_DISPLAY_LENGTH)

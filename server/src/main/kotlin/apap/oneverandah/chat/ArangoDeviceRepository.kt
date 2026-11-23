@@ -11,6 +11,7 @@ import io.ktor.http.ContentType
 import io.ktor.http.HttpHeaders
 import io.ktor.http.HttpStatusCode
 import io.ktor.http.contentType
+import kotlinx.coroutines.delay
 import kotlinx.serialization.Serializable
 import kotlinx.serialization.json.Json
 import kotlinx.serialization.json.JsonObject
@@ -21,7 +22,7 @@ import kotlinx.serialization.json.jsonObject
 import kotlinx.serialization.json.put
 import java.util.Base64
 
-class ArangoDeviceRepository private constructor(
+class ArangoDeviceRepository internal constructor(
     private val config: ArangoConfig,
     private val client: HttpClient,
 ) : DeviceRepository {
@@ -91,12 +92,22 @@ class ArangoDeviceRepository private constructor(
                 },
             )
         }
-        val response = client.post("$dbUrl/_api/cursor") {
-            authed()
-            contentType(ContentType.Application.Json)
-            setBody(json.encodeToString(JsonObject.serializer(), body))
+        var attempt = 1
+        while (true) {
+            val response = client.post("$dbUrl/_api/cursor") {
+                authed()
+                contentType(ContentType.Application.Json)
+                setBody(json.encodeToString(JsonObject.serializer(), body))
+            }
+            if (response.status == HttpStatusCode.Conflict && attempt < TOUCH_MAX_ATTEMPTS) {
+                response.bodyAsText()
+                delay(TOUCH_RETRY_DELAY_MS * attempt)
+                attempt++
+                continue
+            }
+            ensureSuccess(response, "touch device")
+            return
         }
-        ensureSuccess(response, "touch device")
     }
 
     private fun io.ktor.client.request.HttpRequestBuilder.authed() {
@@ -146,6 +157,9 @@ class ArangoDeviceRepository private constructor(
     }
 
     companion object {
+        private const val TOUCH_MAX_ATTEMPTS = 3
+        private const val TOUCH_RETRY_DELAY_MS = 25L
+
         suspend fun connect(config: ArangoConfig, client: HttpClient): ArangoDeviceRepository? {
             if (!config.enabled) return null
             return runCatching {

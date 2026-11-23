@@ -1,10 +1,11 @@
 package apap.oneverandah.images.storage
 
-/** Raw generated image bytes plus the metadata needed to store/serve them. */
+/** Generated image bytes, storage metadata, and optionally the provider's source URL. */
 data class GeneratedImage(
     val bytes: ByteArray,
     val contentType: String = "image/png",
     val extension: String = "png",
+    val sourceUrl: String? = null,
 ) {
     // ByteArray needs custom equals/hashCode to behave as a value type.
     override fun equals(other: Any?): Boolean {
@@ -21,6 +22,8 @@ data class GeneratedImage(
         result = 31 * result + extension.hashCode()
         return result
     }
+
+    override fun toString(): String = "GeneratedImage(contentType=$contentType, extension=$extension)"
 }
 
 /**

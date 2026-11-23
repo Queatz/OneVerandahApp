@@ -66,6 +66,18 @@ class ImageSystemTest {
     }
 
     @Test
+    fun qwenInlineReferencesDefaultOnAndCanBeDisabled() {
+        val envFile = Files.createTempFile("ov-inline-references", ".env").toFile()
+        try {
+            assertTrue(AppConfig.load(envFile).qwen.inlineReferenceImages)
+            envFile.writeText("QWEN_INLINE_REFERENCES=false")
+            assertTrue(!AppConfig.load(envFile).qwen.inlineReferenceImages)
+        } finally {
+            envFile.delete()
+        }
+    }
+
+    @Test
     fun productionPublicBaseUrlUsesSslDomainNotLocalhost() {
         // Reproduces the production bug: with SSL on and the server binding
         // 0.0.0.0, the public base URL used to become https://localhost:443,

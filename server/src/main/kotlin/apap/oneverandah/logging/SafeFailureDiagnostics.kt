@@ -6,7 +6,7 @@ internal object SafeFailureDiagnostics {
             .take(6)
             .map { cause ->
                 val type = cause.javaClass.simpleName.ifBlank { "BuildException" }
-                val message = cause.message?.let(::safeMessage).orEmpty()
+                val message = cause.message?.let(::sanitizeMessage).orEmpty()
                 if (message.isBlank()) type else "$type: $message"
             }
             .joinToString(" <- ")
@@ -17,7 +17,7 @@ internal object SafeFailureDiagnostics {
             .take(640)
     }
 
-    private fun safeMessage(message: String): String = message
+    fun sanitizeMessage(message: String): String = message
         .replace(Regex("(?i)data:[^\\s,]+;base64,[^\\s]+"), "[image data]")
         .replace(Regex("(?i)\\bBearer\\s+[^\\s,;]+"), "Bearer [redacted]")
         .replace(Regex("(?i)(?:https?|oss)://[^\\s\\\"'<>]+"), "[URL]")
@@ -29,7 +29,7 @@ internal object SafeFailureDiagnostics {
             Regex("(?s)(\\([^)]*\\b\\d{3}\\b[^)]*\\)\\s*:\\s*).*$"),
             "$1[provider response omitted]",
         )
-        .replace(Regex("(?s)\\s*:\\s*(?:\\{|\\[|<html\\b).*$", RegexOption.IGNORE_CASE), ": [provider response omitted]")
+        .replace(Regex("(?s)\\s*:\\s*(?:\\{|\\[(?!URL\\])|<html\\b).*$", RegexOption.IGNORE_CASE), ": [provider response omitted]")
         .replace(Regex("(?i)(body|output|data)\\s*[=:]\\s*.*$"), "$1=[provider response omitted]")
         .replace(Regex("\\s+"), " ")
         .trim()

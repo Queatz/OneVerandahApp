@@ -69,6 +69,26 @@ class DeviceServiceTest {
     }
 
     @Test
+    fun `findValid returns valid device when touch fails`() = runBlocking {
+        val repository = InMemoryDeviceRepository()
+        val service = DeviceService(
+            repository = repository,
+            tokenGenerator = { "valid-token-abcdefghijklmnopqrstuvwxyz0123" },
+        )
+        val token = service.issueToken().deviceToken
+        val failingRepository = object : DeviceRepository by repository {
+            override suspend fun touch(tokenHash: String, lastSeenAt: Long) {
+                throw ArangoDeviceException("touch failed")
+            }
+        }
+
+        val valid = DeviceService(repository = failingRepository).findValid(token)
+
+        assertNotNull(valid)
+        Unit
+    }
+
+    @Test
     fun `findValid rejects revoked devices`() = runBlocking {
         val repository = InMemoryDeviceRepository()
         val service = DeviceService(
