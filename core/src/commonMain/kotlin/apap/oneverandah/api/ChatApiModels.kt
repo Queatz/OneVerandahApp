@@ -270,7 +270,7 @@ data class StudyTalkTurn(
     val id: String,
     val speakerCharacterId: String,
     val expressionId: String,
-    /** Spoken line from a character; the Talk UI never displays this as a transcript. */
+    /** Spoken line from a character; shown after the learner reveals it. */
     val characterLine: String,
     /** First-person intention in the learner's UI language. */
     val intention: String,

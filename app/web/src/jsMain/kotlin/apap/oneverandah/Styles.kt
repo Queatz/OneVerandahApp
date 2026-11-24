@@ -383,6 +383,7 @@ object Styles {
     const val savedItemText = "saved-item-text"
     const val savedItemActions = "saved-item-actions"
     const val savedItemAction = "saved-item-action"
+    const val savedItemActionIconOnly = "saved-item-action-icon-only"
     const val savedItemActionDanger = "saved-item-action-danger"
     const val studySessionPhraseRow = "study-session-phrase-row"
     const val studySessionPhraseImage = "study-session-phrase-image"
@@ -3435,6 +3436,10 @@ object Styles {
             font-size: 13px;
             font-weight: 600;
             cursor: pointer;
+        }
+        .${savedItemAction}.${savedItemActionIconOnly} {
+            padding: 0 3rem;
+            flex: 0;
         }
         .${savedItemAction} .${materialSymbols} {
             font-size: 16px;

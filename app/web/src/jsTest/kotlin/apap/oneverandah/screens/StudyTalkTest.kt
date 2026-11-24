@@ -26,6 +26,21 @@ class StudyTalkTest {
     }
 
     @Test
+    fun `revealing character line keeps the current turn and continue enters think phase`() {
+        val progress = StudyTalkProgress(sceneIndex = 2, turnIndex = 1, phase = StudyTalkPhase.LISTEN)
+
+        val revealed = revealStudyTalkCharacterLine(progress)
+        val continued = continueStudyTalkToThink(revealed)
+
+        assertEquals(2, revealed.sceneIndex)
+        assertEquals(1, revealed.turnIndex)
+        assertEquals(StudyTalkPhase.CHARACTER_LINE, revealed.phase)
+        assertEquals(2, continued.sceneIndex)
+        assertEquals(1, continued.turnIndex)
+        assertEquals(StudyTalkPhase.THINK, continued.phase)
+    }
+
+    @Test
     fun `good rating advances turns across scenes and finishes the world`() {
         val world = sampleTalkWorld()
         val sameScene = advanceStudyTalkTurn(
