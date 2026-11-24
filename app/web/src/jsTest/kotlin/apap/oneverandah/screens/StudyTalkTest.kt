@@ -22,7 +22,7 @@ class StudyTalkTest {
 
         assertEquals(2, retry.sceneIndex)
         assertEquals(1, retry.turnIndex)
-        assertEquals(StudyTalkPhase.THINK, retry.phase)
+        assertEquals(StudyTalkPhase.LISTEN, retry.phase)
     }
 
     @Test

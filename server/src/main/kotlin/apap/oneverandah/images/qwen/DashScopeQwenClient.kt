@@ -84,7 +84,7 @@ class DashScopeQwenClient(
     private val publicBaseUrl: String? = null,
     /** Faster poll cadence so completed jobs are noticed sooner under concurrency. */
     private val pollIntervalMs: Long = 1_000,
-    private val maxPollAttempts: Int = 300,
+    private val maxPollAttempts: Int = 1_200,
 ) : QwenClient {
     override val kind: String = "qwen"
 

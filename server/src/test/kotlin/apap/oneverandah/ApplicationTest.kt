@@ -155,9 +155,9 @@ class ApplicationTest {
             description = apap.oneverandah.model.LocalizedText("Test 60", "Test 60"),
             rating = 5.0,
             reviewCount = 1,
-            basePrice = apap.oneverandah.model.Money(300_000L),
+            basePrice = apap.oneverandah.model.Money(600_000L),
             bookingTypes = listOf(apap.oneverandah.model.BookingTypeOption("trial", apap.oneverandah.model.LocalizedText("Trial", "Thử nghiệm"))),
-            durations = listOf(apap.oneverandah.model.DurationOption("60", 60, apap.oneverandah.model.Money(300_000L))),
+            durations = listOf(apap.oneverandah.model.DurationOption("60", 60, apap.oneverandah.model.Money(600_000L))),
             provider = apap.oneverandah.model.ServiceProvider("Jacob", apap.oneverandah.model.Sex.MALE, "A.12.03", "123", "face")
         )
         val selection60 = service60.defaultSelection()

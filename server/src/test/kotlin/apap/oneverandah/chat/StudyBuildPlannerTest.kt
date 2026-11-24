@@ -103,9 +103,12 @@ class StudyBuildPlannerTest {
         )
         assertEquals(
             setOf(
-                StudyBuildElementKind.WORD_IMAGE, StudyBuildElementKind.SENTENCE_IMAGE,
-                StudyBuildElementKind.PLAY_SCENARIOS, StudyBuildElementKind.EXAM,
-                StudyBuildElementKind.CHUNKS, StudyBuildElementKind.WORD_RECALL_SCENARIOS,
+                StudyBuildElementKind.WORD_IMAGE,
+                StudyBuildElementKind.SENTENCE_IMAGE,
+                StudyBuildElementKind.PLAY_SCENARIOS,
+                StudyBuildElementKind.EXAM,
+                StudyBuildElementKind.CHUNKS,
+                StudyBuildElementKind.WORD_RECALL_SCENARIOS,
                 StudyBuildElementKind.TALK_WORLD,
             ),
             planner.plan(portraitReady).map { it.element.kind }.toSet(),

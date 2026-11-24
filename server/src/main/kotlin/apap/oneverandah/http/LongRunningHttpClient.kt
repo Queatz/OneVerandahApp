@@ -28,9 +28,9 @@ internal fun longRunningHttpClient(
         endpoint.connectAttempts = 3
     }
     install(HttpTimeout) {
-        requestTimeoutMillis = 300_000
+        requestTimeoutMillis = 1_200_000
         connectTimeoutMillis = 30_000
-        socketTimeoutMillis = 300_000
+        socketTimeoutMillis = 1_200_000
     }
     expectSuccess = false
     configure()

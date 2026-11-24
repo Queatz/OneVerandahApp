@@ -964,7 +964,7 @@ private fun studyTalkStrings(languageName: String): StudyTalkStrings = when (lan
     )
     "Русский" -> StudyTalkStrings(
         tab = "Диалог", title = "Практика диалога", loading = "Готовим мир диалогов…", error = "Не удалось подготовить этот мир.", retry = "Повторить",
-        sceneProgress = { current, total -> "Сцена $current из $total" }, turnProgress = { current, total -> "Реплика $current из $total" },
+        sceneProgress = { current, total -> "Сцена $current / $total" }, turnProgress = { current, total -> "Реплика $current из $total" },
         listen = "Нажмите, чтобы прослушать снова", characterSpeaking = "Говорит", continueToIntention = "Продолжить",
         intentionLabel = "Вы думаете", speakPrompt = "Подумайте, что хотите ответить.", reveal = "Показать ответ",
         answerLabel = "Вы говорите", replayAnswer = "Нажмите, чтобы прослушать снова", good = "У меня получилось", tryAgain = "Попробовать снова", next = "Продолжить",
@@ -985,7 +985,7 @@ private fun studyTalkStrings(languageName: String): StudyTalkStrings = when (lan
     )
     "Español" -> StudyTalkStrings(
         tab = "Diálogo", title = "Practica el diálogo", loading = "Preparando el mundo…", error = "No se pudo preparar este mundo.", retry = "Reintentar",
-        sceneProgress = { current, total -> "Escena $current de $total" }, turnProgress = { current, total -> "Turno $current de $total" },
+        sceneProgress = { current, total -> "Escena $current / $total" }, turnProgress = { current, total -> "Turno $current de $total" },
         listen = "Toca para escuchar de nuevo", characterSpeaking = "Está hablando", continueToIntention = "Continuar",
         intentionLabel = "Tú piensas", speakPrompt = "Piensa en cómo quieres responder.", reveal = "Mostrar respuesta",
         answerLabel = "Tú dices", replayAnswer = "Toca para escuchar de nuevo", good = "Lo dije bien", tryAgain = "Intentar de nuevo", next = "Continuar",
@@ -1006,7 +1006,7 @@ private fun studyTalkStrings(languageName: String): StudyTalkStrings = when (lan
     )
     "Deutsch" -> StudyTalkStrings(
         tab = "Dialog", title = "Dialog üben", loading = "Dialogwelt wird vorbereitet…", error = "Diese Welt konnte nicht vorbereitet werden.", retry = "Erneut versuchen",
-        sceneProgress = { current, total -> "Szene $current von $total" }, turnProgress = { current, total -> "Runde $current von $total" },
+        sceneProgress = { current, total -> "Szene $current / $total" }, turnProgress = { current, total -> "Runde $current von $total" },
         listen = "Zum erneuten Anhören tippen", characterSpeaking = "Spricht gerade", continueToIntention = "Weiter",
         intentionLabel = "Du denkst", speakPrompt = "Überlege dir deine Antwort.", reveal = "Antwort zeigen",
         answerLabel = "Du sagst", replayAnswer = "Zum erneuten Anhören tippen", good = "Das war richtig", tryAgain = "Erneut versuchen", next = "Weiter",
@@ -1049,7 +1049,7 @@ private fun studyTalkStrings(languageName: String): StudyTalkStrings = when (lan
     else -> StudyTalkStrings(
         tab = "Talk", title = "Practice the conversation", loading = "Preparing your Talk world…",
         error = "Couldn't prepare this world.", retry = "Retry",
-        sceneProgress = { current, total -> "Scene $current of $total" },
+        sceneProgress = { current, total -> "Scene $current / $total" },
         turnProgress = { current, total -> "Turn $current of $total" },
         listen = "Tap to listen again", characterSpeaking = "Speaking",
         continueToIntention = "Continue", intentionLabel = "You think",

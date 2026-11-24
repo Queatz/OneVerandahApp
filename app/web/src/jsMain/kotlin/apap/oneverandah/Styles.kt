@@ -539,6 +539,7 @@ object Styles {
     const val studyTalkIntent = "study-talk-intent"
     const val studyTalkAnswer = "study-talk-answer"
     const val studyTalkActions = "study-talk-actions"
+    const val studyTalkActionsIconOnly = "study-talk-actions-icon-only"
     const val studyTalkStatus = "study-talk-status"
     const val studyTalkBuildHeader = "study-talk-build-header"
     const val studyTalkBuildProgress = "study-talk-build-progress"
@@ -4513,7 +4514,7 @@ object Styles {
         .${studyTalkHud} .${studyTalkIntent},
         .${studyTalkHud} .${studyTalkAnswer} {
             color: #17212a;
-            background: rgba(255, 255, 255, .94);
+            background: rgba(255, 255, 255, .9);
         }
         .${studyTalkCharacter} {
             position: absolute;
@@ -4550,7 +4551,7 @@ object Styles {
         }
         .${studyTalkIntent}, .${studyTalkAnswer} {
             padding: 14px 16px;
-            border-radius: 16px;
+            border-radius: 24px;
             line-height: 1.5;
         }
         .${studyTalkIntent} {
@@ -4590,6 +4591,10 @@ object Styles {
             min-width: 0;
             box-sizing: border-box;
             text-align: center;
+        }
+        .${studyTalkActions} > button.${studyTalkActionsIconOnly} {
+            flex: 0;
+            padding: 0 4rem;
         }
         .${studyTalkStatus} {
             display: flex;

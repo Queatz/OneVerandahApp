@@ -23,6 +23,7 @@ import apap.oneverandah.api.STUDY_TALK_SCENE_COUNT
 import apap.oneverandah.components.MaterialSymbol
 import apap.oneverandah.i18n.StudyTalkStrings
 import apap.oneverandah.i18n.UiStrings
+import kotlinx.coroutines.delay
 import kotlinx.browser.document
 import kotlinx.browser.window
 import org.jetbrains.compose.web.attributes.ref
@@ -101,7 +102,7 @@ internal fun canRetryStudyTalk(world: StudyTalkWorld?, buildState: StudyBuildSta
 }
 
 internal fun retryStudyTalkTurn(progress: StudyTalkProgress): StudyTalkProgress =
-    progress.copy(phase = StudyTalkPhase.THINK)
+    progress.copy(phase = StudyTalkPhase.LISTEN)
 
 internal fun advanceStudyTalkTurn(progress: StudyTalkProgress, world: StudyTalkWorld): StudyTalkProgress {
     val scene = world.scenes.getOrNull(progress.sceneIndex) ?: return progress.copy(phase = StudyTalkPhase.COMPLETE)
@@ -133,7 +134,8 @@ internal fun StudyTalkTab(
     var sceneIndex by remember(session.text, session.textLanguageTag) { mutableStateOf(0) }
     var turnIndex by remember(session.text, session.textLanguageTag) { mutableStateOf(0) }
     var phase by remember(session.text, session.textLanguageTag) { mutableStateOf(StudyTalkPhase.LISTEN) }
-    var listenedTurnId by remember(session.text, session.textLanguageTag) { mutableStateOf<String?>(null) }
+    var listenGeneration by remember(session.text, session.textLanguageTag) { mutableStateOf(0) }
+    var characterAudioEnded by remember(session.text, session.textLanguageTag) { mutableStateOf(false) }
     var talkElement by remember { mutableStateOf<HTMLElement?>(null) }
     var isFullscreen by remember { mutableStateOf(false) }
     val latestFullscreen by rememberUpdatedState(isFullscreen)
@@ -176,14 +178,12 @@ internal fun StudyTalkTab(
         }
     }) {
         Div(attrs = { classes(Styles.studyTalkHeader) }) {
-            P(attrs = { classes(Styles.studyTalkTitle) }) { Text(copy.title) }
+            P(attrs = { classes(Styles.studyTalkTitle) }) {
+                Text(world?.scenes?.getOrNull(sceneIndex)?.title ?: copy.title)
+            }
             world?.scenes?.getOrNull(sceneIndex)?.let { scene ->
                 P(attrs = { classes(Styles.studyTalkProgress) }) {
-                    Text(scene.title)
-                    Text(" · ")
                     Text(copy.sceneProgress(sceneIndex + 1, world.scenes.size))
-                    Text(" · ")
-                    Text(copy.turnProgress(turnIndex + 1, scene.turns.size))
                 }
             }
             Button(attrs = {
@@ -239,11 +239,29 @@ internal fun StudyTalkTab(
             if (preloader.complete) characterLoaded = true
         }
 
-        LaunchedEffect(phase, turn.id, turn.characterAudioUrl) {
+        LaunchedEffect(phase, turn.id, turn.characterAudioUrl, listenGeneration) {
             if (phase == StudyTalkPhase.LISTEN) {
+                val playbackGeneration = listenGeneration
+                characterAudioEnded = false
                 val audioUrl = turn.characterAudioUrl.orEmpty()
                 if (audioUrl.isNotBlank()) {
-                    playAudio(audioUrl, restart = true, onStarted = { listenedTurnId = turn.id })
+                    playAudio(audioUrl, restart = true, onEnded = {
+                        if (phase == StudyTalkPhase.LISTEN && listenGeneration == playbackGeneration) {
+                            characterAudioEnded = true
+                        }
+                    })
+                } else {
+                    characterAudioEnded = true
+                }
+            }
+        }
+
+        LaunchedEffect(phase, turn.id, listenGeneration, characterAudioEnded) {
+            if (phase == StudyTalkPhase.LISTEN && characterAudioEnded) {
+                val playbackGeneration = listenGeneration
+                delay(1_000)
+                if (phase == StudyTalkPhase.LISTEN && listenGeneration == playbackGeneration) {
+                    phase = StudyTalkPhase.THINK
                 }
             }
         }
@@ -271,8 +289,11 @@ internal fun StudyTalkTab(
                         characterTapAnimation = true
                         window.setTimeout({ characterTapAnimation = false }, 380)
                         val audioUrl = turn.characterAudioUrl.orEmpty()
-                        listenedTurnId = turn.id
-                        playAudio(audioUrl, restart = true, onStarted = { listenedTurnId = turn.id })
+                        if (phase == StudyTalkPhase.LISTEN) {
+                            listenGeneration++
+                        } else {
+                            playAudio(audioUrl, restart = true)
+                        }
                     }
                 }) {
                     Img(src = characterImageUrl, alt = speaker?.name.orEmpty(), attrs = {
@@ -290,21 +311,12 @@ internal fun StudyTalkTab(
 
             Div(attrs = { classes(Styles.studyTalkHud) }) {
                 when (phase) {
-                    StudyTalkPhase.LISTEN -> {
-                        Div(attrs = { classes(Styles.studyTalkActions) }) {
-                            Button(attrs = {
-                                classes(Styles.btnPrimary)
-                                attr("type", "button")
-                                if (listenedTurnId != turn.id) attr("disabled", "")
-                                onClick { phase = StudyTalkPhase.THINK }
-                            }) { Text(copy.continueToIntention) }
-                        }
-                    }
+                    StudyTalkPhase.LISTEN -> Unit
 
                     StudyTalkPhase.THINK -> {
                         Span { Text(copy.intentionLabel) }
                         P(attrs = { classes(Styles.studyTalkIntent) }) { Text(turn.intention) }
-                        Div(attrs = { classes(Styles.studyTalkActions) }) {
+                        Div(attrs = { classes(Styles.studyTalkActions, Styles.studyTalkActionsIconOnly) }) {
                             Button(attrs = {
                                 classes(Styles.btnPrimary)
                                 attr("type", "button")
@@ -334,7 +346,10 @@ internal fun StudyTalkTab(
                                     val retry = retryStudyTalkTurn(StudyTalkProgress(sceneIndex, turnIndex, phase))
                                     phase = retry.phase
                                 }
-                            }) { Text(copy.tryAgain) }
+                            }) {
+                                MaterialSymbol("replay")
+                                Text(copy.tryAgain)
+                            }
                             Button(attrs = {
                                 classes(Styles.btnPrimary)
                                 attr("type", "button")
@@ -344,7 +359,10 @@ internal fun StudyTalkTab(
                                     turnIndex = next.turnIndex
                                     phase = next.phase
                                 }
-                            }) { Text(copy.good) }
+                            }) {
+                                MaterialSymbol("thumb_up")
+                                Text(copy.good)
+                            }
                         }
                     }
 

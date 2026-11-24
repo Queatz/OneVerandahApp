@@ -939,12 +939,12 @@ class DashScopeQwenClientTest {
     fun transientHttpClose_detectsRequestTimeout() {
         val timeout = io.ktor.client.plugins.HttpRequestTimeoutException(
             "https://dashscope-file-mgr.oss-cn-beijing.aliyuncs.com",
-            300_000,
+            600_000,
         )
         assertTrue(DashScopeQwenClient.isTransientHttpClose(timeout))
         assertTrue(
             DashScopeQwenClient.isTransientHttpClose(
-                RuntimeException("Request timeout has expired [url=https://dashscope-file-mgr.oss-cn-beijing.aliyuncs.com, request_timeout=300000 ms]"),
+                RuntimeException("Request timeout has expired [url=https://dashscope-file-mgr.oss-cn-beijing.aliyuncs.com, request_timeout=600000 ms]"),
             ),
         )
     }
@@ -1005,7 +1005,7 @@ class DashScopeQwenClientTest {
             }
             val client = HttpClient(engine) {
                 install(HttpTimeout) {
-                    requestTimeoutMillis = 300_000
+                    requestTimeoutMillis = 600_000
                 }
             }
             val qwen = DashScopeQwenClient(

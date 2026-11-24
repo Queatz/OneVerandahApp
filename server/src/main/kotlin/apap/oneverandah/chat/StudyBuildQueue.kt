@@ -394,8 +394,8 @@ class StudyBuildQueue(
     }
 
     companion object {
-        val DEFAULT_RETRY_BACKOFF_MILLIS = listOf(2_000L, 10_000L, 30_000L)
-        const val DEFAULT_TASK_TIMEOUT_MILLIS = 5 * 60 * 1_000L
+        val DEFAULT_RETRY_BACKOFF_MILLIS = listOf(5_000L, 30_000L, 60_000L)
+        const val DEFAULT_TASK_TIMEOUT_MILLIS = 20 * 60 * 1_000L
         const val MAX_JOURNAL_ENTRIES = 300
     }
 }
