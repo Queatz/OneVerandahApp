@@ -5,6 +5,7 @@ import apap.oneverandah.api.StudyBuildElement
 import apap.oneverandah.api.StudyBuildElementKind
 import apap.oneverandah.api.StudyBuildState
 import apap.oneverandah.api.StudyBuildStatus
+import apap.oneverandah.api.StudyStoryCharacter
 import apap.oneverandah.api.StudyTalkAudioKind
 import apap.oneverandah.api.StudyTalkScene
 import apap.oneverandah.api.StudyTalkTurn
@@ -59,6 +60,62 @@ class StudyTalkTest {
         assertEquals(StudyTalkProgress(0, 1, StudyTalkPhase.LISTEN), sameScene)
         assertEquals(StudyTalkProgress(1, 0, StudyTalkPhase.LISTEN), nextScene)
         assertEquals(StudyTalkProgress(5, 2, StudyTalkPhase.COMPLETE), finished)
+    }
+
+    @Test
+    fun `conversation recap preserves scenes speaker lines labels and replay media`() {
+        val source = sampleTalkWorld()
+        val world = source.copy(
+            scenes = source.scenes.mapIndexed { sceneIndex, scene ->
+                when (sceneIndex) {
+                    0 -> scene.copy(
+                        turns = listOf(
+                            scene.turns[0].copy(
+                                characterLine = "Xin chào.",
+                                reply = "Chào!",
+                                characterAudioUrl = "lan-hello.mp3",
+                                replyAudioUrl = "you-hello.mp3",
+                            ),
+                            scene.turns[1].copy(characterLine = " ", reply = ""),
+                        ),
+                    )
+
+                    1 -> scene.copy(
+                        turns = listOf(
+                            scene.turns[0].copy(
+                                speakerCharacterId = "missing-character",
+                                characterLine = "Welcome back.",
+                                reply = "",
+                                characterAudioUrl = "welcome.mp3",
+                                replyAudioUrl = null,
+                            ),
+                        ),
+                    )
+
+                    else -> scene
+                }
+            },
+            expressions = source.expressions.map { it.copy(imageUrl = "portrait.png") },
+        )
+        val characters = listOf(
+            StudyStoryCharacter(
+                id = "main",
+                name = "Lan",
+                role = "main",
+                description = "A friendly neighbor",
+            ),
+        )
+
+        val recap = studyTalkConversationRecap(world, characters, "You", "Speaking")
+
+        assertEquals(source.scenes.map { it.title }, recap.map { it.title })
+        assertEquals(listOf("Lan", "You"), recap[0].lines.map { it.speakerName })
+        assertEquals(listOf("Xin chào.", "Chào!"), recap[0].lines.map { it.text })
+        assertEquals(listOf("lan-hello.mp3", "you-hello.mp3"), recap[0].lines.map { it.audioUrl })
+        assertEquals("portrait.png", recap[0].lines.first().expressionImageUrl)
+        assertEquals("Speaking", recap[1].lines.single().speakerName)
+        assertEquals("welcome.mp3", recap[1].lines.single().audioUrl)
+        assertEquals(27, recap.flatMap { it.lines }.size)
     }
 
     @Test

@@ -564,6 +564,29 @@ object Styles {
     const val studyTalkJournalMetadata = "study-talk-journal-metadata"
     const val studyTalkJournalDetail = "study-talk-journal-detail"
     const val studyTalkComplete = "study-talk-complete"
+    const val studyTalkRecap = "study-talk-recap"
+    const val studyTalkRecapHero = "study-talk-recap-hero"
+    const val studyTalkRecapSparkles = "study-talk-recap-sparkles"
+    const val studyTalkRecapSparkle = "study-talk-recap-sparkle"
+    const val studyTalkRecapBadge = "study-talk-recap-badge"
+    const val studyTalkRecapTitle = "study-talk-recap-title"
+    const val studyTalkRecapScenes = "study-talk-recap-scenes"
+    const val studyTalkRecapScene = "study-talk-recap-scene"
+    const val studyTalkRecapBackdrop = "study-talk-recap-backdrop"
+    const val studyTalkRecapBackdropImage = "study-talk-recap-backdrop-image"
+    const val studyTalkRecapSceneHeading = "study-talk-recap-scene-heading"
+    const val studyTalkRecapSceneTitle = "study-talk-recap-scene-title"
+    const val studyTalkRecapSceneProgress = "study-talk-recap-scene-progress"
+    const val studyTalkRecapLines = "study-talk-recap-lines"
+    const val studyTalkRecapLine = "study-talk-recap-line"
+    const val studyTalkRecapLineYou = "study-talk-recap-line-you"
+    const val studyTalkRecapAvatar = "study-talk-recap-avatar"
+    const val studyTalkRecapBubble = "study-talk-recap-bubble"
+    const val studyTalkRecapBubbleButton = "study-talk-recap-bubble-button"
+    const val studyTalkRecapBubbleContent = "study-talk-recap-bubble-content"
+    const val studyTalkRecapSpeaker = "study-talk-recap-speaker"
+    const val studyTalkRecapText = "study-talk-recap-text"
+    const val studyTalkRecapRestart = "study-talk-recap-restart"
     const val studySentenceBlock = "study-sentence-block"
     const val studySentenceImage = "study-sentence-image"
     const val studySentenceImagePlaceholder = "study-sentence-image-placeholder"
@@ -4413,7 +4436,7 @@ object Styles {
             min-height: 0;
             box-sizing: border-box;
             padding: max(14px, env(safe-area-inset-top)) max(14px, env(safe-area-inset-right)) max(14px, env(safe-area-inset-bottom)) max(14px, env(safe-area-inset-left));
-            overflow: auto;
+            overflow: hidden;
             border: 0;
             border-radius: 0;
             background: radial-gradient(circle at 50% 0%, #36566a 0, #182630 42%, #10191f 100%);
@@ -4710,6 +4733,9 @@ object Styles {
                 animation: none;
                 opacity: 1;
             }
+            .${studyTalkRecapSparkles} { display: none; }
+            .${studyTalkRecapSparkle}, .${studyTalkRecapBadge}, .${studyTalkRecapLine} { animation: none; }
+            .${studyTalkRecapLine} { opacity: 1; transform: none; }
         }
         .${studyTalkComplete} {
             display: flex;
@@ -4719,10 +4745,233 @@ object Styles {
             padding: 28px 16px;
             text-align: center;
         }
+        .${studyTalkRecap} {
+            display: flex;
+            flex-direction: column;
+            align-items: center;
+            gap: 18px;
+            width: 100%;
+            min-width: 0;
+        }
+        .${studyTalkFullscreen} .${studyTalkRecap} {
+            flex: 1 1 0;
+            min-height: 0;
+            overflow-y: auto;
+            overscroll-behavior: contain;
+            scrollbar-gutter: stable;
+        }
+        .${studyTalkRecapHero} {
+            position: relative;
+            isolation: isolate;
+            justify-content: center;
+            box-sizing: border-box;
+            width: 100%;
+            min-height: 164px;
+            overflow: hidden;
+            border: 1px solid color-mix(in srgb, var(--md-sys-color-primary) 24%, transparent);
+            border-radius: 24px;
+            color: #f7fbfa;
+            background: radial-gradient(circle at 50% 0%, #587f79 0, #263d4c 58%, #1b2936 100%);
+            box-shadow: 0 16px 38px rgba(8, 18, 24, .18);
+        }
+        .${studyTalkRecapSparkles} {
+            position: absolute;
+            inset: 50% auto auto 50%;
+            z-index: -1;
+            width: 1px;
+            height: 1px;
+            pointer-events: none;
+        }
+        .${studyTalkRecapSparkle} {
+            position: absolute;
+            top: 0;
+            left: 0;
+            color: #ffe69b;
+            font-size: 20px;
+            text-shadow: 0 0 18px rgba(255, 230, 155, .85);
+            animation: study-talk-recap-sparkle 880ms cubic-bezier(.15, .65, .25, 1) both;
+            animation-delay: var(--sparkle-delay, 0ms);
+        }
+        @keyframes study-talk-recap-sparkle {
+            0% { opacity: 0; transform: translate(0, 0) scale(.2) rotate(0); }
+            24% { opacity: 1; }
+            100% { opacity: 0; transform: translate(var(--sparkle-x), var(--sparkle-y)) scale(1) rotate(95deg); }
+        }
+        .${studyTalkRecapBadge} {
+            display: grid;
+            place-items: center;
+            width: 58px;
+            height: 58px;
+            border: 1px solid rgba(255, 255, 255, .26);
+            border-radius: 20px;
+            color: #fff1bd;
+            background: rgba(255, 255, 255, .13);
+            box-shadow: 0 8px 26px rgba(0, 0, 0, .18);
+            animation: study-talk-recap-bounce 720ms cubic-bezier(.2, .8, .25, 1.15) both;
+        }
+        .${studyTalkRecapBadge} .${materialSymbols} { font-size: 30px; }
+        @keyframes study-talk-recap-bounce {
+            from { opacity: 0; transform: translateY(12px) scale(.72); }
+            to { opacity: 1; transform: translateY(0) scale(1); }
+        }
+        .${studyTalkRecapTitle} {
+            margin: 0;
+            font-size: clamp(22px, 4vw, 32px);
+            font-weight: 750;
+            letter-spacing: -.02em;
+        }
+        .${studyTalkRecapScenes} {
+            display: flex;
+            flex-direction: column;
+            gap: 18px;
+            width: min(100%, 900px);
+            margin: 0 auto;
+        }
+        .${studyTalkRecapScene} {
+            position: relative;
+            isolation: isolate;
+            overflow: hidden;
+            border: 1px solid color-mix(in srgb, var(--md-sys-color-outline-variant) 72%, transparent);
+            border-radius: 20px;
+            background: color-mix(in srgb, var(--md-sys-color-surface) 94%, var(--md-sys-color-primary));
+            box-shadow: 0 8px 24px rgba(10, 22, 30, .1);
+        }
+        .${studyTalkRecapBackdrop} {
+            position: absolute;
+            inset: 0 0 auto;
+            z-index: -1;
+            height: 100%;
+            overflow: hidden;
+            background: linear-gradient(135deg, #567e78, #27384a);
+        }
+        .${studyTalkRecapBackdrop}::after {
+            position: absolute;
+            inset: 0;
+            content: "";
+            background: linear-gradient(180deg, rgba(10, 18, 24, .14), rgba(10, 18, 24, .64));
+        }
+        .${studyTalkRecapBackdropImage} {
+            width: 100%;
+            height: 100%;
+            object-fit: cover;
+            opacity: .8;
+        }
+        .${studyTalkRecapSceneHeading} {
+            position: relative;
+            display: flex;
+            align-items: baseline;
+            justify-content: space-between;
+            gap: 10px;
+            min-height: 72px;
+            box-sizing: border-box;
+            padding: 20px 18px 12px;
+            color: #fff;
+        }
+        .${studyTalkRecapSceneTitle} {
+            margin: 0;
+            font-size: 18px;
+            font-weight: 700;
+            text-shadow: 0 1px 5px rgba(0, 0, 0, .5);
+        }
+        .${studyTalkRecapSceneProgress} {
+            flex: 0 0 auto;
+            font-size: 12px;
+            color: rgba(255, 255, 255, .84);
+            text-shadow: 0 1px 5px rgba(0, 0, 0, .6);
+        }
+        .${studyTalkRecapLines} {
+            display: flex;
+            flex-direction: column;
+            gap: 10px;
+            padding: 12px 16px 18px;
+        }
+        .${studyTalkRecapLine} {
+            display: flex;
+            align-items: flex-end;
+            gap: 9px;
+            width: 100%;
+            max-width: 760px;
+            animation: study-talk-recap-line-enter 420ms ease-out both;
+            animation-delay: var(--reveal-delay, 0ms);
+        }
+        .${studyTalkRecapLineYou} { justify-content: flex-end; align-self: flex-end; }
+        @keyframes study-talk-recap-line-enter {
+            from { opacity: 0; transform: translateY(10px); }
+            to { opacity: 1; transform: translateY(0); }
+        }
+        .${studyTalkRecapAvatar} {
+            flex: 0 0 auto;
+            width: 38px;
+            height: 38px;
+            border: 2px solid rgba(255, 255, 255, .9);
+            border-radius: 50%;
+            object-fit: cover;
+            box-shadow: 0 2px 8px rgba(0, 0, 0, .16);
+        }
+        .${studyTalkRecapBubble} {
+            display: flex;
+            align-items: center;
+            gap: 10px;
+            width: min(82%, 620px);
+            min-width: 0;
+            box-sizing: border-box;
+            padding: 11px 14px;
+            border: 1px solid rgba(23, 33, 42, .1);
+            border-radius: 18px 18px 18px 5px;
+            color: #17212a;
+            background: rgba(255, 255, 255, .96);
+            box-shadow: 0 3px 12px rgba(10, 22, 30, .12);
+            text-align: left;
+        }
+        .${studyTalkRecapLineYou} .${studyTalkRecapBubble} {
+            border-color: rgba(66, 104, 119, .18);
+            border-radius: 18px 18px 5px 18px;
+            background: #d9edf0;
+        }
+        .${studyTalkRecapBubbleButton} {
+            margin: 0;
+            font: inherit;
+            cursor: pointer;
+            transition: transform 140ms ease, box-shadow 140ms ease;
+        }
+        .${studyTalkRecapBubbleButton}:hover { box-shadow: 0 6px 16px rgba(10, 22, 30, .18); }
+        .${studyTalkRecapBubbleButton}:active { transform: scale(.99); }
+        .${studyTalkRecapBubbleButton}:focus-visible { outline: 3px solid var(--md-sys-color-primary); outline-offset: 3px; }
+        .${studyTalkRecapBubbleContent} { flex: 1 1 auto; min-width: 0; }
+        .${studyTalkRecapSpeaker} {
+            display: block;
+            margin-bottom: 3px;
+            color: #53636d;
+            font-size: 11px;
+            font-weight: 700;
+            letter-spacing: .035em;
+            text-transform: uppercase;
+        }
+        .${studyTalkRecapText} {
+            margin: 0;
+            line-height: 1.48;
+            overflow-wrap: anywhere;
+        }
+        .${studyTalkRecapBubble} > .${materialSymbols} {
+            flex: 0 0 auto;
+            color: #577581;
+            font-size: 19px;
+        }
+        .${studyTalkRecapRestart} { align-self: center; margin: 4px 0 12px; }
+        .${studyTalkFullscreen} .${studyTalkRecapScene} {
+            border-color: rgba(255, 255, 255, .16);
+            background: rgba(255, 255, 255, .08);
+        }
         @media (max-width: 560px) {
             .${studyTalkBlock} { padding: 10px; }
             .${studyTalkStage} { aspect-ratio: 4 / 3; min-height: 240px; }
             .${studyTalkCharacter} { height: 185%; }
+            .${studyTalkRecapHero} { min-height: 142px; }
+            .${studyTalkRecapLines} { gap: 8px; padding: 10px 10px 14px; }
+            .${studyTalkRecapSceneHeading} { padding: 17px 12px 10px; }
+            .${studyTalkRecapSceneTitle} { font-size: 16px; }
+            .${studyTalkRecapAvatar} { width: 32px; height: 32px; }
+            .${studyTalkRecapBubble} { width: min(86%, 620px); padding: 10px 11px; }
         }
         .${studySessionHint} {
             font-size: 13px;

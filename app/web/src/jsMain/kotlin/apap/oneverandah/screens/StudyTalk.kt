@@ -15,6 +15,7 @@ import apap.oneverandah.api.StudyBuildJournalEntry
 import apap.oneverandah.api.StudyBuildJournalOutcome
 import apap.oneverandah.api.StudyBuildState
 import apap.oneverandah.api.StudySessionResponse
+import apap.oneverandah.api.StudyStoryCharacter
 import apap.oneverandah.api.StudyTalkAudioKind
 import apap.oneverandah.api.StudyTalkWorld
 import apap.oneverandah.api.STUDY_TALK_MAX_TURNS_PER_SCENE
@@ -38,6 +39,62 @@ import org.w3c.dom.events.Event
 import kotlin.js.Date
 
 internal enum class StudyTalkPhase { LISTEN, CHARACTER_LINE, THINK, REVEAL, COMPLETE }
+
+internal data class StudyTalkRecapLine(
+    val speakerName: String,
+    val text: String,
+    val isLearner: Boolean,
+    val audioUrl: String?,
+    val expressionImageUrl: String?,
+)
+
+internal data class StudyTalkRecapScene(
+    val title: String,
+    val backgroundImageUrl: String?,
+    val lines: List<StudyTalkRecapLine>,
+)
+
+internal fun studyTalkConversationRecap(
+    world: StudyTalkWorld,
+    characters: List<StudyStoryCharacter>,
+    youLabel: String,
+    missingCharacterName: String,
+): List<StudyTalkRecapScene> {
+    val charactersById = characters.associateBy { it.id }
+    val expressionsById = world.expressions.associateBy { it.id }
+    return world.scenes.map { scene ->
+        val lines = buildList {
+            scene.turns.forEach { turn ->
+                val speakerName = charactersById[turn.speakerCharacterId]?.name?.takeIf { it.isNotBlank() }
+                    ?: missingCharacterName
+                val expressionImageUrl = expressionsById[turn.expressionId]?.imageUrl
+                if (turn.characterLine.isNotBlank()) {
+                    add(
+                        StudyTalkRecapLine(
+                            speakerName = speakerName,
+                            text = turn.characterLine,
+                            isLearner = false,
+                            audioUrl = turn.characterAudioUrl,
+                            expressionImageUrl = expressionImageUrl,
+                        ),
+                    )
+                }
+                if (turn.reply.isNotBlank()) {
+                    add(
+                        StudyTalkRecapLine(
+                            speakerName = youLabel,
+                            text = turn.reply,
+                            isLearner = true,
+                            audioUrl = turn.replyAudioUrl,
+                            expressionImageUrl = null,
+                        ),
+                    )
+                }
+            }
+        }
+        StudyTalkRecapScene(scene.title, scene.backgroundImageUrl, lines)
+    }
+}
 
 internal data class StudyTalkProgress(
     val sceneIndex: Int = 0,
@@ -182,9 +239,9 @@ internal fun StudyTalkTab(
     }) {
         Div(attrs = { classes(Styles.studyTalkHeader) }) {
             P(attrs = { classes(Styles.studyTalkTitle) }) {
-                Text(world?.scenes?.getOrNull(sceneIndex)?.title ?: copy.title)
+                Text(if (phase == StudyTalkPhase.COMPLETE) copy.complete else world?.scenes?.getOrNull(sceneIndex)?.title ?: copy.title)
             }
-            world?.scenes?.getOrNull(sceneIndex)?.let { scene ->
+            if (phase != StudyTalkPhase.COMPLETE) world?.scenes?.getOrNull(sceneIndex)?.let { scene ->
                 P(attrs = { classes(Styles.studyTalkProgress) }) {
                     Text(copy.sceneProgress(sceneIndex + 1, world.scenes.size))
                 }
@@ -208,6 +265,21 @@ internal fun StudyTalkTab(
         if (world == null || !world.hasAllTalkAssets()) {
             val failureReason = buildState.talkFailureReason()
             StudyTalkBuildStatus(world, buildState, failed, canRetry, failureReason, copy, onRetry)
+            return@Div
+        }
+
+        if (phase == StudyTalkPhase.COMPLETE) {
+            StudyTalkCompletionRecap(
+                world = world,
+                characters = session.characters,
+                copy = copy,
+                youLabel = strings.chatPlayYouLabel,
+                onRestart = {
+                    sceneIndex = 0
+                    turnIndex = 0
+                    phase = StudyTalkPhase.LISTEN
+                },
+            )
             return@Div
         }
 
@@ -366,6 +438,7 @@ internal fun StudyTalkTab(
                                 attr("type", "button")
                                 onClick {
                                     val next = advanceStudyTalkTurn(StudyTalkProgress(sceneIndex, turnIndex, phase), world)
+                                    if (next.phase == StudyTalkPhase.COMPLETE) TalkSfx.complete()
                                     sceneIndex = next.sceneIndex
                                     turnIndex = next.turnIndex
                                     phase = next.phase
@@ -377,29 +450,158 @@ internal fun StudyTalkTab(
                         }
                     }
 
-                    StudyTalkPhase.COMPLETE -> {
-                        Div(attrs = { classes(Styles.studyTalkComplete) }) {
-                            MaterialSymbol("auto_awesome")
-                            P { Text(copy.complete) }
-                            Button(attrs = {
-                                classes(Styles.btnPrimary)
-                                attr("type", "button")
-                                onClick {
-                                    sceneIndex = 0
-                                    turnIndex = 0
-                                    phase = StudyTalkPhase.LISTEN
-                                }
-                            }) {
-                                MaterialSymbol("replay")
-                                Text(copy.restart)
-                            }
-                        }
-                    }
+                    StudyTalkPhase.COMPLETE -> Unit
                 }
             }
         }
     }
 }
+
+@Composable
+private fun StudyTalkCompletionRecap(
+    world: StudyTalkWorld,
+    characters: List<StudyStoryCharacter>,
+    copy: StudyTalkStrings,
+    youLabel: String,
+    onRestart: () -> Unit,
+) {
+    val scenes = studyTalkConversationRecap(world, characters, youLabel, copy.characterSpeaking)
+    val sparkleOffsets = listOf(
+        "-88px" to "-22px", "-62px" to "-62px", "-20px" to "-78px", "30px" to "-72px",
+        "74px" to "-45px", "92px" to "4px", "60px" to "45px", "-68px" to "42px",
+    )
+    var revealIndex = 0
+
+    Div(attrs = {
+        classes(Styles.studyTalkRecap)
+        attr("role", "region")
+        attr("aria-label", copy.complete)
+    }) {
+        Div(attrs = { classes(Styles.studyTalkComplete, Styles.studyTalkRecapHero) }) {
+            Div(attrs = {
+                classes(Styles.studyTalkRecapSparkles)
+                attr("aria-hidden", "true")
+            }) {
+                sparkleOffsets.forEachIndexed { index, (x, y) ->
+                    Span(attrs = {
+                        classes(Styles.studyTalkRecapSparkle)
+                        attr("style", "--sparkle-x:$x;--sparkle-y:$y;--sparkle-delay:${index * 35}ms")
+                    }) { Text(if (index % 2 == 0) "✦" else "✧") }
+                }
+            }
+            Div(attrs = {
+                classes(Styles.studyTalkRecapBadge)
+                attr("aria-hidden", "true")
+            }) { MaterialSymbol("celebration") }
+            P(attrs = { classes(Styles.studyTalkRecapTitle) }) { Text(copy.complete) }
+        }
+
+        Div(attrs = { classes(Styles.studyTalkRecapScenes) }) {
+            scenes.forEachIndexed { sceneIndex, scene ->
+                Div(attrs = { classes(Styles.studyTalkRecapScene) }) {
+                    Div(attrs = {
+                        classes(Styles.studyTalkRecapBackdrop)
+                        attr("aria-hidden", "true")
+                    }) {
+                        scene.backgroundImageUrl?.let { imageUrl ->
+                            Img(src = imageUrl, alt = "", attrs = { classes(Styles.studyTalkRecapBackdropImage) })
+                        }
+                    }
+                    Div(attrs = { classes(Styles.studyTalkRecapSceneHeading) }) {
+                        P(attrs = { classes(Styles.studyTalkRecapSceneTitle) }) { Text(scene.title) }
+                        Span(attrs = { classes(Styles.studyTalkRecapSceneProgress) }) {
+                            Text(copy.sceneProgress(sceneIndex + 1, scenes.size))
+                        }
+                    }
+                    Div(attrs = { classes(Styles.studyTalkRecapLines) }) {
+                        scene.lines.forEach { line ->
+                            val delay = (revealIndex * 55).coerceAtMost(900)
+                            revealIndex += 1
+                            StudyTalkRecapMessage(line, copy, delay)
+                        }
+                    }
+                }
+            }
+        }
+
+        Button(attrs = {
+            classes(Styles.btnPrimary, Styles.studyTalkRecapRestart)
+            attr("type", "button")
+            onClick { onRestart() }
+        }) {
+            MaterialSymbol("replay")
+            Text(copy.restart)
+        }
+    }
+}
+
+@Composable
+private fun StudyTalkRecapMessage(line: StudyTalkRecapLine, copy: StudyTalkStrings, revealDelayMs: Int) {
+    Div(attrs = {
+        classes(Styles.studyTalkRecapLine)
+        if (line.isLearner) classes(Styles.studyTalkRecapLineYou)
+        attr("style", "--reveal-delay:${revealDelayMs}ms")
+    }) {
+        if (!line.isLearner && !line.expressionImageUrl.isNullOrBlank()) {
+            Img(src = line.expressionImageUrl, alt = "", attrs = {
+                classes(Styles.studyTalkRecapAvatar)
+                attr("aria-hidden", "true")
+            })
+        }
+        val audioUrl = line.audioUrl?.takeIf { it.isNotBlank() }
+        if (audioUrl != null) {
+            Button(attrs = {
+                classes(Styles.studyTalkRecapBubble, Styles.studyTalkRecapBubbleButton)
+                attr("type", "button")
+                attr("aria-label", "${line.speakerName}: ${line.text}. ${copy.listen}")
+                onClick { playAudio(audioUrl, restart = true) }
+            }) { StudyTalkRecapBubbleContent(line) }
+        } else {
+            Div(attrs = { classes(Styles.studyTalkRecapBubble) }) {
+                StudyTalkRecapBubbleContent(line)
+            }
+        }
+    }
+}
+
+@Composable
+private fun StudyTalkRecapBubbleContent(line: StudyTalkRecapLine) {
+    Div(attrs = { classes(Styles.studyTalkRecapBubbleContent) }) {
+        Span(attrs = { classes(Styles.studyTalkRecapSpeaker) }) { Text(line.speakerName) }
+        P(attrs = { classes(Styles.studyTalkRecapText) }) { Text(line.text) }
+    }
+    if (!line.audioUrl.isNullOrBlank()) MaterialSymbol("volume_up")
+}
+
+private object TalkSfx {
+    private var context: dynamic = null
+
+    private fun tone(frequency: Double, durationMs: Int, startDelayMs: Int) {
+        runCatching {
+            if (context == null) context = newTalkAudioContext()
+            if (context.state == "suspended") context.resume()
+            val oscillator = context.createOscillator()
+            val gain = context.createGain()
+            val now = (context.currentTime as Double) + startDelayMs / 1_000.0
+            oscillator.type = "sine"
+            oscillator.frequency.setValueAtTime(frequency, now)
+            gain.gain.setValueAtTime(0.055, now)
+            gain.gain.exponentialRampToValueAtTime(0.001, now + durationMs / 1_000.0)
+            oscillator.connect(gain)
+            gain.connect(context.destination)
+            oscillator.start(now)
+            oscillator.stop(now + durationMs / 1_000.0)
+        }
+    }
+
+    fun complete() {
+        tone(587.33, 150, 0)
+        tone(783.99, 160, 105)
+        tone(1_046.5, 250, 220)
+    }
+}
+
+private fun newTalkAudioContext(): dynamic = js("new (window.AudioContext || window.webkitAudioContext)()")
 
 @Composable
 private fun StudyTalkBuildStatus(
