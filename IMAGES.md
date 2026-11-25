@@ -115,6 +115,8 @@ The backend calls Alibaba Cloud **Model Studio / DashScope** text-to-image
    QWEN_R2I_MODEL=qwen-image-3.0
    # wan2.x-image pixel sizes bottom out around 768*768 (512 is rejected).
    QWEN_MULTIMODAL_SIZE=768*768
+   # Study Talk character sprites use a larger output (up to DashScope's 2048*2048 limit).
+   QWEN_TALK_MULTIMODAL_SIZE=2048*2048
    # Send shrunk multimodal references inline; set false to force temporary OSS uploads.
    QWEN_INLINE_REFERENCES=true
    # Only used if you switch QWEN_MODEL back to a classic *-t2i* model.

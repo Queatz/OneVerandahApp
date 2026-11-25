@@ -21,6 +21,7 @@ import apap.oneverandah.api.StudySentence
 import apap.oneverandah.api.StudySentenceImageRequest
 import apap.oneverandah.api.StudyStoryCharacter
 import apap.oneverandah.api.StudyStoryCharactersRequest
+import apap.oneverandah.api.StudyTalkExpression
 import apap.oneverandah.api.StudyTalkWorld
 import apap.oneverandah.api.StudySessionRequest
 import apap.oneverandah.api.StudySessionResponse
@@ -46,6 +47,38 @@ import kotlinx.coroutines.delay
 import kotlinx.coroutines.runBlocking
 
 class StudyServiceTest {
+    @Test
+    fun `Talk expression forwards configured character image size`() = runBlocking {
+        var actualSize: String? = null
+        val imageGenerator = object : StudyPlaygroundImageGenerator {
+            override suspend fun generate(prompt: String, referenceImageUrls: List<String>): String =
+                "https://cdn.example/talk.png"
+
+            override suspend fun generateMaskedPortrait(
+                prompt: String,
+                referenceImageUrls: List<String>,
+                maskPrompt: String,
+                size: String?,
+            ): String {
+                actualSize = size
+                return "https://cdn.example/talk.png"
+            }
+        }
+        val service = StudyService(
+            aiClient = FakeStudyAiClient(),
+            imageGenerator = imageGenerator,
+            talkCharacterImageSize = "2048*2048",
+        )
+
+        val imageUrl = service.renderTalkExpression(
+            expression = StudyTalkExpression(id = "main-happy", characterId = "main", emotion = "happy"),
+            character = StudyStoryCharacter(id = "main", name = "Lan", role = "main", description = "A neighbor."),
+        )
+
+        assertEquals("https://cdn.example/talk.png", imageUrl)
+        assertEquals("2048*2048", actualSize)
+    }
+
     @Test
     fun `fallback Talk world has distinct conversations and keeps replies in the study vocabulary`() = runBlocking {
         val world = StudyService(FakeStudyAiClient()).talkWorld(

@@ -111,9 +111,8 @@ object PromptFactory {
             .filter(String::isNotEmpty)
             .joinToString(". ")
         return buildString {
-            append("Create a wide cinematic empty location plate for a language-learning scene. ")
+            append("Create a wide cinematic empty location plate of a  scene. ")
             if (scene.isNotEmpty()) append("Depict exactly one specific unoccupied location: $scene. ")
-            append("Make this location visibly distinct from the other scene locations; do not combine or montage places. ")
             append("Show only unoccupied architecture, landscape, props, weather, and light; no people, human figures, characters, or portraits. ")
             append("No speech bubbles, dialogue balloons, captions, panels, or overlays. ")
             append("Use a wide landscape composition with clear depth and open foreground space. ")

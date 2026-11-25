@@ -95,8 +95,8 @@ data class OssConfig(
  * - [promptExtend] runs an extra LLM rewrite (~3–4s). Off by default because our
  *   prompts are already detailed (study story panels, covers).
  * - Prefer `512*512` only for classic T2I / legacy R2I contracts when those are used.
- * - [multimodalSize] for multimodal still models accepts `1K`/`2K` or `width*height`; pixel
- *   sizes must stay in about `[768*768, 2048*2048]`, so 512 is not valid there.
+ * - [multimodalSize] and [talkMultimodalSize] for multimodal still models accept `1K`/`2K` or
+ *   `width*height`; pixel sizes must stay in about `[768*768, 2048*2048]`, so 512 is not valid there.
  * - Default [model] and [r2iModel] both use `qwen-image-3.0` (quality multimodal).
  *   Text-only calls are auto-routed to the multimodal endpoint.
  */
@@ -126,6 +126,8 @@ data class QwenImageConfig(
      * `width*height`. Pixel sizes must be at least ~`768*768` on DashScope.
      */
     val multimodalSize: String = "768*768",
+    /** Output size for Study Talk character sprites; defaults to DashScope's 2K maximum. */
+    val talkMultimodalSize: String = "2048*2048",
     /** Send shrunk references as inline data URLs instead of temporary OSS uploads. */
     val inlineReferenceImages: Boolean = true,
     /**
@@ -350,6 +352,8 @@ data class AppConfig(
                 r2iModel = source["QWEN_R2I_MODEL"] ?: "qwen-image-3.0",
                 promptExtend = source.bool("QWEN_PROMPT_EXTEND", false),
                 multimodalSize = source["QWEN_MULTIMODAL_SIZE"]?.takeIf { it.isNotBlank() } ?: "768*768",
+                talkMultimodalSize = source["QWEN_TALK_MULTIMODAL_SIZE"]?.takeIf { it.isNotBlank() }
+                    ?: "2048*2048",
                 inlineReferenceImages = source.bool("QWEN_INLINE_REFERENCES", true),
                 textToImageSize = source["QWEN_T2I_SIZE"]?.takeIf { it.isNotBlank() } ?: "512*512",
                 r2iSize = source["QWEN_R2I_SIZE"]?.takeIf { it.isNotBlank() } ?: "512*512",

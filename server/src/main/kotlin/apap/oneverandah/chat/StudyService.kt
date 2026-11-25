@@ -309,6 +309,7 @@ fun interface StudyPlaygroundImageGenerator {
         prompt: String,
         referenceImageUrls: List<String>,
         maskPrompt: String,
+        size: String? = null,
     ): String = generate("$prompt\n\n$maskPrompt", referenceImageUrls)
 }
 
@@ -390,6 +391,7 @@ class StudyService(
     private val scope: CoroutineScope = CoroutineScope(SupervisorJob() + Dispatchers.IO),
     private val idGenerator: () -> String = { UUID.randomUUID().toString() },
     private val clock: () -> Long = System::currentTimeMillis,
+    private val talkCharacterImageSize: String? = null,
 ) {
     private val log = LoggerFactory.getLogger(StudyService::class.java)
 
@@ -1011,6 +1013,7 @@ class StudyService(
             prompt = prompt,
             referenceImageUrls = listOfNotNull(character.imageUrl?.takeIf { it.isNotBlank() }),
             maskPrompt = STUDY_PERSON_MASK_PROMPT,
+            size = talkCharacterImageSize,
         )
     }
 
@@ -1018,11 +1021,11 @@ class StudyService(
         PromptFactory.forTalkSceneBackground(world.setting, scene.title, scene.description)
 
     private fun talkExpressionPrompt(character: StudyStoryCharacter, emotion: String): String = buildString {
-        appendLine("Create a full-body visual-novel character sprite of ${character.name}.")
+        appendLine("Create a full-body character sprite of ${character.name} with a 2 pixel black outline.")
         appendLine("Preserve this character's identity and appearance: ${character.description}")
         appendLine("Expression and pose: ${talkEmotionDescription(emotion)}.")
-        appendLine("Show one person only, centered, head to toe, facing slightly toward the viewer.")
-        appendLine("Plain white background; no props, no text, no frame, no shadow beyond the person's outline.")
+        appendLine("Show one person only, centered, head to toe, facing the viewer.")
+        appendLine("Plain white background; no props, no text, no frame, no shadow.")
     }
 
     private suspend fun playCoverPrompt(

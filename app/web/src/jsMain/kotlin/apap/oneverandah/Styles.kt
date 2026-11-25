@@ -4901,8 +4901,8 @@ object Styles {
         }
         .${studyTalkRecapAvatar} {
             flex: 0 0 auto;
-            width: 38px;
-            height: 38px;
+            width: 48px;
+            height: 48px;
             border: 2px solid rgba(255, 255, 255, .9);
             border-radius: 50%;
             object-fit: cover;

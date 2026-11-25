@@ -78,6 +78,18 @@ class ImageSystemTest {
     }
 
     @Test
+    fun qwenTalkMultimodalSizeDefaultsToMaximumAndCanBeOverridden() {
+        val envFile = Files.createTempFile("ov-talk-multimodal-size", ".env").toFile()
+        try {
+            assertEquals("2048*2048", AppConfig.load(envFile).qwen.talkMultimodalSize)
+            envFile.writeText("QWEN_TALK_MULTIMODAL_SIZE=1536*1536")
+            assertEquals("1536*1536", AppConfig.load(envFile).qwen.talkMultimodalSize)
+        } finally {
+            envFile.delete()
+        }
+    }
+
+    @Test
     fun productionPublicBaseUrlUsesSslDomainNotLocalhost() {
         // Reproduces the production bug: with SSL on and the server binding
         // 0.0.0.0, the public base URL used to become https://localhost:443,
@@ -226,9 +238,10 @@ class ImageSystemTest {
             override suspend fun generate(
                 prompt: String,
                 referenceImageUrls: List<String>,
+                size: String?,
             ): GeneratedImage {
                 generateCount.incrementAndGet()
-                return PlaceholderQwenClient(size = 32).generate(prompt, referenceImageUrls)
+                return PlaceholderQwenClient(size = 32).generate(prompt, referenceImageUrls, size)
             }
         }
 

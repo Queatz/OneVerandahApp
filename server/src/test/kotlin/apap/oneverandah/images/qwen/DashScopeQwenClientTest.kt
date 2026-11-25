@@ -1158,12 +1158,12 @@ class DashScopeQwenClientTest {
 
     @Test
     fun multimodalRequest_disablesPromptExtendAndUsesConfiguredSize() = runBlocking {
-        var requestBody = ""
+        val requestBodies = mutableListOf<String>()
         val engine = MockEngine { request ->
             val url = request.url.toString()
             when {
                 url.contains("multimodal-generation") -> {
-                    requestBody = readBodyText(request.body)
+                    requestBodies += readBodyText(request.body)
                     respond(
                         content = """
                             {
@@ -1213,8 +1213,10 @@ class DashScopeQwenClientTest {
             client = client,
         )
         qwen.generate("Detailed study panel prompt already complete")
-        assertTrue(requestBody.contains("\"prompt_extend\":false"), requestBody)
-        assertTrue(requestBody.contains("\"size\":\"768*768\""), requestBody)
+        qwen.generate("Detailed Study Talk portrait", size = "2048*2048")
+        assertTrue(requestBodies.first().contains("\"prompt_extend\":false"), requestBodies.first())
+        assertTrue(requestBodies.first().contains("\"size\":\"768*768\""), requestBodies.first())
+        assertTrue(requestBodies.last().contains("\"size\":\"2048*2048\""), requestBodies.last())
         client.close()
     }
 

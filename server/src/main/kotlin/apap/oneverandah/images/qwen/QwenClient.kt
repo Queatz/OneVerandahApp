@@ -20,11 +20,12 @@ interface QwenClient {
     suspend fun generate(
         prompt: String,
         referenceImageUrls: List<String> = emptyList(),
+        size: String? = null,
     ): GeneratedImage
 
     /** Generates a mask from the provided image bytes without persisting an intermediate object. */
-    suspend fun generateMask(image: GeneratedImage, prompt: String): GeneratedImage {
+    suspend fun generateMask(image: GeneratedImage, prompt: String, size: String? = null): GeneratedImage {
         val encoded = Base64.getEncoder().encodeToString(image.bytes)
-        return generate(prompt, listOf("data:${image.contentType};base64,$encoded"))
+        return generate(prompt, listOf("data:${image.contentType};base64,$encoded"), size)
     }
 }

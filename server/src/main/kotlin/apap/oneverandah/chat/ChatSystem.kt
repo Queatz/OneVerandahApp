@@ -157,15 +157,16 @@ class ChatSystem(
                         prompt: String,
                         referenceImageUrls: List<String>,
                         maskPrompt: String,
+                        size: String?,
                     ): String {
                         val generated = logTalkImageStage("portrait_generation") {
-                            qwen.generate(prompt, referenceImageUrls)
+                            qwen.generate(prompt, referenceImageUrls, size)
                         }
                         val portrait = if (qwen.kind == "placeholder") {
                             generated
                         } else {
                             val mask = logTalkImageStage("mask_generation") {
-                                qwen.generateMask(generated, maskPrompt)
+                                qwen.generateMask(generated, maskPrompt, size)
                             }
                             logTalkImageStage("mask_compositing") {
                                 applyBinaryImageMask(generated, mask)
@@ -190,6 +191,7 @@ class ChatSystem(
                 aiClient = studyAiClient,
                 imageGenerator = playgroundImageGenerator,
                 scope = scope,
+                talkCharacterImageSize = config.qwen.talkMultimodalSize,
             )
             val studySessionStore = StudySessionStore(studySessionsRepository, scope = scope)
             val studySessionsService = StudySessionsService(

@@ -27,6 +27,7 @@ import io.ktor.http.isSuccess
 import kotlinx.coroutines.CancellationException
 import kotlinx.coroutines.CoroutineName
 import kotlinx.coroutines.async
+import kotlinx.coroutines.awaitAll
 import kotlinx.coroutines.coroutineScope
 import kotlinx.coroutines.currentCoroutineContext
 import kotlinx.coroutines.delay
@@ -114,6 +115,7 @@ class DashScopeQwenClient(
     override suspend fun generate(
         prompt: String,
         referenceImageUrls: List<String>,
+        size: String?,
     ): GeneratedImage {
         val refs = referenceImageUrls.map { it.trim() }.filter { it.isNotEmpty() }
         return if (refs.isEmpty()) {
@@ -125,6 +127,7 @@ class DashScopeQwenClient(
                     referenceImageUrls = emptyList(),
                     model = config.model,
                     endpoint = multimodalEndpointFor(config),
+                    size = size,
                 )
             } else {
                 val taskId = submitTextToImage(prompt)
@@ -134,10 +137,10 @@ class DashScopeQwenClient(
         } else {
             if (isMultimodalGenerationEndpoint(config.r2iEndpoint) && config.inlineReferenceImages) {
                 val inline = coroutineScope {
-                    refs.map { url -> async { prepareInlineReference(url) } }.map { it.await() }
+                    refs.map { url -> async { prepareInlineReference(url) } }.awaitAll()
                 }
                 try {
-                    generateWithReferences(prompt, inline)
+                    generateWithReferences(prompt, inline, size)
                 } catch (rejection: QwenException) {
                     if (!isInlineReferenceParameterRejection(rejection) || inline.none(::isDataUrl)) {
                         throw rejection
@@ -148,21 +151,21 @@ class DashScopeQwenClient(
                         rejection.httpStatus,
                     )
                     val uploaded = coroutineScope {
-                        refs.map { url -> async { ensureDashScopeAccessible(url) } }.map { it.await() }
+                        refs.map { url -> async { ensureDashScopeAccessible(url) } }.awaitAll()
                     }
-                    generateWithReferences(prompt, uploaded)
+                    generateWithReferences(prompt, uploaded, size)
                 }
             } else {
                 // Re-host refs in parallel and reuse cached oss:// URLs across panels.
                 val accessible = coroutineScope {
-                    refs.map { url -> async { ensureDashScopeAccessible(url) } }.map { it.await() }
+                    refs.map { url -> async { ensureDashScopeAccessible(url) } }.awaitAll()
                 }
-                generateWithReferences(prompt, accessible)
+                generateWithReferences(prompt, accessible, size)
             }
         }
     }
 
-    override suspend fun generateMask(image: GeneratedImage, prompt: String): GeneratedImage =
+    override suspend fun generateMask(image: GeneratedImage, prompt: String, size: String?): GeneratedImage =
         diagnosticStage("prepare and generate binary mask") {
             val sourceUrl = image.sourceUrl?.trim()?.takeIf(::isDashScopeAccessibleUrl)
             val reference = sourceUrl ?: if (
@@ -174,7 +177,7 @@ class DashScopeQwenClient(
                 val fileName = "talk-mask-${UUID.randomUUID()}.${uploadImage.extension}"
                 uploadToDashScopeTemp(uploadImage, fileName)
             }
-            generate(prompt, listOf(reference))
+            generate(prompt, listOf(reference), size)
         }
 
     private suspend fun prepareInlineReference(url: String): String {
@@ -336,6 +339,7 @@ class DashScopeQwenClient(
     private suspend fun generateWithReferences(
         prompt: String,
         referenceImageUrls: List<String>,
+        size: String?,
     ): GeneratedImage {
         val multimodal = isMultimodalGenerationEndpoint(config.r2iEndpoint)
         if (multimodal) {
@@ -344,6 +348,7 @@ class DashScopeQwenClient(
                 referenceImageUrls = referenceImageUrls,
                 model = config.r2iModel,
                 endpoint = config.r2iEndpoint,
+                size = size,
             )
         }
 
@@ -394,6 +399,7 @@ class DashScopeQwenClient(
         referenceImageUrls: List<String>,
         model: String,
         endpoint: String,
+        size: String? = null,
     ): GeneratedImage {
         val usesOss = referenceImageUrls.any { it.startsWith("oss://") }
         val requestBody = buildJsonObject {
@@ -430,7 +436,7 @@ class DashScopeQwenClient(
                     put("watermark", false)
                     put("n", 1)
                     put("enable_interleave", false)
-                    put("size", config.multimodalSize)
+                    put("size", size?.takeIf(String::isNotBlank) ?: config.multimodalSize)
                 },
             )
         }

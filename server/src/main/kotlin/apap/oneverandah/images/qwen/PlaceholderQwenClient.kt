@@ -29,8 +29,10 @@ class PlaceholderQwenClient(
     override suspend fun generate(
         prompt: String,
         referenceImageUrls: List<String>,
+        size: String?,
     ): GeneratedImage = withContext(Dispatchers.IO) {
-        val image = BufferedImage(size, size, BufferedImage.TYPE_INT_RGB)
+        val imageSize = this@PlaceholderQwenClient.size
+        val image = BufferedImage(imageSize, imageSize, BufferedImage.TYPE_INT_RGB)
         val g = image.createGraphics()
         try {
             g.setRenderingHint(RenderingHints.KEY_ANTIALIASING, RenderingHints.VALUE_ANTIALIAS_ON)
@@ -38,15 +40,15 @@ class PlaceholderQwenClient(
             val hue = (abs(prompt.hashCode()) % 360) / 360f
             val top = Color.getHSBColor(hue, 0.45f, 0.95f)
             val bottom = Color.getHSBColor((hue + 0.08f) % 1f, 0.55f, 0.70f)
-            g.paint = GradientPaint(0f, 0f, top, size.toFloat(), size.toFloat(), bottom)
-            g.fillRect(0, 0, size, size)
+            g.paint = GradientPaint(0f, 0f, top, imageSize.toFloat(), imageSize.toFloat(), bottom)
+            g.fillRect(0, 0, imageSize, imageSize)
 
             // A soft translucent circle to add a little depth.
             val accent = Color.getHSBColor((hue + 0.5f) % 1f, 0.35f, 1.0f)
             g.color = Color(accent.red, accent.green, accent.blue, 60)
-            val r = size / 2
-            g.fillOval(size / 2, -r / 2, r, r)
-            g.fillOval(-r / 3, size / 2, r, r)
+            val r = imageSize / 2
+            g.fillOval(imageSize / 2, -r / 2, r, r)
+            g.fillOval(-r / 3, imageSize / 2, r, r)
         } finally {
             g.dispose()
         }
