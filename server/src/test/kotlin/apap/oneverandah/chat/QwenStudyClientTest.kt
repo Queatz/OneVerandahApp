@@ -14,6 +14,7 @@ import apap.oneverandah.config.QwenChatConfig
 import io.ktor.client.HttpClient
 import io.ktor.client.engine.mock.MockEngine
 import io.ktor.client.engine.mock.respond
+import io.ktor.client.plugins.HttpTimeoutCapability
 import io.ktor.http.HttpHeaders
 import io.ktor.http.HttpStatusCode
 import io.ktor.http.content.OutgoingContent
@@ -794,8 +795,10 @@ class QwenStudyClientTest {
     @Test
     fun `study Talk generation uses the regular model and bilingual study materials`() = runBlocking {
         val requestBodies = mutableListOf<String>()
+        var requestTimeoutMillis: Long? = null
         val engine = MockEngine { request ->
             requestBodies += (request.body as OutgoingContent.ByteArrayContent).bytes().decodeToString()
+            requestTimeoutMillis = request.getCapabilityOrNull(HttpTimeoutCapability)?.requestTimeoutMillis
             respond(
                 content = qwenChatResponse(talkWorldJson()),
                 status = HttpStatusCode.OK,
@@ -837,6 +840,7 @@ class QwenStudyClientTest {
         assertContains(requestBodies.single(), "Study vocabulary pool required in learner replies")
         assertContains(requestBodies.single(), "- Xin chào")
         assertContains(requestBodies.single(), "Full source text for theme continuity")
+        assertEquals(TALK_WORLD_HTTP_REQUEST_TIMEOUT_MILLIS, requestTimeoutMillis)
         client.close()
     }
 

@@ -24,6 +24,7 @@ import apap.oneverandah.config.QwenChatConfig
 import apap.oneverandah.model.Language
 import io.ktor.client.HttpClient
 import io.ktor.client.plugins.HttpRequestTimeoutException
+import io.ktor.client.plugins.timeout
 import io.ktor.client.request.header
 import io.ktor.client.request.post
 import io.ktor.client.request.setBody
@@ -461,6 +462,8 @@ internal data class StudyExamScenePlan(
     val setting: String,
     val outline: List<String>,
 )
+
+internal const val TALK_WORLD_HTTP_REQUEST_TIMEOUT_MILLIS = 20 * 60 * 1000L
 
 class DashScopeStudyAiClient(
     private val config: QwenChatConfig,
@@ -936,6 +939,7 @@ class DashScopeStudyAiClient(
             temperature = 0.65,
             enableThinking = true,
             includeThinkingFlag = true,
+            requestTimeoutMillis = TALK_WORLD_HTTP_REQUEST_TIMEOUT_MILLIS,
         )
         return QwenStudyTalkParser.parse(content).also { world ->
             require(world.scenes.size == STUDY_TALK_SCENE_COUNT) {
@@ -1195,6 +1199,7 @@ class DashScopeStudyAiClient(
         model: String = config.chatModel,
         enableThinking: Boolean? = null,
         includeThinkingFlag: Boolean = false,
+        requestTimeoutMillis: Long? = null,
     ): String {
         check(config.enabled) { "Qwen study requires QWEN_API_KEY" }
         val thinkingEnabled = enableThinking ?: (model != config.chatModel)
@@ -1233,6 +1238,9 @@ class DashScopeStudyAiClient(
         val responseText = withTransientHttpRetry(label) { attempt ->
             val attemptAt = System.nanoTime()
             val response = client.post(config.chatEndpoint) {
+                if (requestTimeoutMillis != null) {
+                    timeout { this.requestTimeoutMillis = requestTimeoutMillis }
+                }
                 header(HttpHeaders.Authorization, "Bearer ${config.apiKey}")
                 contentType(ContentType.Application.Json)
                 setBody(json.encodeToString(JsonObject.serializer(), body))

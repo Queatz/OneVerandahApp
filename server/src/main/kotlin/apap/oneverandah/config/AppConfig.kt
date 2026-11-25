@@ -353,7 +353,7 @@ data class AppConfig(
                 promptExtend = source.bool("QWEN_PROMPT_EXTEND", false),
                 multimodalSize = source["QWEN_MULTIMODAL_SIZE"]?.takeIf { it.isNotBlank() } ?: "768*768",
                 talkMultimodalSize = source["QWEN_TALK_MULTIMODAL_SIZE"]?.takeIf { it.isNotBlank() }
-                    ?: "2048*2048",
+                    ?: "1024*1024",
                 inlineReferenceImages = source.bool("QWEN_INLINE_REFERENCES", true),
                 textToImageSize = source["QWEN_T2I_SIZE"]?.takeIf { it.isNotBlank() } ?: "512*512",
                 r2iSize = source["QWEN_R2I_SIZE"]?.takeIf { it.isNotBlank() } ?: "512*512",

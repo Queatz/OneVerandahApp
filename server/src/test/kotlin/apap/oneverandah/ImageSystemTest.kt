@@ -78,10 +78,10 @@ class ImageSystemTest {
     }
 
     @Test
-    fun qwenTalkMultimodalSizeDefaultsToMaximumAndCanBeOverridden() {
+    fun qwenTalkMultimodalSizeDefaultsTo1024AndCanBeOverridden() {
         val envFile = Files.createTempFile("ov-talk-multimodal-size", ".env").toFile()
         try {
-            assertEquals("2048*2048", AppConfig.load(envFile).qwen.talkMultimodalSize)
+            assertEquals("1024*1024", AppConfig.load(envFile).qwen.talkMultimodalSize)
             envFile.writeText("QWEN_TALK_MULTIMODAL_SIZE=1536*1536")
             assertEquals("1536*1536", AppConfig.load(envFile).qwen.talkMultimodalSize)
         } finally {

@@ -18,9 +18,11 @@ import kotlinx.coroutines.CancellationException
 import kotlinx.coroutines.CoroutineName
 import kotlinx.coroutines.CoroutineScope
 import kotlinx.coroutines.Dispatchers
+import kotlinx.coroutines.NonCancellable
 import kotlinx.coroutines.SupervisorJob
 import kotlinx.coroutines.cancel
 import kotlinx.coroutines.currentCoroutineContext
+import kotlinx.coroutines.withContext
 import org.slf4j.LoggerFactory
 import java.io.File
 import java.util.UUID
@@ -83,6 +85,36 @@ class ChatSystem(
                 )
                 throw error
             }
+        }
+
+        internal suspend fun generateAndStoreTalkPortrait(
+            generatePortrait: suspend () -> GeneratedImage,
+            generateMask: suspend (GeneratedImage) -> GeneratedImage,
+            compositeMask: suspend (GeneratedImage, GeneratedImage) -> GeneratedImage,
+            store: suspend (GeneratedImage) -> String,
+            applyMask: Boolean = true,
+        ): String {
+            val generated = generatePortrait()
+            val portrait = if (!applyMask) {
+                generated
+            } else {
+                try {
+                    compositeMask(generated, generateMask(generated))
+                } catch (cancelled: CancellationException) {
+                    log.warn(
+                        "Study Talk mask failed; storing generated portrait instead: diagnostics={}",
+                        SafeFailureDiagnostics.describe(cancelled),
+                    )
+                    return withContext(NonCancellable) { store(generated) }
+                } catch (error: Exception) {
+                    log.warn(
+                        "Study Talk mask failed; storing generated portrait instead: diagnostics={}",
+                        SafeFailureDiagnostics.describe(error),
+                    )
+                    generated
+                }
+            }
+            return store(portrait)
         }
 
         suspend fun create(
@@ -159,25 +191,32 @@ class ChatSystem(
                         maskPrompt: String,
                         size: String?,
                     ): String {
-                        val generated = logTalkImageStage("portrait_generation") {
-                            qwen.generate(prompt, referenceImageUrls, size)
-                        }
-                        val portrait = if (qwen.kind == "placeholder") {
-                            generated
-                        } else {
-                            val mask = logTalkImageStage("mask_generation") {
-                                qwen.generateMask(generated, maskPrompt, size)
-                            }
-                            logTalkImageStage("mask_compositing") {
-                                applyBinaryImageMask(generated, mask)
-                            }
-                        }
-                        return logTalkImageStage("portrait_storage") {
-                            storage.upload(
-                                "study/story/talk/characters/${UUID.randomUUID()}.${portrait.extension}",
-                                portrait,
-                            )
-                        }
+                        return generateAndStoreTalkPortrait(
+                            generatePortrait = {
+                                logTalkImageStage("portrait_generation") {
+                                    qwen.generate(prompt, referenceImageUrls, size)
+                                }
+                            },
+                            generateMask = { generated ->
+                                logTalkImageStage("mask_generation") {
+                                    qwen.generateMask(generated, maskPrompt, size)
+                                }
+                            },
+                            compositeMask = { generated, mask ->
+                                logTalkImageStage("mask_compositing") {
+                                    applyBinaryImageMask(generated, mask)
+                                }
+                            },
+                            store = { portrait ->
+                                logTalkImageStage("portrait_storage") {
+                                    storage.upload(
+                                        "study/story/talk/characters/${UUID.randomUUID()}.${portrait.extension}",
+                                        portrait,
+                                    )
+                                }
+                            },
+                            applyMask = qwen.kind != "placeholder",
+                        )
                     }
                 }
             } else {
