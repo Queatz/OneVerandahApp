@@ -1340,12 +1340,6 @@ fun StudyScreen(
                     build?.failed.orEmpty().any { it.kind.isStudyTalkKind() } ||
                             (terminal && world?.hasAllTalkAssets() != true)
                 } == true,
-                talkCanRetry = studyTarget?.id?.let { targetId ->
-                    val build = studyBuildStateByMessageId[targetId]
-                    val world = studyCache[targetId]?.talkWorld
-                        ?: studySession?.takeIf { studyTarget?.id == targetId }?.talkWorld
-                    canRetryStudyTalk(world, build)
-                } == true,
                 exactText = studyStartExact,
                 buildStatus = studyTarget?.id?.let { studyBuildStateByMessageId[it]?.status },
                 playLoading = studyTarget?.id?.let { studyPlayInFlight[it] == true } == true,
@@ -1981,7 +1975,6 @@ private fun StudySessionPane(
     onRetryPlay: () -> Unit,
     onRetryExam: () -> Unit,
     talkFailed: Boolean,
-    talkCanRetry: Boolean,
     onRetryTalk: () -> Unit,
     onOpenTalk: () -> Unit,
     onPlayScenarioUpdate: (String, (StudyPlayScenario) -> StudyPlayScenario) -> Unit,
@@ -2042,7 +2035,6 @@ private fun StudySessionPane(
                         examFailed = examFailed,
                         talkBuildState = talkBuildState,
                         talkFailed = talkFailed,
-                        talkCanRetry = talkCanRetry,
                         onRetryTalk = onRetryTalk,
                         onOpenTalk = onOpenTalk,
                         onRetryExam = onRetryExam,
@@ -2168,7 +2160,6 @@ private fun StudySessionContent(
     examFailed: Boolean,
     talkBuildState: StudyBuildState?,
     talkFailed: Boolean,
-    talkCanRetry: Boolean,
     onRetryExam: () -> Unit,
     onRetryTalk: () -> Unit,
     onOpenTalk: () -> Unit,
@@ -2721,7 +2712,6 @@ private fun StudySessionContent(
                     session = session,
                     buildState = talkBuildState,
                     failed = talkFailed,
-                    canRetry = talkCanRetry,
                     strings = strings,
                     onRetry = onRetryTalk,
                 )

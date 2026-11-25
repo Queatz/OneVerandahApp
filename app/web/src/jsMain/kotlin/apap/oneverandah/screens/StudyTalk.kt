@@ -141,22 +141,6 @@ internal fun StudyTalkWorld?.missingTalkBuildElements(): List<StudyBuildElement>
     }
 }
 
-internal fun canRetryStudyTalk(world: StudyTalkWorld?, buildState: StudyBuildState?): Boolean {
-    if (buildState?.failed.orEmpty().any { it.kind.isStudyTalkKind() }) return true
-    if (world.missingTalkBuildElements().isEmpty()) return false
-    val build = buildState ?: return false
-    if (build.status == apap.oneverandah.api.StudyBuildStatus.COMPLETE ||
-        build.status == apap.oneverandah.api.StudyBuildStatus.PARTIAL
-    ) return true
-    return build.journal.any { entry ->
-        entry.element.kind.isStudyTalkKind() && entry.outcome in setOf(
-            StudyBuildJournalOutcome.FAILED,
-            StudyBuildJournalOutcome.RETRYING,
-            StudyBuildJournalOutcome.REVIVED,
-        )
-    } || build.inFlight.none { it.kind.isStudyTalkKind() }
-}
-
 internal fun retryStudyTalkTurn(progress: StudyTalkProgress): StudyTalkProgress =
     progress.copy(phase = StudyTalkPhase.LISTEN)
 
@@ -187,7 +171,6 @@ internal fun StudyTalkTab(
     session: StudySessionResponse,
     buildState: StudyBuildState?,
     failed: Boolean,
-    canRetry: Boolean,
     strings: UiStrings,
     onRetry: () -> Unit,
 ) {
@@ -264,7 +247,7 @@ internal fun StudyTalkTab(
 
         if (world == null || !world.hasAllTalkAssets()) {
             val failureReason = buildState.talkFailureReason()
-            StudyTalkBuildStatus(world, buildState, failed, canRetry, failureReason, copy, onRetry)
+            StudyTalkBuildStatus(world, buildState, failed, failureReason, copy, onRetry)
             return@Div
         }
 
@@ -608,7 +591,6 @@ private fun StudyTalkBuildStatus(
     world: StudyTalkWorld?,
     buildState: StudyBuildState?,
     failed: Boolean,
-    canRetry: Boolean,
     failureReason: String?,
     copy: StudyTalkStrings,
     onRetry: () -> Unit,
@@ -628,7 +610,6 @@ private fun StudyTalkBuildStatus(
                 if (progress.scriptReady) copy.loading else copy.scriptLoading,
             )
         }
-        if (canRetry) StudyTalkRetryButton(copy.retry, onRetry)
         StudyTalkProgressBar(progress, copy)
         StudyTalkPreparationSteps(world.studyTalkPreparationSteps(buildState), copy)
         StudyTalkBuildJournal(buildState?.journal.orEmpty(), copy)
@@ -640,18 +621,6 @@ private fun StudyTalkBuildHeader(icon: String, label: String) {
     Div(attrs = { classes(Styles.studyTalkBuildHeader) }) {
         MaterialSymbol(icon)
         Span { Text(label) }
-    }
-}
-
-@Composable
-private fun StudyTalkRetryButton(label: String, onRetry: () -> Unit) {
-    Button(attrs = {
-        classes(Styles.savedItemAction)
-        attr("type", "button")
-        onClick { onRetry() }
-    }) {
-        MaterialSymbol("refresh")
-        Text(label)
     }
 }
 

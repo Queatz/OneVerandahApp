@@ -29,6 +29,7 @@ import kotlinx.coroutines.runBlocking
 import kotlinx.serialization.json.Json
 import kotlinx.serialization.json.jsonObject
 import kotlinx.serialization.json.jsonPrimitive
+import kotlinx.serialization.encodeToString
 
 class QwenStudyClientTest {
     @Test
@@ -115,7 +116,45 @@ class QwenStudyClientTest {
         assertContains(requestBodies.single(), "Replace every occurrence of the target form with exactly")
         assertContains(requestBodies.single(), "matching learner-language translation")
         assertContains(requestBodies.single(), "Replace the matching translated word or phrase with exactly")
+        assertContains(requestBodies.single(), "never a bare array or JSON string")
         client.close()
+    }
+
+    @Test
+    fun `word recall conversation parser accepts common JSON root shapes`() {
+        val scenario = """{"tokenIndex":0,"lines":[{"speaker":"Mina","text":"___!","translation":"___!"},{"speaker":"Kai","text":"___?","translation":"___?"}]}"""
+        val scenarios = """{"scenarios":[$scenario]}"""
+        val expected = mapOf(
+            0 to listOf(
+                StudyWordRecallLine("Mina", "___!", "___!"),
+                StudyWordRecallLine("Kai", "___?", "___?"),
+            ),
+        )
+
+        listOf(
+            "[$scenario]",
+            Json.encodeToString(scenarios),
+            """Preamble text
+                ```json
+                [$scenario]
+                ```""".trimIndent(),
+            scenario,
+            """{"conversations":[$scenario]}""",
+            """{"dialogues":[$scenario]}""",
+        ).forEach { content ->
+            assertEquals(expected, QwenStudyNeedScenarioParser.parse(content, setOf(0)), content)
+        }
+    }
+
+    @Test
+    fun `word recall conversation parser rejects unrelated arrays and shows invalid output preview`() {
+        assertFailsWith<IllegalArgumentException> {
+            QwenStudyNeedScenarioParser.parse("[\"not a conversation\"]", setOf(0))
+        }
+        val exception = assertFailsWith<IllegalArgumentException> {
+            QwenStudyNeedScenarioParser.parse("not JSON from qwen", setOf(0))
+        }
+        assertContains(exception.message.orEmpty(), "not JSON from qwen")
     }
 
     @Test

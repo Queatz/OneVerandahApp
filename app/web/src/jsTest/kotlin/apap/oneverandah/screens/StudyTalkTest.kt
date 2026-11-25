@@ -294,25 +294,6 @@ class StudyTalkTest {
     }
 
     @Test
-    fun `Talk retry stays available for failed work while the build is still active`() {
-        val failedExpression = StudyBuildElement(
-            StudyBuildElementKind.TALK_EXPRESSION,
-            expressionId = "main-neutral",
-        )
-        val failedState = StudyBuildState(
-            status = StudyBuildStatus.BUILDING,
-            failed = listOf(failedExpression),
-        )
-        val runningState = StudyBuildState(
-            status = StudyBuildStatus.BUILDING,
-            inFlight = listOf(StudyBuildElement(StudyBuildElementKind.TALK_SCENE_IMAGE, sceneIndex = 0)),
-        )
-
-        assertTrue(canRetryStudyTalk(sampleTalkWorld(), failedState))
-        assertEquals(false, canRetryStudyTalk(sampleTalkWorld(), runningState))
-    }
-
-    @Test
     fun `failed portrait prerequisite exposes its saved build explanation`() {
         val portrait = StudyBuildElement(StudyBuildElementKind.PORTRAIT, characterId = "main")
         val state = StudyBuildState(

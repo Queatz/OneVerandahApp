@@ -250,12 +250,23 @@ object QwenStudyNeedScenarioParser {
     private val blankMarker = Regex("(?<!_)___(?!_)")
 
     fun parse(content: String, expectedIndices: Set<Int>): Map<Int, List<StudyWordRecallLine>> {
-        val normalized = stripJsonFences(content)
-        val root = runCatching { json.parseToJsonElement(normalized) as? JsonObject }
-            .getOrElse { throw IllegalArgumentException("Qwen Word Recall conversations are not valid JSON", it) }
-            ?: throw IllegalArgumentException("Qwen Word Recall conversations root must be a JSON object")
-        val scenarios = root["scenarios"] as? JsonArray
-            ?: throw IllegalArgumentException("Qwen Word Recall conversations missing scenarios array")
+        val rootElement = parseRootElement(content)
+        val scenarios = when (rootElement) {
+            is JsonArray -> rootElement
+            is JsonObject -> (rootElement["scenarios"] as? JsonArray)
+                ?: (rootElement["conversations"] as? JsonArray)
+                ?: (rootElement["dialogues"] as? JsonArray)
+                ?: if (rootElement.containsKey("tokenIndex") && rootElement.containsKey("lines")) {
+                    buildJsonArray { add(rootElement) }
+                } else {
+                    throw IllegalArgumentException(
+                        "Qwen Word Recall conversations missing scenarios array; response preview: ${responsePreview(content)}",
+                    )
+                }
+            else -> throw IllegalArgumentException(
+                "Qwen Word Recall conversations root must be a JSON object or scenario array; response preview: ${responsePreview(content)}",
+            )
+        }
         val parsed = mutableMapOf<Int, List<StudyWordRecallLine>>()
         scenarios.forEach { element ->
             val scenario = element as? JsonObject
@@ -295,6 +306,68 @@ object QwenStudyNeedScenarioParser {
             "Qwen Word Recall conversations must match every requested token index"
         }
         return parsed
+    }
+
+    private fun parseRootElement(content: String): JsonElement {
+        var element = parseJsonElement(content)
+        repeat(3) {
+            val encodedContent = (element as? JsonPrimitive)
+                ?.takeIf { it.isString }
+                ?.content
+                ?: return element
+            element = runCatching { parseJsonElement(encodedContent) }.getOrElse { return element }
+        }
+        return element
+    }
+
+    private fun parseJsonElement(content: String): JsonElement {
+        val normalized = stripJsonFences(content)
+        val initialParse = runCatching { json.parseToJsonElement(normalized) }
+        if (initialParse.isSuccess) return initialParse.getOrThrow()
+
+        for (start in normalized.indices) {
+            if (normalized[start] != '{' && normalized[start] != '[') continue
+            val candidate = extractJsonCandidate(normalized, start) ?: continue
+            val parsed = runCatching { json.parseToJsonElement(candidate) }.getOrNull()
+            if (parsed != null) return parsed
+        }
+
+        throw IllegalArgumentException(
+            "Qwen Word Recall conversations are not valid JSON; response preview: ${responsePreview(content)}",
+            initialParse.exceptionOrNull(),
+        )
+    }
+
+    private fun extractJsonCandidate(content: String, start: Int): String? {
+        val closingCharacters = mutableListOf<Char>()
+        var inString = false
+        var escaped = false
+        for (index in start until content.length) {
+            val character = content[index]
+            if (inString) {
+                when {
+                    escaped -> escaped = false
+                    character == '\\' -> escaped = true
+                    character == '"' -> inString = false
+                }
+                continue
+            }
+            when (character) {
+                '"' -> inString = true
+                '{' -> closingCharacters += '}'
+                '[' -> closingCharacters += ']'
+                '}', ']' -> {
+                    if (closingCharacters.removeAt(closingCharacters.lastIndex) != character) return null
+                    if (closingCharacters.isEmpty()) return content.substring(start, index + 1)
+                }
+            }
+        }
+        return null
+    }
+
+    private fun responsePreview(content: String): String {
+        val compact = content.replace(Regex("\\s+"), " ").trim()
+        return if (compact.length <= 180) compact else "${compact.take(177)}..."
     }
 }
 
@@ -1448,7 +1521,7 @@ class DashScopeStudyAiClient(
 
     private fun wordRecallScenarioSystemPrompt(activeLanguageTag: String): String = """
         You create one natural, short conversation for each target word in a language-learning lesson.
-        Return ONLY one JSON object with this exact schema:
+        Return ONLY one JSON object (never a bare array or JSON string) with this exact schema:
         {"scenarios":[{"tokenIndex":0,"lines":[{"speaker":"Mina","text":"___!","translation":"___!"},{"speaker":"Kai","text":"...","translation":"..."}]}]}
         Rules:
         - Return exactly one entry for every requested tokenIndex, with no duplicates or extra indices.

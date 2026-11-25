@@ -1021,7 +1021,7 @@ class StudyService(
         PromptFactory.forTalkSceneBackground(world.setting, scene.title, scene.description)
 
     private fun talkExpressionPrompt(character: StudyStoryCharacter, emotion: String): String = buildString {
-        appendLine("Create a full-body character sprite of ${character.name} with a 2 pixel black outline.")
+        appendLine("Create a full-body character sprite of ${character.name} with a 2 pixel hard black outline.")
         appendLine("Preserve this character's identity and appearance: ${character.description}")
         appendLine("Expression and pose: ${talkEmotionDescription(emotion)}.")
         appendLine("Show one person only, centered, head to toe, facing the viewer.")
