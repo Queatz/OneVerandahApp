@@ -23,9 +23,13 @@ object StudySessionMerge {
             incoming.session.copy(
                 examScene = stored.session.examScene ?: incoming.session.examScene,
                 talkWorld = null,
+                comprehendWorld = null,
             )
         } else {
-            incoming.session.copy(talkWorld = null)
+            incoming.session.copy(
+                talkWorld = null,
+                comprehendWorld = null,
+            )
         }
         return incoming.copy(
             id = stored.id,
@@ -92,6 +96,7 @@ object StudySessionMerge {
             practiceSentences = incoming.practiceSentences,
             examScene = stored.examScene ?: incoming.examScene,
             talkWorld = stored.talkWorld ?: incoming.talkWorld,
+            comprehendWorld = stored.comprehendWorld ?: incoming.comprehendWorld,
         )
     }
 

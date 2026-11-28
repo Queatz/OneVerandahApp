@@ -179,6 +179,7 @@ class StoryRoutesTest {
                 override suspend fun generate(
                     prompt: String,
                     referenceImageUrls: List<String>,
+                    size: String?,
                 ): GeneratedImage {
                     gate.await()
                     return GeneratedImage(byteArrayOf(1, 2, 3), "image/png", "png")
@@ -244,6 +245,7 @@ class StoryRoutesTest {
                 override suspend fun generate(
                     prompt: String,
                     referenceImageUrls: List<String>,
+                    size: String?,
                 ): GeneratedImage {
                     capturedPrompt = prompt
                     gate.await()

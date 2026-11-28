@@ -2,6 +2,13 @@
 # yarn lockfile v1
 
 
+"@babylonjs/lite@1.42.0":
+  version "1.42.0"
+  resolved "https://registry.yarnpkg.com/@babylonjs/lite/-/lite-1.42.0.tgz#c2280c49043aa02177ecb9bc3c8974dac08ecb99"
+  integrity sha512-tSmDyxcQk7pj9PDL8n7h5zvqxHeXIr2ubqLAfWz/DnbSHIc6o6y2FtAq4q+UDaTTCHbOsWIhj16BnFzqm/nc0A==
+  dependencies:
+    "@types/webxr" "^0.5.0"
+
 "@colors/colors@1.5.0":
   version "1.5.0"
   resolved "https://registry.yarnpkg.com/@colors/colors/-/colors-1.5.0.tgz#bb504579c1cae923e6576a4f5da43d25f97bdbd9"
@@ -559,6 +566,11 @@
   integrity sha512-MK9V6NzAS1+Ud7JV9lJLFqW85VbC9dq3LmwZCuBe4wBDgKC0Kj/jd8Xl+nSviU+Qc3+m7umHHyHg//2KSa0a0Q==
   dependencies:
     "@types/node" "*"
+
+"@types/webxr@^0.5.0":
+  version "0.5.24"
+  resolved "https://registry.yarnpkg.com/@types/webxr/-/webxr-0.5.24.tgz#734d5d90dadc5809a53e422726c60337fa2f4a44"
+  integrity sha512-h8fgEd/DpoS9CBrjEQXR+dIDraopAEfu4wYVNY2tEPwk60stPWhvZMf4Foo5FakuQ7HFZoa8WceaWFervK2Ovg==
 
 "@types/ws@^8.5.10", "@types/ws@^8.5.12":
   version "8.18.1"

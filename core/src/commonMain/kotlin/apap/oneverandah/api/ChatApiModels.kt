@@ -247,6 +247,8 @@ data class StudySessionResponse(
     val examScene: StudyExamScene? = null,
     /** Server-built visual-novel Talk world; learner progress is deliberately not stored here. */
     val talkWorld: StudyTalkWorld? = null,
+    /** Server-generated 3-scene 3D Comprehend world; learner progress is never persisted on the server. */
+    val comprehendWorld: StudyComprehendWorld? = null,
 )
 
 @Serializable

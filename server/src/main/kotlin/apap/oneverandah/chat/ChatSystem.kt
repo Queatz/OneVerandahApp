@@ -226,19 +226,6 @@ class ChatSystem(
                 null
             }
             val studyAiClient = DashScopeStudyAiClient(config.qwenChat, providerClient)
-            val studyService = StudyService(
-                aiClient = studyAiClient,
-                imageGenerator = playgroundImageGenerator,
-                scope = scope,
-                talkCharacterImageSize = config.qwen.talkMultimodalSize,
-            )
-            val studySessionStore = StudySessionStore(studySessionsRepository, scope = scope)
-            val studySessionsService = StudySessionsService(
-                repository = studySessionsRepository,
-                deviceService = deviceService,
-                studyAiClient = studyAiClient,
-                sessionStore = studySessionStore,
-            )
             val speechService = SpeechService(
                 client = RoutingSpeechClient(
                     qwenClient = DashScopeSpeechClient(config.qwenChat, providerClient),
@@ -273,6 +260,20 @@ class ChatSystem(
                     )
                 }
             }
+            val studyService = StudyService(
+                aiClient = studyAiClient,
+                imageGenerator = playgroundImageGenerator,
+                scope = scope,
+                talkCharacterImageSize = config.qwen.talkMultimodalSize,
+                talkAudioGenerator = talkAudioGenerator,
+            )
+            val studySessionStore = StudySessionStore(studySessionsRepository, scope = scope)
+            val studySessionsService = StudySessionsService(
+                repository = studySessionsRepository,
+                deviceService = deviceService,
+                studyAiClient = studyAiClient,
+                sessionStore = studySessionStore,
+            )
             val studyBuildService = StudyBuildService(
                 repository = studySessionsRepository,
                 deviceService = deviceService,

@@ -15,6 +15,9 @@ import apap.oneverandah.api.StudyBuildRetryRequest
 import apap.oneverandah.api.StudyBuildStatus
 import apap.oneverandah.api.StudyAdventureProgress
 import apap.oneverandah.api.StudyBreakdownProgress
+import apap.oneverandah.api.StudyComprehendBuildStatus
+import apap.oneverandah.api.StudyComprehendGenerateRequest
+import apap.oneverandah.api.StudyComprehendJobResponse
 import apap.oneverandah.api.StudyExpressCheckRequest
 import apap.oneverandah.api.StudyExpressGenerateRequest
 import apap.oneverandah.api.StudyExamSceneRequest
@@ -371,6 +374,61 @@ fun Route.chatRoutes(
                 return@get
             }
             call.respond(image)
+        }
+
+        post("/api/chat/study/comprehend") {
+            val request = call.receiveStudyPayload<StudyComprehendGenerateRequest>()
+            val normalized = request.normalizedOrNull()
+            if (normalized == null) {
+                call.respond(
+                    HttpStatusCode.BadRequest,
+                    ChatErrorResponse("Study Comprehend requires non-blank text and at least one study sentence"),
+                )
+                return@post
+            }
+            val sessionId = normalized.sessionId
+            if (sessionId != null && studySessionsService != null) {
+                val existingRecord = studySessionsService.sessionStore.findById(sessionId)
+                val existingWorld = existingRecord?.session?.comprehendWorld
+                if (existingWorld != null && existingWorld.hasAllAssets()) {
+                    call.respondStudyPayload(
+                        StudyComprehendJobResponse(
+                            jobId = "cached-$sessionId",
+                            status = StudyComprehendBuildStatus.READY,
+                            completedSteps = 1,
+                            totalSteps = 1,
+                            world = existingWorld,
+                        ),
+                    )
+                    return@post
+                }
+            }
+            val job = studyService.startComprehendJob(normalized) { finishedWorld ->
+                if (sessionId != null && studySessionsService != null) {
+                    studySessionsService.sessionStore.update(sessionId, immediate = true) { current ->
+                        if (current.text != normalized.text || current.textLanguageTag != normalized.textLanguageTag) {
+                            return@update current
+                        }
+                        current.copy(session = current.session.copy(comprehendWorld = finishedWorld))
+                    }
+                }
+            }
+            call.respondStudyPayload(job, HttpStatusCode.Accepted)
+        }
+
+        get("/api/chat/study/comprehend/{jobId}") {
+            call.disableStudyReadCaching()
+            val jobId = call.parameters["jobId"]?.trim().orEmpty()
+            if (jobId.isEmpty()) {
+                call.respond(HttpStatusCode.BadRequest, ChatErrorResponse("Comprehend job id is required"))
+                return@get
+            }
+            val job = studyService.comprehendJob(jobId)
+            if (job == null) {
+                call.respond(HttpStatusCode.NotFound, ChatErrorResponse("Comprehend job not found"))
+                return@get
+            }
+            call.respondStudyPayload(job)
         }
     }
 

@@ -28,6 +28,8 @@ kotlin {
             implementation(devNpm("html-webpack-plugin", "5.6.3"))
             // High-ECC QR images for the Zalo contact dialog (logo overlay in CSS).
             implementation(npm("qrcode", "1.5.4"))
+            // WebGPU-native Babylon Lite 3D renderer for the Study Session Comprehend tab.
+            implementation(npm("@babylonjs/lite", "1.42.0"))
         }
         jsTest.dependencies {
             implementation(kotlin("test"))

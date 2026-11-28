@@ -1,5 +1,16 @@
 package apap.oneverandah.chat
 
+import apap.oneverandah.api.STUDY_COMPREHEND_GRID_SIZE
+import apap.oneverandah.api.STUDY_COMPREHEND_MIN_ACTIONS
+import apap.oneverandah.api.STUDY_COMPREHEND_SCENE_COUNT
+import apap.oneverandah.api.STUDY_COMPREHEND_TILE_COUNT
+import apap.oneverandah.api.StudyComprehendBuildStatus
+import apap.oneverandah.api.StudyComprehendGenerateRequest
+import apap.oneverandah.api.StudyComprehendJobResponse
+import apap.oneverandah.api.StudyComprehendSpriteSpec
+import apap.oneverandah.api.StudyComprehendTimeOfDay
+import apap.oneverandah.api.StudyComprehendWeather
+import apap.oneverandah.api.StudyComprehendWorld
 import apap.oneverandah.api.StudyDissectSentenceRequest
 import apap.oneverandah.api.StudyDissectSentenceResponse
 import apap.oneverandah.api.StudyChunk
@@ -64,11 +75,18 @@ import apap.oneverandah.images.PromptFactory
 import apap.oneverandah.model.Language
 import java.util.UUID
 import java.util.concurrent.ConcurrentHashMap
+import java.util.concurrent.atomic.AtomicInteger
+import kotlinx.coroutines.CancellationException
 import kotlinx.coroutines.CoroutineScope
 import kotlinx.coroutines.Dispatchers
 import kotlinx.coroutines.NonCancellable
 import kotlinx.coroutines.SupervisorJob
+import kotlinx.coroutines.async
+import kotlinx.coroutines.awaitAll
+import kotlinx.coroutines.coroutineScope
 import kotlinx.coroutines.launch
+import kotlinx.coroutines.sync.Semaphore
+import kotlinx.coroutines.sync.withPermit
 import kotlinx.coroutines.withContext
 import org.slf4j.LoggerFactory
 
@@ -374,6 +392,9 @@ interface StudyAiClient {
     suspend fun generateTalkWorld(request: StudyTalkGenerationRequest): StudyTalkWorld =
         fallbackStudyTalkWorld(request)
 
+    suspend fun generateComprehendWorld(request: StudyComprehendGenerateRequest): StudyComprehendWorld =
+        throw UnsupportedOperationException("Study Comprehend world generation is not supported")
+
     suspend fun evaluateExamBeat(request: StudyExamBeatJudgmentRequest): StudyExamJudgment =
         StudyExamJudgment(points = 0, feedback = "")
 
@@ -392,6 +413,7 @@ class StudyService(
     private val idGenerator: () -> String = { UUID.randomUUID().toString() },
     private val clock: () -> Long = System::currentTimeMillis,
     private val talkCharacterImageSize: String? = null,
+    private val talkAudioGenerator: StudyTalkAudioGenerator? = null,
 ) {
     private val log = LoggerFactory.getLogger(StudyService::class.java)
 
@@ -399,6 +421,8 @@ class StudyService(
 
     /** Shared async job store for playground stills, character portraits, and sentence visuals. */
     private val studyImages = ConcurrentHashMap<String, StudyPlaygroundImageResponse>()
+    private val comprehendJobs = ConcurrentHashMap<String, StudyComprehendJobResponse>()
+    private val activeComprehendJobByKey = ConcurrentHashMap<String, String>()
 
     /**
      * Parse-mode prep: generate the study text the learner asked for, which the
@@ -1026,6 +1050,325 @@ class StudyService(
         appendLine("Expression and pose: ${talkEmotionDescription(emotion)}.")
         appendLine("Show one person only, centered, head to toe, facing the viewer.")
         appendLine("Plain white background; no props, no text, no frame, no shadow.")
+    }
+
+    suspend fun comprehendWorld(rawRequest: StudyComprehendGenerateRequest): StudyComprehendWorld {
+        val request = requireNotNull(rawRequest.normalizedOrNull()) {
+            "Study Comprehend requires non-blank text and at least one study sentence"
+        }
+        val characters = request.characters.ifEmpty {
+            defaultStoryCharacters(request.text).map { design ->
+                StudyStoryCharacter(
+                    id = design.id,
+                    name = design.name,
+                    role = design.role,
+                    description = design.description,
+                )
+            }
+        }
+        val normalizedRequest = request.copy(characters = characters)
+        val verbatimSentences = request.sentences.map { studyTalkWords(it.text).joinToString(" ") }
+            .filter(String::isNotEmpty)
+            .toSet()
+
+        val generated = aiClient.generateComprehendWorld(normalizedRequest)
+        require(generated.scenes.size == STUDY_COMPREHEND_SCENE_COUNT) {
+            "Study Comprehend requires exactly $STUDY_COMPREHEND_SCENE_COUNT scenes"
+        }
+
+        val defaultTimes = listOf(
+            StudyComprehendTimeOfDay.MORNING,
+            StudyComprehendTimeOfDay.DAYTIME,
+            StudyComprehendTimeOfDay.EVENING,
+            StudyComprehendTimeOfDay.NIGHT,
+        )
+        val defaultWeathers = listOf(
+            StudyComprehendWeather.SUNNY,
+            StudyComprehendWeather.BREEZY,
+            StudyComprehendWeather.RAINY,
+            StudyComprehendWeather.DUSTY,
+            StudyComprehendWeather.COLD,
+        )
+        val usedTitles = mutableSetOf<String>()
+        val usedTimes = mutableSetOf<StudyComprehendTimeOfDay>()
+        val usedWeathers = mutableSetOf<StudyComprehendWeather>()
+
+        val normalizedScenes = generated.scenes.mapIndexed { index, scene ->
+            require(scene.tiles.size == STUDY_COMPREHEND_TILE_COUNT) {
+                "Study Comprehend scene ${index + 1} must have $STUDY_COMPREHEND_TILE_COUNT tiles"
+            }
+            require(scene.possibleActionCount() >= STUDY_COMPREHEND_MIN_ACTIONS) {
+                "Study Comprehend scene ${index + 1} must contain at least $STUDY_COMPREHEND_MIN_ACTIONS possible actions"
+            }
+            val occupiedCoords = HashSet<Int>()
+            scene.objects.forEach { obj ->
+                require(obj.x in 0 until STUDY_COMPREHEND_GRID_SIZE && obj.z in 0 until STUDY_COMPREHEND_GRID_SIZE) {
+                    "Study Comprehend object ${obj.id} has out-of-bounds tile (${obj.x}, ${obj.z})"
+                }
+                require(occupiedCoords.add(obj.z * STUDY_COMPREHEND_GRID_SIZE + obj.x)) {
+                    "Study Comprehend scene ${index + 1} has multiple objects on tile (${obj.x}, ${obj.z})"
+                }
+                require(obj.targetName.isNotBlank()) {
+                    "Study Comprehend object ${obj.id} is missing targetName"
+                }
+                if (obj.isCharacter) {
+                    val spokenNormalized = studyTalkWords(obj.spokenText.orEmpty()).joinToString(" ")
+                    require(spokenNormalized.isNotEmpty() && spokenNormalized !in verbatimSentences) {
+                        "Study Comprehend character ${obj.id} spokenText must not copy a study sentence verbatim"
+                    }
+                }
+            }
+            val title = uniqueTalkText(scene.title, "Scene ${index + 1}", usedTitles)
+            val timeOfDay = if (usedTimes.add(scene.timeOfDay)) {
+                scene.timeOfDay
+            } else {
+                defaultTimes.first { usedTimes.add(it) }
+            }
+            val weather = if (usedWeathers.add(scene.weather)) {
+                scene.weather
+            } else {
+                defaultWeathers.first { usedWeathers.add(it) }
+            }
+            scene.copy(
+                id = "scene-${index + 1}",
+                title = title,
+                timeOfDay = timeOfDay,
+                weather = weather,
+            )
+        }
+
+        return generated.copy(
+            setting = generated.setting.trim().ifBlank { "An interactive comprehension story world" },
+            scenes = normalizedScenes,
+        )
+    }
+
+    suspend fun renderComprehendPlayerSprite(
+        world: StudyComprehendWorld,
+        textLanguageTag: String,
+    ): String {
+        val prompt = buildString {
+            appendLine("Create a full-body explorer character sprite with a 2 pixel hard dark outline.")
+            val appearance = world.playerVisualPrompt.trim().ifBlank {
+                "Friendly young traveler dressed naturally for ${world.setting}, culturally authentic to language tag $textLanguageTag"
+            }
+            appendLine("Appearance: $appearance.")
+            appendLine("Show one person only, centered, head to toe, standing naturally facing the viewer.")
+            appendLine("Plain solid white background (#FFFFFF); no props, no ground plane, no shadow, no text, no frame.")
+            appendLine(PromptFactory.ART_STYLE)
+            append(PromptFactory.NO_TEXT)
+        }
+        return requireNotNull(imageGenerator) { "Study images are not configured" }.generateMaskedPortrait(
+            prompt = prompt,
+            referenceImageUrls = emptyList(),
+            maskPrompt = STUDY_PERSON_MASK_PROMPT,
+            size = talkCharacterImageSize,
+        )
+    }
+
+    suspend fun renderComprehendSprite(
+        sprite: StudyComprehendSpriteSpec,
+        characters: List<StudyStoryCharacter>,
+    ): String {
+        val generator = requireNotNull(imageGenerator) { "Study images are not configured" }
+        return if (sprite.isCharacter) {
+            val matchedCharacter = sprite.characterId?.let { charId ->
+                characters.firstOrNull { it.id == charId }
+            }
+            val prompt = buildString {
+                val namePart = matchedCharacter?.name?.takeIf(String::isNotBlank) ?: sprite.id
+                appendLine("Create a full-body character sprite of $namePart with a 2 pixel hard black outline.")
+                val appearance = matchedCharacter?.description?.takeIf(String::isNotBlank) ?: sprite.visualPrompt
+                appendLine("Preserve this character's identity and appearance: $appearance.")
+                appendLine("Expression and pose: welcoming, expressive standing pose facing the viewer.")
+                appendLine("Show one person only, centered, head to toe, facing the viewer.")
+                appendLine("Plain solid white background (#FFFFFF); no props, no ground plane, no text, no frame, no shadow.")
+                appendLine(PromptFactory.ART_STYLE)
+                append(PromptFactory.NO_TEXT)
+            }
+            generator.generateMaskedPortrait(
+                prompt = prompt,
+                referenceImageUrls = listOfNotNull(matchedCharacter?.imageUrl?.takeIf(String::isNotBlank)),
+                maskPrompt = STUDY_PERSON_MASK_PROMPT,
+                size = talkCharacterImageSize,
+            )
+        } else {
+            val prompt = buildString {
+                appendLine("Create a single isolated 3D map billboard sprite of: ${sprite.visualPrompt.trim()}.")
+                appendLine("Clean 2 pixel hard dark outline around the object silhouette.")
+                appendLine("Show exactly one complete object centered inside the frame, front three-quarter view.")
+                appendLine("Plain solid white background (#FFFFFF); no ground plane, no floor, no people, no cast shadow, no text, no frame.")
+                appendLine(PromptFactory.ART_STYLE)
+                append(PromptFactory.NO_TEXT)
+            }
+            generator.generateMaskedPortrait(
+                prompt = prompt,
+                referenceImageUrls = emptyList(),
+                maskPrompt = STUDY_OBJECT_MASK_PROMPT,
+                size = talkCharacterImageSize,
+            )
+        }
+    }
+
+    fun comprehendJob(jobId: String): StudyComprehendJobResponse? = comprehendJobs[jobId]
+
+    fun startComprehendJob(
+        rawRequest: StudyComprehendGenerateRequest,
+        onWorldReady: (suspend (StudyComprehendWorld) -> Unit)? = null,
+    ): StudyComprehendJobResponse {
+        val request = requireNotNull(rawRequest.normalizedOrNull()) {
+            "Study Comprehend requires non-blank text and at least one study sentence"
+        }
+        val dedupeKey = request.sessionId ?: "${request.languageTag}|${request.textLanguageTag}|${request.text.hashCode()}"
+        activeComprehendJobByKey[dedupeKey]?.let { existingJobId ->
+            val existing = comprehendJobs[existingJobId]
+            if (existing != null && existing.status != StudyComprehendBuildStatus.FAILED) {
+                return existing
+            }
+        }
+
+        val jobId = idGenerator().trim().ifBlank { UUID.randomUUID().toString() }
+        val initial = StudyComprehendJobResponse(
+            jobId = jobId,
+            status = StudyComprehendBuildStatus.GENERATING_SCENES,
+            completedSteps = 0,
+            totalSteps = 2,
+        )
+        comprehendJobs[jobId] = initial
+        activeComprehendJobByKey[dedupeKey] = jobId
+
+        scope.launch {
+            try {
+                val designed = comprehendWorld(request)
+                val characters = request.characters.ifEmpty {
+                    defaultStoryCharacters(request.text).map { d ->
+                        StudyStoryCharacter(d.id, d.name, d.role, d.description)
+                    }
+                }
+                val spokenLinesToSynthesize = if (talkAudioGenerator != null) {
+                    designed.scenes.flatMap { scene ->
+                        scene.objects.filter { it.isCharacter }.flatMap { obj ->
+                            listOfNotNull(
+                                obj.spokenText?.takeIf(String::isNotBlank),
+                                obj.acceptSpokenText?.takeIf(String::isNotBlank),
+                                obj.declineSpokenText?.takeIf(String::isNotBlank),
+                            )
+                        }
+                    }.distinct()
+                } else {
+                    emptyList()
+                }
+                // 1 step for scene design + 1 player sprite + N sprites + M audio clips
+                val totalSteps = 1 + 1 + designed.sprites.size + spokenLinesToSynthesize.size
+                val completedCounter = AtomicInteger(1)
+                comprehendJobs[jobId] = StudyComprehendJobResponse(
+                    jobId = jobId,
+                    status = StudyComprehendBuildStatus.GENERATING_ASSETS,
+                    completedSteps = 1,
+                    totalSteps = totalSteps,
+                )
+
+                val assetSemaphore = Semaphore(permits = 3)
+                val (playerUrl, renderedSprites, audioMap) = coroutineScope {
+                    val playerDeferred = async {
+                        assetSemaphore.withPermit {
+                            renderComprehendPlayerSprite(designed, request.textLanguageTag).also {
+                                val done = completedCounter.incrementAndGet()
+                                comprehendJobs[jobId] = StudyComprehendJobResponse(
+                                    jobId = jobId,
+                                    status = StudyComprehendBuildStatus.GENERATING_ASSETS,
+                                    completedSteps = done,
+                                    totalSteps = totalSteps,
+                                )
+                            }
+                        }
+                    }
+                    val spritesDeferred = designed.sprites.map { sprite ->
+                        async {
+                            assetSemaphore.withPermit {
+                                val url = renderComprehendSprite(sprite, characters)
+                                val done = completedCounter.incrementAndGet()
+                                comprehendJobs[jobId] = StudyComprehendJobResponse(
+                                    jobId = jobId,
+                                    status = StudyComprehendBuildStatus.GENERATING_ASSETS,
+                                    completedSteps = done,
+                                    totalSteps = totalSteps,
+                                )
+                                sprite.copy(imageUrl = url)
+                            }
+                        }
+                    }
+                    val audioDeferred = spokenLinesToSynthesize.map { line ->
+                        async {
+                            assetSemaphore.withPermit {
+                                val url = requireNotNull(talkAudioGenerator).generate(line, request.textLanguageTag)
+                                val done = completedCounter.incrementAndGet()
+                                comprehendJobs[jobId] = StudyComprehendJobResponse(
+                                    jobId = jobId,
+                                    status = StudyComprehendBuildStatus.GENERATING_ASSETS,
+                                    completedSteps = done,
+                                    totalSteps = totalSteps,
+                                )
+                                line to url
+                            }
+                        }
+                    }
+                    Triple(
+                        playerDeferred.await(),
+                        spritesDeferred.awaitAll(),
+                        audioDeferred.awaitAll().toMap(),
+                    )
+                }
+
+                val enrichedScenes = if (audioMap.isEmpty()) {
+                    designed.scenes
+                } else {
+                    designed.scenes.map { scene ->
+                        scene.copy(
+                            objects = scene.objects.map { obj ->
+                                if (!obj.isCharacter) {
+                                    obj
+                                } else {
+                                    obj.copy(
+                                        spokenAudioUrl = obj.spokenText?.let { audioMap[it] } ?: obj.spokenAudioUrl,
+                                        acceptAudioUrl = obj.acceptSpokenText?.let { audioMap[it] } ?: obj.acceptAudioUrl,
+                                        declineAudioUrl = obj.declineSpokenText?.let { audioMap[it] } ?: obj.declineAudioUrl,
+                                    )
+                                }
+                            },
+                        )
+                    }
+                }
+
+                val finishedWorld = designed.copy(
+                    playerSpriteUrl = playerUrl,
+                    sprites = renderedSprites,
+                    scenes = enrichedScenes,
+                )
+                onWorldReady?.invoke(finishedWorld)
+                comprehendJobs[jobId] = StudyComprehendJobResponse(
+                    jobId = jobId,
+                    status = StudyComprehendBuildStatus.READY,
+                    completedSteps = totalSteps,
+                    totalSteps = totalSteps,
+                    world = finishedWorld,
+                )
+            } catch (cancelled: CancellationException) {
+                activeComprehendJobByKey.remove(dedupeKey, jobId)
+                throw cancelled
+            } catch (error: Throwable) {
+                log.warn("Study Comprehend generation failed for job {}: {}", jobId, error.message, error)
+                activeComprehendJobByKey.remove(dedupeKey, jobId)
+                comprehendJobs[jobId] = StudyComprehendJobResponse(
+                    jobId = jobId,
+                    status = StudyComprehendBuildStatus.FAILED,
+                    completedSteps = comprehendJobs[jobId]?.completedSteps ?: 0,
+                    totalSteps = comprehendJobs[jobId]?.totalSteps ?: 1,
+                    error = error.message?.takeIf(String::isNotBlank) ?: "Comprehend scene generation failed",
+                )
+            }
+        }
+        return initial
     }
 
     private suspend fun playCoverPrompt(
@@ -1686,6 +2029,15 @@ White (#FFFFFF) = every pixel belonging to the person (including all internal de
 Black (#000000) = everything else (background only).
 No grays. No transparency. No missing internal elements.
 The mask must be completely solid white inside the person's outline - no lines or gaps should appear transparent/black within the figure.
+Preserve exact original dimensions and positioning.
+""".trimIndent()
+
+internal val STUDY_OBJECT_MASK_PROMPT = """
+Generate a perfect binary segmentation mask of the single foreground object in this image.
+White (#FFFFFF) = every pixel belonging to the object (including all internal details, surfaces, lines, shadows, and textures).
+Black (#000000) = everything else (background only).
+No grays. No transparency. No missing internal elements.
+The mask must be completely solid white inside the object's outline - no lines or gaps should appear transparent/black within the object.
 Preserve exact original dimensions and positioning.
 """.trimIndent()
 

@@ -587,6 +587,42 @@ object Styles {
     const val studyTalkRecapSpeaker = "study-talk-recap-speaker"
     const val studyTalkRecapText = "study-talk-recap-text"
     const val studyTalkRecapRestart = "study-talk-recap-restart"
+    const val studyComprehendShell = "study-comprehend-shell"
+    const val studyComprehendFullscreen = "study-comprehend-fullscreen"
+    const val studyComprehendHeader = "study-comprehend-header"
+    const val studyComprehendHeaderLeft = "study-comprehend-header-left"
+    const val studyComprehendTitle = "study-comprehend-title"
+    const val studyComprehendMeta = "study-comprehend-meta"
+    const val studyComprehendSceneSteps = "study-comprehend-scene-steps"
+    const val studyComprehendSceneStep = "study-comprehend-scene-step"
+    const val studyComprehendSceneStepActive = "study-comprehend-scene-step-active"
+    const val studyComprehendSceneStepDone = "study-comprehend-scene-step-done"
+    const val studyComprehendStage = "study-comprehend-stage"
+    const val studyComprehendCanvas = "study-comprehend-canvas"
+    const val studyComprehendTasksPanel = "study-comprehend-tasks-panel"
+    const val studyComprehendTasksHeader = "study-comprehend-tasks-header"
+    const val studyComprehendTasksList = "study-comprehend-tasks-list"
+    const val studyComprehendTaskItem = "study-comprehend-task-item"
+    const val studyComprehendTaskDone = "study-comprehend-task-done"
+    const val studyComprehendInventoryBar = "study-comprehend-inventory-bar"
+    const val studyComprehendInventoryItems = "study-comprehend-inventory-items"
+    const val studyComprehendInventoryChip = "study-comprehend-inventory-chip"
+    const val studyComprehendInventoryChipSelected = "study-comprehend-inventory-chip-selected"
+    const val studyComprehendInventoryThumb = "study-comprehend-inventory-thumb"
+    const val studyComprehendInteractionStack = "study-comprehend-interaction-stack"
+    const val studyComprehendActionTray = "study-comprehend-action-tray"
+    const val studyComprehendActionHeader = "study-comprehend-action-header"
+    const val studyComprehendActionButtons = "study-comprehend-action-buttons"
+    const val studyComprehendActionBtn = "study-comprehend-action-btn"
+    const val studyComprehendActionBtnPrimary = "study-comprehend-action-btn-primary"
+    const val studyComprehendNextSceneWrap = "study-comprehend-next-scene-wrap"
+    const val studyComprehendNextSceneBtn = "study-comprehend-next-scene-btn"
+    const val studyComprehendStatusCard = "study-comprehend-status-card"
+    const val studyComprehendSpinner = "study-comprehend-spinner"
+    const val studyComprehendLoadingOverlay = "study-comprehend-loading-overlay"
+    const val studyComprehendWebGpuSteps = "study-comprehend-webgpu-steps"
+    const val studyComprehendHintFooter = "study-comprehend-hint-footer"
+    const val studyComprehendToast = "study-comprehend-toast"
     const val studySentenceBlock = "study-sentence-block"
     const val studySentenceImage = "study-sentence-image"
     const val studySentenceImagePlaceholder = "study-sentence-image-placeholder"
@@ -3931,9 +3967,6 @@ object Styles {
             align-items: center;
             gap: 12px;
             padding: 16px;
-            border: 1px solid var(--md-sys-color-outline-variant);
-            border-radius: 18px;
-            background: color-mix(in srgb, var(--md-sys-color-primary) 5%, var(--md-sys-color-surface));
             text-align: center;
         }
         .${studyRecallFullscreen} .${studyRecallBlock} {
@@ -4961,6 +4994,403 @@ object Styles {
         .${studyTalkFullscreen} .${studyTalkRecapScene} {
             border-color: rgba(255, 255, 255, .16);
             background: rgba(255, 255, 255, .08);
+        }
+        .${studyComprehendShell} {
+            display: flex;
+            flex-direction: column;
+            gap: 10px;
+            padding: 14px;
+            border-radius: 20px;
+            border: 1px solid color-mix(in srgb, var(--md-sys-color-outline) 55%, transparent);
+            background: linear-gradient(160deg, color-mix(in srgb, var(--md-sys-color-primary) 7%, var(--md-sys-color-surface)), var(--md-sys-color-surface));
+            box-shadow: 0 12px 32px rgba(15, 23, 42, .10);
+        }
+        .${studyComprehendFullscreen} {
+            position: fixed;
+            inset: 0;
+            z-index: 1200;
+            border-radius: 0;
+            border: none;
+            background: #0b1220;
+            color: #f8fafc;
+            padding: 12px 16px;
+        }
+        .${studyComprehendHeader} {
+            display: flex;
+            flex-wrap: wrap;
+            align-items: center;
+            justify-content: space-between;
+            gap: 10px;
+        }
+        .${studyComprehendHeaderLeft} {
+            display: flex;
+            flex-direction: column;
+            gap: 2px;
+            min-width: 0;
+        }
+        .${studyComprehendTitle} {
+            margin: 0;
+            font-size: 17px;
+            font-weight: 700;
+            line-height: 1.25;
+        }
+        .${studyComprehendMeta} {
+            margin: 0;
+            font-size: 12px;
+            color: var(--md-sys-color-on-surface-variant);
+        }
+        .${studyComprehendFullscreen} .${studyComprehendMeta} {
+            color: rgba(226, 232, 240, .78);
+        }
+        .${studyComprehendSceneSteps} {
+            display: inline-flex;
+            align-items: center;
+            gap: 6px;
+            flex-wrap: wrap;
+        }
+        .${studyComprehendSceneStep} {
+            display: inline-flex;
+            align-items: center;
+            gap: 5px;
+            padding: 5px 11px;
+            border-radius: 999px;
+            font-size: 12px;
+            font-weight: 600;
+            border: 1px solid color-mix(in srgb, var(--md-sys-color-outline) 60%, transparent);
+            background: color-mix(in srgb, var(--md-sys-color-surface-variant) 55%, transparent);
+            color: var(--md-sys-color-on-surface-variant);
+            transition: transform .18s ease, background .18s ease, border-color .18s ease;
+        }
+        .${studyComprehendSceneStepActive} {
+            background: var(--md-sys-color-primary);
+            border-color: var(--md-sys-color-primary);
+            color: var(--md-sys-color-on-primary);
+            box-shadow: 0 4px 12px color-mix(in srgb, var(--md-sys-color-primary) 35%, transparent);
+        }
+        .${studyComprehendSceneStepDone} {
+            border-color: #10b981;
+            color: #059669;
+            background: rgba(16, 185, 129, .12);
+            cursor: pointer;
+        }
+        .${studyComprehendStage} {
+            position: relative;
+            width: 100%;
+            min-height: 500px;
+            height: min(68vh, 640px);
+            border-radius: 16px;
+            overflow: hidden;
+            background: #0f172a;
+            border: 1px solid rgba(148, 163, 184, .24);
+            user-select: none;
+        }
+        .${studyComprehendFullscreen} .${studyComprehendStage} {
+            flex: 1 1 auto;
+            height: auto;
+            min-height: 0;
+        }
+        .${studyComprehendCanvas} {
+            display: block;
+            width: 100%;
+            height: 100%;
+            outline: none;
+            touch-action: none;
+            cursor: pointer;
+        }
+        .${studyComprehendTasksPanel} {
+            position: absolute;
+            top: 12px;
+            left: 12px;
+            z-index: 4;
+            width: min(268px, calc(100% - 24px));
+            max-height: calc(100% - 110px);
+            overflow-y: auto;
+            padding: 11px 13px;
+            border-radius: 14px;
+            background: rgba(15, 23, 42, .80);
+            backdrop-filter: blur(10px);
+            border: 1px solid rgba(148, 163, 184, .28);
+            color: #f8fafc;
+            box-shadow: 0 8px 24px rgba(2, 6, 23, .38);
+            pointer-events: auto;
+        }
+        .${studyComprehendTasksHeader} {
+            display: flex;
+            align-items: center;
+            justify-content: space-between;
+            gap: 8px;
+            margin-bottom: 8px;
+            font-size: 12px;
+            font-weight: 700;
+            letter-spacing: .03em;
+            text-transform: uppercase;
+            color: #cbd5e1;
+        }
+        .${studyComprehendTasksList} {
+            display: flex;
+            flex-direction: column;
+            gap: 7px;
+            margin: 0;
+            padding: 0;
+            list-style: none;
+        }
+        .${studyComprehendTaskItem} {
+            display: flex;
+            align-items: flex-start;
+            gap: 8px;
+            font-size: 13px;
+            line-height: 1.38;
+            color: #f1f5f9;
+            padding: 6px 8px;
+            border-radius: 10px;
+            background: rgba(30, 41, 59, .55);
+            transition: background .22s ease, transform .22s ease;
+        }
+        .${studyComprehendTaskItem} .${materialSymbols} {
+            font-size: 18px;
+            flex: 0 0 auto;
+            color: #94a3b8;
+            margin-top: 1px;
+        }
+        .${studyComprehendTaskDone} {
+            background: rgba(16, 185, 129, .20);
+            color: #d1fae5;
+        }
+        .${studyComprehendTaskDone} .${materialSymbols} {
+            color: #34d399;
+            animation: comprehendPop .32s cubic-bezier(.2, .9, .3, 1.2);
+        }
+        .${studyComprehendInventoryBar} {
+            position: absolute;
+            top: 12px;
+            right: 12px;
+            z-index: 4;
+            max-width: min(300px, calc(100% - 24px));
+            padding: 9px 11px;
+            border-radius: 14px;
+            background: rgba(15, 23, 42, .80);
+            backdrop-filter: blur(10px);
+            border: 1px solid rgba(148, 163, 184, .28);
+            color: #f8fafc;
+            box-shadow: 0 8px 24px rgba(2, 6, 23, .35);
+            display: flex;
+            flex-direction: column;
+            gap: 6px;
+        }
+        .${studyComprehendInventoryItems} {
+            display: flex;
+            flex-wrap: wrap;
+            gap: 6px;
+        }
+        .${studyComprehendInventoryChip} {
+            display: inline-flex;
+            align-items: center;
+            gap: 6px;
+            padding: 4px 9px 4px 5px;
+            border-radius: 999px;
+            border: 1px solid rgba(148, 163, 184, .35);
+            background: rgba(30, 41, 59, .85);
+            color: #f8fafc;
+            font-size: 12px;
+            font-weight: 600;
+            cursor: pointer;
+            transition: transform .15s ease, border-color .15s ease, background .15s ease;
+        }
+        .${studyComprehendInventoryChipSelected} {
+            border-color: #38bdf8;
+            background: rgba(14, 165, 233, .28);
+            box-shadow: 0 0 0 2px rgba(56, 189, 248, .25);
+        }
+        .${studyComprehendInventoryThumb} {
+            width: 24px;
+            height: 24px;
+            object-fit: contain;
+            border-radius: 6px;
+            background: rgba(255, 255, 255, .10);
+        }
+        .${studyComprehendInteractionStack} {
+            position: absolute;
+            left: 50%;
+            bottom: 72px;
+            transform: translateX(-50%);
+            z-index: 6;
+            display: flex;
+            flex-direction: column;
+            align-items: center;
+            gap: 10px;
+            width: max-content;
+            max-width: calc(100% - 28px);
+            pointer-events: none;
+        }
+        .${studyComprehendActionTray} {
+            position: relative;
+            min-width: min(320px, calc(100vw - 28px));
+            max-width: min(520px, 100%);
+            padding: 10px 14px;
+            border-radius: 16px;
+            background: rgba(15, 23, 42, .90);
+            backdrop-filter: blur(12px);
+            border: 1px solid rgba(148, 163, 184, .35);
+            color: #f8fafc;
+            box-shadow: 0 12px 28px rgba(2, 6, 23, .48);
+            pointer-events: auto;
+            animation: comprehendBubbleUp .2s ease-out;
+        }
+        .${studyComprehendActionHeader} {
+            display: flex;
+            align-items: center;
+            justify-content: space-between;
+            gap: 10px;
+            margin-bottom: 8px;
+            font-size: 14px;
+            font-weight: 700;
+        }
+        .${studyComprehendActionButtons} {
+            display: flex;
+            flex-wrap: wrap;
+            gap: 8px;
+        }
+        .${studyComprehendActionBtn} {
+            display: inline-flex;
+            align-items: center;
+            gap: 6px;
+            padding: 7px 13px;
+            border-radius: 999px;
+            border: 1px solid rgba(148, 163, 184, .42);
+            background: rgba(30, 41, 59, .92);
+            color: #f8fafc;
+            font-size: 13px;
+            font-weight: 600;
+            cursor: pointer;
+            transition: transform .14s ease, background .14s ease, border-color .14s ease;
+        }
+        .${studyComprehendActionBtn}:hover {
+            background: rgba(51, 65, 85, .96);
+            border-color: rgba(203, 213, 225, .65);
+        }
+        .${studyComprehendActionBtnPrimary} {
+            border-color: rgba(56, 189, 248, .65);
+            background: linear-gradient(135deg, #0284c7, #0369a1);
+            color: #ffffff;
+        }
+        .${studyComprehendActionBtnPrimary}:hover {
+            background: linear-gradient(135deg, #0ea5e9, #0284c7);
+        }
+        .${studyComprehendNextSceneWrap} {
+            position: absolute;
+            left: 50%;
+            bottom: 16px;
+            transform: translateX(-50%);
+            z-index: 6;
+            display: flex;
+            justify-content: center;
+            width: max-content;
+            max-width: calc(100% - 24px);
+            animation: comprehendSlideUp .28s cubic-bezier(.2, .9, .3, 1.15);
+        }
+        .${studyComprehendNextSceneBtn} {
+            display: inline-flex;
+            align-items: center;
+            gap: 8px;
+            padding: 12px 22px;
+            border-radius: 999px;
+            border: 1px solid rgba(110, 231, 183, .7);
+            background: linear-gradient(135deg, #059669, #0d9488);
+            color: #ffffff;
+            font-size: 15px;
+            font-weight: 700;
+            cursor: pointer;
+            box-shadow: 0 10px 28px rgba(5, 150, 105, .48);
+            transition: transform .16s ease, box-shadow .16s ease;
+        }
+        .${studyComprehendNextSceneBtn}:hover {
+            transform: translateY(-2px);
+            box-shadow: 0 14px 32px rgba(5, 150, 105, .6);
+        }
+        .${studyComprehendStatusCard} {
+            display: flex;
+            flex-direction: column;
+            gap: 12px;
+            padding: 22px 20px;
+            border-radius: 16px;
+            border: 1px solid color-mix(in srgb, var(--md-sys-color-outline) 50%, transparent);
+            background: color-mix(in srgb, var(--md-sys-color-surface-variant) 42%, var(--md-sys-color-surface));
+        }
+        .${studyComprehendSpinner} {
+            display: inline-flex;
+            align-items: center;
+            justify-content: center;
+            flex: 0 0 auto;
+            animation: spin 8s linear infinite;
+        }
+        .${studyComprehendLoadingOverlay} {
+            position: absolute;
+            inset: 0;
+            z-index: 8;
+            display: flex;
+            flex-direction: column;
+            align-items: center;
+            justify-content: center;
+            gap: 12px;
+            background: rgba(15, 23, 42, .88);
+            color: #f8fafc;
+            font-size: 14px;
+            font-weight: 600;
+        }
+        .${studyComprehendLoadingOverlay} .${materialSymbols} {
+            font-size: 32px;
+            color: #38bdf8;
+            animation: spin 8s linear infinite;
+        }
+        .${studyComprehendWebGpuSteps} {
+            display: flex;
+            flex-direction: column;
+            gap: 8px;
+            margin: 4px 0 0;
+            padding-left: 18px;
+            font-size: 13px;
+            line-height: 1.5;
+        }
+        .${studyComprehendHintFooter} {
+            margin: 0;
+            font-size: 12px;
+            color: var(--md-sys-color-on-surface-variant);
+            line-height: 1.4;
+        }
+        .${studyComprehendToast} {
+            position: relative;
+            max-width: min(500px, 100%);
+            padding: 9px 15px;
+            border-radius: 14px;
+            background: rgba(15, 23, 42, .92);
+            backdrop-filter: blur(10px);
+            border: 1px solid rgba(56, 189, 248, .52);
+            color: #e0f2fe;
+            font-size: 13px;
+            font-weight: 600;
+            line-height: 1.42;
+            text-align: center;
+            box-shadow: 0 10px 24px rgba(2, 6, 23, .45);
+            pointer-events: auto;
+            animation: comprehendBubbleUp .18s ease-out;
+        }
+        @keyframes comprehendPop {
+            0% { transform: scale(.6); opacity: .4; }
+            70% { transform: scale(1.22); }
+            100% { transform: scale(1); opacity: 1; }
+        }
+        @keyframes comprehendSlideUp {
+            0% { opacity: 0; transform: translate(-50%, 10px); }
+            100% { opacity: 1; transform: translate(-50%, 0); }
+        }
+        @keyframes comprehendBubbleUp {
+            0% { opacity: 0; transform: translateY(8px); }
+            100% { opacity: 1; transform: translateY(0); }
+        }
+        @media (max-width: 640px) {
+            .${studyComprehendStage} { min-height: 430px; height: 62vh; }
+            .${studyComprehendTasksPanel} { width: min(210px, 56%); padding: 9px 10px; }
+            .${studyComprehendInventoryBar} { max-width: 40%; padding: 7px 9px; }
         }
         @media (max-width: 560px) {
             .${studyTalkBlock} { padding: 10px; }

@@ -25,6 +25,9 @@ import apap.oneverandah.api.StudyBuildState
 import apap.oneverandah.api.StudyBuildStatus
 import apap.oneverandah.api.StudyAdventureProgress
 import apap.oneverandah.api.StudyBreakdownProgress
+import apap.oneverandah.api.StudyComprehendBuildStatus
+import apap.oneverandah.api.StudyComprehendGenerateRequest
+import apap.oneverandah.api.StudyComprehendJobResponse
 import apap.oneverandah.api.mergeStudyBreakdownProgress
 import apap.oneverandah.api.LanguageStudyMiniApp
 import apap.oneverandah.api.SaveStudySessionRequest
@@ -2141,6 +2144,8 @@ private fun StudyCreationProgressStepRow(
     }
 }
 
+internal const val STUDY_COMPREHEND_POLL_INTERVAL_MS = 10_000L
+
 @Composable
 private fun StudySessionContent(
     session: StudySessionResponse,
@@ -2186,6 +2191,65 @@ private fun StudySessionContent(
     var mode by remember(session.text) { mutableStateOf(StudySessionMode.ALL) }
     var highlightedWord by remember(session.text) { mutableStateOf<String?>(null) }
     var examAttempt by remember(session.text) { mutableStateOf(StudyExamAttemptState()) }
+    var comprehendWorld by remember(session.text, session.textLanguageTag) { mutableStateOf(session.comprehendWorld) }
+    var comprehendJob by remember(session.text, session.textLanguageTag) { mutableStateOf<StudyComprehendJobResponse?>(null) }
+    var comprehendError by remember(session.text, session.textLanguageTag) { mutableStateOf<String?>(null) }
+    var comprehendInFlight by remember(session.text, session.textLanguageTag) { mutableStateOf(false) }
+    LaunchedEffect(session.comprehendWorld) {
+        if (session.comprehendWorld != null) {
+            comprehendWorld = session.comprehendWorld
+        }
+    }
+
+    fun startOrRetryComprehend() {
+        if (comprehendWorld != null || comprehendInFlight) return
+        if (session.sentences.isEmpty()) return
+        comprehendInFlight = true
+        comprehendError = null
+        comprehendJob = null
+        val req = StudyComprehendGenerateRequest(
+            sessionId = examScoreSessionId?.trim()?.takeIf { it.isNotEmpty() },
+            text = session.text,
+            textLanguageTag = session.textLanguageTag,
+            languageTag = Localization.language.tag,
+            sentences = session.sentences,
+            characters = session.characters,
+        )
+        scope.launch {
+            try {
+                var job = ChatApi.startStudyComprehend(req)
+                comprehendJob = job
+                while (job.status == StudyComprehendBuildStatus.GENERATING_SCENES ||
+                    job.status == StudyComprehendBuildStatus.GENERATING_ASSETS
+                ) {
+                    delay(STUDY_COMPREHEND_POLL_INTERVAL_MS)
+                    job = ChatApi.getStudyComprehendJob(job.jobId)
+                    comprehendJob = job
+                }
+                when (job.status) {
+                    StudyComprehendBuildStatus.READY -> {
+                        val built = job.world
+                        if (built != null) {
+                            comprehendWorld = built
+                            comprehendError = null
+                        } else {
+                            comprehendError = job.error ?: strings.chatComprehend.failedTitle
+                        }
+                    }
+                    StudyComprehendBuildStatus.FAILED -> {
+                        comprehendError = job.error ?: strings.chatComprehend.failedTitle
+                    }
+                    else -> Unit
+                }
+            } catch (cancelled: CancellationException) {
+                throw cancelled
+            } catch (err: Throwable) {
+                comprehendError = err.message?.takeIf { it.isNotBlank() } ?: strings.chatComprehend.failedTitle
+            } finally {
+                comprehendInFlight = false
+            }
+        }
+    }
     val practiceSentencesForSpeech = remember(session.text, session.textLanguageTag) {
         collectExpressPracticeSentences(session).map { it.text }
     }
@@ -2716,6 +2780,18 @@ private fun StudySessionContent(
                     onRetry = onRetryTalk,
                 )
             }
+            StudySessionMode.COMPREHEND -> {
+                StudyComprehendTab(
+                    strings = strings,
+                    session = session,
+                    world = comprehendWorld,
+                    jobState = comprehendJob,
+                    requestError = comprehendError,
+                    autoStart = mode == StudySessionMode.COMPREHEND,
+                    keyboardEnabled = mode == StudySessionMode.COMPREHEND,
+                    onStartOrRetry = ::startOrRetryComprehend,
+                )
+            }
             StudySessionMode.TEST -> {
                 StudyTestTab(
                     session = session,
@@ -2791,7 +2867,7 @@ internal fun StudySentenceVisual(
     }
 }
 
-private enum class StudySessionMode { ALL, WATCH, STUDY, STORY, ADVENTURE, VISUALIZE, WORDS, LISTEN, SPEAK, RECALL, READ, WRITE, EXPRESS, PLAY, TALK, TEST }
+private enum class StudySessionMode { ALL, WATCH, STUDY, STORY, ADVENTURE, VISUALIZE, WORDS, LISTEN, SPEAK, RECALL, READ, WRITE, EXPRESS, PLAY, TALK, COMPREHEND, TEST }
 
 internal enum class StudySpeakPhase { READY, LISTENING, SPEAKING, REVIEW }
 
@@ -2977,6 +3053,7 @@ private fun StudySessionMode.tabLabel(strings: UiStrings): String = when (this) 
     StudySessionMode.EXPRESS -> strings.chatExpressTab
     StudySessionMode.PLAY -> strings.chatPlayTab
     StudySessionMode.TALK -> strings.chatTalk.tab
+    StudySessionMode.COMPREHEND -> strings.chatComprehend.tab
     StudySessionMode.TEST -> strings.chatTestTab
 }
 
@@ -2996,6 +3073,7 @@ private fun StudySessionMode.skillPracticed(strings: UiStrings): String = when (
     StudySessionMode.EXPRESS -> strings.chatExpressSkill
     StudySessionMode.PLAY -> strings.chatPlaySkill
     StudySessionMode.TALK -> strings.chatTalkSkill
+    StudySessionMode.COMPREHEND -> strings.chatComprehendSkill
     StudySessionMode.TEST -> strings.chatTestSkill
 }
 

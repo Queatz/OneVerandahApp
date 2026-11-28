@@ -1,7 +1,12 @@
 package apap.oneverandah.chat
 
+import apap.oneverandah.api.STUDY_COMPREHEND_GRID_SIZE
+import apap.oneverandah.api.STUDY_COMPREHEND_MIN_ACTIONS
+import apap.oneverandah.api.STUDY_COMPREHEND_SCENE_COUNT
 import apap.oneverandah.api.STUDY_EXAM_BEAT_COUNT
 import apap.oneverandah.api.STUDY_EXAM_ROUND_COUNT
+import apap.oneverandah.api.StudyComprehendGenerateRequest
+import apap.oneverandah.api.StudyComprehendWorld
 import apap.oneverandah.api.StudyExampleSentence
 import apap.oneverandah.api.StudyExampleToken
 import apap.oneverandah.api.StudyChunk
@@ -1024,6 +1029,109 @@ class DashScopeStudyAiClient(
                 }
             }
         }
+    }
+
+    override suspend fun generateComprehendWorld(request: StudyComprehendGenerateRequest): StudyComprehendWorld {
+        val content = complete(
+            systemPrompt = comprehendWorldSystemPrompt(request),
+            userContent = comprehendWorldMaterials(request),
+            label = "study Comprehend world",
+            model = config.chatHeavyModel,
+            temperature = 0.65,
+            enableThinking = true,
+            includeThinkingFlag = true,
+            requestTimeoutMillis = TALK_WORLD_HTTP_REQUEST_TIMEOUT_MILLIS,
+        )
+        return QwenStudyComprehendParser.parse(content)
+    }
+
+    private fun comprehendWorldSystemPrompt(request: StudyComprehendGenerateRequest): String = buildString {
+        val targetLang = languageName(request.textLanguageTag)
+        val uiLang = languageName(request.languageTag)
+        appendLine("You are an expert 3D language-comprehension adventure level designer.")
+        appendLine("Design a connected $STUDY_COMPREHEND_SCENE_COUNT-scene interactive 3D world on ${STUDY_COMPREHEND_GRID_SIZE}x${STUDY_COMPREHEND_GRID_SIZE} tile maps where the learner must listen to characters speaking $targetLang, comprehend their intentions, and perform actions on the map.")
+        appendLine("Return ONLY a single valid JSON object (no markdown fences, no commentary) with:")
+        appendLine("{")
+        appendLine("  \"setting\": \"Overall connected story setting in English\",")
+        appendLine("  \"playerTargetName\": \"Short label for 'You/Traveler' in $targetLang\",")
+        appendLine("  \"playerAppearance\": \"English full-body visual description of the player avatar matching the $targetLang cultural setting\",")
+        appendLine("  \"sprites\": [")
+        appendLine("    { \"id\": \"sprite-id\", \"isCharacter\": false, \"characterId\": null, \"visualPrompt\": \"English isolated single-object/person visual description on white background\", \"scaleWidth\": 1.2, \"scaleHeight\": 1.5 }")
+        appendLine("  ],")
+        appendLine("  \"scenes\": [")
+        appendLine("    {")
+        appendLine("      \"id\": \"scene-1\",")
+        appendLine("      \"title\": \"Short evocative scene title in $uiLang (e.g. 'Courtyard Gate', 'Going inside the palace')\",")
+        appendLine("      \"description\": \"Brief English atmospheric summary\",")
+        appendLine("      \"environment\": \"OUTDOOR\" | \"INDOOR\",")
+        appendLine("      \"timeOfDay\": \"MORNING\" | \"DAYTIME\" | \"EVENING\" | \"NIGHT\",")
+        appendLine("      \"weather\": \"SUNNY\" | \"CLOUDY\" | \"RAINY\" | \"DUSTY\" | \"HOT\" | \"COLD\" | \"MISTY\" | \"SNOWY\" | \"BREEZY\",")
+        appendLine("      \"playerSpawnX\": 16, \"playerSpawnZ\": 28,")
+        appendLine("      \"baseGround\": \"GRASS\" | \"STONE_PAVING\" | \"COBBLESTONE\" | \"DIRT_PATH\" | \"SAND\" | \"WOOD_FLOOR\" | \"MARBLE_TILE\" | \"TATAMI_MAT\" | \"CARPET\" | \"WATER\" | \"MOSS_STONE\" | \"GRAVEL\" | \"COURTYARD_BRICK\" | \"SNOW\",")
+        appendLine("      \"groundZones\": [ { \"x\": 12, \"z\": 4, \"w\": 8, \"h\": 26, \"ground\": \"STONE_PAVING\" } ],")
+        appendLine("      \"objects\": [")
+        appendLine("        {")
+        appendLine("          \"id\": \"unique-obj-id\", \"spriteId\": \"sprite-id\", \"x\": 15, \"z\": 10,")
+        appendLine("          \"targetName\": \"Name in $targetLang (REQUIRED on every object and character)\",")
+        appendLine("          \"isCharacter\": true, \"characterId\": \"main\", \"blocksMovement\": true,")
+        appendLine("          \"spokenText\": \"Natural spoken $targetLang expressing what this character intends/needs (deeply using lesson vocabulary & grammar, NEVER copying a study sentence verbatim)\",")
+        appendLine("          \"acceptSpokenText\": \"Short grateful $targetLang reply when the player fulfills their request\",")
+        appendLine("          \"declineSpokenText\": \"Short polite $targetLang hint when given the wrong item\",")
+        appendLine("          \"pickable\": false, \"opensPassage\": false, \"emitsWarmLight\": false, \"swaysInWind\": false,")
+        appendLine("          \"actions\": [")
+        appendLine("            { \"id\": \"action-id\", \"kind\": \"LISTEN\" | \"TAKE\" | \"GIVE\" | \"USE\" | \"OPEN\" | \"TOGGLE\" | \"INSPECT\", \"label\": \"Short action verb in $uiLang\", \"requiredItemId\": \"optional-pickable-obj-id\", \"feedbackText\": \"Optional short reaction in $uiLang\" }")
+        appendLine("          ]")
+        appendLine("        }")
+        appendLine("      ],")
+        appendLine("      \"sceneryClusters\": [")
+        appendLine("        { \"spriteId\": \"sprite-id\", \"targetName\": \"Name in $targetLang\", \"blocksMovement\": true, \"emitsWarmLight\": false, \"swaysInWind\": true, \"positions\": [[2,2],[2,6],[29,4]] }")
+        appendLine("      ],")
+        appendLine("      \"tasks\": [")
+        appendLine("        {")
+        appendLine("          \"id\": \"task-1\",")
+        appendLine("          \"description\": \"Goal in $uiLang shown in the left task panel (DO NOT translate the character's secret clue — e.g. write 'Listen to Lan and bring what she asked for' rather than naming the exact item!)\",")
+        appendLine("          \"requiredCharacterObjectIds\": [\"char-obj-id\"],")
+        appendLine("          \"requiredActionIds\": [\"action-id\"]")
+        appendLine("        }")
+        appendLine("      ]")
+        appendLine("    }")
+        appendLine("  ]")
+        appendLine("}")
+        appendLine()
+        appendLine("STRICT REQUIREMENTS:")
+        appendLine("1. Exactly $STUDY_COMPREHEND_SCENE_COUNT scenes progressing as one cohesive story deeply related to the study sentences and vocabulary, but NEVER identical to any study sentence.")
+        appendLine("2. Vary indoor/outdoor, timeOfDay (MORNING, DAYTIME, EVENING, NIGHT), and weather (SUNNY, CLOUDY, RAINY, DUSTY, HOT, COLD, MISTY, SNOWY, BREEZY) across the 3 scenes.")
+        appendLine("3. Every scene MUST have AT LEAST 18 possible player actions (sum of actions[] across objects[] in that scene >= $STUDY_COMPREHEND_MIN_ACTIONS, aim for 18-24) with realistic decoy pickable items, inspectable props, toggleable/usable stations, and character GIVE/LISTEN interactions so the learner CANNOT guess by brute force and MUST comprehend what the character says.")
+        appendLine("4. At least two scenes MUST use the player inventory (pickable=true items with TAKE action, plus GIVE to a character or OPEN/USE with requiredItemId referencing that pickable object's id).")
+        appendLine("5. Keep the shared sprites[] catalog concise (12 to 18 reusable sprite definitions across all 3 scenes: cast characters + trees/walls/pillars/rocks/lanterns/tables/items) while placing rich, natural, sensible architectural layouts on each 32x32 map using groundZones, objects, and sceneryClusters (35-80 total placed props per scene). Reuse spriteIds across objects and sceneryClusters!")
+        appendLine("6. Every object and character MUST have a natural targetName in $targetLang. All visualPrompt values MUST be in English with zero text in the image.")
+        appendLine("7. Coordinates x and z must be integers in 0..31, at most one object per tile, with clear walkable paths from (playerSpawnX, playerSpawnZ) to every character and interactive object.")
+    }
+
+    private fun comprehendWorldMaterials(request: StudyComprehendGenerateRequest): String = buildString {
+        appendLine("Study/target language: ${languageName(request.textLanguageTag)} (${request.textLanguageTag})")
+        appendLine("Learner UI language: ${languageName(request.languageTag)} (${request.languageTag})")
+        appendLine()
+        if (request.characters.isNotEmpty()) {
+            appendLine("Session cast (use characterId matching id for character sprites when featuring these characters):")
+            request.characters.forEach { character ->
+                appendLine("- id=${character.id}; name=${character.name}; role=${character.role}; appearance=${character.description}")
+            }
+            appendLine()
+        }
+        appendLine("Study sentences and dissected vocabulary (use these themes, words, and grammar patterns deeply, without copying any sentence verbatim):")
+        request.sentences.forEachIndexed { index, sentence ->
+            appendLine("${index + 1}. ${sentence.text}")
+            if (sentence.translation.isNotBlank()) {
+                appendLine("   Meaning: ${sentence.translation}")
+            }
+            sentence.tokens.filter { it.status != StudyTokenStatus.PLAIN }.forEach { token ->
+                appendLine("   Vocab: ${token.text} — ${token.contextualMeaning.ifBlank { token.literalMeaning }}")
+            }
+        }
+        appendLine()
+        appendLine("Full source passage:")
+        append(request.text)
     }
 
     private fun talkWorldSystemPrompt(request: StudyTalkGenerationRequest): String = buildString {

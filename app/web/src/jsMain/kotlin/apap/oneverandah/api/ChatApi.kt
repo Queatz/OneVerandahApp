@@ -423,6 +423,32 @@ object ChatApi {
         )
     }
 
+    suspend fun startStudyComprehend(request: StudyComprehendGenerateRequest): StudyComprehendJobResponse {
+        val token = DeviceTokenStore.ensureToken()
+        return apiRequest(
+            request = {
+                client.post(chatApiUrl("/study/comprehend")) {
+                    header(DEVICE_TOKEN_HEADER, token)
+                    contentType(ContentType.Application.Json)
+                    setBody(json.encodeToString(StudyComprehendGenerateRequest.serializer(), request))
+                }
+            },
+            decode = { json.decodeFromString(StudyComprehendJobResponse.serializer(), it) },
+        )
+    }
+
+    suspend fun getStudyComprehendJob(jobId: String): StudyComprehendJobResponse {
+        return apiReadRequest(
+            request = { token ->
+                client.get(chatApiUrl("/study/comprehend/$jobId")) {
+                    header(DEVICE_TOKEN_HEADER, token)
+                    timeout { requestTimeoutMillis = STUDY_SESSION_READ_TIMEOUT_MILLIS }
+                }
+            },
+            decode = { json.decodeFromString(StudyComprehendJobResponse.serializer(), it) },
+        )
+    }
+
     suspend fun studySessionEvents(
         id: String,
         onEvent: suspend (StudyBuildEvent) -> Unit,
