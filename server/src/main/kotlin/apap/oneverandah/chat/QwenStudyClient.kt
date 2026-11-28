@@ -1037,7 +1037,7 @@ class DashScopeStudyAiClient(
             userContent = comprehendWorldMaterials(request),
             label = "study Comprehend world",
             model = config.chatHeavyModel,
-            temperature = 0.65,
+            temperature = 0.78,
             enableThinking = true,
             includeThinkingFlag = true,
             requestTimeoutMillis = TALK_WORLD_HTTP_REQUEST_TIMEOUT_MILLIS,
@@ -1049,29 +1049,43 @@ class DashScopeStudyAiClient(
         val targetLang = languageName(request.textLanguageTag)
         val uiLang = languageName(request.languageTag)
         appendLine("You are an expert 3D language-comprehension adventure level designer.")
-        appendLine("Design a connected $STUDY_COMPREHEND_SCENE_COUNT-scene interactive 3D world on ${STUDY_COMPREHEND_GRID_SIZE}x${STUDY_COMPREHEND_GRID_SIZE} tile maps where the learner must listen to characters speaking $targetLang, comprehend their intentions, and perform actions on the map.")
+        appendLine("Design a connected $STUDY_COMPREHEND_SCENE_COUNT-scene interactive 3D world on ${STUDY_COMPREHEND_GRID_SIZE}x${STUDY_COMPREHEND_GRID_SIZE} tile maps where EVERYTHING IS CUSTOM PER SCENE to create genuinely unique scenarios. The learner listens to characters speaking $targetLang, comprehends their intentions, and performs actions on each custom map.")
         appendLine("Return ONLY a single valid JSON object (no markdown fences, no commentary) with:")
         appendLine("{")
         appendLine("  \"setting\": \"Overall connected story setting in English\",")
         appendLine("  \"playerTargetName\": \"Short label for 'You/Traveler' in $targetLang\",")
         appendLine("  \"playerAppearance\": \"English full-body visual description of the player avatar matching the $targetLang cultural setting\",")
         appendLine("  \"sprites\": [")
-        appendLine("    { \"id\": \"sprite-id\", \"isCharacter\": false, \"characterId\": null, \"visualPrompt\": \"English isolated single-object/person visual description on white background\", \"scaleWidth\": 1.2, \"scaleHeight\": 1.5 }")
+        appendLine("    { \"id\": \"sprite-id\", \"isCharacter\": false, \"characterId\": null, \"visualPrompt\": \"English isolated single-object/person visual description on pure white background\", \"scaleWidth\": 1.2, \"scaleHeight\": 1.5 }")
         appendLine("  ],")
         appendLine("  \"scenes\": [")
         appendLine("    {")
         appendLine("      \"id\": \"scene-1\",")
-        appendLine("      \"title\": \"Short evocative scene title in $uiLang (e.g. 'Courtyard Gate', 'Going inside the palace')\",")
-        appendLine("      \"description\": \"Brief English atmospheric summary\",")
+        appendLine("      \"title\": \"Short evocative scene title in $uiLang custom to this specific location\",")
+        appendLine("      \"description\": \"Brief English atmospheric summary of this specific location\",")
+        appendLine("      \"layoutSummary\": \"Brief description of this scene's unique spatial floorplan/terrain geometry\",")
+        appendLine("      \"musicPrompt\": \"Strictly instrumental English music arrangement prompt: specify tempo, acoustic space, lead melody instrument, and accompaniment instruments ONLY (PURELY INSTRUMENTAL — NEVER mention vocals, singing, voices, choir, humming, songs, ballads, lullabies, lyrics, or character plot)\",")
         appendLine("      \"environment\": \"OUTDOOR\" | \"INDOOR\",")
         appendLine("      \"timeOfDay\": \"MORNING\" | \"DAYTIME\" | \"EVENING\" | \"NIGHT\",")
         appendLine("      \"weather\": \"SUNNY\" | \"CLOUDY\" | \"RAINY\" | \"DUSTY\" | \"HOT\" | \"COLD\" | \"MISTY\" | \"SNOWY\" | \"BREEZY\",")
-        appendLine("      \"playerSpawnX\": 16, \"playerSpawnZ\": 28,")
-        appendLine("      \"baseGround\": \"GRASS\" | \"STONE_PAVING\" | \"COBBLESTONE\" | \"DIRT_PATH\" | \"SAND\" | \"WOOD_FLOOR\" | \"MARBLE_TILE\" | \"TATAMI_MAT\" | \"CARPET\" | \"WATER\" | \"MOSS_STONE\" | \"GRAVEL\" | \"COURTYARD_BRICK\" | \"SNOW\",")
-        appendLine("      \"groundZones\": [ { \"x\": 12, \"z\": 4, \"w\": 8, \"h\": 26, \"ground\": \"STONE_PAVING\" } ],")
+        appendLine("      \"ambientTintHex\": \"#RRGGBB custom subtle atmosphere color accent unique to this scene\",")
+        appendLine("      \"surroundingGround\": \"Optional outdoor horizon ground (GRASS | WATER | SAND | COBBLESTONE | DARK_SLATE | SNOW | MOSS_STONE | GRAVEL | COURTYARD_BRICK | DIRT_PATH)\",")
+        appendLine("      \"wallMaterial\": \"Custom 3D wall surface (PLASTER_WALL | WOOD_WALL | STONE_WALL | BRICK_WALL | MARBLE_TILE | COURTYARD_BRICK)\",")
+        appendLine("      \"playerSpawnX\": \"<int 2..29>\", \"playerSpawnZ\": \"<int 2..29>\",")
+        appendLine("      \"baseGround\": \"GRASS\" | \"STONE_PAVING\" | \"COBBLESTONE\" | \"DIRT_PATH\" | \"SAND\" | \"WOOD_FLOOR\" | \"MARBLE_TILE\" | \"TATAMI_MAT\" | \"CARPET\" | \"MOSS_STONE\" | \"GRAVEL\" | \"COURTYARD_BRICK\" | \"SNOW\" | \"TERRACOTTA_TILE\" | \"DARK_SLATE\",")
+        appendLine("      \"groundZones\": [")
+        appendLine("        { \"shape\": \"RECT\", \"x\": \"<0..31>\", \"z\": \"<0..31>\", \"w\": \"<1..32>\", \"h\": \"<1..32>\", \"ground\": \"<GroundType>\" },")
+        appendLine("        { \"shape\": \"ELLIPSE\", \"cx\": \"<0..31>\", \"cz\": \"<0..31>\", \"rx\": \"<1..14>\", \"rz\": \"<1..14>\", \"ground\": \"<GroundType>\" }")
+        appendLine("      ],")
+        appendLine("      \"groundPaths\": [")
+        appendLine("        { \"ground\": \"<GroundType e.g. DIRT_PATH | COBBLESTONE | WATER | WOOD_FLOOR | STONE_PAVING>\", \"width\": \"<1..5>\", \"points\": [[\"<x>\",\"<z>\"], [\"<x>\",\"<z>\"], [\"<x>\",\"<z>\"]] }")
+        appendLine("      ],")
+        appendLine("      \"wallLines\": [")
+        appendLine("        { \"ground\": \"WOOD_WALL\" | \"PLASTER_WALL\" | \"STONE_WALL\" | \"BRICK_WALL\", \"points\": [[\"<x>\",\"<z>\"], [\"<x>\",\"<z>\"]], \"doorways\": [[\"<x>\",\"<z>\"]] }")
+        appendLine("      ],")
         appendLine("      \"objects\": [")
         appendLine("        {")
-        appendLine("          \"id\": \"unique-obj-id\", \"spriteId\": \"sprite-id\", \"x\": 15, \"z\": 10,")
+        appendLine("          \"id\": \"unique-obj-id\", \"spriteId\": \"sprite-id\", \"x\": \"<0..31>\", \"z\": \"<0..31>\",")
         appendLine("          \"targetName\": \"Name in $targetLang (REQUIRED on every object and character)\",")
         appendLine("          \"isCharacter\": true, \"characterId\": \"main\", \"blocksMovement\": true,")
         appendLine("          \"spokenText\": \"Natural spoken $targetLang expressing what this character intends/needs (deeply using lesson vocabulary & grammar, NEVER copying a study sentence verbatim)\",")
@@ -1084,12 +1098,12 @@ class DashScopeStudyAiClient(
         appendLine("        }")
         appendLine("      ],")
         appendLine("      \"sceneryClusters\": [")
-        appendLine("        { \"spriteId\": \"sprite-id\", \"targetName\": \"Name in $targetLang\", \"blocksMovement\": true, \"emitsWarmLight\": false, \"swaysInWind\": true, \"positions\": [[2,2],[2,6],[29,4]] }")
+        appendLine("        { \"spriteId\": \"sprite-id\", \"targetName\": \"Name in $targetLang\", \"blocksMovement\": true, \"emitsWarmLight\": false, \"swaysInWind\": true, \"positions\": [[\"<x>\",\"<z>\"], [\"<x>\",\"<z>\"]] }")
         appendLine("      ],")
         appendLine("      \"tasks\": [")
         appendLine("        {")
         appendLine("          \"id\": \"task-1\",")
-        appendLine("          \"description\": \"Goal in $uiLang shown in the left task panel (DO NOT translate the character's secret clue — e.g. write 'Listen to Lan and bring what she asked for' rather than naming the exact item!)\",")
+        appendLine("          \"description\": \"Goal in $uiLang shown in the left task panel (DO NOT translate the character's secret clue — e.g. write 'Listen to the baker and bring what they asked for' rather than naming the exact item!)\",")
         appendLine("          \"requiredCharacterObjectIds\": [\"char-obj-id\"],")
         appendLine("          \"requiredActionIds\": [\"action-id\"]")
         appendLine("        }")
@@ -1100,17 +1114,24 @@ class DashScopeStudyAiClient(
         appendLine()
         appendLine("STRICT REQUIREMENTS:")
         appendLine("1. Exactly $STUDY_COMPREHEND_SCENE_COUNT scenes progressing as one cohesive story deeply related to the study sentences and vocabulary, but NEVER identical to any study sentence.")
-        appendLine("2. Vary indoor/outdoor, timeOfDay (MORNING, DAYTIME, EVENING, NIGHT), and weather (SUNNY, CLOUDY, RAINY, DUSTY, HOT, COLD, MISTY, SNOWY, BREEZY) across the 3 scenes.")
-        appendLine("3. Every scene MUST have AT LEAST 18 possible player actions (sum of actions[] across objects[] in that scene >= $STUDY_COMPREHEND_MIN_ACTIONS, aim for 18-24) with realistic decoy pickable items, inspectable props, toggleable/usable stations, and character GIVE/LISTEN interactions so the learner CANNOT guess by brute force and MUST comprehend what the character says.")
-        appendLine("4. At least two scenes MUST use the player inventory (pickable=true items with TAKE action, plus GIVE to a character or OPEN/USE with requiredItemId referencing that pickable object's id).")
-        appendLine("5. Keep the shared sprites[] catalog concise (12 to 18 reusable sprite definitions across all 3 scenes: cast characters + trees/walls/pillars/rocks/lanterns/tables/items) while placing rich, natural, sensible architectural layouts on each 32x32 map using groundZones, objects, and sceneryClusters (35-80 total placed props per scene). Reuse spriteIds across objects and sceneryClusters!")
-        appendLine("6. Every object and character MUST have a natural targetName in $targetLang. All visualPrompt values MUST be in English with zero text in the image.")
-        appendLine("7. Coordinates x and z must be integers in 0..31, at most one object per tile, with clear walkable paths from (playerSpawnX, playerSpawnZ) to every character and interactive object.")
+        appendLine("2. EVERYTHING IS CUSTOM PER SCENE: Give each of the 3 scenes a genuinely distinct location, spatial layout topology, ground/wall material palette, ambientTintHex, timeOfDay, weather, and player entry region. NEVER use a cookie-cutter south-to-north straight central walkway, and NEVER spawn the player at the same coordinates across scenes.")
+        appendLine("3. Compose rich, organic, non-uniform 32x32 maps by layering multiple groundZones (RECT and ELLIPSE), winding/diagonal groundPaths (trails, streets, canals/streams with WATER crossed by WOOD_FLOOR/STONE_PAVING bridges), and 3D wallLines (multi-room indoor partitions, counters, courtyard walls, and alleys with walkable doorways) plus 35-80 placed objects + sceneryClusters per scene.")
+        appendLine("4. Design bespoke scene-specific props and items for EACH scene (16 to 26 total sprite definitions across sprites[]: share character sprites only when the same character recurs, and create custom furniture, architecture, flora, stalls, stations, and items specific to each scene rather than reusing generic props across all 3 scenes; within a single scene, reuse that scene's custom spriteIds across sceneryClusters).")
+        appendLine("5. Every scene MUST have AT LEAST 18 possible player actions (sum of actions[] across objects[] in that scene >= $STUDY_COMPREHEND_MIN_ACTIONS, aim for 18-24) distributed across different rooms/quadrants with realistic decoy pickable items, inspectable props, toggleable/usable stations, and character GIVE/LISTEN interactions so the learner CANNOT guess by brute force and MUST explore and comprehend what each character says.")
+        appendLine("6. At least two scenes MUST use the player inventory (pickable=true items with TAKE action, plus GIVE to a character or OPEN/USE with requiredItemId referencing that pickable object's id).")
+        appendLine("7. Every object and character MUST have a natural targetName in $targetLang. All visualPrompt values MUST be in English on an isolated white background with zero text in the image. Every musicPrompt MUST describe strictly instrumental lead + accompaniment instruments and tempo with zero vocals or lyrics.")
+        appendLine("8. Coordinates x and z must be integers in 0..31, at most one object per tile, with clear walkable paths (via doorways/bridges/paths) from (playerSpawnX, playerSpawnZ) to every character and interactive object.")
     }
 
     private fun comprehendWorldMaterials(request: StudyComprehendGenerateRequest): String = buildString {
         appendLine("Study/target language: ${languageName(request.textLanguageTag)} (${request.textLanguageTag})")
         appendLine("Learner UI language: ${languageName(request.languageTag)} (${request.languageTag})")
+        appendLine()
+        val blueprints = selectComprehendLayoutBlueprints(request)
+        appendLine("Per-scene spatial diversity directives for this session (adapt each geometry 100% custom to the lesson's authentic locations, culture, and story):")
+        blueprints.forEachIndexed { idx, bp ->
+            appendLine("- Scene ${idx + 1}: Entry=${bp.entryDirective}; Spatial topology=${bp.topologyDirective}")
+        }
         appendLine()
         if (request.characters.isNotEmpty()) {
             appendLine("Session cast (use characterId matching id for character sprites when featuring these characters):")
@@ -2128,5 +2149,79 @@ object QwenStudyCharactersParser {
             .getOrElse { throw IllegalArgumentException("Qwen study characters is not valid JSON", it) }
         return element as? JsonObject
             ?: throw IllegalArgumentException("Qwen study characters root must be a JSON object")
+    }
+}
+
+internal data class ComprehendSceneLayoutDirective(
+    val entryId: String,
+    val entryDirective: String,
+    val topologyId: String,
+    val topologyDirective: String,
+)
+
+private val COMPREHEND_ENTRY_DIRECTIVES = listOf(
+    "west-edge" to "West entry (playerSpawnX in 2..5, playerSpawnZ in 11..20), unfolding eastward across asymmetric zones",
+    "northwest-corner" to "Northwest corner entry (playerSpawnX in 3..7, playerSpawnZ in 3..7), exploring diagonally toward the southeast",
+    "east-edge" to "East entry (playerSpawnX in 26..29, playerSpawnZ in 11..20), progressing westward into interior pockets",
+    "southwest-corner" to "Southwest corner entry (playerSpawnX in 3..7, playerSpawnZ in 24..28), winding northeastward",
+    "northeast-corner" to "Northeast corner entry (playerSpawnX in 24..28, playerSpawnZ in 3..7), descending southwestward",
+    "southeast-corner" to "Southeast corner entry (playerSpawnX in 24..28, playerSpawnZ in 24..28), curving northwestward",
+    "north-edge" to "North entry (playerSpawnX in 11..20, playerSpawnZ in 2..5), branching southward into offset wings",
+    "central-hub" to "Off-center interior hub entry (playerSpawnX in 12..19, playerSpawnZ in 12..19), radiating outward into all four quadrants",
+)
+
+private val COMPREHEND_TOPOLOGY_DIRECTIVES = listOf(
+    "diagonal-avenue" to "Diagonal thoroughfare (groundPaths from one corner to the opposite corner) lined with staggered side alcoves, booths, or rooms on both sides",
+    "multi-room-floorplan" to "Multi-chamber floorplan divided by 3D wallLines (WOOD_WALL, PLASTER_WALL, STONE_WALL, or BRICK_WALL) into 3-5 distinct rooms/courtyards linked by offset doorways",
+    "split-barrier-crossing" to "Divided map split diagonally or laterally by a custom barrier (winding WATER stream/canal, garden wall, or counter) crossed by 1-2 bridges, gates, or passages",
+    "serpentine-switchback" to "Winding S-curve route (groundPaths) weaving through three quadrants with tucked-away clearings, nooks, and stations at each bend",
+    "offcenter-plaza-spokes" to "Asymmetric elliptical plaza/atrium/pond (groundZones shape=ELLIPSE placed away from map center) with 3-4 irregular lanes or wings branching outward",
+    "l-shaped-promenade" to "L-shaped wraparound promenade bordering a large corner feature (waterfront, courtyard garden, walled sanctum, or stage) along two adjacent sides",
+    "quadrant-pockets" to "Four distinct themed pockets in the NW, NE, SW, and SE quadrants with contrasting floor textures connected by curving footpaths or boardwalks",
+    "u-shaped-wings" to "U-shaped split-wing layout where an arrival court forks into contrasting left and right wings wrapping around a central feature toward a tucked-away rear area",
+    "crooked-alley-network" to "Interconnecting zig-zag lanes and side passages framed by wallLines and sceneryClusters opening into small surprise courtyards",
+    "edge-terraces-piers" to "Broad scenic border along one edge (WATER shoreline, streetfront, or terrace wall) with 2-3 asymmetric piers, decks, or pavilions jutting into the scene",
+)
+
+internal fun selectComprehendLayoutBlueprints(
+    request: StudyComprehendGenerateRequest,
+): List<ComprehendSceneLayoutDirective> {
+    val seedMaterial = buildString {
+        append(request.sessionId?.trim().orEmpty())
+        append('|')
+        append(request.textLanguageTag.trim())
+        append('|')
+        append(request.text.trim())
+        request.sentences.forEach { sentence ->
+            append('|')
+            append(sentence.text.trim())
+        }
+    }
+    var state = -0x340d631b7bdddcdbL // FNV-1a 64-bit offset basis
+    for (ch in seedMaterial) {
+        state = (state xor ch.code.toLong()) * 0x100000001b3L
+    }
+    fun nextRandomIndex(bound: Int): Int {
+        state += -0x61c8864680b583ebL
+        var z = state
+        z = (z xor (z ushr 30)) * -0x40a7b892e31b1a47L
+        z = (z xor (z ushr 27)) * -0x6b2fb644ecceee15L
+        z = z xor (z ushr 31)
+        return ((z ushr 1) % bound.toLong()).toInt()
+    }
+
+    val entries = COMPREHEND_ENTRY_DIRECTIVES.toMutableList()
+    val topologies = COMPREHEND_TOPOLOGY_DIRECTIVES.toMutableList()
+    return List(STUDY_COMPREHEND_SCENE_COUNT) {
+        val entryIdx = nextRandomIndex(entries.size)
+        val (entryId, entryText) = entries.removeAt(entryIdx)
+        val topoIdx = nextRandomIndex(topologies.size)
+        val (topoId, topoText) = topologies.removeAt(topoIdx)
+        ComprehendSceneLayoutDirective(
+            entryId = entryId,
+            entryDirective = entryText,
+            topologyId = topoId,
+            topologyDirective = topoText,
+        )
     }
 }

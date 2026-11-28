@@ -39,6 +39,14 @@ class StudyComprehendWebTest {
         )
         assertContains(enStrings.webGpuChromeSteps, "chrome://flags")
         assertEquals(10_000L, STUDY_COMPREHEND_POLL_INTERVAL_MS)
+        assertEquals(0.15, STUDY_COMPREHEND_BGM_VOLUME, 1e-6)
+        assertEquals("Generating music for scene 3…", comprehendInFlightStepLabel(enStrings, "MUSIC:3"))
+        assertEquals("Generating image: lantern…", comprehendInFlightStepLabel(enStrings, "SPRITE:lantern"))
+        val bgmAudio = createComprehendSceneMusicAudio("https://cdn.example/comprehend-scene-1.mp3")
+        assertTrue(bgmAudio.loop)
+        assertEquals(0.15, bgmAudio.volume, 1e-6)
+        assertEquals("auto", bgmAudio.preload)
+        assertContains(bgmAudio.src, "comprehend-scene-1.mp3")
         Styles.install()
         val css = document.getElementById("app-styles")?.textContent.orEmpty()
         assertContains(css, ".${Styles.studyComprehendSpinner}")
@@ -99,6 +107,88 @@ class StudyComprehendWebTest {
         // Camera directly east (+X) of object at origin -> yaw = -PI/2
         val yawEast = billboardYawTowardCamera(objX = 0.0, objZ = 0.0, camX = 10.0, camZ = 0.0)
         assertTrue(abs(yawEast - (-PI / 2.0)) < 1e-6)
+    }
+
+    @Test
+    fun `custom per scene camera framing indoor wall materials and outdoor horizon skirts adapt to scene layout`() {
+        fun makeScene(
+            spawnX: Int,
+            spawnZ: Int,
+            charX: Int,
+            charZ: Int,
+            env: apap.oneverandah.api.StudyComprehendEnvironment = apap.oneverandah.api.StudyComprehendEnvironment.OUTDOOR,
+            borderGround: apap.oneverandah.api.StudyComprehendGroundType = apap.oneverandah.api.StudyComprehendGroundType.WATER,
+            floorGround: apap.oneverandah.api.StudyComprehendGroundType = apap.oneverandah.api.StudyComprehendGroundType.TATAMI_MAT,
+            wallMaterial: apap.oneverandah.api.StudyComprehendGroundType? = null,
+            surroundingGround: apap.oneverandah.api.StudyComprehendGroundType? = null,
+        ): apap.oneverandah.api.StudyComprehendScene {
+            val tiles = List(apap.oneverandah.api.STUDY_COMPREHEND_TILE_COUNT) { idx ->
+                val x = idx % apap.oneverandah.api.STUDY_COMPREHEND_GRID_SIZE
+                val z = idx / apap.oneverandah.api.STUDY_COMPREHEND_GRID_SIZE
+                val onBorder = x == 0 || z == 0 || x == 31 || z == 31
+                apap.oneverandah.api.StudyComprehendTile(
+                    ground = if (onBorder && env == apap.oneverandah.api.StudyComprehendEnvironment.OUTDOOR) borderGround else floorGround,
+                )
+            }
+            return apap.oneverandah.api.StudyComprehendScene(
+                id = "custom-scene",
+                title = "Harbor Tea House",
+                description = "Custom dockside pavilion",
+                environment = env,
+                timeOfDay = apap.oneverandah.api.StudyComprehendTimeOfDay.MORNING,
+                weather = apap.oneverandah.api.StudyComprehendWeather.BREEZY,
+                playerSpawnX = spawnX,
+                playerSpawnZ = spawnZ,
+                tiles = tiles,
+                objects = listOf(
+                    apap.oneverandah.api.StudyComprehendObject(
+                        id = "host",
+                        spriteId = "host-sprite",
+                        x = charX,
+                        z = charZ,
+                        targetName = "Chủ quán",
+                        isCharacter = true,
+                        spokenText = "Xin mời vào.",
+                    ),
+                ),
+                tasks = emptyList(),
+                wallMaterial = wallMaterial,
+                surroundingGround = surroundingGround,
+                ambientTintHex = "#f4a261",
+            )
+        }
+
+        // West spawn (3, 16) looking East toward character at (24, 16): forward vector (-cos(alpha), -sin(alpha)) points +X!
+        val westScene = makeScene(spawnX = 3, spawnZ = 16, charX = 24, charZ = 16)
+        val westAlpha = computeInitialCameraAlpha(westScene)
+        assertTrue(-kotlin.math.cos(westAlpha) > 0.9, "West-entry camera must look East into the scene")
+
+        // East spawn (28, 16) looking West toward character at (8, 16): forward vector points -X!
+        val eastScene = makeScene(spawnX = 28, spawnZ = 16, charX = 8, charZ = 16)
+        val eastAlpha = computeInitialCameraAlpha(eastScene)
+        assertTrue(-kotlin.math.cos(eastAlpha) < -0.9, "East-entry camera must look West into the scene")
+
+        // Outdoor island/waterfront border automatically uses WATER horizon skirt instead of generic GRASS
+        assertEquals(
+            apap.oneverandah.api.StudyComprehendGroundType.WATER,
+            resolveOutdoorSurroundingGround(westScene),
+        )
+
+        // Indoor tatami scene automatically selects WOOD_WALL instead of generic COURTYARD_BRICK
+        val tatamiIndoor = makeScene(
+            spawnX = 6,
+            spawnZ = 6,
+            charX = 22,
+            charZ = 20,
+            env = apap.oneverandah.api.StudyComprehendEnvironment.INDOOR,
+            floorGround = apap.oneverandah.api.StudyComprehendGroundType.TATAMI_MAT,
+        )
+        assertEquals(
+            apap.oneverandah.api.StudyComprehendGroundType.WOOD_WALL,
+            resolveIndoorWallGround(tatamiIndoor),
+        )
+        val rgb = assertNotNull(parseHexColorRgbOrNull("#f4a261"))
+        assertTrue(rgb.first > rgb.second && rgb.second > rgb.third)
     }
 
     @Test

@@ -96,6 +96,7 @@ object QwenStudyComprehendParser {
                 playerVisualPrompt = playerAppearance,
                 sprites = finalSprites,
                 scenes = scenes,
+                assetsComplete = false,
             ),
         )
     }
@@ -111,10 +112,19 @@ object QwenStudyComprehendParser {
         val id = sceneObj.string("id")?.trim().orEmpty().ifBlank { "scene-${sceneIndex + 1}" }
         val title = sceneObj.requiredString("title", context)
         val description = sceneObj.string("description")?.trim().orEmpty().ifBlank { title }
+        val musicPrompt = sceneObj.string("musicPrompt")?.trim().orEmpty()
+        val layoutSummary = sceneObj.string("layoutSummary")?.trim().orEmpty()
+        val ambientTintHex = normalizeHexColorOrNull(sceneObj.string("ambientTintHex"))
+        val initialCameraYawDegrees = sceneObj.float("initialCameraYawDegrees")
+            ?.takeIf { it.isFinite() }
+            ?.let { ((it % 360f) + 360f) % 360f }
         val environment = parseEnumOrDefault(
             sceneObj.string("environment"),
             if (sceneIndex == 2) StudyComprehendEnvironment.INDOOR else StudyComprehendEnvironment.OUTDOOR,
         )
+        val wallMaterial = parseGroundType(sceneObj.string("wallMaterial"), environment)
+        val surroundingGround = parseGroundType(sceneObj.string("surroundingGround"), environment)
+            ?.takeUnless { it.isWallStructure }
         val defaultTimes = listOf(
             StudyComprehendTimeOfDay.MORNING,
             StudyComprehendTimeOfDay.DAYTIME,
@@ -140,7 +150,8 @@ object QwenStudyComprehendParser {
         } else {
             StudyComprehendGroundType.GRASS
         }
-        val baseGround = parseGroundType(sceneObj.string("baseGround")) ?: defaultBaseGround
+        val baseGround = (parseGroundType(sceneObj.string("baseGround"), environment)
+            ?.takeUnless { it.isWallStructure }) ?: defaultBaseGround
         val groundGrid = Array(STUDY_COMPREHEND_TILE_COUNT) { baseGround }
 
         // Optional 32x32 row characters
@@ -154,31 +165,125 @@ object QwenStudyComprehendParser {
             }
         }
 
-        // Rectangular ground zones
+        // Rectangular or elliptical ground zones
         (sceneObj["groundZones"] as? JsonArray)?.forEach { zoneElem ->
             val zone = zoneElem as? JsonObject ?: return@forEach
-            val zx = (zone.int("x") ?: return@forEach).coerceIn(0, STUDY_COMPREHEND_GRID_SIZE - 1)
-            val zz = (zone.int("z") ?: return@forEach).coerceIn(0, STUDY_COMPREHEND_GRID_SIZE - 1)
-            val zw = (zone.int("w") ?: zone.int("width") ?: 1).coerceAtLeast(1)
-            val zh = (zone.int("h") ?: zone.int("height") ?: 1).coerceAtLeast(1)
-            val ground = parseGroundType(zone.string("ground")) ?: return@forEach
-            for (tz in zz until minOf(STUDY_COMPREHEND_GRID_SIZE, zz + zh)) {
-                for (tx in zx until minOf(STUDY_COMPREHEND_GRID_SIZE, zx + zw)) {
-                    groundGrid[tz * STUDY_COMPREHEND_GRID_SIZE + tx] = ground
+            val ground = parseGroundType(zone.string("ground"), environment) ?: return@forEach
+            val shape = zone.string("shape")?.trim()?.uppercase().orEmpty()
+            val radius = zone.int("radius")
+            val cxExplicit = zone.int("cx")
+            val czExplicit = zone.int("cz")
+            if (shape in setOf("ELLIPSE", "CIRCLE", "OVAL") || radius != null || (cxExplicit != null && czExplicit != null)) {
+                val zx = zone.int("x")
+                val zz = zone.int("z")
+                val zw = (zone.int("w") ?: zone.int("width"))?.coerceAtLeast(1)
+                val zh = (zone.int("h") ?: zone.int("height"))?.coerceAtLeast(1)
+                val centerX = when {
+                    cxExplicit != null -> cxExplicit.toDouble()
+                    zx != null && zw != null && radius == null -> zx + (zw - 1) / 2.0
+                    zx != null -> zx.toDouble()
+                    else -> return@forEach
+                }
+                val centerZ = when {
+                    czExplicit != null -> czExplicit.toDouble()
+                    zz != null && zh != null && radius == null -> zz + (zh - 1) / 2.0
+                    zz != null -> zz.toDouble()
+                    else -> return@forEach
+                }
+                val rx = (zone.float("rx")?.toDouble()
+                    ?: radius?.toDouble()
+                    ?: zw?.let { it / 2.0 }
+                    ?: 2.5).coerceAtLeast(0.6)
+                val rz = (zone.float("rz")?.toDouble()
+                    ?: radius?.toDouble()
+                    ?: zh?.let { it / 2.0 }
+                    ?: rx).coerceAtLeast(0.6)
+                val minZ = (centerZ - rz - 1).toInt().coerceIn(0, STUDY_COMPREHEND_GRID_SIZE - 1)
+                val maxZ = (centerZ + rz + 1).toInt().coerceIn(0, STUDY_COMPREHEND_GRID_SIZE - 1)
+                val minX = (centerX - rx - 1).toInt().coerceIn(0, STUDY_COMPREHEND_GRID_SIZE - 1)
+                val maxX = (centerX + rx + 1).toInt().coerceIn(0, STUDY_COMPREHEND_GRID_SIZE - 1)
+                for (tz in minZ..maxZ) {
+                    for (tx in minX..maxX) {
+                        val nx = (tx - centerX) / rx
+                        val nz = (tz - centerZ) / rz
+                        if (nx * nx + nz * nz <= 1.02) {
+                            groundGrid[tz * STUDY_COMPREHEND_GRID_SIZE + tx] = ground
+                        }
+                    }
+                }
+            } else {
+                val zx = (zone.int("x") ?: return@forEach).coerceIn(0, STUDY_COMPREHEND_GRID_SIZE - 1)
+                val zz = (zone.int("z") ?: return@forEach).coerceIn(0, STUDY_COMPREHEND_GRID_SIZE - 1)
+                val zw = (zone.int("w") ?: zone.int("width") ?: 1).coerceAtLeast(1)
+                val zh = (zone.int("h") ?: zone.int("height") ?: 1).coerceAtLeast(1)
+                for (tz in zz until minOf(STUDY_COMPREHEND_GRID_SIZE, zz + zh)) {
+                    for (tx in zx until minOf(STUDY_COMPREHEND_GRID_SIZE, zx + zw)) {
+                        groundGrid[tz * STUDY_COMPREHEND_GRID_SIZE + tx] = ground
+                    }
                 }
             }
         }
 
-        val spawnX = (sceneObj.int("playerSpawnX") ?: 16).coerceIn(1, STUDY_COMPREHEND_GRID_SIZE - 2)
-        val spawnZ = (sceneObj.int("playerSpawnZ") ?: 28).coerceIn(1, STUDY_COMPREHEND_GRID_SIZE - 2)
+        // Winding / diagonal polyline ground paths (rivers, trails, roads, bridges, canals, corridors)
+        (sceneObj["groundPaths"] as? JsonArray)?.forEach { pathElem ->
+            val pathObj = pathElem as? JsonObject ?: return@forEach
+            val ground = parseGroundType(pathObj.string("ground"), environment) ?: return@forEach
+            val width = (pathObj.int("width") ?: 2).coerceIn(1, 8)
+            val pts = parseCoordPairs(pathObj["points"] as? JsonArray)
+            if (pts.isNotEmpty()) {
+                rasterizePolyline(groundGrid, pts, width = width, ground = ground)
+            }
+        }
+
+        // 3D architectural wall/partition lines with optional doorway openings
+        val rawWallLines = (sceneObj["wallLines"] as? JsonArray) ?: (sceneObj["partitions"] as? JsonArray)
+        rawWallLines?.forEach { wallElem ->
+            val wallObj = wallElem as? JsonObject ?: return@forEach
+            val defaultWall = wallMaterial?.takeIf { it.isWallStructure }
+                ?: if (environment == StudyComprehendEnvironment.INDOOR) {
+                    StudyComprehendGroundType.PLASTER_WALL
+                } else {
+                    StudyComprehendGroundType.STONE_WALL
+                }
+            val parsedWall = parseGroundType(wallObj.string("ground") ?: wallObj.string("material"), environment)
+            val wallGround = parsedWall?.takeIf { it.isWallStructure } ?: defaultWall
+            val pts = parseCoordPairs(wallObj["points"] as? JsonArray)
+            if (pts.isNotEmpty()) {
+                val floorBeforeDoorways = groundGrid.copyOf()
+                rasterizePolyline(groundGrid, pts, width = 1, ground = wallGround)
+                val doorways = parseCoordPairs(
+                    (wallObj["doorways"] as? JsonArray)
+                        ?: (wallObj["doorGaps"] as? JsonArray)
+                        ?: (wallObj["gaps"] as? JsonArray),
+                )
+                val fallbackFloor = selectPrimaryWalkableFloor(baseGround, floorBeforeDoorways, environment)
+                doorways.forEach { (dx, dz) ->
+                    if (dx in 0 until STUDY_COMPREHEND_GRID_SIZE && dz in 0 until STUDY_COMPREHEND_GRID_SIZE) {
+                        val idx = dz * STUDY_COMPREHEND_GRID_SIZE + dx
+                        val prev = floorBeforeDoorways[idx]
+                        groundGrid[idx] = if (!prev.blocksMovementByDefault) prev else fallbackFloor
+                    }
+                }
+            }
+        }
+
+        val fallbackSpawns = arrayOf(
+            4 to 16,
+            16 to 27,
+            27 to 8,
+            6 to 6,
+            26 to 25,
+            16 to 4,
+        )
+        val (defaultSpawnX, defaultSpawnZ) = fallbackSpawns[
+            ((sceneIndex * 2 + abs(title.hashCode())) % fallbackSpawns.size),
+        ]
+        val spawnX = (sceneObj.int("playerSpawnX") ?: defaultSpawnX).coerceIn(1, STUDY_COMPREHEND_GRID_SIZE - 2)
+        val spawnZ = (sceneObj.int("playerSpawnZ") ?: defaultSpawnZ).coerceIn(1, STUDY_COMPREHEND_GRID_SIZE - 2)
+        val primaryFloor = selectPrimaryWalkableFloor(baseGround, groundGrid, environment)
         // Ensure player spawn ground is walkable
         if (groundGrid[spawnZ * STUDY_COMPREHEND_GRID_SIZE + spawnX].blocksMovementByDefault) {
-            groundGrid[spawnZ * STUDY_COMPREHEND_GRID_SIZE + spawnX] =
-                if (environment == StudyComprehendEnvironment.INDOOR) {
-                    StudyComprehendGroundType.WOOD_FLOOR
-                } else {
-                    StudyComprehendGroundType.STONE_PAVING
-                }
+            groundGrid[spawnZ * STUDY_COMPREHEND_GRID_SIZE + spawnX] = primaryFloor
         }
 
         val occupied = HashMap<Int, StudyComprehendObject>()
@@ -235,6 +340,12 @@ object QwenStudyComprehendParser {
 
             val pickable = !isCharacter && (obj.boolean("pickable") ?: false)
             val opensPassage = !isCharacter && (obj.boolean("opensPassage") ?: false)
+            // If an interactive object, character, or openable door was placed onto a 3D wall tile,
+            // replace the wall block underneath with walkable threshold flooring so it renders cleanly.
+            val placedTileIdx = placedZ * STUDY_COMPREHEND_GRID_SIZE + placedX
+            if (groundGrid[placedTileIdx].isWallStructure) {
+                groundGrid[placedTileIdx] = primaryFloor
+            }
             val blocksMovement = if (isCharacter) {
                 true
             } else {
@@ -334,6 +445,7 @@ object QwenStudyComprehendParser {
                 if (px == spawnX && pz == spawnZ) return@forEachIndexed
                 val key = tileKey(px, pz)
                 if (key in occupied) return@forEachIndexed
+                if (groundGrid[key].isWallStructure) return@forEachIndexed
                 val objId = uniqueObjectId("s${sceneIndex + 1}-scenery-${clusterIdx + 1}-${posIdx + 1}", usedIds)
                 val actions = if (inspectActionLabel != null) {
                     listOf(
@@ -441,6 +553,12 @@ object QwenStudyComprehendParser {
                 tiles = buildTilesList(groundGrid, occupied),
                 objects = allObjects,
                 tasks = normalizedTasks,
+                musicPrompt = musicPrompt,
+                layoutSummary = layoutSummary,
+                wallMaterial = wallMaterial,
+                surroundingGround = surroundingGround,
+                ambientTintHex = ambientTintHex,
+                initialCameraYawDegrees = initialCameraYawDegrees,
             ),
         )
     }
@@ -453,11 +571,15 @@ object QwenStudyComprehendParser {
     internal fun ensureReachability(scene: StudyComprehendScene): StudyComprehendScene {
         val groundGrid = Array(STUDY_COMPREHEND_TILE_COUNT) { idx -> scene.tiles[idx].ground }
         val objectsByTile = scene.objects.associateByTo(LinkedHashMap()) { it.z * STUDY_COMPREHEND_GRID_SIZE + it.x }
-        val passableFloor = if (scene.environment == StudyComprehendEnvironment.INDOOR) {
-            StudyComprehendGroundType.WOOD_FLOOR
-        } else {
-            StudyComprehendGroundType.STONE_PAVING
-        }
+        val passableFloor = selectPrimaryWalkableFloor(
+            baseGround = if (scene.environment == StudyComprehendEnvironment.INDOOR) {
+                StudyComprehendGroundType.WOOD_FLOOR
+            } else {
+                StudyComprehendGroundType.STONE_PAVING
+            },
+            groundGrid = groundGrid,
+            environment = scene.environment,
+        )
 
         fun computeReachable(): BooleanArray {
             val currentScene = scene.copy(
@@ -606,8 +728,35 @@ object QwenStudyComprehendParser {
         StudyComprehendActionKind.INSPECT -> "Inspect"
     }
 
-    private fun parseGroundType(raw: String?): StudyComprehendGroundType? =
-        parseEnumOrNull<StudyComprehendGroundType>(raw)
+    private fun parseGroundType(
+        raw: String?,
+        environment: StudyComprehendEnvironment = StudyComprehendEnvironment.OUTDOOR,
+    ): StudyComprehendGroundType? {
+        parseEnumOrNull<StudyComprehendGroundType>(raw)?.let { return it }
+        val normalized = raw?.trim()?.uppercase()?.replace('-', '_')?.replace(' ', '_') ?: return null
+        return when (normalized) {
+            "WALL", "INTERIOR_WALL", "PARTITION" ->
+                if (environment == StudyComprehendEnvironment.INDOOR) {
+                    StudyComprehendGroundType.PLASTER_WALL
+                } else {
+                    StudyComprehendGroundType.STONE_WALL
+                }
+            "TIMBER_WALL", "WOOD_PARTITION", "SHOJI_WALL" -> StudyComprehendGroundType.WOOD_WALL
+            "STUCCO_WALL", "WHITE_WALL", "PLASTER" -> StudyComprehendGroundType.PLASTER_WALL
+            "MASONRY_WALL", "CLIFF", "ROCK_WALL" -> StudyComprehendGroundType.STONE_WALL
+            "BRICK" -> StudyComprehendGroundType.COURTYARD_BRICK
+            "TERRACOTTA", "CLAY_TILE" -> StudyComprehendGroundType.TERRACOTTA_TILE
+            "SLATE", "ASPHALT", "BASALT", "PAVEMENT" -> StudyComprehendGroundType.DARK_SLATE
+            "STONE", "PAVING", "FLAGSTONE" -> StudyComprehendGroundType.STONE_PAVING
+            "WOOD", "PLANK", "BOARDWALK", "DECK" -> StudyComprehendGroundType.WOOD_FLOOR
+            "DIRT", "PATH", "TRAIL", "EARTH" -> StudyComprehendGroundType.DIRT_PATH
+            "MARBLE", "TILE" -> StudyComprehendGroundType.MARBLE_TILE
+            "TATAMI" -> StudyComprehendGroundType.TATAMI_MAT
+            "RUG" -> StudyComprehendGroundType.CARPET
+            "RIVER", "POND", "CANAL", "LAKE", "SEA" -> StudyComprehendGroundType.WATER
+            else -> null
+        }
+    }
 
     private fun charToGround(ch: Char, environment: StudyComprehendEnvironment): StudyComprehendGroundType? =
         when (ch.uppercaseChar()) {
@@ -625,8 +774,116 @@ object QwenStudyComprehendParser {
             'V' -> StudyComprehendGroundType.GRAVEL
             'K' -> StudyComprehendGroundType.COURTYARD_BRICK
             'N' -> StudyComprehendGroundType.SNOW
+            'E', 'A' -> StudyComprehendGroundType.TERRACOTTA_TILE
+            'L', 'U' -> StudyComprehendGroundType.DARK_SLATE
+            '#', 'X' -> StudyComprehendGroundType.STONE_WALL
+            '|', 'I' -> StudyComprehendGroundType.WOOD_WALL
+            'H' -> StudyComprehendGroundType.PLASTER_WALL
+            'R' -> StudyComprehendGroundType.BRICK_WALL
             else -> null
         }
+
+    private fun parseCoordPairs(array: JsonArray?): List<Pair<Int, Int>> =
+        array.orEmpty().mapNotNull { elem ->
+            when (elem) {
+                is JsonArray -> {
+                    if (elem.size < 2) null
+                    else {
+                        val x = elem[0].jsonPrimitive.intOrNull ?: return@mapNotNull null
+                        val z = elem[1].jsonPrimitive.intOrNull ?: return@mapNotNull null
+                        x.coerceIn(0, STUDY_COMPREHEND_GRID_SIZE - 1) to z.coerceIn(0, STUDY_COMPREHEND_GRID_SIZE - 1)
+                    }
+                }
+                is JsonObject -> {
+                    val x = elem.int("x") ?: return@mapNotNull null
+                    val z = elem.int("z") ?: return@mapNotNull null
+                    x.coerceIn(0, STUDY_COMPREHEND_GRID_SIZE - 1) to z.coerceIn(0, STUDY_COMPREHEND_GRID_SIZE - 1)
+                }
+                else -> null
+            }
+        }
+
+    private fun rasterizePolyline(
+        groundGrid: Array<StudyComprehendGroundType>,
+        points: List<Pair<Int, Int>>,
+        width: Int,
+        ground: StudyComprehendGroundType,
+    ) {
+        fun stamp(cx: Int, cz: Int) {
+            val halfLow = (width - 1) / 2
+            val halfHigh = width / 2
+            for (dz in -halfLow..halfHigh) {
+                for (dx in -halfLow..halfHigh) {
+                    if (width >= 4 && abs(dx) == halfHigh && abs(dz) == halfHigh) continue
+                    val tx = cx + dx
+                    val tz = cz + dz
+                    if (tx in 0 until STUDY_COMPREHEND_GRID_SIZE && tz in 0 until STUDY_COMPREHEND_GRID_SIZE) {
+                        groundGrid[tz * STUDY_COMPREHEND_GRID_SIZE + tx] = ground
+                    }
+                }
+            }
+        }
+        if (points.size == 1) {
+            stamp(points[0].first, points[0].second)
+            return
+        }
+        for (i in 0 until points.lastIndex) {
+            val (x0, z0) = points[i]
+            val (x1, z1) = points[i + 1]
+            val steps = maxOf(abs(x1 - x0), abs(z1 - z0), 1)
+            for (step in 0..steps) {
+                val t = step.toDouble() / steps.toDouble()
+                val cx = kotlin.math.round(x0 + (x1 - x0) * t).toInt()
+                val cz = kotlin.math.round(z0 + (z1 - z0) * t).toInt()
+                stamp(cx, cz)
+            }
+        }
+    }
+
+    private fun selectPrimaryWalkableFloor(
+        baseGround: StudyComprehendGroundType,
+        groundGrid: Array<StudyComprehendGroundType>,
+        environment: StudyComprehendEnvironment,
+    ): StudyComprehendGroundType {
+        val counts = HashMap<StudyComprehendGroundType, Int>()
+        for (g in groundGrid) {
+            if (!g.blocksMovementByDefault) {
+                counts[g] = (counts[g] ?: 0) + 1
+            }
+        }
+        // Prefer paved/interior floor types when carving bridges or doorways over grass/sand if present
+        val preferredWalkway = counts.keys
+            .filter {
+                it in setOf(
+                    StudyComprehendGroundType.WOOD_FLOOR,
+                    StudyComprehendGroundType.STONE_PAVING,
+                    StudyComprehendGroundType.COBBLESTONE,
+                    StudyComprehendGroundType.DIRT_PATH,
+                    StudyComprehendGroundType.MARBLE_TILE,
+                    StudyComprehendGroundType.TATAMI_MAT,
+                    StudyComprehendGroundType.TERRACOTTA_TILE,
+                    StudyComprehendGroundType.COURTYARD_BRICK,
+                    StudyComprehendGroundType.DARK_SLATE,
+                )
+            }
+            .maxByOrNull { counts[it] ?: 0 }
+        if (preferredWalkway != null) return preferredWalkway
+        if (!baseGround.blocksMovementByDefault) return baseGround
+        return counts.maxByOrNull { it.value }?.key
+            ?: if (environment == StudyComprehendEnvironment.INDOOR) {
+                StudyComprehendGroundType.WOOD_FLOOR
+            } else {
+                StudyComprehendGroundType.STONE_PAVING
+            }
+    }
+
+    private fun normalizeHexColorOrNull(raw: String?): String? {
+        val cleaned = raw?.trim()?.removePrefix("#") ?: return null
+        if (cleaned.length != 6 || !cleaned.all { it in '0'..'9' || it in 'a'..'f' || it in 'A'..'F' }) {
+            return null
+        }
+        return "#${cleaned.lowercase()}"
+    }
 
     private inline fun <reified E : Enum<E>> parseEnumOrNull(raw: String?): E? {
         val normalized = raw?.trim()?.uppercase()?.replace('-', '_')?.replace(' ', '_') ?: return null

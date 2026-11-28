@@ -177,7 +177,7 @@ internal fun speechgenTextEndpoint(endpoint: String): String {
     return replaced.takeIf { it != endpoint } ?: SpeechgenConfig.DEFAULT_TEXT_ENDPOINT
 }
 
-/** Qwen chat, speech synthesis, and speech recognition settings. */
+/** Qwen chat, speech synthesis, speech recognition, and music generation settings. */
 data class QwenChatConfig(
     val chatEndpoint: String,
     /** Fast default model for chat and lighter study tasks. */
@@ -196,6 +196,8 @@ data class QwenChatConfig(
     val asrEndpoint: String,
     val asrModel: String,
     val apiKey: String,
+    val musicEndpoint: String = DEFAULT_MUSIC_ENDPOINT,
+    val musicModel: String = DEFAULT_MUSIC_MODEL,
 ) {
     val enabled: Boolean get() = apiKey.isNotBlank()
     val asrUnavailableReason: String?
@@ -216,6 +218,11 @@ data class QwenChatConfig(
         "Authorization" to "Bearer $apiKey",
         "OpenAI-Beta" to "realtime=v1",
     )
+
+    companion object {
+        const val DEFAULT_MUSIC_ENDPOINT = "https://dashscope.aliyuncs.com/api/v1/services/audio/music/generation"
+        const val DEFAULT_MUSIC_MODEL = "fun-music-v1"
+    }
 }
 
 /**
@@ -378,6 +385,16 @@ data class AppConfig(
                     }.orEmpty(),
                 asrModel = source["QWEN_ASR_MODEL"] ?: "qwen3-asr-flash-realtime",
                 apiKey = source["QWEN_API_KEY"] ?: "",
+                musicEndpoint = source["QWEN_MUSIC_ENDPOINT"]?.trim()?.takeIf { it.isNotEmpty() }
+                    ?: (source["QWEN_MUSIC_WORKSPACE_ID"] ?: source["QWEN_ASR_WORKSPACE_ID"])
+                        ?.trim()
+                        ?.takeIf { it.isNotEmpty() }
+                        ?.let { workspaceId ->
+                            "https://$workspaceId.cn-beijing.maas.aliyuncs.com/api/v1/services/audio/music/generation"
+                        }
+                    ?: QwenChatConfig.DEFAULT_MUSIC_ENDPOINT,
+                musicModel = source["QWEN_MUSIC_MODEL"]?.trim()?.takeIf { it.isNotEmpty() }
+                    ?: QwenChatConfig.DEFAULT_MUSIC_MODEL,
             )
 
             val speechgenEndpoint = source["SPEECHGEN_ENDPOINT"] ?: SpeechgenConfig.DEFAULT_ENDPOINT

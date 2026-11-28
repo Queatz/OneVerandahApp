@@ -5,7 +5,6 @@ import apap.oneverandah.images.storage.GeneratedImage
 import apap.oneverandah.logging.SafeFailureDiagnostics
 import io.ktor.client.HttpClient
 import io.ktor.client.call.body
-import io.ktor.client.plugins.HttpRequestTimeoutException
 import io.ktor.client.plugins.HttpTimeoutConfig
 import io.ktor.client.plugins.timeout
 import io.ktor.client.request.HttpRequestBuilder
@@ -223,10 +222,12 @@ class DashScopeQwenClient(
 
     private fun isDataUrl(value: String): Boolean = value.startsWith("data:", ignoreCase = true)
 
+    private suspend fun diagnosticContextOrNull(): String? =
+        currentCoroutineContext()[CoroutineName]?.name
+            ?.takeIf { it.startsWith("study-build ") || it.startsWith("study-comprehend ") }
+
     private suspend fun <T> diagnosticStage(operation: String, action: suspend () -> T): T {
-        val context = currentCoroutineContext()[CoroutineName]?.name
-            ?.takeIf { it.startsWith("study-build ") }
-            ?: return action()
+        val context = diagnosticContextOrNull() ?: return action()
         val startedAt = System.nanoTime()
         log.info("Qwen provider operation started: context={} operation={}", context, operation)
         return try {
@@ -275,8 +276,7 @@ class DashScopeQwenClient(
             requestId = details.requestId,
             httpStatus = status?.value,
         )
-        val context = currentCoroutineContext()[CoroutineName]?.name
-            ?.takeIf { it.startsWith("study-build ") }
+        val context = diagnosticContextOrNull()
         if (context != null) {
             log.warn(
                 "Qwen provider returned an error response: context={} operation={} diagnostics={}",
@@ -441,19 +441,19 @@ class DashScopeQwenClient(
             )
         }
 
-        val response: HttpResponse = diagnosticStage("multimodal image generation request") {
+        val (status, text) = diagnosticStage("multimodal image generation request") {
             withTransientHttpRetry(operation = "multimodal image generation request") {
-                client.post(endpoint) {
+                val response = client.post(endpoint) {
                     header(HttpHeaders.Authorization, "Bearer ${config.apiKey}")
                     if (usesOss) header(HEADER_OSS_RESOLVE, "enable")
                     contentType(ContentType.Application.Json)
                     setBody(json.encodeToString(JsonObject.serializer(), requestBody))
                 }
+                response.status to response.bodyAsText()
             }
         }
-        val text = response.bodyAsText()
-        if (!response.status.isSuccess()) {
-            throw providerResponseError("Qwen multimodal submit", response.status, text)
+        if (!status.isSuccess()) {
+            throw providerResponseError("Qwen multimodal submit", status, text)
         }
 
         // Sync multimodal response: output.choices[].message.content[].image
@@ -474,21 +474,21 @@ class DashScopeQwenClient(
         requestBody: JsonObject,
         usesOssUrls: Boolean,
     ): String {
-        val response: HttpResponse = diagnosticStage("image generation submit request") {
+        val (status, text) = diagnosticStage("image generation submit request") {
             withTransientHttpRetry(operation = "image generation submit request") {
-                client.post(endpoint) {
+                val response = client.post(endpoint) {
                     header(HttpHeaders.Authorization, "Bearer ${config.apiKey}")
                     header(HEADER_ASYNC, "enable")
                     if (usesOssUrls) header(HEADER_OSS_RESOLVE, "enable")
                     contentType(ContentType.Application.Json)
                     setBody(json.encodeToString(JsonObject.serializer(), requestBody))
                 }
+                response.status to response.bodyAsText()
             }
         }
 
-        val text = response.bodyAsText()
-        if (!response.status.isSuccess()) {
-            throw providerResponseError("Qwen submit", response.status, text)
+        if (!status.isSuccess()) {
+            throw providerResponseError("Qwen submit", status, text)
         }
         val output = json.parseToJsonElement(text).jsonObject["output"]?.jsonObject
             ?: throw QwenException("Qwen submit returned no output")
@@ -500,14 +500,14 @@ class DashScopeQwenClient(
         diagnosticStage("poll image generation result") {
             val tasksBaseUrl = apiRootFromEndpoint(submitEndpoint) + "/tasks/"
             repeat(maxPollAttempts) {
-                val response: HttpResponse = withTransientHttpRetry(operation = "image generation status poll") {
-                    client.get(tasksBaseUrl + taskId) {
+                val (status, text) = withTransientHttpRetry(operation = "image generation status poll") {
+                    val response = client.get(tasksBaseUrl + taskId) {
                         header(HttpHeaders.Authorization, "Bearer ${config.apiKey}")
                     }
+                    response.status to response.bodyAsText()
                 }
-                val text = response.bodyAsText()
-                if (!response.status.isSuccess()) {
-                    throw providerResponseError("Qwen poll", response.status, text)
+                if (!status.isSuccess()) {
+                    throw providerResponseError("Qwen poll", status, text)
                 }
                 val output = json.parseToJsonElement(text).jsonObject["output"]?.jsonObject
                     ?: throw QwenException("Qwen poll returned no output")
@@ -575,13 +575,13 @@ class DashScopeQwenClient(
 
     private suspend fun download(url: String): GeneratedImage =
         diagnosticStage("download generated image") {
-            val response: HttpResponse = withTransientHttpRetry(operation = "generated image download request") {
-                client.get(url) { fileTransferTimeout() }
+            val bytes: ByteArray = withTransientHttpRetry(operation = "generated image download request") {
+                val response = client.get(url) { fileTransferTimeout() }
+                if (!response.status.isSuccess()) {
+                    throw QwenException("Failed to download generated image ($url): ${response.status}")
+                }
+                response.body()
             }
-            if (!response.status.isSuccess()) {
-                throw QwenException("Failed to download generated image ($url): ${response.status}")
-            }
-            val bytes: ByteArray = response.body()
             val extension = url.substringAfterLast('.', "png").substringBefore('?').ifBlank { "png" }
             val contentType = contentTypeForExtension(extension)
             GeneratedImage(bytes = bytes, contentType = contentType, extension = extension, sourceUrl = url)
@@ -660,17 +660,17 @@ class DashScopeQwenClient(
         // HTTP(S) fetch (public OSS, CDN, or this server if reachable).
         if (url.startsWith("http://", ignoreCase = true) || url.startsWith("https://", ignoreCase = true)) {
             return try {
-                val response: HttpResponse = diagnosticStage("download character reference image") {
+                diagnosticStage("download character reference image") {
                     withTransientHttpRetry(operation = "reference image download request") {
-                        client.get(url) { fileTransferTimeout() }
+                        val response = client.get(url) { fileTransferTimeout() }
+                        if (!response.status.isSuccess()) {
+                            null
+                        } else {
+                            val bytes: ByteArray = response.body()
+                            val ext = url.substringAfterLast('.', "png").substringBefore('?').ifBlank { "png" }
+                            GeneratedImage(bytes = bytes, contentType = contentTypeForExtension(ext), extension = ext)
+                        }
                     }
-                }
-                if (!response.status.isSuccess()) {
-                    null
-                } else {
-                    val bytes: ByteArray = response.body()
-                    val ext = url.substringAfterLast('.', "png").substringBefore('?').ifBlank { "png" }
-                    GeneratedImage(bytes = bytes, contentType = contentTypeForExtension(ext), extension = ext)
                 }
             } catch (cancelled: CancellationException) {
                 throw cancelled
@@ -697,7 +697,21 @@ class DashScopeQwenClient(
                 throw cancelled
             } catch (e: Throwable) {
                 last = e
-                if (!isTransientHttpClose(e) || attempt == attempts - 1) throw e
+                val transient = isTransientHttpClose(e)
+                if (!transient || attempt == attempts - 1) {
+                    if (transient) {
+                        log.warn(
+                            "Qwen HTTP operation exhausted transient retries: context={} operation={} attempt={}/{} elapsedMs={} diagnostics={}",
+                            context,
+                            operation,
+                            attempt + 1,
+                            attempts,
+                            (System.nanoTime() - startedAt) / 1_000_000,
+                            SafeFailureDiagnostics.describe(e),
+                        )
+                    }
+                    throw e
+                }
                 log.warn(
                     "Retrying Qwen HTTP operation after transient close: context={} operation={} attempt={}/{} elapsedMs={} diagnostics={}",
                     context,
@@ -982,15 +996,14 @@ class DashScopeQwenClient(
                     is SocketTimeoutException,
                     is java.net.SocketException,
                     is java.nio.channels.ClosedChannelException,
-                    is HttpRequestTimeoutException,
                     -> true
                     else -> {
                         val message = cause.message.orEmpty()
-                        message.contains("prematurely closed", ignoreCase = true) ||
+                        message.contains("Not enough data available", ignoreCase = true) ||
+                            message.contains("prematurely closed", ignoreCase = true) ||
                             message.contains("connection reset", ignoreCase = true) ||
                             message.contains("broken pipe", ignoreCase = true) ||
-                            message.contains("connection abort", ignoreCase = true) ||
-                            message.contains("Request timeout has expired", ignoreCase = true)
+                            message.contains("connection abort", ignoreCase = true)
                     }
                 }
             }

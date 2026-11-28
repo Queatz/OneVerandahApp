@@ -180,6 +180,125 @@ internal fun billboardYawTowardCamera(
     camZ: Double,
 ): Double = atan2(-(camX - objX), -(camZ - objZ))
 
+/**
+ * Computes the opening camera `alpha` (radians) for a scene so the camera stands behind
+ * `(playerSpawnX, playerSpawnZ)` and looks across the custom layout toward its characters
+ * and interactive areas instead of always facing one hardcoded compass axis.
+ */
+internal fun computeInitialCameraAlpha(scene: StudyComprehendScene): Double {
+    val spawnWorldX = comprehendTileToWorldX(scene.playerSpawnX)
+    val spawnWorldZ = comprehendTileToWorldZ(scene.playerSpawnZ)
+
+    val characterObjs = scene.objects.filter { it.isCharacter }
+    val interactiveObjs = scene.objects.filter { it.actions.isNotEmpty() }
+    val focalCandidates = when {
+        characterObjs.isNotEmpty() -> characterObjs
+        interactiveObjs.isNotEmpty() -> interactiveObjs
+        else -> emptyList()
+    }
+    val focusWorldX = if (focalCandidates.isNotEmpty()) {
+        focalCandidates.sumOf { comprehendTileToWorldX(it.x) } / focalCandidates.size
+    } else {
+        0.0
+    }
+    val focusWorldZ = if (focalCandidates.isNotEmpty()) {
+        focalCandidates.sumOf { comprehendTileToWorldZ(it.z) } / focalCandidates.size
+    } else {
+        0.0
+    }
+
+    var dx = focusWorldX - spawnWorldX
+    var dz = focusWorldZ - spawnWorldZ
+    if (hypot2(dx, dz) < 1.5) {
+        dx = -spawnWorldX
+        dz = -spawnWorldZ
+    }
+    val dist = hypot2(dx, dz)
+    val naturalAlpha = if (dist > 0.25) atan2(-dz, -dx) else PI / 2.0
+
+    val customDeg = scene.initialCameraYawDegrees
+    if (customDeg != null && customDeg.isFinite()) {
+        val customRad = customDeg.toDouble() * PI / 180.0
+        if (dist < 2.5) return customRad
+        val customFwdX = -cos(customRad)
+        val customFwdZ = -sin(customRad)
+        val dot = (customFwdX * (dx / dist)) + (customFwdZ * (dz / dist))
+        if (dot > 0.25) return customRad
+    }
+    return naturalAlpha
+}
+
+internal fun parseHexColorRgbOrNull(hex: String?): Triple<Double, Double, Double>? {
+    val cleaned = hex?.trim()?.removePrefix("#") ?: return null
+    if (cleaned.length != 6) return null
+    val rgb = cleaned.toIntOrNull(16) ?: return null
+    val r = ((rgb shr 16) and 0xff) / 255.0
+    val g = ((rgb shr 8) and 0xff) / 255.0
+    val b = (rgb and 0xff) / 255.0
+    return Triple(r, g, b)
+}
+
+internal fun resolveIndoorWallGround(scene: StudyComprehendScene): StudyComprehendGroundType {
+    scene.wallMaterial?.let { return it }
+    val wallCounts = HashMap<StudyComprehendGroundType, Int>()
+    val floorCounts = HashMap<StudyComprehendGroundType, Int>()
+    for (tile in scene.tiles) {
+        if (tile.ground.isWallStructure) {
+            wallCounts[tile.ground] = (wallCounts[tile.ground] ?: 0) + 1
+        } else if (!tile.ground.blocksMovementByDefault) {
+            floorCounts[tile.ground] = (floorCounts[tile.ground] ?: 0) + 1
+        }
+    }
+    wallCounts.maxByOrNull { it.value }?.key?.let { return it }
+    return when (floorCounts.maxByOrNull { it.value }?.key) {
+        StudyComprehendGroundType.TATAMI_MAT, StudyComprehendGroundType.WOOD_FLOOR -> StudyComprehendGroundType.WOOD_WALL
+        StudyComprehendGroundType.MARBLE_TILE -> StudyComprehendGroundType.PLASTER_WALL
+        StudyComprehendGroundType.STONE_PAVING,
+        StudyComprehendGroundType.MOSS_STONE,
+        StudyComprehendGroundType.DARK_SLATE,
+        -> StudyComprehendGroundType.STONE_WALL
+        StudyComprehendGroundType.COURTYARD_BRICK,
+        StudyComprehendGroundType.TERRACOTTA_TILE,
+        -> StudyComprehendGroundType.BRICK_WALL
+        else -> StudyComprehendGroundType.PLASTER_WALL
+    }
+}
+
+internal fun resolveOutdoorSurroundingGround(scene: StudyComprehendScene): StudyComprehendGroundType {
+    scene.surroundingGround?.takeUnless { it.isWallStructure }?.let { return it }
+    val borderCounts = HashMap<StudyComprehendGroundType, Int>()
+    val last = STUDY_COMPREHEND_GRID_SIZE - 1
+    for (i in 0 until STUDY_COMPREHEND_GRID_SIZE) {
+        listOf(
+            scene.tileAt(i, 0),
+            scene.tileAt(i, last),
+            scene.tileAt(0, i),
+            scene.tileAt(last, i),
+        ).forEach { tile ->
+            val g = tile?.ground ?: return@forEach
+            if (!g.isWallStructure) {
+                borderCounts[g] = (borderCounts[g] ?: 0) + 1
+            }
+        }
+    }
+    val dominantBorder = borderCounts.maxByOrNull { it.value }?.key
+    return when {
+        scene.weather == StudyComprehendWeather.SNOWY -> StudyComprehendGroundType.SNOW
+        dominantBorder != null -> dominantBorder
+        scene.weather == StudyComprehendWeather.DUSTY || scene.weather == StudyComprehendWeather.HOT -> StudyComprehendGroundType.SAND
+        else -> StudyComprehendGroundType.GRASS
+    }
+}
+
+private data class IndoorPerimeterWallRuntime(
+    val mesh: Mesh,
+    val normalOutX: Double,
+    val normalOutZ: Double,
+    val fullHeight: Double = 2.65,
+    val cutawayHeight: Double = 0.46,
+    var currentHeight: Double = 2.65,
+)
+
 private data class LoadedSpriteAsset(
     val texture: Texture2D,
     val aspectRatio: Double,
@@ -255,6 +374,7 @@ internal class StudyComprehendSceneController(
     private val entityRuntimes = HashMap<String, EntityBillboardRuntime>()
     private val pickableBillboardMeshes = ArrayList<Mesh>()
     private val weatherParticles = ArrayList<WeatherParticleRuntime>()
+    private val indoorPerimeterWalls = ArrayList<IndoorPerimeterWallRuntime>()
     private var waterMaterial: StandardMaterialProps? = null
 
     private var keyDownListener: ((Event) -> Unit)? = null
@@ -289,9 +409,9 @@ internal class StudyComprehendSceneController(
         val createdScene = bjs.createSceneContext(createdEngine)
         scene = createdScene
 
-        // 1. Camera following player
+        // 1. Camera following player, oriented dynamically from the custom scene entry toward its focal space
         val camera = bjs.createArcRotateCamera(
-            alpha = -PI / 2.0,
+            alpha = computeInitialCameraAlpha(sceneData),
             beta = 0.96, // ~55 degree comfortable isometric/3D look angle
             radius = 12.5,
             target = bjs.vec3(playerWorldX, 0.85, playerWorldZ),
@@ -583,6 +703,7 @@ internal class StudyComprehendSceneController(
 
             // Animate weather particles in world space (independent of player movement)
             updateWeatherParticles(dt)
+            updateIndoorPerimeterCutaway(dt, camera)
         }
 
         attachInputListeners(bjs, camera)
@@ -985,16 +1106,26 @@ internal class StudyComprehendSceneController(
         }
 
         val mixFactor = if (data.weather == StudyComprehendWeather.SUNNY || data.weather == StudyComprehendWeather.BREEZY) 0.0 else 0.42
-        val finalHorizon = Triple(
+        val weatherMixedHorizon = Triple(
             lerp(base.skyHorizon.first, horizonBlend.first, mixFactor),
             lerp(base.skyHorizon.second, horizonBlend.second, mixFactor),
             lerp(base.skyHorizon.third, horizonBlend.third, mixFactor),
         )
+        val sceneTint = parseHexColorRgbOrNull(data.ambientTintHex)
+        val finalHorizon = if (sceneTint != null) {
+            Triple(
+                lerp(weatherMixedHorizon.first, sceneTint.first, 0.16),
+                lerp(weatherMixedHorizon.second, sceneTint.second, 0.16),
+                lerp(weatherMixedHorizon.third, sceneTint.third, 0.16),
+            )
+        } else {
+            weatherMixedHorizon
+        }
         val clear = if (data.environment == StudyComprehendEnvironment.INDOOR) {
             Triple(
-                base.clearColor.first * 0.42,
-                base.clearColor.second * 0.40,
-                base.clearColor.third * 0.44,
+                finalHorizon.first * 0.42,
+                finalHorizon.second * 0.40,
+                finalHorizon.third * 0.44,
             )
         } else {
             finalHorizon
@@ -1008,7 +1139,16 @@ internal class StudyComprehendSceneController(
         scene.clearColor = cc
 
         // Sky dome
-        val skyTex = createSkyGradientTexture(bjs, engine, base.skyTop, finalHorizon, data.timeOfDay == StudyComprehendTimeOfDay.NIGHT)
+        val tintedTop = if (sceneTint != null) {
+            Triple(
+                lerp(base.skyTop.first, sceneTint.first, 0.12),
+                lerp(base.skyTop.second, sceneTint.second, 0.12),
+                lerp(base.skyTop.third, sceneTint.third, 0.12),
+            )
+        } else {
+            base.skyTop
+        }
+        val skyTex = createSkyGradientTexture(bjs, engine, tintedTop, finalHorizon, data.timeOfDay == StudyComprehendTimeOfDay.NIGHT)
         val skyOpts = js("({})")
         skyOpts.diameter = 115.0
         skyOpts.segments = 20
@@ -1025,7 +1165,15 @@ internal class StudyComprehendSceneController(
         bjs.addToScene(scene, skySphere)
 
         val hemi = bjs.createHemisphericLight(arrayOf(0.0, 1.0, 0.0), if (data.environment == StudyComprehendEnvironment.INDOOR) base.hemiIntensity + 0.16 else base.hemiIntensity)
-        hemi.diffuseColor = base.hemiSky
+        hemi.diffuseColor = if (sceneTint != null) {
+            arrayOf(
+                lerp(base.hemiSky[0], sceneTint.first, 0.14),
+                lerp(base.hemiSky[1], sceneTint.second, 0.14),
+                lerp(base.hemiSky[2], sceneTint.third, 0.14),
+            )
+        } else {
+            base.hemiSky
+        }
         hemi.groundColor = base.hemiGround
         hemi.specularColor = arrayOf(0.18, 0.18, 0.18)
         bjs.addToScene(scene, hemi)
@@ -1051,14 +1199,35 @@ internal class StudyComprehendSceneController(
         data: StudyComprehendScene,
     ) {
         val groupedIndices = HashMap<StudyComprehendGroundType, MutableList<Pair<Int, Int>>>()
+        val wallIndices = HashMap<StudyComprehendGroundType, MutableList<Pair<Int, Int>>>()
+        val fallbackUnderWall = data.tiles
+            .asSequence()
+            .map { it.ground }
+            .filter { !it.blocksMovementByDefault }
+            .groupingBy { it }
+            .eachCount()
+            .maxByOrNull { it.value }
+            ?.key
+            ?: if (data.environment == StudyComprehendEnvironment.INDOOR) {
+                StudyComprehendGroundType.WOOD_FLOOR
+            } else {
+                StudyComprehendGroundType.STONE_PAVING
+            }
+
         for (z in 0 until STUDY_COMPREHEND_GRID_SIZE) {
             for (x in 0 until STUDY_COMPREHEND_GRID_SIZE) {
                 val tile = data.tileAt(x, z) ?: continue
-                groupedIndices.getOrPut(tile.ground) { ArrayList() }.add(x to z)
+                if (tile.ground.isWallStructure) {
+                    groupedIndices.getOrPut(fallbackUnderWall) { ArrayList() }.add(x to z)
+                    wallIndices.getOrPut(tile.ground) { ArrayList() }.add(x to z)
+                } else {
+                    groupedIndices.getOrPut(tile.ground) { ArrayList() }.add(x to z)
+                }
             }
         }
 
         val wetWeather = data.weather == StudyComprehendWeather.RAINY
+        val sceneSeed = data.id.hashCode() * 31 + data.title.hashCode()
         for ((groundType, coords) in groupedIndices) {
             if (coords.isEmpty()) continue
             val (diffuseTex, bumpTex) = createProceduralGroundTextures(bjs, engine, groundType)
@@ -1107,8 +1276,8 @@ internal class StudyComprehendSceneController(
                 matrices[base + 14] = wz.toFloat()
                 matrices[base + 15] = 1f
 
-                // Subtle organic per-tile shade variation
-                val hash = tileHash(tx, tz)
+                // Subtle organic per-tile shade variation seeded per scene
+                val hash = tileHash(tx, tz, sceneSeed)
                 val shade = (0.94 + (hash and 0xff) / 255.0 * 0.10).toFloat()
                 val warmShift = (((hash shr 8) and 0xff) / 255.0 * 0.03 - 0.015).toFloat()
                 val cb = i * 4
@@ -1123,6 +1292,60 @@ internal class StudyComprehendSceneController(
             bjs.enableThinInstanceWorldBounds(proto)
             bjs.addToScene(scene, proto)
         }
+
+        // Render 3D interior room partitions, courtyard walls, and masonry walls
+        val wallHeight = 1.95
+        for ((wallType, coords) in wallIndices) {
+            if (coords.isEmpty()) continue
+            val (wallDiff, wallBump) = createProceduralGroundTextures(bjs, engine, wallType)
+            val wallMat = bjs.createStandardMaterial()
+            wallMat.name = "wall3d-${wallType.name}"
+            wallMat.diffuseTexture = wallDiff
+            bjs.setStandardBumpTexture(wallMat, wallBump)
+            wallMat.bumpLevel = 0.80
+            wallMat.specularColor = arrayOf(0.07, 0.07, 0.07)
+            wallMat.specularPower = 24.0
+
+            val boxOpts = js("({})")
+            boxOpts.width = TILE_WORLD_SIZE * 1.004
+            boxOpts.height = wallHeight
+            boxOpts.depth = TILE_WORLD_SIZE * 1.004
+            val wallProto = bjs.createBox(engine, boxOpts)
+            wallProto.name = "walls-${wallType.name}"
+            wallProto.material = wallMat
+            wallProto.pickable = false
+            wallProto.hasVertexAlpha = false
+
+            val count = coords.size
+            val matrices = Float32Array(count * 16)
+            val colors = Float32Array(count * 4)
+            for (i in 0 until count) {
+                val (tx, tz) = coords[i]
+                val wx = comprehendTileToWorldX(tx)
+                val wz = comprehendTileToWorldZ(tz)
+                val base = i * 16
+                matrices[base + 0] = 1f
+                matrices[base + 5] = 1f
+                matrices[base + 10] = 1f
+                matrices[base + 12] = wx.toFloat()
+                matrices[base + 13] = (wallHeight * 0.5).toFloat()
+                matrices[base + 14] = wz.toFloat()
+                matrices[base + 15] = 1f
+
+                val hash = tileHash(tx, tz, sceneSeed + 7919)
+                val shade = (0.93 + (hash and 0xff) / 255.0 * 0.11).toFloat()
+                val cb = i * 4
+                colors[cb + 0] = shade
+                colors[cb + 1] = shade
+                colors[cb + 2] = shade
+                colors[cb + 3] = 1f
+            }
+
+            bjs.setThinInstances(wallProto, matrices, count)
+            bjs.setThinInstanceColors(wallProto, colors)
+            bjs.enableThinInstanceWorldBounds(wallProto)
+            bjs.addToScene(scene, wallProto)
+        }
     }
 
     private fun buildBoundaryEnvironment(
@@ -1132,44 +1355,76 @@ internal class StudyComprehendSceneController(
         data: StudyComprehendScene,
     ) {
         if (data.environment == StudyComprehendEnvironment.INDOOR) {
-            // Architectural interior perimeter walls (north, west, east, low south wainscoting so camera is never blocked)
-            val (wallDiff, wallBump) = createProceduralGroundTextures(bjs, engine, StudyComprehendGroundType.COURTYARD_BRICK)
+            // Custom per-scene interior perimeter walls with Sims-style camera-side cutaway so any camera angle stays clear
+            val wallSurface = resolveIndoorWallGround(data)
+            val (wallDiff, wallBump) = createProceduralGroundTextures(bjs, engine, wallSurface)
             val wallMat = bjs.createStandardMaterial()
             wallMat.diffuseTexture = wallDiff
             bjs.setStandardBumpTexture(wallMat, wallBump)
-            wallMat.diffuseColor = arrayOf(0.88, 0.84, 0.78)
+            val tint = parseHexColorRgbOrNull(data.ambientTintHex)
+            wallMat.diffuseColor = if (tint != null) {
+                arrayOf(
+                    lerp(0.92, tint.first, 0.14),
+                    lerp(0.90, tint.second, 0.14),
+                    lerp(0.86, tint.third, 0.14),
+                )
+            } else {
+                arrayOf(0.92, 0.90, 0.86)
+            }
             wallMat.specularColor = arrayOf(0.08, 0.08, 0.08)
-            wallMat.uvScale = arrayOf(8.0, 1.5)
+            wallMat.uvScale = arrayOf(10.0, 1.4)
 
-            fun addWall(w: Double, h: Double, d: Double, x: Double, y: Double, z: Double) {
+            fun addPerimeterWall(
+                w: Double,
+                d: Double,
+                x: Double,
+                z: Double,
+                nx: Double,
+                nz: Double,
+            ) {
                 val opts = js("({})")
                 opts.width = w
-                opts.height = h
+                opts.height = 1.0 // scaled dynamically on Y
                 opts.depth = d
                 val wall = bjs.createBox(engine, opts)
                 wall.material = wallMat
                 wall.pickable = false
-                wall.position.set(x, y, z)
+                val fullH = 2.65
+                wall.scaling.set(1.0, fullH, 1.0)
+                wall.position.set(x, fullH * 0.5, z)
                 bjs.addToScene(scene, wall)
+                indoorPerimeterWalls.add(
+                    IndoorPerimeterWallRuntime(
+                        mesh = wall,
+                        normalOutX = nx,
+                        normalOutZ = nz,
+                        fullHeight = fullH,
+                    ),
+                )
             }
             val span = STUDY_COMPREHEND_GRID_SIZE * TILE_WORLD_SIZE + 0.8
             val half = STUDY_COMPREHEND_GRID_SIZE * TILE_WORLD_SIZE / 2.0 + 0.2
-            addWall(span, 3.6, 0.45, 0.0, 1.8, half) // Far wall
-            addWall(0.45, 3.6, span, -half, 1.8, 0.0) // West wall
-            addWall(0.45, 3.6, span, half, 1.8, 0.0) // East wall
-            addWall(span, 0.55, 0.45, 0.0, 0.275, -half) // Low foreground sill
-        } else {
-            // Outdoor surrounding terrain skirt so map blends naturally into the horizon
-            val outerType = when (data.weather) {
-                StudyComprehendWeather.SNOWY, StudyComprehendWeather.COLD -> StudyComprehendGroundType.SNOW
-                StudyComprehendWeather.DUSTY, StudyComprehendWeather.HOT -> StudyComprehendGroundType.SAND
-                else -> StudyComprehendGroundType.GRASS
+            addPerimeterWall(span, 0.45, 0.0, half, 0.0, 1.0)
+            addPerimeterWall(span, 0.45, 0.0, -half, 0.0, -1.0)
+            addPerimeterWall(0.45, span, -half, 0.0, -1.0, 0.0)
+            addPerimeterWall(0.45, span, half, 0.0, 1.0, 0.0)
+            scene.camera?.unsafeCast<ArcRotateCamera>()?.let { cam ->
+                updateIndoorPerimeterCutaway(1.0, cam)
             }
-            val (skirtDiff, _) = createProceduralGroundTextures(bjs, engine, outerType)
+        } else {
+            // Custom per-scene outdoor surrounding terrain skirt matching the map's border biome & weather
+            val outerType = resolveOutdoorSurroundingGround(data)
+            val (skirtDiff, skirtBump) = createProceduralGroundTextures(bjs, engine, outerType)
             val skirtMat = bjs.createStandardMaterial()
             skirtMat.diffuseTexture = skirtDiff
+            bjs.setStandardBumpTexture(skirtMat, skirtBump)
+            skirtMat.bumpLevel = 0.45
             skirtMat.uvScale = arrayOf(24.0, 24.0)
-            skirtMat.specularColor = arrayOf(0.04, 0.04, 0.04)
+            skirtMat.specularColor = if (outerType == StudyComprehendGroundType.WATER) {
+                arrayOf(0.55, 0.64, 0.74)
+            } else {
+                arrayOf(0.04, 0.04, 0.04)
+            }
             val skirtOpts = js("({})")
             skirtOpts.width = 110.0
             skirtOpts.height = 110.0
@@ -1178,6 +1433,20 @@ internal class StudyComprehendSceneController(
             skirt.material = skirtMat
             skirt.pickable = false
             bjs.addToScene(scene, skirt)
+        }
+    }
+
+    private fun updateIndoorPerimeterCutaway(dt: Double, camera: ArcRotateCamera) {
+        if (indoorPerimeterWalls.isEmpty()) return
+        val camDirX = cos(camera.alpha)
+        val camDirZ = sin(camera.alpha)
+        val blend = (1.0 - exp(-dt * 10.0)).coerceIn(0.0, 1.0)
+        for (wall in indoorPerimeterWalls) {
+            val facingCam = wall.normalOutX * camDirX + wall.normalOutZ * camDirZ
+            val targetH = if (facingCam > 0.22) wall.cutawayHeight else wall.fullHeight
+            wall.currentHeight += (targetH - wall.currentHeight) * blend
+            wall.mesh.scaling.set(1.0, wall.currentHeight, 1.0)
+            wall.mesh.position.set(wall.mesh.position.x, wall.currentHeight * 0.5, wall.mesh.position.z)
         }
     }
 
@@ -1979,6 +2248,98 @@ private fun createProceduralGroundTextures(
                     r = 0.88 + fbm * 0.10
                     g = 0.92 + fbm * 0.07
                     b = 0.98
+                }
+                StudyComprehendGroundType.TERRACOTTA_TILE -> {
+                    val tx = (u * 3.0) % 1.0
+                    val ty = (v * 3.0) % 1.0
+                    val grout = tx < 0.055 || tx > 0.945 || ty < 0.055 || ty > 0.945
+                    val cellTone = ((tileHash((u * 3.0).toInt(), (v * 3.0).toInt(), seed) and 0xff) / 255.0) * 0.09 - 0.045
+                    if (grout) {
+                        h = 0.24
+                        r = 0.52; g = 0.45; b = 0.39
+                    } else {
+                        h = 0.78 + detail * 0.14
+                        r = 0.72 + cellTone + fbm * 0.10
+                        g = 0.41 + cellTone * 0.7 + fbm * 0.07
+                        b = 0.27 + cellTone * 0.4 + fbm * 0.05
+                    }
+                }
+                StudyComprehendGroundType.DARK_SLATE -> {
+                    val row = (v * 3.0).toInt()
+                    val su = ((if (row % 2 == 0) u else u + 0.5) * 2.0) % 1.0
+                    val sv = (v * 3.0) % 1.0
+                    val seam = su < 0.04 || sv < 0.05
+                    if (seam) {
+                        h = 0.20
+                        r = 0.16; g = 0.17; b = 0.19
+                    } else {
+                        h = 0.72 + fbm * 0.18 + detail * 0.08
+                        val base = 0.25 + fbm * 0.10 + detail * 0.04
+                        r = base * 0.96; g = base; b = base * 1.06
+                    }
+                }
+                StudyComprehendGroundType.STONE_WALL -> {
+                    val row = (v * 4.0).toInt()
+                    val su = ((if (row % 2 == 0) u else u + 0.5) * 2.5) % 1.0
+                    val sv = (v * 4.0) % 1.0
+                    val mortar = su < 0.07 || sv < 0.08 || sv > 0.92
+                    val stoneTone = ((tileHash((su * 3.0).toInt() + row * 7, row, seed) and 0xff) / 255.0) * 0.12 - 0.06
+                    if (mortar) {
+                        h = 0.12
+                        r = 0.34; g = 0.33; b = 0.31
+                    } else {
+                        h = 0.80 + fbm * 0.18
+                        val base = 0.54 + stoneTone + detail * 0.08
+                        r = base; g = base * 0.99; b = base * 0.95
+                    }
+                }
+                StudyComprehendGroundType.WOOD_WALL -> {
+                    val panel = (u * 4.0) % 1.0
+                    val frame = panel < 0.09 || panel > 0.91 || v < 0.08 || v > 0.92
+                    val grain = sin((u * 38.0 + fbm * 3.8) * PI) * 0.5 + 0.5
+                    if (frame) {
+                        h = 0.88
+                        r = 0.34 + grain * 0.06
+                        g = 0.21 + grain * 0.04
+                        b = 0.12 + grain * 0.03
+                    } else {
+                        h = 0.62 + grain * 0.14
+                        r = 0.56 + grain * 0.10 + fbm * 0.05
+                        g = 0.39 + grain * 0.08 + fbm * 0.04
+                        b = 0.23 + grain * 0.05
+                    }
+                }
+                StudyComprehendGroundType.PLASTER_WALL -> {
+                    val wainscot = v > 0.76
+                    if (wainscot) {
+                        val plank = (u * 8.0) % 1.0
+                        val seam = plank < 0.06 || v < 0.785
+                        h = if (seam) 0.35 else 0.74 + detail * 0.10
+                        r = if (seam) 0.34 else 0.48 + fbm * 0.07
+                        g = if (seam) 0.23 else 0.34 + fbm * 0.06
+                        b = if (seam) 0.15 else 0.23 + fbm * 0.04
+                    } else {
+                        h = 0.66 + fbm * 0.18 + detail * 0.10
+                        r = 0.86 + fbm * 0.06 - detail * 0.03
+                        g = 0.82 + fbm * 0.06 - detail * 0.03
+                        b = 0.74 + fbm * 0.05 - detail * 0.03
+                    }
+                }
+                StudyComprehendGroundType.BRICK_WALL -> {
+                    val row = (v * 6.0).toInt()
+                    val bu = ((if (row % 2 == 0) u else u + 0.5) * 3.0) % 1.0
+                    val bv = (v * 6.0) % 1.0
+                    val mortar = bu < 0.08 || bv < 0.10
+                    val brickVar = ((tileHash((bu * 3.0).toInt() + row * 13, row, seed) and 0xff) / 255.0) * 0.10 - 0.05
+                    if (mortar) {
+                        h = 0.16
+                        r = 0.68; g = 0.64; b = 0.58
+                    } else {
+                        h = 0.82 + detail * 0.14
+                        r = 0.62 + brickVar + fbm * 0.10
+                        g = 0.31 + brickVar * 0.6 + fbm * 0.06
+                        b = 0.22 + brickVar * 0.4 + fbm * 0.05
+                    }
                 }
             }
 

@@ -37,7 +37,10 @@ enum class StudyComprehendWeather {
 }
 
 @Serializable
-enum class StudyComprehendGroundType(val blocksMovementByDefault: Boolean = false) {
+enum class StudyComprehendGroundType(
+    val blocksMovementByDefault: Boolean = false,
+    val isWallStructure: Boolean = false,
+) {
     GRASS,
     STONE_PAVING,
     COBBLESTONE,
@@ -52,6 +55,12 @@ enum class StudyComprehendGroundType(val blocksMovementByDefault: Boolean = fals
     GRAVEL,
     COURTYARD_BRICK,
     SNOW,
+    TERRACOTTA_TILE,
+    DARK_SLATE,
+    STONE_WALL(blocksMovementByDefault = true, isWallStructure = true),
+    WOOD_WALL(blocksMovementByDefault = true, isWallStructure = true),
+    PLASTER_WALL(blocksMovementByDefault = true, isWallStructure = true),
+    BRICK_WALL(blocksMovementByDefault = true, isWallStructure = true),
 }
 
 @Serializable
@@ -150,6 +159,13 @@ data class StudyComprehendScene(
     val tiles: List<StudyComprehendTile>,
     val objects: List<StudyComprehendObject>,
     val tasks: List<StudyComprehendTask>,
+    val musicPrompt: String = "",
+    val musicAudioUrl: String? = null,
+    val layoutSummary: String = "",
+    val wallMaterial: StudyComprehendGroundType? = null,
+    val surroundingGround: StudyComprehendGroundType? = null,
+    val ambientTintHex: String? = null,
+    val initialCameraYawDegrees: Float? = null,
 ) {
     fun tileAt(x: Int, z: Int): StudyComprehendTile? {
         if (x !in 0 until STUDY_COMPREHEND_GRID_SIZE || z !in 0 until STUDY_COMPREHEND_GRID_SIZE) return null
@@ -168,11 +184,115 @@ data class StudyComprehendWorld(
     val playerVisualPrompt: String = "",
     val sprites: List<StudyComprehendSpriteSpec>,
     val scenes: List<StudyComprehendScene>,
+    val assetsComplete: Boolean = true,
 ) {
-    fun hasAllAssets(): Boolean =
-        scenes.size == STUDY_COMPREHEND_SCENE_COUNT &&
-            !playerSpriteUrl.isNullOrBlank() &&
-            sprites.all { !it.imageUrl.isNullOrBlank() }
+    fun hasAllAssets(
+        requireAudio: Boolean = false,
+        requireMusic: Boolean = false,
+    ): Boolean {
+        if (scenes.size != STUDY_COMPREHEND_SCENE_COUNT) return false
+        if (playerSpriteUrl.isNullOrBlank()) return false
+        if (sprites.any { it.imageUrl.isNullOrBlank() }) return false
+        if (requireMusic && scenes.any { it.musicAudioUrl.isNullOrBlank() }) return false
+        if (requireAudio) {
+            val missingSpeech = scenes.any { scene ->
+                scene.objects.any { obj ->
+                    obj.isCharacter && (
+                        (!obj.spokenText.isNullOrBlank() && obj.spokenAudioUrl.isNullOrBlank()) ||
+                            (!obj.acceptSpokenText.isNullOrBlank() && obj.acceptAudioUrl.isNullOrBlank()) ||
+                            (!obj.declineSpokenText.isNullOrBlank() && obj.declineAudioUrl.isNullOrBlank())
+                        )
+                }
+            }
+            if (missingSpeech) return false
+        }
+        return true
+    }
+
+    fun isReadyToPlay(): Boolean = assetsComplete && hasAllAssets()
+
+    internal fun populatedAssetCount(): Int {
+        var count = 0
+        if (!playerSpriteUrl.isNullOrBlank()) count += 1
+        count += sprites.count { !it.imageUrl.isNullOrBlank() }
+        scenes.forEach { scene ->
+            if (!scene.musicAudioUrl.isNullOrBlank()) count += 1
+            scene.objects.forEach { obj ->
+                if (obj.isCharacter) {
+                    if (!obj.spokenAudioUrl.isNullOrBlank()) count += 1
+                    if (!obj.acceptAudioUrl.isNullOrBlank()) count += 1
+                    if (!obj.declineAudioUrl.isNullOrBlank()) count += 1
+                }
+            }
+        }
+        return count
+    }
+}
+
+fun mergeStudyComprehendWorlds(
+    primary: StudyComprehendWorld?,
+    secondary: StudyComprehendWorld?,
+): StudyComprehendWorld? {
+    if (primary == null) return secondary
+    if (secondary == null) return primary
+
+    val sameStructure = primary.scenes.size == secondary.scenes.size &&
+        primary.scenes.map { it.id } == secondary.scenes.map { it.id } &&
+        primary.sprites.map { it.id } == secondary.sprites.map { it.id }
+
+    if (!sameStructure) {
+        return when {
+            primary.isReadyToPlay() && !secondary.isReadyToPlay() -> primary
+            secondary.isReadyToPlay() && !primary.isReadyToPlay() -> secondary
+            secondary.populatedAssetCount() > primary.populatedAssetCount() -> secondary
+            else -> primary
+        }
+    }
+
+    fun preferUrl(first: String?, second: String?): String? =
+        first?.trim()?.takeIf { it.isNotEmpty() } ?: second?.trim()?.takeIf { it.isNotEmpty() }
+
+    val secondarySpritesById = secondary.sprites.associateBy { it.id }
+    val mergedSprites = primary.sprites.map { sprite ->
+        val other = secondarySpritesById[sprite.id]
+        sprite.copy(imageUrl = preferUrl(sprite.imageUrl, other?.imageUrl))
+    }
+
+    val mergedScenes = primary.scenes.mapIndexed { index, scene ->
+        val otherScene = secondary.scenes[index]
+        val otherObjectsById = otherScene.objects.associateBy { it.id }
+        scene.copy(
+            musicPrompt = scene.musicPrompt.ifBlank { otherScene.musicPrompt },
+            musicAudioUrl = preferUrl(scene.musicAudioUrl, otherScene.musicAudioUrl),
+            layoutSummary = scene.layoutSummary.ifBlank { otherScene.layoutSummary },
+            wallMaterial = scene.wallMaterial ?: otherScene.wallMaterial,
+            surroundingGround = scene.surroundingGround ?: otherScene.surroundingGround,
+            ambientTintHex = scene.ambientTintHex ?: otherScene.ambientTintHex,
+            initialCameraYawDegrees = scene.initialCameraYawDegrees ?: otherScene.initialCameraYawDegrees,
+            objects = scene.objects.map { obj ->
+                val otherObj = otherObjectsById[obj.id]
+                if (!obj.isCharacter || otherObj == null) {
+                    obj
+                } else {
+                    obj.copy(
+                        spokenAudioUrl = preferUrl(obj.spokenAudioUrl, otherObj.spokenAudioUrl),
+                        acceptAudioUrl = preferUrl(obj.acceptAudioUrl, otherObj.acceptAudioUrl),
+                        declineAudioUrl = preferUrl(obj.declineAudioUrl, otherObj.declineAudioUrl),
+                    )
+                }
+            },
+        )
+    }
+
+    val eitherComplete = (primary.assetsComplete && primary.hasAllAssets()) ||
+        (secondary.assetsComplete && secondary.hasAllAssets())
+
+    return primary.copy(
+        playerSpriteUrl = preferUrl(primary.playerSpriteUrl, secondary.playerSpriteUrl),
+        sprites = mergedSprites,
+        scenes = mergedScenes,
+        assetsComplete = eitherComplete,
+    )
 }
 
 @Serializable
@@ -216,6 +336,7 @@ data class StudyComprehendJobResponse(
     val status: StudyComprehendBuildStatus,
     val completedSteps: Int = 0,
     val totalSteps: Int = 1,
+    val inFlightSteps: List<String> = emptyList(),
     val error: String? = null,
     val world: StudyComprehendWorld? = null,
 )
@@ -269,7 +390,10 @@ fun StudyComprehendScene.isTileWalkable(
     val obj = tile.objectId?.let { objectById[it] }
     if (obj != null && isObjectPresentOnMap(obj, state)) {
         if (obj.isCharacter) return false
-        if (obj.blocksMovement && !(obj.opensPassage && obj.id in state.openedObjectIds)) {
+        if (obj.opensPassage) {
+            return obj.id in state.openedObjectIds
+        }
+        if (obj.blocksMovement) {
             return false
         }
         // Bridge / stepping stone object on water makes the tile walkable.

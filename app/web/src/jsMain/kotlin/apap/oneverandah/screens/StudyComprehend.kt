@@ -58,6 +58,17 @@ import kotlin.js.Date
 import kotlin.math.roundToInt
 import kotlin.time.Duration.Companion.milliseconds
 
+internal const val STUDY_COMPREHEND_BGM_VOLUME = 0.15
+
+internal fun createComprehendSceneMusicAudio(
+    musicUrl: String,
+    volume: Double = STUDY_COMPREHEND_BGM_VOLUME,
+): Audio = Audio(musicUrl).apply {
+    this.loop = true
+    this.volume = volume.coerceIn(0.0, 1.0)
+    this.preload = "auto"
+}
+
 @Composable
 internal fun StudyComprehendTab(
     strings: UiStrings,
@@ -94,6 +105,7 @@ internal fun StudyComprehendTab(
     val speechUrlCache = remember(session.textLanguageTag) { mutableStateMapOf<String, String>() }
     val inFlightSpeech = remember(session.textLanguageTag) { HashMap<String, Deferred<String?>>() }
     val activeAudioRef = remember { arrayOfNulls<Audio>(1) }
+    val bgmAudioRef = remember { arrayOfNulls<Audio>(1) }
     val speakGenerationRef = remember { intArrayOf(0) }
     val lastSpokenTextRef = remember { arrayOfNulls<String>(1) }
     val lastSpokenAtMsRef = remember { doubleArrayOf(0.0) }
@@ -117,6 +129,11 @@ internal fun StudyComprehendTab(
             document.removeEventListener("fullscreenchange", listener)
             activeAudioRef[0]?.pause()
             activeAudioRef[0] = null
+            bgmAudioRef[0]?.let { bgm ->
+                bgm.pause()
+                bgm.src = ""
+            }
+            bgmAudioRef[0] = null
         }
     }
 
@@ -263,6 +280,65 @@ internal fun StudyComprehendTab(
                 LaunchedEffect(scene.id, sceneDone) {
                     if (sceneDone && safeIndex + 1 > maxUnlockedSceneIndex && safeIndex + 1 < scenes.size) {
                         maxUnlockedSceneIndex = safeIndex + 1
+                    }
+                }
+
+                // Loop atmospheric instrumental background music for the current scene at 15% volume
+                DisposableEffect(scene.id, scene.musicAudioUrl) {
+                    bgmAudioRef[0]?.let { prev ->
+                        prev.pause()
+                        prev.src = ""
+                    }
+                    bgmAudioRef[0] = null
+
+                    val musicUrl = scene.musicAudioUrl?.trim()?.takeIf { it.isNotEmpty() }
+                    if (musicUrl == null) {
+                        onDispose { }
+                    } else {
+                        val bgm = createComprehendSceneMusicAudio(musicUrl, STUDY_COMPREHEND_BGM_VOLUME)
+                        bgmAudioRef[0] = bgm
+                        var unlockListenerAttached = false
+                        lateinit var unlockListener: (Event) -> Unit
+
+                        fun detachUnlockListeners() {
+                            if (!unlockListenerAttached) return
+                            unlockListenerAttached = false
+                            document.removeEventListener("pointerdown", unlockListener)
+                            document.removeEventListener("keydown", unlockListener)
+                        }
+
+                        unlockListener = {
+                            if (bgmAudioRef[0] === bgm && bgm.paused) {
+                                bgm.volume = STUDY_COMPREHEND_BGM_VOLUME
+                                bgm.play().then {
+                                    detachUnlockListeners()
+                                }.catch { }
+                            } else {
+                                detachUnlockListeners()
+                            }
+                        }
+
+                        bgm.onplaying = {
+                            detachUnlockListeners()
+                        }
+
+                        bgm.play().catch {
+                            if (bgmAudioRef[0] === bgm && !unlockListenerAttached) {
+                                unlockListenerAttached = true
+                                document.addEventListener("pointerdown", unlockListener)
+                                document.addEventListener("keydown", unlockListener)
+                            }
+                        }
+
+                        onDispose {
+                            detachUnlockListeners()
+                            bgm.onplaying = null
+                            bgm.pause()
+                            bgm.src = ""
+                            if (bgmAudioRef[0] === bgm) {
+                                bgmAudioRef[0] = null
+                            }
+                        }
                     }
                 }
 
@@ -808,6 +884,9 @@ private fun ComprehendGeneratingCard(
     } else {
         ((done.toDouble() / total.toDouble()) * 100.0).roundToInt().coerceIn(15, 98)
     }
+    val inFlightStep = jobState?.inFlightSteps.orEmpty()
+        .minByOrNull(::comprehendInFlightStepPriority)
+        ?.let { comprehendInFlightStepLabel(comprehend, it) }
 
     Div(attrs = {
         classes(Styles.studyComprehendStatusCard)
@@ -830,6 +909,9 @@ private fun ComprehendGeneratingCard(
                     )
                 }
             }
+            if (inFlightStep != null) {
+                Span { Text(inFlightStep) }
+            }
         }
         Div(attrs = {
             classes(Styles.studyTalkProgressBar)
@@ -844,6 +926,29 @@ private fun ComprehendGeneratingCard(
             })
         }
     }
+}
+
+internal fun comprehendInFlightStepLabel(comprehend: StudyComprehendStrings, stepKey: String): String? {
+    if (stepKey == "COMPREHEND_SCENES") return null
+    val kind = stepKey.substringBefore(':')
+    val detail = stepKey.substringAfter(':', "")
+    val labelKind = when (kind) {
+        "MUSIC" -> "music"
+        "SPRITE" -> "sprite"
+        "TTS" -> "audio"
+        "PLAYER_SPRITE" -> "player"
+        else -> return null
+    }
+    return comprehend.generatingStep(labelKind, detail)
+}
+
+private fun comprehendInFlightStepPriority(stepKey: String): Int = when {
+    stepKey.startsWith("MUSIC:") -> 0
+    stepKey == "PLAYER_SPRITE" -> 1
+    stepKey.startsWith("SPRITE:") -> 2
+    stepKey.startsWith("TTS:") -> 3
+    stepKey == "COMPREHEND_SCENES" -> 0
+    else -> 4
 }
 
 @Composable

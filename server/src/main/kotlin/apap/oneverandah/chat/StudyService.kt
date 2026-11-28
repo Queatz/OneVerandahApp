@@ -5,12 +5,15 @@ import apap.oneverandah.api.STUDY_COMPREHEND_MIN_ACTIONS
 import apap.oneverandah.api.STUDY_COMPREHEND_SCENE_COUNT
 import apap.oneverandah.api.STUDY_COMPREHEND_TILE_COUNT
 import apap.oneverandah.api.StudyComprehendBuildStatus
+import apap.oneverandah.api.StudyComprehendEnvironment
 import apap.oneverandah.api.StudyComprehendGenerateRequest
 import apap.oneverandah.api.StudyComprehendJobResponse
+import apap.oneverandah.api.StudyComprehendScene
 import apap.oneverandah.api.StudyComprehendSpriteSpec
 import apap.oneverandah.api.StudyComprehendTimeOfDay
 import apap.oneverandah.api.StudyComprehendWeather
 import apap.oneverandah.api.StudyComprehendWorld
+import apap.oneverandah.api.mergeStudyComprehendWorlds
 import apap.oneverandah.api.StudyDissectSentenceRequest
 import apap.oneverandah.api.StudyDissectSentenceResponse
 import apap.oneverandah.api.StudyChunk
@@ -72,11 +75,15 @@ import apap.oneverandah.api.StudyWordImageResponse
 import apap.oneverandah.api.StudyWordPlaygroundRequest
 import apap.oneverandah.api.StudyWordPlaygroundResponse
 import apap.oneverandah.images.PromptFactory
+import apap.oneverandah.logging.SafeFailureDiagnostics
 import apap.oneverandah.model.Language
 import java.util.UUID
 import java.util.concurrent.ConcurrentHashMap
+import java.util.concurrent.CopyOnWriteArrayList
 import java.util.concurrent.atomic.AtomicInteger
+import java.util.concurrent.atomic.AtomicReference
 import kotlinx.coroutines.CancellationException
+import kotlinx.coroutines.CoroutineName
 import kotlinx.coroutines.CoroutineScope
 import kotlinx.coroutines.Dispatchers
 import kotlinx.coroutines.NonCancellable
@@ -84,14 +91,20 @@ import kotlinx.coroutines.SupervisorJob
 import kotlinx.coroutines.async
 import kotlinx.coroutines.awaitAll
 import kotlinx.coroutines.coroutineScope
+import kotlinx.coroutines.delay
 import kotlinx.coroutines.launch
+import kotlinx.coroutines.supervisorScope
+import kotlinx.coroutines.sync.Mutex
 import kotlinx.coroutines.sync.Semaphore
+import kotlinx.coroutines.sync.withLock
 import kotlinx.coroutines.sync.withPermit
 import kotlinx.coroutines.withContext
 import org.slf4j.LoggerFactory
 
 private const val playScenarioCount = 4
 private const val STUDY_TALK_GENERATION_ATTEMPTS = 3
+private const val DEFAULT_COMPREHEND_MAX_ATTEMPTS = 3
+private val DEFAULT_COMPREHEND_RETRY_BACKOFF_MILLIS = listOf(2_000L, 5_000L, 10_000L)
 private val studyTalkWordSeparator = Regex("[\\p{P}\\p{S}]+")
 private val studyTalkBackgroundForbiddenWords = setOf(
     "person", "people", "someone", "somebody", "anyone", "man", "men", "woman", "women", "child", "children",
@@ -335,6 +348,10 @@ fun interface StudyTalkAudioGenerator {
     suspend fun generate(text: String, languageTag: String): String
 }
 
+fun interface StudyComprehendMusicGenerator {
+    suspend fun generate(prompt: String): String
+}
+
 interface StudyAiClient {
     /**
      * Pulls verbatim study-language material out of mixed chat/coaching text.
@@ -414,6 +431,9 @@ class StudyService(
     private val clock: () -> Long = System::currentTimeMillis,
     private val talkCharacterImageSize: String? = null,
     private val talkAudioGenerator: StudyTalkAudioGenerator? = null,
+    private val musicGenerator: StudyComprehendMusicGenerator? = null,
+    private val comprehendMaxAttempts: Int = DEFAULT_COMPREHEND_MAX_ATTEMPTS,
+    private val comprehendRetryBackoffMillis: List<Long> = DEFAULT_COMPREHEND_RETRY_BACKOFF_MILLIS,
 ) {
     private val log = LoggerFactory.getLogger(StudyService::class.java)
 
@@ -423,6 +443,7 @@ class StudyService(
     private val studyImages = ConcurrentHashMap<String, StudyPlaygroundImageResponse>()
     private val comprehendJobs = ConcurrentHashMap<String, StudyComprehendJobResponse>()
     private val activeComprehendJobByKey = ConcurrentHashMap<String, String>()
+    private val comprehendCheckpoints = ConcurrentHashMap<String, StudyComprehendWorld>()
 
     /**
      * Parse-mode prep: generate the study text the learner asked for, which the
@@ -1212,14 +1233,37 @@ class StudyService(
 
     fun comprehendJob(jobId: String): StudyComprehendJobResponse? = comprehendJobs[jobId]
 
+    fun isComprehendWorldComplete(world: StudyComprehendWorld): Boolean =
+        world.assetsComplete && world.hasAllAssets(
+            requireAudio = talkAudioGenerator != null,
+            requireMusic = musicGenerator != null,
+        )
+
     fun startComprehendJob(
         rawRequest: StudyComprehendGenerateRequest,
         onWorldReady: (suspend (StudyComprehendWorld) -> Unit)? = null,
+    ): StudyComprehendJobResponse = startComprehendJob(
+        rawRequest = rawRequest,
+        seedWorld = null,
+        onWorldCheckpoint = onWorldReady?.let { readyCallback ->
+            { world, _ ->
+                if (world.assetsComplete) {
+                    readyCallback(world)
+                }
+            }
+        },
+    )
+
+    fun startComprehendJob(
+        rawRequest: StudyComprehendGenerateRequest,
+        seedWorld: StudyComprehendWorld?,
+        onWorldCheckpoint: (suspend (world: StudyComprehendWorld, immediate: Boolean) -> Unit)? = null,
     ): StudyComprehendJobResponse {
         val request = requireNotNull(rawRequest.normalizedOrNull()) {
             "Study Comprehend requires non-blank text and at least one study sentence"
         }
-        val dedupeKey = request.sessionId ?: "${request.languageTag}|${request.textLanguageTag}|${request.text.hashCode()}"
+        val dedupeKey = request.sessionId
+            ?: "${request.languageTag}|${request.textLanguageTag}|${request.text.hashCode()}"
         activeComprehendJobByKey[dedupeKey]?.let { existingJobId ->
             val existing = comprehendJobs[existingJobId]
             if (existing != null && existing.status != StudyComprehendBuildStatus.FAILED) {
@@ -1227,125 +1271,295 @@ class StudyService(
             }
         }
 
+        val mergedSeed = mergeStudyComprehendWorlds(comprehendCheckpoints[dedupeKey], seedWorld)
+        if (mergedSeed != null) {
+            comprehendCheckpoints[dedupeKey] = mergedSeed
+        }
+        if (mergedSeed != null && isComprehendWorldComplete(mergedSeed)) {
+            val cachedJobId = idGenerator().trim().ifBlank { UUID.randomUUID().toString() }
+            val readyResponse = StudyComprehendJobResponse(
+                jobId = cachedJobId,
+                status = StudyComprehendBuildStatus.READY,
+                completedSteps = 1,
+                totalSteps = 1,
+                world = mergedSeed,
+            )
+            comprehendJobs[cachedJobId] = readyResponse
+            return readyResponse
+        }
+
         val jobId = idGenerator().trim().ifBlank { UUID.randomUUID().toString() }
-        val initial = StudyComprehendJobResponse(
-            jobId = jobId,
-            status = StudyComprehendBuildStatus.GENERATING_SCENES,
-            completedSteps = 0,
-            totalSteps = 2,
-        )
+        val hasDesignedScenes = mergedSeed != null && mergedSeed.scenes.size == STUDY_COMPREHEND_SCENE_COUNT
+        val initial = if (hasDesignedScenes) {
+            val (done, total) = computeComprehendStepCounts(requireNotNull(mergedSeed))
+            StudyComprehendJobResponse(
+                jobId = jobId,
+                status = StudyComprehendBuildStatus.GENERATING_ASSETS,
+                completedSteps = done,
+                totalSteps = total,
+            )
+        } else {
+            StudyComprehendJobResponse(
+                jobId = jobId,
+                status = StudyComprehendBuildStatus.GENERATING_SCENES,
+                completedSteps = 0,
+                totalSteps = 2,
+                inFlightSteps = listOf("COMPREHEND_SCENES"),
+            )
+        }
         comprehendJobs[jobId] = initial
         activeComprehendJobByKey[dedupeKey] = jobId
 
         scope.launch {
+            val checkpointMutex = Mutex()
+            val currentWorldRef = AtomicReference<StudyComprehendWorld?>(mergedSeed)
+            val progressMutex = Any()
+            val inFlightSteps = ConcurrentHashMap.newKeySet<String>()
+
+            fun updateInFlightStep(stepKey: String, isInFlight: Boolean) {
+                synchronized(progressMutex) {
+                    if (isInFlight) {
+                        inFlightSteps += stepKey
+                    } else {
+                        inFlightSteps -= stepKey
+                    }
+                    val current = comprehendJobs[jobId] ?: initial
+                    comprehendJobs[jobId] = current.copy(inFlightSteps = inFlightSteps.sorted())
+                }
+            }
+
+            suspend fun persistCheckpoint(
+                immediate: Boolean,
+                transform: (StudyComprehendWorld) -> StudyComprehendWorld,
+            ): StudyComprehendWorld {
+                val updated = checkpointMutex.withLock {
+                    val base = requireNotNull(currentWorldRef.get())
+                    val next = transform(base)
+                    currentWorldRef.set(next)
+                    comprehendCheckpoints[dedupeKey] = next
+                    next
+                }
+                onWorldCheckpoint?.invoke(updated, immediate)
+                return updated
+            }
+
             try {
-                val designed = comprehendWorld(request)
+                val baseWorld = if (hasDesignedScenes) {
+                    requireNotNull(mergedSeed).copy(assetsComplete = false).also { seeded ->
+                        currentWorldRef.set(seeded)
+                        comprehendCheckpoints[dedupeKey] = seeded
+                    }
+                } else {
+                    val freshlyDesigned = runComprehendStepWithRetry(
+                        jobId = jobId,
+                        stepKey = "COMPREHEND_SCENES",
+                        onStepStarted = { updateInFlightStep("COMPREHEND_SCENES", true) },
+                        onStepFinished = { updateInFlightStep("COMPREHEND_SCENES", false) },
+                    ) {
+                        comprehendWorld(request)
+                    }.copy(assetsComplete = false)
+                    checkpointMutex.withLock {
+                        currentWorldRef.set(freshlyDesigned)
+                        comprehendCheckpoints[dedupeKey] = freshlyDesigned
+                    }
+                    onWorldCheckpoint?.invoke(freshlyDesigned, true)
+                    freshlyDesigned
+                }
+
                 val characters = request.characters.ifEmpty {
                     defaultStoryCharacters(request.text).map { d ->
                         StudyStoryCharacter(d.id, d.name, d.role, d.description)
                     }
                 }
-                val spokenLinesToSynthesize = if (talkAudioGenerator != null) {
-                    designed.scenes.flatMap { scene ->
-                        scene.objects.filter { it.isCharacter }.flatMap { obj ->
-                            listOfNotNull(
-                                obj.spokenText?.takeIf(String::isNotBlank),
-                                obj.acceptSpokenText?.takeIf(String::isNotBlank),
-                                obj.declineSpokenText?.takeIf(String::isNotBlank),
-                            )
-                        }
-                    }.distinct()
-                } else {
-                    emptyList()
-                }
-                // 1 step for scene design + 1 player sprite + N sprites + M audio clips
-                val totalSteps = 1 + 1 + designed.sprites.size + spokenLinesToSynthesize.size
-                val completedCounter = AtomicInteger(1)
-                comprehendJobs[jobId] = StudyComprehendJobResponse(
-                    jobId = jobId,
-                    status = StudyComprehendBuildStatus.GENERATING_ASSETS,
-                    completedSteps = 1,
-                    totalSteps = totalSteps,
-                )
 
-                val assetSemaphore = Semaphore(permits = 3)
-                val (playerUrl, renderedSprites, audioMap) = coroutineScope {
-                    val playerDeferred = async {
-                        assetSemaphore.withPermit {
-                            renderComprehendPlayerSprite(designed, request.textLanguageTag).also {
-                                val done = completedCounter.incrementAndGet()
-                                comprehendJobs[jobId] = StudyComprehendJobResponse(
-                                    jobId = jobId,
-                                    status = StudyComprehendBuildStatus.GENERATING_ASSETS,
-                                    completedSteps = done,
-                                    totalSteps = totalSteps,
-                                )
-                            }
-                        }
+                // Propagate any already-synthesized audio URL across duplicate character lines first
+                val existingAudioByLine = collectExistingComprehendAudioMap(baseWorld)
+                val normalizedBaseWorld = if (existingAudioByLine.isNotEmpty()) {
+                    persistCheckpoint(immediate = false) { world ->
+                        applyComprehendAudioMap(world, existingAudioByLine)
                     }
-                    val spritesDeferred = designed.sprites.map { sprite ->
-                        async {
-                            assetSemaphore.withPermit {
-                                val url = renderComprehendSprite(sprite, characters)
-                                val done = completedCounter.incrementAndGet()
-                                comprehendJobs[jobId] = StudyComprehendJobResponse(
-                                    jobId = jobId,
-                                    status = StudyComprehendBuildStatus.GENERATING_ASSETS,
-                                    completedSteps = done,
-                                    totalSteps = totalSteps,
-                                )
-                                sprite.copy(imageUrl = url)
-                            }
-                        }
-                    }
-                    val audioDeferred = spokenLinesToSynthesize.map { line ->
-                        async {
-                            assetSemaphore.withPermit {
-                                val url = requireNotNull(talkAudioGenerator).generate(line, request.textLanguageTag)
-                                val done = completedCounter.incrementAndGet()
-                                comprehendJobs[jobId] = StudyComprehendJobResponse(
-                                    jobId = jobId,
-                                    status = StudyComprehendBuildStatus.GENERATING_ASSETS,
-                                    completedSteps = done,
-                                    totalSteps = totalSteps,
-                                )
-                                line to url
-                            }
-                        }
-                    }
-                    Triple(
-                        playerDeferred.await(),
-                        spritesDeferred.awaitAll(),
-                        audioDeferred.awaitAll().toMap(),
+                } else {
+                    baseWorld
+                }
+
+                val allSpokenLines = collectComprehendSpokenLines(normalizedBaseWorld)
+                val missingSpokenLines = allSpokenLines.filter { it !in existingAudioByLine }
+                val (initialCompleted, totalSteps) = computeComprehendStepCounts(normalizedBaseWorld)
+                val completedCounter = AtomicInteger(initialCompleted)
+
+                synchronized(progressMutex) {
+                    comprehendJobs[jobId] = StudyComprehendJobResponse(
+                        jobId = jobId,
+                        status = StudyComprehendBuildStatus.GENERATING_ASSETS,
+                        completedSteps = initialCompleted,
+                        totalSteps = totalSteps,
+                        inFlightSteps = inFlightSteps.sorted(),
                     )
                 }
 
-                val enrichedScenes = if (audioMap.isEmpty()) {
-                    designed.scenes
-                } else {
-                    designed.scenes.map { scene ->
-                        scene.copy(
-                            objects = scene.objects.map { obj ->
-                                if (!obj.isCharacter) {
-                                    obj
-                                } else {
-                                    obj.copy(
-                                        spokenAudioUrl = obj.spokenText?.let { audioMap[it] } ?: obj.spokenAudioUrl,
-                                        acceptAudioUrl = obj.acceptSpokenText?.let { audioMap[it] } ?: obj.acceptAudioUrl,
-                                        declineAudioUrl = obj.declineSpokenText?.let { audioMap[it] } ?: obj.declineAudioUrl,
-                                    )
-                                }
-                            },
+                fun recordStepDone() {
+                    synchronized(progressMutex) {
+                        val done = completedCounter.incrementAndGet()
+                        comprehendJobs[jobId] = StudyComprehendJobResponse(
+                            jobId = jobId,
+                            status = StudyComprehendBuildStatus.GENERATING_ASSETS,
+                            completedSteps = done,
+                            totalSteps = totalSteps,
+                            inFlightSteps = inFlightSteps.sorted(),
                         )
                     }
                 }
 
-                val finishedWorld = designed.copy(
-                    playerSpriteUrl = playerUrl,
-                    sprites = renderedSprites,
-                    scenes = enrichedScenes,
-                )
-                onWorldReady?.invoke(finishedWorld)
+                val assetSemaphore = Semaphore(permits = 3)
+                val musicSemaphore = Semaphore(permits = 3)
+                val assetFailures = CopyOnWriteArrayList<Throwable>()
+
+                supervisorScope {
+                    val pendingTasks = buildList {
+                        if (normalizedBaseWorld.playerSpriteUrl.isNullOrBlank()) {
+                            add(
+                                async {
+                                    try {
+                                        val playerUrl = runComprehendStepWithRetry(
+                                            jobId = jobId,
+                                            stepKey = "PLAYER_SPRITE",
+                                            semaphore = assetSemaphore,
+                                            onStepStarted = { updateInFlightStep("PLAYER_SPRITE", true) },
+                                            onStepFinished = { updateInFlightStep("PLAYER_SPRITE", false) },
+                                        ) {
+                                            renderComprehendPlayerSprite(normalizedBaseWorld, request.textLanguageTag)
+                                        }
+                                        persistCheckpoint(immediate = false) { world ->
+                                            world.copy(playerSpriteUrl = playerUrl)
+                                        }
+                                        recordStepDone()
+                                    } catch (cancelled: CancellationException) {
+                                        throw cancelled
+                                    } catch (error: Throwable) {
+                                        assetFailures += error
+                                    }
+                                },
+                            )
+                        }
+
+                        normalizedBaseWorld.sprites
+                            .filter { it.imageUrl.isNullOrBlank() }
+                            .forEach { sprite ->
+                                add(
+                                    async {
+                                        try {
+                                            val url = runComprehendStepWithRetry(
+                                                jobId = jobId,
+                                                stepKey = "SPRITE:${sprite.id}",
+                                                semaphore = assetSemaphore,
+                                                onStepStarted = { updateInFlightStep("SPRITE:${sprite.id}", true) },
+                                                onStepFinished = { updateInFlightStep("SPRITE:${sprite.id}", false) },
+                                            ) {
+                                                renderComprehendSprite(sprite, characters)
+                                            }
+                                            persistCheckpoint(immediate = false) { world ->
+                                                world.copy(
+                                                    sprites = world.sprites.map { current ->
+                                                        if (current.id == sprite.id) current.copy(imageUrl = url) else current
+                                                    },
+                                                )
+                                            }
+                                            recordStepDone()
+                                        } catch (cancelled: CancellationException) {
+                                            throw cancelled
+                                        } catch (error: Throwable) {
+                                            assetFailures += error
+                                        }
+                                    },
+                                )
+                            }
+
+                        if (talkAudioGenerator != null) {
+                            missingSpokenLines.forEachIndexed { lineIndex, line ->
+                                add(
+                                    async {
+                                        try {
+                                            val url = runComprehendStepWithRetry(
+                                                jobId = jobId,
+                                                stepKey = "TTS:${lineIndex + 1}",
+                                                semaphore = assetSemaphore,
+                                                onStepStarted = { updateInFlightStep("TTS:${lineIndex + 1}", true) },
+                                                onStepFinished = { updateInFlightStep("TTS:${lineIndex + 1}", false) },
+                                            ) {
+                                                talkAudioGenerator.generate(line, request.textLanguageTag)
+                                            }
+                                            persistCheckpoint(immediate = false) { world ->
+                                                applyComprehendAudioMap(world, mapOf(line to url))
+                                            }
+                                            recordStepDone()
+                                        } catch (cancelled: CancellationException) {
+                                            throw cancelled
+                                        } catch (error: Throwable) {
+                                            assetFailures += error
+                                        }
+                                    },
+                                )
+                            }
+                        }
+
+                        if (musicGenerator != null) {
+                            normalizedBaseWorld.scenes
+                                .mapIndexedNotNull { index, scene ->
+                                    scene.takeIf { it.musicAudioUrl.isNullOrBlank() }?.let { index + 1 to it }
+                                }
+                                .forEach { (sceneNumber, scene) ->
+                                    add(
+                                        async {
+                                            try {
+                                                val prompt = comprehendSceneMusicPrompt(
+                                                    world = normalizedBaseWorld,
+                                                    scene = scene,
+                                                    textLanguageTag = request.textLanguageTag,
+                                                )
+                                                val musicUrl = runComprehendStepWithRetry(
+                                                    jobId = jobId,
+                                                    stepKey = "MUSIC:${scene.id}",
+                                                    semaphore = musicSemaphore,
+                                                    onStepStarted = { updateInFlightStep("MUSIC:$sceneNumber", true) },
+                                                    onStepFinished = { updateInFlightStep("MUSIC:$sceneNumber", false) },
+                                                ) {
+                                                    musicGenerator.generate(prompt)
+                                                }
+                                                persistCheckpoint(immediate = false) { world ->
+                                                    world.copy(
+                                                        scenes = world.scenes.map { current ->
+                                                            if (current.id == scene.id) {
+                                                                current.copy(musicAudioUrl = musicUrl)
+                                                            } else {
+                                                                current
+                                                            }
+                                                        },
+                                                    )
+                                                }
+                                                recordStepDone()
+                                            } catch (cancelled: CancellationException) {
+                                                throw cancelled
+                                            } catch (error: Throwable) {
+                                                assetFailures += error
+                                            }
+                                        },
+                                    )
+                                }
+                        }
+                    }
+                    pendingTasks.awaitAll()
+                }
+
+                if (assetFailures.isNotEmpty()) {
+                    currentWorldRef.get()?.let { partial ->
+                        onWorldCheckpoint?.invoke(partial, true)
+                    }
+                    throw assetFailures.first()
+                }
+
+                val finishedWorld = persistCheckpoint(immediate = true) { world ->
+                    world.copy(assetsComplete = true)
+                }
                 comprehendJobs[jobId] = StudyComprehendJobResponse(
                     jobId = jobId,
                     status = StudyComprehendBuildStatus.READY,
@@ -1357,18 +1571,168 @@ class StudyService(
                 activeComprehendJobByKey.remove(dedupeKey, jobId)
                 throw cancelled
             } catch (error: Throwable) {
-                log.warn("Study Comprehend generation failed for job {}: {}", jobId, error.message, error)
+                log.warn(
+                    "Study Comprehend generation failed for job {}: diagnostics={}",
+                    jobId,
+                    SafeFailureDiagnostics.describe(error),
+                )
                 activeComprehendJobByKey.remove(dedupeKey, jobId)
                 comprehendJobs[jobId] = StudyComprehendJobResponse(
                     jobId = jobId,
                     status = StudyComprehendBuildStatus.FAILED,
                     completedSteps = comprehendJobs[jobId]?.completedSteps ?: 0,
                     totalSteps = comprehendJobs[jobId]?.totalSteps ?: 1,
-                    error = error.message?.takeIf(String::isNotBlank) ?: "Comprehend scene generation failed",
+                    error = StudyBuildFailureReason.display(error),
                 )
             }
         }
         return initial
+    }
+
+    private suspend fun <T> runComprehendStepWithRetry(
+        jobId: String,
+        stepKey: String,
+        semaphore: Semaphore? = null,
+        onStepStarted: () -> Unit = {},
+        onStepFinished: () -> Unit = {},
+        block: suspend () -> T,
+    ): T {
+        val attemptLimit = comprehendMaxAttempts.coerceAtLeast(1)
+        var lastError: Exception? = null
+        for (attempt in 1..attemptLimit) {
+            val attemptStartedAt = System.nanoTime()
+            try {
+                return withContext(
+                    CoroutineName("study-comprehend job=$jobId step=$stepKey attempt=$attempt/$attemptLimit"),
+                ) {
+                    suspend fun runInFlight(): T {
+                        onStepStarted()
+                        return try {
+                            block()
+                        } finally {
+                            onStepFinished()
+                        }
+                    }
+                    if (semaphore != null) {
+                        semaphore.withPermit { runInFlight() }
+                    } else {
+                        runInFlight()
+                    }
+                }
+            } catch (cancelled: CancellationException) {
+                throw cancelled
+            } catch (error: Exception) {
+                lastError = error
+                val elapsedMs = (System.nanoTime() - attemptStartedAt) / 1_000_000
+                if (attempt < attemptLimit) {
+                    val delayMillis = comprehendRetryBackoffMillis
+                        .getOrElse(attempt - 1) { comprehendRetryBackoffMillis.lastOrNull() ?: 0L }
+                        .coerceAtLeast(0L)
+                    log.warn(
+                        "Comprehend step {} for job {} failed on attempt {}/{}; elapsedMs={}; retrying in {}ms; failure={}; diagnostics={}",
+                        stepKey,
+                        jobId,
+                        attempt,
+                        attemptLimit,
+                        elapsedMs,
+                        delayMillis,
+                        StudyBuildFailureReason.display(error),
+                        SafeFailureDiagnostics.describe(error),
+                    )
+                    if (delayMillis > 0L) delay(delayMillis)
+                } else {
+                    log.error(
+                        "Comprehend step {} for job {} failed after {}/{} attempts; elapsedMs={}; failure={}; diagnostics={}",
+                        stepKey,
+                        jobId,
+                        attempt,
+                        attemptLimit,
+                        elapsedMs,
+                        StudyBuildFailureReason.display(error),
+                        SafeFailureDiagnostics.describe(error),
+                    )
+                    throw error
+                }
+            }
+        }
+        throw requireNotNull(lastError)
+    }
+
+    private fun collectComprehendSpokenLines(world: StudyComprehendWorld): List<String> {
+        if (talkAudioGenerator == null) return emptyList()
+        return world.scenes.flatMap { scene ->
+            scene.objects.filter { it.isCharacter }.flatMap { obj ->
+                listOfNotNull(
+                    obj.spokenText?.takeIf(String::isNotBlank),
+                    obj.acceptSpokenText?.takeIf(String::isNotBlank),
+                    obj.declineSpokenText?.takeIf(String::isNotBlank),
+                )
+            }
+        }.distinct()
+    }
+
+    private fun collectExistingComprehendAudioMap(world: StudyComprehendWorld): Map<String, String> {
+        val map = LinkedHashMap<String, String>()
+        world.scenes.forEach { scene ->
+            scene.objects.forEach { obj ->
+                if (!obj.isCharacter) return@forEach
+                val spoken = obj.spokenText?.takeIf(String::isNotBlank)
+                val spokenUrl = obj.spokenAudioUrl?.takeIf(String::isNotBlank)
+                if (spoken != null && spokenUrl != null) map.putIfAbsent(spoken, spokenUrl)
+
+                val accept = obj.acceptSpokenText?.takeIf(String::isNotBlank)
+                val acceptUrl = obj.acceptAudioUrl?.takeIf(String::isNotBlank)
+                if (accept != null && acceptUrl != null) map.putIfAbsent(accept, acceptUrl)
+
+                val decline = obj.declineSpokenText?.takeIf(String::isNotBlank)
+                val declineUrl = obj.declineAudioUrl?.takeIf(String::isNotBlank)
+                if (decline != null && declineUrl != null) map.putIfAbsent(decline, declineUrl)
+            }
+        }
+        return map
+    }
+
+    private fun applyComprehendAudioMap(
+        world: StudyComprehendWorld,
+        audioMap: Map<String, String>,
+    ): StudyComprehendWorld {
+        if (audioMap.isEmpty()) return world
+        return world.copy(
+            scenes = world.scenes.map { scene ->
+                scene.copy(
+                    objects = scene.objects.map { obj ->
+                        if (!obj.isCharacter) {
+                            obj
+                        } else {
+                            obj.copy(
+                                spokenAudioUrl = obj.spokenAudioUrl?.takeIf(String::isNotBlank)
+                                    ?: obj.spokenText?.let { audioMap[it] },
+                                acceptAudioUrl = obj.acceptAudioUrl?.takeIf(String::isNotBlank)
+                                    ?: obj.acceptSpokenText?.let { audioMap[it] },
+                                declineAudioUrl = obj.declineAudioUrl?.takeIf(String::isNotBlank)
+                                    ?: obj.declineSpokenText?.let { audioMap[it] },
+                            )
+                        }
+                    },
+                )
+            },
+        )
+    }
+
+    private fun computeComprehendStepCounts(world: StudyComprehendWorld): Pair<Int, Int> {
+        val spokenLines = collectComprehendSpokenLines(world)
+        val existingAudio = collectExistingComprehendAudioMap(world)
+        val musicCount = if (musicGenerator != null) world.scenes.size else 0
+        val total = 1 + 1 + world.sprites.size + spokenLines.size + musicCount
+
+        var done = 1 // Scene design is complete
+        if (!world.playerSpriteUrl.isNullOrBlank()) done += 1
+        done += world.sprites.count { !it.imageUrl.isNullOrBlank() }
+        done += spokenLines.count { it in existingAudio }
+        if (musicGenerator != null) {
+            done += world.scenes.count { !it.musicAudioUrl.isNullOrBlank() }
+        }
+        return done to total
     }
 
     private suspend fun playCoverPrompt(
@@ -2758,4 +3122,94 @@ internal fun fallbackIntendedScene(
     } else {
         "A vivid cinematic everyday moment with clear character emotion, natural body language, rich environmental detail, and warm movie-still lighting."
     }
+}
+
+/**
+ * Builds a strictly instrumental background-music prompt for `fun-music-v1`
+ * tailored to the scene's environment, time of day, weather, custom terrain/architecture,
+ * and target-language cultural instrumentation — explicitly assigning the lead melody to
+ * instruments and scrubbing vocal/song/lyric triggers so the model never adds singing.
+ */
+internal fun comprehendSceneMusicPrompt(
+    world: StudyComprehendWorld,
+    scene: StudyComprehendScene,
+    textLanguageTag: String,
+): String {
+    val environmentMood = when (scene.environment) {
+        StudyComprehendEnvironment.INDOOR -> "intimate indoor room acoustics, warm resonant chamber ambiance"
+        StudyComprehendEnvironment.OUTDOOR -> "open-air scenic landscape atmosphere, spacious natural depth"
+    }
+    val timeMood = when (scene.timeOfDay) {
+        StudyComprehendTimeOfDay.MORNING -> "gentle morning dawn awakening, fresh hopeful instrumental theme, unhurried tempo"
+        StudyComprehendTimeOfDay.DAYTIME -> "warm sunlit daytime flow, pleasant steady exploratory rhythm"
+        StudyComprehendTimeOfDay.EVENING -> "golden-hour twilight warmth, reflective sunset nostalgia, relaxed moderato tempo"
+        StudyComprehendTimeOfDay.NIGHT -> "serene moonlit night calm, quiet nocturnal mystery, slow tranquil adagio tempo"
+    }
+    val weatherMood = when (scene.weather) {
+        StudyComprehendWeather.SUNNY -> "bright clear-sky warmth and sparkling harmonic overtones"
+        StudyComprehendWeather.CLOUDY -> "soft overcast contemplation, mellow muted tones"
+        StudyComprehendWeather.RAINY -> "cozy rain-kissed mood, delicate droplet-like pizzicato and Rhodes/harp"
+        StudyComprehendWeather.DUSTY -> "earthy sun-baked textures, warm acoustic plucked strings and soft hand percussion"
+        StudyComprehendWeather.HOT -> "shimmering warm summer air, languid relaxed groove"
+        StudyComprehendWeather.COLD -> "crisp winter air, delicate crystalline bells and warm legato strings"
+        StudyComprehendWeather.MISTY -> "ethereal misty atmosphere, floating ambient pads and breathy woodwinds"
+        StudyComprehendWeather.SNOWY -> "hushed snowfall serenity, soft celesta, felt piano, and tender strings"
+        StudyComprehendWeather.BREEZY -> "light airy breeze, graceful flute and flowing acoustic arpeggios"
+    }
+    val instrumentPalette = when (Language.fromTag(textLanguageTag).tag) {
+        "vi" -> "lead melody on solo Vietnamese bamboo flute and plucked dan tranh zither, accompanied by warm acoustic guitar and soft chamber strings"
+        "zh" -> "lead melody on solo guzheng zither and dizi bamboo flute, accompanied by soft erhu phrasing and warm chamber strings"
+        "ja" -> "lead melody on solo koto and airy shakuhachi flute, accompanied by felt piano and lush chamber strings"
+        "ko" -> "lead melody on expressive gayageum zither and soft daegeum flute, accompanied by warm piano and acoustic strings"
+        "ru" -> "lead melody on solo cello and expressive woodwinds, accompanied by gentle acoustic guitar, warm classical strings, and soft piano"
+        else -> "lead melody on felt piano and expressive woodwinds, accompanied by warm acoustic guitar and gentle chamber strings"
+    }
+    val customHint = scene.musicPrompt.trim()
+        .takeIf { it.isNotEmpty() && looksMostlyAscii(it) }
+        ?.let(::sanitizeInstrumentalMusicHint)
+        ?.takeIf { it.isNotEmpty() }
+    val sceneSummary = scene.description.trim()
+        .takeIf { it.isNotEmpty() && looksMostlyAscii(it) }
+        ?.let(::sanitizeInstrumentalMusicHint)
+        ?.takeIf { it.isNotEmpty() }
+    val settingSummary = world.setting.trim()
+        .takeIf { it.isNotEmpty() && looksMostlyAscii(it) }
+        ?.let(::sanitizeInstrumentalMusicHint)
+        ?.takeIf { it.isNotEmpty() }
+
+    return buildString {
+        append("Purely instrumental background music (纯音乐, 纯器乐演奏, 无人声, 无歌词, 无伴唱), strictly 100% instrumental only — no vocals, no lyrics, no singing, no humming, no choir, no spoken word, no human voice. Seamless atmospheric exploration soundtrack. ")
+        if (customHint != null) {
+            append("Musical arrangement: ").append(customHint.trimEnd('.')).append(". ")
+        }
+        if (sceneSummary != null) {
+            append("Ambient scene mood (instrumental score only, do not write lyrics): ").append(sceneSummary.trimEnd('.')).append(". ")
+        } else if (settingSummary != null) {
+            append("Ambient world mood (instrumental score only, do not write lyrics): ").append(settingSummary.trimEnd('.')).append(". ")
+        }
+        append("Mood: ").append(environmentMood).append("; ").append(timeMood).append("; ").append(weatherMood).append(". ")
+        append("Instrumentation: ").append(instrumentPalette).append(". ")
+        append("Instruments only, zero vocals, 无歌词无人声纯音乐.")
+    }.replace(Regex("\\s+"), " ").trim().take(1_100)
+}
+
+private val lyricStructureTagRegex = Regex("\\[(?:intro|verse|chorus|bridge|outro|pre-chorus|hook)[^\\]]*]", RegexOption.IGNORE_CASE)
+private val unnegatedVocalTriggerRegex = Regex(
+    "(?<!\\b(?:no|without|zero|non|free\\s+of)\\s)\\b(?:songs?|ballads?|lullab(?:y|ies)|vocals?|vocalists?|sing(?:ing|ers?)?|sung|choirs?|chants?|chanting|hum(?:ming)?|voices?|lyrics?|lyrical|rap(?:ping)?|opera|arias?|a\\s*cappella|spoken\\s*words?)\\b",
+    RegexOption.IGNORE_CASE,
+)
+
+internal fun sanitizeInstrumentalMusicHint(raw: String): String =
+    raw
+        .replace(lyricStructureTagRegex, " ")
+        .replace(unnegatedVocalTriggerRegex, "instrumental piece")
+        .replace(Regex("(?:instrumental piece\\s*)+", RegexOption.IGNORE_CASE), "instrumental piece ")
+        .replace(Regex("\\s+"), " ")
+        .trim()
+
+private fun looksMostlyAscii(text: String): Boolean {
+    val letters = text.filter { it.isLetter() }
+    if (letters.isEmpty()) return false
+    val latinCount = letters.count { it in 'A'..'Z' || it in 'a'..'z' }
+    return latinCount.toDouble() / letters.length.toDouble() >= 0.75
 }

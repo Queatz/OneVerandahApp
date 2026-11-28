@@ -7,6 +7,7 @@ import apap.oneverandah.api.StudySessionResponse
 import apap.oneverandah.api.StudyToken
 import apap.oneverandah.api.StudyTokenStatus
 import apap.oneverandah.api.mergeStudyBreakdownProgress
+import apap.oneverandah.api.mergeStudyComprehendWorlds
 
 object StudySessionMerge {
     fun mergeClientSave(
@@ -96,7 +97,7 @@ object StudySessionMerge {
             practiceSentences = incoming.practiceSentences,
             examScene = stored.examScene ?: incoming.examScene,
             talkWorld = stored.talkWorld ?: incoming.talkWorld,
-            comprehendWorld = stored.comprehendWorld ?: incoming.comprehendWorld,
+            comprehendWorld = mergeStudyComprehendWorlds(stored.comprehendWorld, incoming.comprehendWorld),
         )
     }
 

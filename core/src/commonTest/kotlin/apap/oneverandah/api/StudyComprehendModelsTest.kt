@@ -105,6 +105,161 @@ class StudyComprehendModelsTest {
         assertTrue(abs(destination.first - 16) <= 1 && abs(destination.second - 10) <= 1)
     }
 
+    @Test
+    fun `mergeStudyComprehendWorlds preserves completed assets across partial checkpoints and requires assetsComplete for play`() {
+        val baseScene1 = samplePalaceCourtyardScene().copy(id = "scene-1", musicPrompt = "Misty dawn courtyard zither")
+        val baseScene2 = samplePalaceCourtyardScene().copy(id = "scene-2", musicPrompt = "Rainy pavilion flute")
+        val baseScene3 = samplePalaceCourtyardScene().copy(id = "scene-3", musicPrompt = "Warm lantern tea hall")
+
+        val checkpointA = StudyComprehendWorld(
+            setting = "Imperial garden",
+            playerSpriteUrl = "https://cdn.example/player.png",
+            sprites = listOf(
+                StudyComprehendSpriteSpec("char-minh", isCharacter = true, visualPrompt = "Minh", imageUrl = "https://cdn.example/minh.png"),
+                StudyComprehendSpriteSpec("jade", isCharacter = false, visualPrompt = "Jade", imageUrl = null),
+            ),
+            scenes = listOf(
+                baseScene1.copy(
+                    musicAudioUrl = "https://cdn.example/music-1.mp3",
+                    objects = baseScene1.objects.map { obj ->
+                        if (obj.id == "guard-minh") obj.copy(spokenAudioUrl = "https://cdn.example/spoken-1.mp3") else obj
+                    },
+                ),
+                baseScene2,
+                baseScene3,
+            ),
+            assetsComplete = false,
+        )
+
+        val checkpointB = checkpointA.copy(
+            playerSpriteUrl = null,
+            sprites = listOf(
+                StudyComprehendSpriteSpec("char-minh", isCharacter = true, visualPrompt = "Minh", imageUrl = null),
+                StudyComprehendSpriteSpec("jade", isCharacter = false, visualPrompt = "Jade", imageUrl = "https://cdn.example/jade.png"),
+            ),
+            scenes = listOf(
+                baseScene1.copy(musicAudioUrl = null),
+                baseScene2.copy(musicAudioUrl = "https://cdn.example/music-2.mp3"),
+                baseScene3.copy(musicAudioUrl = "https://cdn.example/music-3.mp3"),
+            ),
+            assetsComplete = false,
+        )
+
+        val mergedPartial = assertNotNull(mergeStudyComprehendWorlds(checkpointB, checkpointA))
+        assertEquals("https://cdn.example/player.png", mergedPartial.playerSpriteUrl)
+        assertTrue(mergedPartial.sprites.all { !it.imageUrl.isNullOrBlank() })
+        assertTrue(mergedPartial.scenes.all { !it.musicAudioUrl.isNullOrBlank() })
+        assertEquals(
+            "https://cdn.example/spoken-1.mp3",
+            mergedPartial.scenes.first().objects.first { it.id == "guard-minh" }.spokenAudioUrl,
+        )
+        // Sprites exist, but assetsComplete is still false because accept/decline speech has not finished
+        assertFalse(mergedPartial.isReadyToPlay())
+        assertFalse(mergedPartial.hasAllAssets(requireAudio = true, requireMusic = true))
+
+        val finalized = mergedPartial.copy(
+            scenes = mergedPartial.scenes.map { sc ->
+                sc.copy(
+                    objects = sc.objects.map { obj ->
+                        if (!obj.isCharacter) {
+                            obj
+                        } else {
+                            obj.copy(
+                                spokenAudioUrl = "https://cdn.example/spoken.mp3",
+                                acceptAudioUrl = "https://cdn.example/accept.mp3",
+                                declineAudioUrl = "https://cdn.example/decline.mp3",
+                            )
+                        }
+                    },
+                )
+            },
+            assetsComplete = true,
+        )
+        assertTrue(finalized.hasAllAssets(requireAudio = true, requireMusic = true))
+        assertTrue(finalized.isReadyToPlay())
+    }
+
+    @Test
+    fun `3d wall structures block movement until opensPassage doorway is unlocked and custom scene metadata merges`() {
+        val base = samplePalaceCourtyardScene()
+        val roomDoor = StudyComprehendObject(
+            id = "wood-door",
+            spriteId = "gate",
+            x = 12,
+            z = 14,
+            targetName = "Cửa gỗ",
+            blocksMovement = true,
+            opensPassage = true,
+            actions = listOf(
+                StudyComprehendObjectAction("open-wood-door", StudyComprehendActionKind.OPEN, "Open"),
+            ),
+        )
+        val updatedObjects = base.objects.filterNot { it.x == 12 && it.z == 14 } + roomDoor
+        val byCoord = updatedObjects.associateBy { it.z * STUDY_COMPREHEND_GRID_SIZE + it.x }
+        val walledTiles = List(STUDY_COMPREHEND_TILE_COUNT) { idx ->
+            val z = idx / STUDY_COMPREHEND_GRID_SIZE
+            val ground = if (z == 14) {
+                StudyComprehendGroundType.WOOD_WALL
+            } else {
+                StudyComprehendGroundType.TATAMI_MAT
+            }
+            StudyComprehendTile(ground = ground, objectId = byCoord[idx]?.id)
+        }
+        val partitionedScene = base.copy(
+            environment = StudyComprehendEnvironment.INDOOR,
+            playerSpawnX = 6,
+            playerSpawnZ = 18,
+            tiles = walledTiles,
+            objects = updatedObjects,
+            layoutSummary = "Partitioned tea rooms with wooden wall",
+            wallMaterial = StudyComprehendGroundType.WOOD_WALL,
+            surroundingGround = StudyComprehendGroundType.MOSS_STONE,
+            ambientTintHex = "#d4a373",
+            initialCameraYawDegrees = 45f,
+        )
+
+        assertTrue(StudyComprehendGroundType.WOOD_WALL.isWallStructure)
+        assertTrue(StudyComprehendGroundType.STONE_WALL.isWallStructure)
+        assertTrue(StudyComprehendGroundType.PLASTER_WALL.isWallStructure)
+        assertTrue(StudyComprehendGroundType.BRICK_WALL.isWallStructure)
+        assertFalse(StudyComprehendGroundType.TERRACOTTA_TILE.isWallStructure)
+
+        val closedState = StudyComprehendScenePlayState.initial(partitionedScene)
+        assertFalse(partitionedScene.isTileWalkable(closedState, 8, 14))
+        assertFalse(partitionedScene.isTileWalkable(closedState, 12, 14))
+        assertTrue(partitionedScene.findWalkPath(closedState, 6, 18, 12, 11).isEmpty())
+
+        val openedOutcome = partitionedScene.performAction(closedState, "wood-door", "open-wood-door")
+        assertTrue(openedOutcome.succeeded)
+        assertTrue(partitionedScene.isTileWalkable(openedOutcome.state, 12, 14))
+        val pathThroughDoorway = partitionedScene.findWalkPath(openedOutcome.state, 6, 18, 12, 11)
+        assertTrue(pathThroughDoorway.isNotEmpty(), "A* must route through opened doorway across wall partition")
+        assertTrue((12 to 14) in pathThroughDoorway)
+
+        val sparseWorld = StudyComprehendWorld(
+            setting = "Tea compound",
+            sprites = emptyList(),
+            scenes = listOf(
+                partitionedScene.copy(layoutSummary = "", wallMaterial = null, ambientTintHex = null),
+                base.copy(id = "scene-2"),
+                base.copy(id = "scene-3"),
+            ),
+            assetsComplete = false,
+        )
+        val richWorld = sparseWorld.copy(
+            scenes = listOf(
+                partitionedScene,
+                base.copy(id = "scene-2"),
+                base.copy(id = "scene-3"),
+            ),
+        )
+        val merged = assertNotNull(mergeStudyComprehendWorlds(sparseWorld, richWorld))
+        assertEquals("Partitioned tea rooms with wooden wall", merged.scenes.first().layoutSummary)
+        assertEquals(StudyComprehendGroundType.WOOD_WALL, merged.scenes.first().wallMaterial)
+        assertEquals("#d4a373", merged.scenes.first().ambientTintHex)
+        assertEquals(45f, merged.scenes.first().initialCameraYawDegrees)
+    }
+
     private fun samplePalaceCourtyardScene(): StudyComprehendScene {
         val objects = mutableListOf(
             StudyComprehendObject(

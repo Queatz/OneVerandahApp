@@ -903,7 +903,7 @@ class StudyBuildServiceTest {
                 error("portrait provider temporarily unavailable")
             }
             if (fail.get()) error("temporary image failure")
-            if (blankTalkExpressions.get() && prompt.startsWith("Create a full-body visual-novel character sprite")) {
+            if (blankTalkExpressions.get() && prompt.startsWith("Create a full-body ") && prompt.contains("character sprite")) {
                 return " "
             }
             val url = "https://img/${imageCounter.incrementAndGet()}"

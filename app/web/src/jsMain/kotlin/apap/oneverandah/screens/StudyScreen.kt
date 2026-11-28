@@ -2191,13 +2191,16 @@ private fun StudySessionContent(
     var mode by remember(session.text) { mutableStateOf(StudySessionMode.ALL) }
     var highlightedWord by remember(session.text) { mutableStateOf<String?>(null) }
     var examAttempt by remember(session.text) { mutableStateOf(StudyExamAttemptState()) }
-    var comprehendWorld by remember(session.text, session.textLanguageTag) { mutableStateOf(session.comprehendWorld) }
+    var comprehendWorld by remember(session.text, session.textLanguageTag) {
+        mutableStateOf(session.comprehendWorld?.takeIf { it.isReadyToPlay() })
+    }
     var comprehendJob by remember(session.text, session.textLanguageTag) { mutableStateOf<StudyComprehendJobResponse?>(null) }
     var comprehendError by remember(session.text, session.textLanguageTag) { mutableStateOf<String?>(null) }
     var comprehendInFlight by remember(session.text, session.textLanguageTag) { mutableStateOf(false) }
     LaunchedEffect(session.comprehendWorld) {
-        if (session.comprehendWorld != null) {
-            comprehendWorld = session.comprehendWorld
+        val ready = session.comprehendWorld?.takeIf { it.isReadyToPlay() }
+        if (ready != null) {
+            comprehendWorld = ready
         }
     }
 

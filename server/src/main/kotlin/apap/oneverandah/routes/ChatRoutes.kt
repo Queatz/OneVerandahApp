@@ -18,6 +18,8 @@ import apap.oneverandah.api.StudyBreakdownProgress
 import apap.oneverandah.api.StudyComprehendBuildStatus
 import apap.oneverandah.api.StudyComprehendGenerateRequest
 import apap.oneverandah.api.StudyComprehendJobResponse
+import apap.oneverandah.api.StudyComprehendWorld
+import apap.oneverandah.api.mergeStudyComprehendWorlds
 import apap.oneverandah.api.StudyExpressCheckRequest
 import apap.oneverandah.api.StudyExpressGenerateRequest
 import apap.oneverandah.api.StudyExamSceneRequest
@@ -387,29 +389,50 @@ fun Route.chatRoutes(
                 return@post
             }
             val sessionId = normalized.sessionId
+            var seedWorld: StudyComprehendWorld? = null
             if (sessionId != null && studySessionsService != null) {
                 val existingRecord = studySessionsService.sessionStore.findById(sessionId)
-                val existingWorld = existingRecord?.session?.comprehendWorld
-                if (existingWorld != null && existingWorld.hasAllAssets()) {
-                    call.respondStudyPayload(
-                        StudyComprehendJobResponse(
-                            jobId = "cached-$sessionId",
-                            status = StudyComprehendBuildStatus.READY,
-                            completedSteps = 1,
-                            totalSteps = 1,
-                            world = existingWorld,
-                        ),
-                    )
-                    return@post
+                if (existingRecord != null &&
+                    existingRecord.text == normalized.text &&
+                    existingRecord.textLanguageTag == normalized.textLanguageTag &&
+                    existingRecord.languageTag == normalized.languageTag
+                ) {
+                    val existingWorld = existingRecord.session.comprehendWorld
+                    if (existingWorld != null && studyService.isComprehendWorldComplete(existingWorld)) {
+                        call.respondStudyPayload(
+                            StudyComprehendJobResponse(
+                                jobId = "cached-$sessionId",
+                                status = StudyComprehendBuildStatus.READY,
+                                completedSteps = 1,
+                                totalSteps = 1,
+                                world = existingWorld,
+                            ),
+                        )
+                        return@post
+                    }
+                    seedWorld = existingWorld
                 }
             }
-            val job = studyService.startComprehendJob(normalized) { finishedWorld ->
+            val job = studyService.startComprehendJob(
+                rawRequest = normalized,
+                seedWorld = seedWorld,
+            ) { checkpointWorld, immediate ->
                 if (sessionId != null && studySessionsService != null) {
-                    studySessionsService.sessionStore.update(sessionId, immediate = true) { current ->
-                        if (current.text != normalized.text || current.textLanguageTag != normalized.textLanguageTag) {
+                    studySessionsService.sessionStore.update(sessionId, immediate = immediate) { current ->
+                        if (current.text != normalized.text ||
+                            current.textLanguageTag != normalized.textLanguageTag ||
+                            current.languageTag != normalized.languageTag
+                        ) {
                             return@update current
                         }
-                        current.copy(session = current.session.copy(comprehendWorld = finishedWorld))
+                        current.copy(
+                            session = current.session.copy(
+                                comprehendWorld = mergeStudyComprehendWorlds(
+                                    checkpointWorld,
+                                    current.session.comprehendWorld,
+                                ),
+                            ),
+                        )
                     }
                 }
             }

@@ -19,7 +19,9 @@ import io.ktor.http.content.TextContent
 import io.ktor.http.headersOf
 import io.ktor.utils.io.ByteChannel
 import io.ktor.utils.io.ByteReadChannel
+import io.ktor.utils.io.close
 import io.ktor.utils.io.readRemaining
+import io.ktor.utils.io.writeFully
 import kotlinx.coroutines.CancellationException
 import kotlinx.coroutines.CoroutineName
 import kotlinx.coroutines.async
@@ -38,6 +40,7 @@ import java.util.concurrent.atomic.AtomicInteger
 import javax.imageio.ImageIO
 import kotlin.test.Test
 import kotlin.test.assertEquals
+import kotlin.test.assertFalse
 import kotlin.test.assertNotNull
 import kotlin.test.assertNull
 import kotlin.test.assertTrue
@@ -908,6 +911,96 @@ class DashScopeQwenClientTest {
     }
 
     @Test
+    fun `multimodalGenerate retries mid-body EOF and logs study-comprehend diagnostic context`() = runBlocking {
+        val submitAttempts = AtomicInteger()
+        val downloadAttempts = AtomicInteger()
+        val engine = MockEngine { request ->
+            val url = request.url.toString()
+            when {
+                url.contains("multimodal-generation") -> {
+                    val attempt = submitAttempts.incrementAndGet()
+                    if (attempt == 1) {
+                        val brokenBody = ByteChannel(autoFlush = true)
+                        brokenBody.writeFully("""{"output":{"choices":[""".encodeToByteArray(), 0, 22)
+                        brokenBody.close(java.io.EOFException("Not enough data available"))
+                        respond(
+                            content = brokenBody,
+                            status = HttpStatusCode.OK,
+                            headers = headersOf(HttpHeaders.ContentType, "application/json"),
+                        )
+                    } else {
+                        respond(
+                            content = """{"output":{"choices":[{"message":{"content":[{"image":"https://dashscope-result.example.test/sprite.png","type":"image"}]}}]}}""",
+                            status = HttpStatusCode.OK,
+                            headers = headersOf(HttpHeaders.ContentType, "application/json"),
+                        )
+                    }
+                }
+
+                url.contains("dashscope-result.example.test") -> {
+                    val attempt = downloadAttempts.incrementAndGet()
+                    if (attempt == 1) {
+                        val brokenDownload = ByteChannel(autoFlush = true)
+                        brokenDownload.writeFully(byteArrayOf(9, 9), 0, 2)
+                        brokenDownload.close(java.io.EOFException("Not enough data available"))
+                        respond(
+                            content = brokenDownload,
+                            status = HttpStatusCode.OK,
+                            headers = headersOf(HttpHeaders.ContentType, "image/png"),
+                        )
+                    } else {
+                        respond(
+                            content = ByteReadChannel(byteArrayOf(8, 8, 8)),
+                            status = HttpStatusCode.OK,
+                            headers = headersOf(HttpHeaders.ContentType, "image/png"),
+                        )
+                    }
+                }
+
+                else -> error("Unexpected request: $url")
+            }
+        }
+        val client = HttpClient(engine)
+        val qwen = DashScopeQwenClient(
+            config = QwenImageConfig(
+                endpoint = "https://dashscope.aliyuncs.com/api/v1/services/aigc/text2image/image-synthesis",
+                apiKey = "test-key",
+                model = "wan2.7-image",
+                r2iEndpoint = "https://dashscope.aliyuncs.com/api/v1/services/aigc/multimodal-generation/generation",
+                r2iModel = "wan2.7-image",
+            ),
+            client = client,
+            pollIntervalMs = 1,
+        )
+        val logger = org.slf4j.LoggerFactory.getLogger(DashScopeQwenClient::class.java) as Logger
+        val appender = ListAppender<ILoggingEvent>().apply {
+            context = logger.loggerContext
+            start()
+        }
+        logger.addAppender(appender)
+        try {
+            val image = withContext(CoroutineName("study-comprehend job=job-1 step=SPRITE:pine-tree attempt=1/3")) {
+                qwen.generate("Pine tree sprite")
+            }
+            assertEquals(2, submitAttempts.get(), "Mid-body EOF on multimodal submit must retry")
+            assertEquals(2, downloadAttempts.get(), "Mid-body EOF on generated image download must retry")
+            assertTrue(image.bytes.contentEquals(byteArrayOf(8, 8, 8)))
+            val messages = appender.list.map { it.formattedMessage }
+            assertTrue(
+                messages.any {
+                    it.contains("study-comprehend job=job-1 step=SPRITE:pine-tree attempt=1/3") &&
+                        it.contains("operation completed")
+                },
+                "Expected study-comprehend diagnostic completion log, got: $messages",
+            )
+        } finally {
+            logger.detachAppender(appender)
+            appender.stop()
+            client.close()
+        }
+    }
+
+    @Test
     fun decodeDataUrl_readsBase64Png() {
         val bytes = byteArrayOf(1, 2, 3, 4)
         val dataUrl = "data:image/png;base64," + Base64.getEncoder().encodeToString(bytes)
@@ -936,17 +1029,18 @@ class DashScopeQwenClientTest {
     }
 
     @Test
-    fun transientHttpClose_detectsRequestTimeout() {
+    fun transientHttpClose_doesNotRetryWholeRequestTimeout() {
         val timeout = io.ktor.client.plugins.HttpRequestTimeoutException(
             "https://dashscope-file-mgr.oss-cn-beijing.aliyuncs.com",
             600_000,
         )
-        assertTrue(DashScopeQwenClient.isTransientHttpClose(timeout))
-        assertTrue(
+        assertFalse(DashScopeQwenClient.isTransientHttpClose(timeout))
+        assertFalse(
             DashScopeQwenClient.isTransientHttpClose(
                 RuntimeException("Request timeout has expired [url=https://dashscope-file-mgr.oss-cn-beijing.aliyuncs.com, request_timeout=600000 ms]"),
             ),
         )
+        assertTrue(DashScopeQwenClient.isTransientHttpClose(java.io.EOFException("Not enough data available")))
     }
 
     @Test

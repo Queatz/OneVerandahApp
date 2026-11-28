@@ -150,6 +150,7 @@ data class StudyComprehendStrings(
     val sceneIndicator: (current: Int, total: Int) -> String,
     val generatingScenes: String,
     val generatingAssets: (done: Int, total: Int) -> String,
+    val generatingStep: (kind: String, detail: String) -> String,
     val loadingEngine: String,
     val failedTitle: String,
     val failedHint: String,
@@ -1112,6 +1113,15 @@ private fun studyComprehendStrings(languageName: String): StudyComprehendStrings
         sceneIndicator = { current, total -> "Cảnh $current / $total" },
         generatingScenes = "Đang thiết kế 3 cảnh 3D với Qwen…",
         generatingAssets = { done, total -> "Đang tạo nhân vật, vật thể & giọng nói ($done/$total)…" },
+        generatingStep = { kind, detail ->
+            when (kind) {
+                "music" -> "Đang tạo nhạc cho cảnh $detail…"
+                "sprite" -> "Đang tạo hình ảnh cho $detail…"
+                "audio" -> "Đang tạo giọng nói $detail…"
+                "player" -> "Đang tạo nhân vật người chơi…"
+                else -> "Đang xử lý…"
+            }
+        },
         loadingEngine = "Đang tải cảnh 3D WebGPU…",
         failedTitle = "Không thể tạo cảnh Thấu hiểu",
         failedHint = "Mở lại thẻ này hoặc nhấn Thử lại để tạo lại từ đầu.",
@@ -1141,6 +1151,15 @@ private fun studyComprehendStrings(languageName: String): StudyComprehendStrings
         sceneIndicator = { current, total -> "场景 $current / $total" },
         generatingScenes = "正在使用 Qwen 规划 3 个 3D 场景…",
         generatingAssets = { done, total -> "正在生成透明角色、物品与语音 ($done/$total)…" },
+        generatingStep = { kind, detail ->
+            when (kind) {
+                "music" -> "正在为场景 $detail 生成音乐…"
+                "sprite" -> "正在生成图像：$detail…"
+                "audio" -> "正在生成语音 $detail…"
+                "player" -> "正在生成玩家角色…"
+                else -> "正在处理中…"
+            }
+        },
         loadingEngine = "正在加载 WebGPU 3D 场景…",
         failedTitle = "无法生成理解场景",
         failedHint = "重新打开此标签页或点击重试即可重新生成。",
@@ -1170,6 +1189,15 @@ private fun studyComprehendStrings(languageName: String): StudyComprehendStrings
         sceneIndicator = { current, total -> "シーン $current / $total" },
         generatingScenes = "Qwen で 3 つの 3D シーンを設計中…",
         generatingAssets = { done, total -> "キャラクター・オブジェクト・音声を生成中 ($done/$total)…" },
+        generatingStep = { kind, detail ->
+            when (kind) {
+                "music" -> "シーン${detail}の音楽を生成中…"
+                "sprite" -> "画像を生成中：$detail…"
+                "audio" -> "音声を生成中 $detail…"
+                "player" -> "プレイヤーキャラクターを生成中…"
+                else -> "処理中…"
+            }
+        },
         loadingEngine = "WebGPU 3D シーンを読み込み中…",
         failedTitle = "シーンを生成できませんでした",
         failedHint = "タブを再度開くか「再試行」を押すと再生成します。",
@@ -1199,6 +1227,15 @@ private fun studyComprehendStrings(languageName: String): StudyComprehendStrings
         sceneIndicator = { current, total -> "장면 $current / $total" },
         generatingScenes = "Qwen 모델로 3개의 3D 장면을 설계하는 중…",
         generatingAssets = { done, total -> "캐릭터, 사물 및 음성 생성 중 ($done/$total)…" },
+        generatingStep = { kind, detail ->
+            when (kind) {
+                "music" -> "$detail 장면 음악 생성 중…"
+                "sprite" -> "이미지 생성 중: $detail…"
+                "audio" -> "$detail 음성 생성 중…"
+                "player" -> "플레이어 캐릭터 생성 중…"
+                else -> "처리 중…"
+            }
+        },
         loadingEngine = "WebGPU 3D 장면 불러오는 중…",
         failedTitle = "장면을 생성하지 못했습니다",
         failedHint = "이 탭을 다시 열거나 다시 시도를 눌러 새로 생성하세요.",
@@ -1228,6 +1265,15 @@ private fun studyComprehendStrings(languageName: String): StudyComprehendStrings
         sceneIndicator = { current, total -> "Сцена $current из $total" },
         generatingScenes = "Проектируем 3 3D-сцены с Qwen…",
         generatingAssets = { done, total -> "Создаём объекты, персонажей и озвучку ($done/$total)…" },
+        generatingStep = { kind, detail ->
+            when (kind) {
+                "music" -> "Создаём музыку для сцены $detail…"
+                "sprite" -> "Создаём изображение: $detail…"
+                "audio" -> "Создаём озвучку $detail…"
+                "player" -> "Создаём персонажа игрока…"
+                else -> "Выполняется обработка…"
+            }
+        },
         loadingEngine = "Загрузка 3D-сцены WebGPU…",
         failedTitle = "Не удалось сгенерировать сцену",
         failedHint = "Откройте вкладку заново или нажмите «Повторить», чтобы попробовать снова.",
@@ -1257,6 +1303,15 @@ private fun studyComprehendStrings(languageName: String): StudyComprehendStrings
         sceneIndicator = { current, total -> "Escena $current de $total" },
         generatingScenes = "Diseñando 3 escenas 3D con Qwen…",
         generatingAssets = { done, total -> "Generando personajes, objetos y voces ($done/$total)…" },
+        generatingStep = { kind, detail ->
+            when (kind) {
+                "music" -> "Generando música para la escena $detail…"
+                "sprite" -> "Generando imagen: $detail…"
+                "audio" -> "Generando voz $detail…"
+                "player" -> "Generando personaje del jugador…"
+                else -> "Procesando…"
+            }
+        },
         loadingEngine = "Cargando escena 3D WebGPU…",
         failedTitle = "No se pudo generar la escena",
         failedHint = "Vuelve a abrir esta pestaña o pulsa Reintentar para generarla de nuevo.",
@@ -1286,6 +1341,15 @@ private fun studyComprehendStrings(languageName: String): StudyComprehendStrings
         sceneIndicator = { current, total -> "Szene $current von $total" },
         generatingScenes = "3 3D-Szenen werden mit Qwen entworfen…",
         generatingAssets = { done, total -> "Charaktere, Objekte & Sprachausgabe werden erstellt ($done/$total)…" },
+        generatingStep = { kind, detail ->
+            when (kind) {
+                "music" -> "Musik für Szene $detail wird erstellt…"
+                "sprite" -> "Bild wird erstellt: $detail…"
+                "audio" -> "Sprachausgabe $detail wird erstellt…"
+                "player" -> "Spielerfigur wird erstellt…"
+                else -> "Wird verarbeitet…"
+            }
+        },
         loadingEngine = "WebGPU-3D-Szene wird geladen…",
         failedTitle = "Szene konnte nicht erstellt werden",
         failedHint = "Öffne diesen Tab erneut oder tippe auf Erneut versuchen.",
@@ -1315,6 +1379,15 @@ private fun studyComprehendStrings(languageName: String): StudyComprehendStrings
         sceneIndicator = { current, total -> "ဇာတ်ဝင်ခန်း $current / $total" },
         generatingScenes = "Qwen ဖြင့် 3D ဇာတ်ဝင်ခန်း ၃ ခု ဖန်တီးနေသည်…",
         generatingAssets = { done, total -> "ဇာတ်ကောင်များ၊ ပစ္စည်းများနှင့် အသံများ ဖန်တီးနေသည် ($done/$total)…" },
+        generatingStep = { kind, detail ->
+            when (kind) {
+                "music" -> "ဇာတ်ဝင်ခန်း $detail အတွက် တေးဂီတ ဖန်တီးနေသည်…"
+                "sprite" -> "ပုံ ဖန်တီးနေသည်: $detail…"
+                "audio" -> "အသံ $detail ဖန်တီးနေသည်…"
+                "player" -> "ကစားသမားဇာတ်ကောင် ဖန်တီးနေသည်…"
+                else -> "လုပ်ဆောင်နေသည်…"
+            }
+        },
         loadingEngine = "WebGPU 3D မြင်ကွင်းကို တင်နေသည်…",
         failedTitle = "မြင်ကွင်းကို မဖန်တီးနိုင်ပါ",
         failedHint = "ဤတက်ဘ်ကို ပြန်ဖွင့်ပါ သို့မဟုတ် ထပ်ကြိုးစားရန်ကို နှိပ်ပါ။",
@@ -1344,6 +1417,15 @@ private fun studyComprehendStrings(languageName: String): StudyComprehendStrings
         sceneIndicator = { current, total -> "Scene $current of $total" },
         generatingScenes = "Designing 3 orchestrated 3D scenes with Qwen…",
         generatingAssets = { done, total -> "Generating transparent characters, objects & audio ($done/$total)…" },
+        generatingStep = { kind, detail ->
+            when (kind) {
+                "music" -> "Generating music for scene $detail…"
+                "sprite" -> "Generating image: $detail…"
+                "audio" -> "Generating speech audio $detail…"
+                "player" -> "Generating player character…"
+                else -> "Working…"
+            }
+        },
         loadingEngine = "Loading WebGPU 3D scene…",
         failedTitle = "Couldn't generate the Comprehend scenes",
         failedHint = "Reopen the Comprehend tab or click Retry to try generating again.",

@@ -6,6 +6,7 @@ import apap.oneverandah.data.Catalog
 import apap.oneverandah.images.qwen.DashScopeQwenClient
 import apap.oneverandah.images.qwen.PlaceholderQwenClient
 import apap.oneverandah.images.qwen.QwenClient
+import apap.oneverandah.images.qwen.QwenErrorLog
 import apap.oneverandah.images.storage.GeneratedImage
 import apap.oneverandah.http.longRunningHttpClient
 import apap.oneverandah.http.shortHttpClient
@@ -260,12 +261,34 @@ class ChatSystem(
                     )
                 }
             }
+            val comprehendMusicGenerator = if (storage != null && config.qwenChat.enabled) {
+                val musicClient = DashScopeMusicClient(
+                    config = config.qwenChat,
+                    client = providerClient,
+                    errorLog = QwenErrorLog(File(config.qwenErrorLogPath)),
+                )
+                StudyComprehendMusicGenerator { prompt ->
+                    val generated = musicClient.generateInstrumental(prompt)
+                    storage.upload(
+                        "study/comprehend/music/${UUID.randomUUID()}.${generated.extension}",
+                        GeneratedImage(
+                            bytes = generated.bytes,
+                            contentType = generated.contentType,
+                            extension = generated.extension,
+                        ),
+                    )
+                }
+            } else {
+                null
+            }
             val studyService = StudyService(
                 aiClient = studyAiClient,
                 imageGenerator = playgroundImageGenerator,
                 scope = scope,
                 talkCharacterImageSize = config.qwen.talkMultimodalSize,
                 talkAudioGenerator = talkAudioGenerator,
+                musicGenerator = comprehendMusicGenerator,
+                comprehendMaxAttempts = config.studyBuildMaxAttempts,
             )
             val studySessionStore = StudySessionStore(studySessionsRepository, scope = scope)
             val studySessionsService = StudySessionsService(
