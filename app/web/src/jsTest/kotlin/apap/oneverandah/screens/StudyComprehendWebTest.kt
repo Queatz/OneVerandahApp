@@ -118,12 +118,25 @@ class StudyComprehendWebTest {
 
         // Verify bottom-pivoted billboard spans y in [0, height] so swaying around local (0, 0, 0) pivots from base
         val treeMesh = createBottomPivotBillboardPlane(bjs, engine, "tree-test", width = 1.4, height = 2.2)
+        val rollZ = 0.22
         treeMesh.position.set(targetX, 0.0, targetZ)
-        treeMesh.rotation.set(0.0, 0.0, 0.045)
+        treeMesh.rotation.set(0.0, 0.0, rollZ)
         val boundMinY = (treeMesh.asDynamic().boundMin[1] as Number).toDouble()
         val boundMaxY = (treeMesh.asDynamic().boundMax[1] as Number).toDouble()
         assertEquals(0.0, boundMinY, 1e-5)
         assertEquals(2.2, boundMaxY, 1e-5)
+
+        // Verify via Babylon Lite's own worldMatrix that bottom-center (0, 0, 0) stays pinned at (targetX, 0, targetZ)
+        // while top-center (0, 2.2, 0) sways horizontally!
+        val wm = treeMesh.asDynamic().worldMatrix
+        val baseWorldX = (wm[12] as Number).toDouble()
+        val baseWorldY = (wm[13] as Number).toDouble()
+        val baseWorldZ = (wm[14] as Number).toDouble()
+        assertEquals(targetX, baseWorldX, 1e-5)
+        assertEquals(0.0, baseWorldY, 1e-5)
+        assertEquals(targetZ, baseWorldZ, 1e-5)
+        val topWorldX = (wm[4] as Number).toDouble() * 2.2 + baseWorldX
+        assertTrue(abs(topWorldX - targetX) > 0.2, "Tree canopy should sway horizontally while base stays fixed")
 
         var steppedDelta = 0.0
         bjs.onBeforeRender(scene) { dt ->
@@ -132,12 +145,15 @@ class StudyComprehendWebTest {
         bjs.stepScene(engine, scene, 16.0)
         assertEquals(16.0, steppedDelta)
 
-        // Verify center-screen picking ray hits the bottom-pivoted tree and intersects ground y = 0 at tile (16, 16)
+        // Verify picking ray aimed slightly above ground hits the swaying tree, and center ray hits ground tile (16, 16)
         val vp = bjs.getViewProjectionMatrix(cam, 1.0)
+        val treeRay = bjs.createPickingRay(200.0, 175.0, vp, 400.0, 400.0)
+        assertNotNull(treeRay)
+        val pick = bjs.pickMeshesWithRay(arrayOf(treeMesh), treeRay)
+        assertTrue(pick.hit)
+
         val ray = bjs.createPickingRay(200.0, 200.0, vp, 400.0, 400.0)
         assertNotNull(ray)
-        val pick = bjs.pickMeshesWithRay(arrayOf(treeMesh), ray)
-        assertTrue(pick.hit)
         val t = -ray.origin[1] / ray.direction[1]
         val hitX = ray.origin[0] + t * ray.direction[0]
         val hitZ = ray.origin[2] + t * ray.direction[2]
